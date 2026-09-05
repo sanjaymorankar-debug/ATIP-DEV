@@ -89,6 +89,39 @@ def _extract_symbols(df: pd.DataFrame) -> list:
     return []
 
 
+def get_symbol_industry_map() -> dict:
+    """
+    Symbol -> NSE industry/sector classification, read from the same
+    ind_nifty500list.csv used for the tracked universe (it carries an
+    Industry column alongside Symbol — no extra download needed).
+
+    This replaces the hardcoded sector_rank=5 stub that used to be passed
+    into compute_zpi()/Trade-of-Day scoring for every stock. Returns {} if
+    the cache is missing/unreadable — callers must degrade gracefully
+    (e.g. fall back to a neutral sector score), never raise.
+    """
+    if not _cache_is_fresh(NIFTY500_CACHE):
+        fetch_nifty500_symbols()  # best-effort refresh; keeps stale cache on failure
+    if not NIFTY500_CACHE.exists():
+        return {}
+    try:
+        df = pd.read_csv(NIFTY500_CACHE)
+    except Exception as e:
+        log.warning(f"  Industry map read failed: {e}")
+        return {}
+    sym_col = next((c for c in ("Symbol", "SYMBOL", "symbol") if c in df.columns), None)
+    ind_col = next((c for c in ("Industry", "INDUSTRY", "industry") if c in df.columns), None)
+    if not sym_col or not ind_col:
+        return {}
+    out = {}
+    for _, row in df.iterrows():
+        sym = str(row[sym_col]).strip().upper()
+        ind = str(row[ind_col]).strip()
+        if sym and ind and ind.lower() != "nan":
+            out[sym] = ind
+    return out
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     syms = fetch_nifty500_symbols(force_refresh=True)

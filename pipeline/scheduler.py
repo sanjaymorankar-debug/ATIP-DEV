@@ -300,8 +300,13 @@ def run_postmarket(force=False):
     _run_dhan_quotes(td, label="market_close")
 
     # 4:05 PM — NSE Bhavcopy (official EOD prices + delivery data)
-    from data.bhavcopy import run_bhavcopy_pipeline
+    from data.bhavcopy import run_bhavcopy_pipeline, run_bulk_deals_pipeline
     run_job("bhavcopy_eod", run_bhavcopy_pipeline, td)
+
+    # 4:10 PM — NSE bulk & block deals (feeds compute_ins()'s BulkDeals
+    # component -- see scores/engine.py). Best-effort: NSE only
+    # publishes each day's CSV for that trading day.
+    run_job("bulk_block_deals", run_bulk_deals_pipeline, td)
 
     # 4:30 PM — Dhan historical daily data (fills any gaps + confirms EOD)
     try:
@@ -324,8 +329,21 @@ def run_postmarket(force=False):
     run_job("technical_indicators", run_technical_pipeline, td)
 
     # 5:00 PM — Run all 9 AI scoring indexes
+    # (this also writes today's predictions — entry/SL/targets/size — which is
+    # what makes the accuracy tracker below able to measure anything at all)
     from scores.engine import run_scoring_pipeline
     run_job("ai_scoring_engine", run_scoring_pipeline, td)
+
+    # 5:15 PM — Measure any predictions whose 5/10/20-day horizon has matured.
+    # Runs daily rather than only in the Saturday weekly job: the 5-day horizon
+    # matures every week and waiting for Saturday delays every outcome by up to
+    # 6 days. It's cheap and self-backfilling — it only touches rows that have
+    # matured and aren't measured yet.
+    try:
+        from scores.accuracy import update_accuracy
+        run_job("accuracy_update", update_accuracy)
+    except Exception as e:
+        log.warning(f"  Accuracy update: {e}")
 
     # 5:30 PM — Re-sync portfolio with fresh AI scores
     _run_portfolio_sync(td)

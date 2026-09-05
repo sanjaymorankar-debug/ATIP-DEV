@@ -1,10 +1,42 @@
 """ATIP — Database Schema"""
 import sqlite3, logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 
 DB_PATH = Path("atip_data/atip.db")
 log = logging.getLogger(__name__)
+
+
+# ── sqlite3 DATE/TIMESTAMP converters ──────────────────────────────────────
+# get_connection() uses detect_types=PARSE_DECLTYPES, so sqlite3 converts any
+# column declared DATE or TIMESTAMP on the way out. Python 3.12 deprecated the
+# *default* converters for those two types, which made every such query emit
+#   DeprecationWarning: The default date/timestamp converter is deprecated
+# — thousands of lines per scoring run, drowning the actual output.
+#
+# Registering our own converters is the documented replacement. These
+# deliberately reproduce the old behaviour (DATE -> datetime.date,
+# TIMESTAMP -> datetime.datetime) so nothing downstream changes, and they fall
+# back to the raw string rather than raising if a stored value isn't ISO —
+# a malformed timestamp should not take down a query.
+def _conv_date(raw):
+    s = raw.decode() if isinstance(raw, bytes) else raw
+    try:
+        return datetime.fromisoformat(s).date() if len(s) > 10 else date.fromisoformat(s)
+    except (ValueError, TypeError):
+        return s
+
+def _conv_timestamp(raw):
+    s = raw.decode() if isinstance(raw, bytes) else raw
+    try:
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return s
+
+for _decl in ("date", "DATE"):
+    sqlite3.register_converter(_decl, _conv_date)
+for _decl in ("timestamp", "TIMESTAMP", "datetime", "DATETIME"):
+    sqlite3.register_converter(_decl, _conv_timestamp)
 
 def get_connection():
     DB_PATH.parent.mkdir(exist_ok=True)
@@ -186,6 +218,11 @@ def init_db():
         regime TEXT DEFAULT 'ALL', active INTEGER DEFAULT 1,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(index_name,variable,regime))""")
+    c.execute("""CREATE TABLE IF NOT EXISTS bulk_deals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        net_value_cr REAL, deal_count INTEGER DEFAULT 0, source TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,date))""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_bulk_symbol_date ON bulk_deals(symbol,date)")
     c.execute("""CREATE TABLE IF NOT EXISTS live_quotes (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol     TEXT    NOT NULL,
@@ -264,6 +301,17 @@ def seed_weights():
         ("TOD","MRI",0.15,"MRI","ALL"),("TOD","MSI",0.10,"MSI","ALL"),
         ("TOD","Volume",0.10,"Volume breakout","ALL"),("TOD","Breakout",0.10,"Price breakout","ALL"),
         ("TOD","Sector",0.10,"Sector strength","ALL"),("TOD","ACS",0.10,"ACS","ALL"),
+        # INS -- Institutional Score. MutualFund/Insider from the original
+        # doc formula (E17) are intentionally omitted: NSE does not publish
+        # free per-stock mutual-fund-flow or insider-trade data, so there is
+        # no real source to wire in for them (see compute_ins() docstring).
+        # Weight is redistributed across the three sources that ARE real:
+        # market-wide FII/DII 5-day net flow + promoter holding + bulk/block
+        # deal net value for the stock.
+        ("INS","FII",0.40,"Market FII 5-day net flow","ALL"),
+        ("INS","DII",0.30,"Market DII 5-day net flow","ALL"),
+        ("INS","Promoter",0.20,"Promoter shareholding %","ALL"),
+        ("INS","BulkDeals",0.10,"Net bulk/block deal value (10d)","ALL"),
     ]
     conn = get_connection()
     conn.executemany(

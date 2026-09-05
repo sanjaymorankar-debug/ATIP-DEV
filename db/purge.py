@@ -39,6 +39,7 @@ LONG_RETENTION_TABLES = {
     "predictions":          "pred_date",
     "accuracy_tracker":     "pred_date",
     "portfolio_holdings":   "date",
+    "bulk_deals":           "date",
 }
 
 SHORT_RETENTION_TABLES = {

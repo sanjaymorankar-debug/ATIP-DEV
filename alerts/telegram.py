@@ -16,10 +16,21 @@ def load_config():
     cfg.setdefault("telegram_chat_id",os.getenv("ATIP_TELEGRAM_CHAT_ID",""))
     return cfg
 
+def _is_placeholder(v):
+    """
+    config_template.json ships values like YOUR_TELEGRAM_BOT_TOKEN. Those are
+    non-empty, so the old `if not token` check let them through to the API,
+    which 404s — an unconfigured install therefore looked like a network fault
+    in the log. Every alert this system has attempted has failed that way.
+    """
+    s = str(v or "").strip()
+    return (not s) or s.upper().startswith("YOUR") or s.upper() in ("XXX", "TODO", "CHANGEME")
+
 def send_telegram(message, parse_mode="HTML"):
     cfg=load_config(); token=cfg.get("telegram_token"); chat=cfg.get("telegram_chat_id")
-    if not token or not chat:
-        log.info(f"[TELEGRAM NOT CONFIGURED] {message[:80]}")
+    if _is_placeholder(token) or _is_placeholder(chat):
+        log.warning("[TELEGRAM NOT CONFIGURED — set telegram_token + telegram_chat_id in "
+                    f"atip_data/config.json] {message[:80]}")
         return False
     try:
         r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",

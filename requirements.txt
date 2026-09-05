@@ -1,6 +1,5 @@
 # ATIP — AI Trading Intelligence Platform
 # Install: pip install -r requirements.txt
-# Note: If on Python 3.14, use: pip install pandas-ta --no-deps
 
 # ── Core (Required) ─────────────────────────────────────────────────────
 pandas>=2.0.0
@@ -14,9 +13,20 @@ dhanhq>=1.4.0
 yfinance>=0.2.38
 
 # ── Technical indicators ─────────────────────────────────────────────────
-# Try: pip install pandas-ta --no-deps   (if Python 3.14 fails with numba)
-# Or:  pip install ta                    (pure Python fallback)
-pandas-ta>=0.3.14b0
+# `ta` is the pure-Python implementation and the one this project is verified
+# against (Python 3.14 / pandas 3.0 / numpy 2.5). It is REQUIRED — without a
+# TA library, compute_indicators() returns nothing and the whole scoring
+# engine silently produces empty technical inputs.
+ta>=0.11.0
+#
+# pandas-ta is deliberately NOT pinned here. It cannot install or import on
+# this stack for two independent reasons:
+#   1. it does `from numpy import NaN`, removed in numpy 2.0 (you have 2.5.x);
+#   2. it pulls in numba, which has no Python 3.14 wheel.
+# technical.py still prefers pandas_ta when it imports cleanly (older stacks),
+# and falls back to `ta` automatically — so installing it is optional and only
+# worth trying on Python <= 3.12 with numpy < 2.
+# pandas-ta>=0.3.14b0
 
 # ── Scheduling ───────────────────────────────────────────────────────────
 schedule>=1.2.0

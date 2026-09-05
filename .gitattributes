@@ -1,0 +1,24 @@
+# Normalise line endings so a Windows checkout doesn't produce whole-file
+# diffs, and so git stops warning about LF -> CRLF on every add.
+* text=auto
+
+# Windows-only scripts keep CRLF in the working tree.
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+
+# Python and config stay LF in the repo.
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.xml   text eol=lf
+
+# Never touch binaries.
+*.db    binary
+*.zip   binary
+*.png   binary
+*.jpg   binary
+*.xls   binary
+*.xlsx  binary
+*.docx  binary
