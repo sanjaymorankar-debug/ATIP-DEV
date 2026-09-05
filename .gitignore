@@ -1,0 +1,21 @@
+# ── ATIP ──────────────────────────────────────────────────────
+# Runtime data: the live SQLite database, logs, cached downloads and
+# dashboard state. Machine-specific and far too large for git.
+atip_data/
+
+# Secrets - never commit these.
+.env
+atip_data/config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

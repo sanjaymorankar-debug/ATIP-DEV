@@ -1,0 +1,41 @@
+# ATIP — AI Trading Intelligence Platform
+# Install: pip install -r requirements.txt
+# Note: If on Python 3.14, use: pip install pandas-ta --no-deps
+
+# ── Core (Required) ─────────────────────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# ── Dhan API (Primary data source — Indian stocks real-time + historical)
+dhanhq>=1.4.0
+
+# ── Global markets data (yfinance — US/Asia/Europe/Commodities/FX) ──────
+yfinance>=0.2.38
+
+# ── Technical indicators ─────────────────────────────────────────────────
+# Try: pip install pandas-ta --no-deps   (if Python 3.14 fails with numba)
+# Or:  pip install ta                    (pure Python fallback)
+pandas-ta>=0.3.14b0
+
+# ── Scheduling ───────────────────────────────────────────────────────────
+schedule>=1.2.0
+
+# ── Web dashboard ────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# ── AI news classification ───────────────────────────────────────────────
+anthropic>=0.25.0
+
+# ── News RSS + web scraping ──────────────────────────────────────────────
+feedparser>=6.0.11
+beautifulsoup4>=4.12.0
+
+# ── Zerodha (Optional — only if using Zerodha portfolio) ─────────────────
+kiteconnect>=4.2.0
+
+# ── Utilities ────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+openpyxl>=3.1.0

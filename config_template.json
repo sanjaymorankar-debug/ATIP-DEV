@@ -1,0 +1,44 @@
+{
+  "_instructions": "Copy this file to atip_data/config.json and fill in your API keys",
+
+  "_SECTION_1": "=== DHAN API (PRIMARY — Real-time + Historical data) ===",
+  "dhan_client_id":     "YOUR_DHAN_CLIENT_ID",
+  "dhan_access_token":  "YOUR_DHAN_ACCESS_TOKEN",
+  "_get_dhan":          "Login at https://web.dhanhq.com → My Profile → Apps → Create App. FREE for personal use.",
+
+  "_SECTION_2": "=== ANTHROPIC (Claude API — News AI sentiment) ===",
+  "_get_anthropic":     "Set as environment variable: ANTHROPIC_API_KEY=sk-ant-... from console.anthropic.com",
+
+  "_SECTION_3": "=== TELEGRAM (Push alerts) ===",
+  "telegram_token":     "YOUR_TELEGRAM_BOT_TOKEN",
+  "telegram_chat_id":   "YOUR_TELEGRAM_CHAT_ID",
+  "_get_telegram_1":    "Create bot: open Telegram → search @BotFather → /newbot → copy token",
+  "_get_telegram_2":    "Get chat_id: message @userinfobot → copy the id number",
+
+  "_SECTION_4": "=== ZERODHA KITE (Optional — if using Zerodha for portfolio) ===",
+  "kite_api_key":       "YOUR_ZERODHA_KITE_API_KEY",
+  "kite_api_secret":    "YOUR_ZERODHA_KITE_SECRET",
+  "_get_kite":          "Create app at https://developers.kite.trade (Rs 2000/year). Skip if using Dhan portfolio.",
+
+  "_SECTION_5": "=== ALPHA VANTAGE (Optional — Fundamental data) ===",
+  "alpha_vantage_key":  "YOUR_ALPHA_VANTAGE_KEY",
+  "_get_alpha_vantage": "Free key (5 calls/min) at https://www.alphavantage.co/support/#api-key",
+
+  "_SECTION_6": "=== ATIP SETTINGS ===",
+  "dashboard_port":           8000,
+  "universe":                 "nifty500",
+  "max_stocks_to_score":      500,
+  "min_data_days":            60,
+
+  "_SECTION_7": "=== SCHEDULE TIMES (IST) ===",
+  "schedule_premarket_time":  "07:00",
+  "schedule_postmarket_time": "16:05",
+  "schedule_overnight_time":  "23:00",
+  "intraday_refresh_mins":    15,
+
+  "_SECTION_8": "=== DATA SOURCE PRIORITY ===",
+  "_note": "ATIP uses Dhan as primary data source. NSE Bhavcopy as backup for EOD. yfinance for global markets.",
+  "primary_data_source":      "dhan",
+  "eod_data_source":          "bhavcopy",
+  "global_data_source":       "yfinance"
+}

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  ATIP Windows Task Scheduler Configuration
+  ==========================================
+  Import this file into Windows Task Scheduler to auto-start ATIP on login.
+
+  HOW TO IMPORT:
+    1. Open Task Scheduler (search "Task Scheduler" in Start menu)
+    2. Click "Action" → "Import Task..."
+    3. Browse to: D:\Projects\atip\ATIP_TaskScheduler.xml
+    4. Click OK
+    5. Enter your Windows password when prompted
+
+  OR via PowerShell (run as Administrator):
+    schtasks /create /xml "D:\Projects\atip\ATIP_TaskScheduler.xml" /tn "ATIP Platform"
+
+  TO VERIFY IT'S REGISTERED:
+    schtasks /query /tn "ATIP Platform" /fo LIST
+
+  TO RUN MANUALLY:
+    schtasks /run /tn "ATIP Platform"
+
+  TO DISABLE:
+    schtasks /change /tn "ATIP Platform" /disable
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-07-01T00:00:00</Date>
+    <Author>ATIP</Author>
+    <Description>AI Trading Intelligence Platform — auto-start scheduler and dashboard on Windows login</Description>
+    <URI>\ATIP Platform</URI>
+  </RegistrationInfo>
+
+  <Triggers>
+    <!-- Trigger 1: Start when user logs in -->
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT30S</Delay>
+      <!-- Remove the UserId line to run for ALL users, or replace with your username -->
+      <!-- <UserId>DESKTOP-XXXX\Sanjay</UserId> -->
+    </LogonTrigger>
+
+    <!-- Trigger 2: Also start at 6:45 AM every weekday (in case PC was already on) -->
+    <CalendarTrigger>
+      <StartBoundary>2026-01-01T06:45:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday/>
+          <Tuesday/>
+          <Wednesday/>
+          <Thursday/>
+          <Friday/>
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+
+  <Principals>
+    <Principal id="Author">
+      <!-- Run with highest privileges so it can bind to port 8000 -->
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <!-- Restart up to 3 times if it crashes (e.g. network not ready at boot) -->
+    <RestartOnFailure>
+      <Interval>PT2M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+
+  <Actions Context="Author">
+    <Exec>
+      <Command>D:\Projects\atip\start_atip.bat</Command>
+      <WorkingDirectory>D:\Projects\atip</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
