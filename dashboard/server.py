@@ -79,6 +79,29 @@ def get_portfolio(td):
     try: return q(conn,"SELECT * FROM portfolio_holdings WHERE date=? ORDER BY weight_pct DESC",str(td))
     finally: conn.close()
 
+def get_fii_dii(td,days=10):
+    """Recent FII/DII net flows for the dashboard panel the architecture doc
+    specifies. The data was already being fetched and fed into MH/MSI; it just
+    had nowhere to show."""
+    conn=get_connection()
+    try: return q(conn,"SELECT * FROM fii_dii_market WHERE date<=? ORDER BY date DESC LIMIT ?",str(td),days)
+    finally: conn.close()
+
+# NSE sector indexes, as (label, index_levels column) — the doc's "Sector
+# Rotation" view. Ranked by the day's % change rather than listed in a fixed
+# order, which is what makes it a rotation view instead of a plain list.
+SECTOR_COLS=[("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg_chg"),
+             ("Metal","nifty_metal_chg"),("Realty","nifty_realty_chg"),("PSU Bank","nifty_psubank_chg"),
+             ("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg"),("Bank","banknifty_chg"),
+             ("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("Nifty50","nifty50_chg")]
+
+def get_sector_rotation(idx):
+    """[(label, pct_change)] sorted strongest-first, skipping any sector with
+    no reading for the day."""
+    rows=[(lbl,idx.get(col)) for lbl,col in SECTOR_COLS]
+    rows=[(l,v) for l,v in rows if v is not None]
+    return sorted(rows,key=lambda kv:kv[1],reverse=True)
+
 def get_top25(td):
     conn=get_connection()
     try:
@@ -89,7 +112,7 @@ def get_top25(td):
 
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
-    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td)}
+    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td)}
     STATE_PATH.parent.mkdir(exist_ok=True); STATE_PATH.write_text(json.dumps(state,default=str))
     return state
 
@@ -145,9 +168,55 @@ def build_html(state):
     port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-eod="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
     idx_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span>{chg(idx.get(v))}</div>' for k,v in [("Nifty50","nifty50_chg"),("BankNifty","banknifty_chg"),("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg_chg"),("Metal","nifty_metal_chg"),("Realty","nifty_realty_chg"),("PSUBank","nifty_psubank_chg"),("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg")])
     glb_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span>{chg(glb.get(v))}</div>' for k,v in [("S&P500","sp500_chg"),("Dow","dow_chg"),("Nasdaq","nasdaq_chg"),("Nikkei","nikkei_chg"),("Crude","crude_wti_chg"),("Gold","gold_chg"),("USD/INR","usd_inr_chg")])
-    top25_rows={"vpi":"".join(f"<tr data-sym=\"{r.get('symbol')}\"><td><b>{r.get('symbol')}</b>{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td class=\"cmpcell\" data-eod=\"{r.get('cmp') or ''}\">₹{r.get('cmp') or '—'}</td><td>{bval(r.get('beta_1y'))}</td><td>{r.get('signal','—')}</td><td class=\"acts\">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>" for r in top25.get("vpi",[])),
-                "zpi":"".join(f"<tr data-sym=\"{r.get('symbol')}\"><td><b>{r.get('symbol')}</b>{cname(r.get('symbol'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('atip_score'))}</td><td class=\"cmpcell\" data-eod=\"{r.get('cmp') or ''}\">₹{r.get('cmp') or '—'}</td><td>{bval(r.get('beta_1y'))}</td><td style='color:#059669;font-weight:600'>{r.get('signal','—')}</td><td class=\"acts\">{order_btns(r.get('symbol'),r.get('cmp'),primary='BUY')}</td></tr>" for r in top25.get("zpi",[])),
-                "cri":"".join(f"<tr data-sym=\"{r.get('symbol')}\"><td><b>{r.get('symbol')}</b>{cname(r.get('symbol'))}</td><td style='color:#dc2626;font-weight:700'>{r.get('cri',0):.0f}</td><td>{pill(r.get('atip_score'))}</td><td class=\"cmpcell\" data-eod=\"{r.get('cmp') or ''}\">₹{r.get('cmp') or '—'}</td><td>{bval(r.get('beta_1y'))}</td><td style='color:#dc2626'>{r.get('signal','—')}</td><td class=\"acts\">{order_btns(r.get('symbol'),r.get('cmp'),primary='SELL')}</td></tr>" for r in top25.get("cri",[]))}
+    # One row shape for all five Top-25 lists. Previously the three that had a
+    # tab were three near-identical 300-char f-strings; adding RRI and MRI as a
+    # fourth and fifth copy wasn't worth it.
+    def t25_row(r,mid,primary="BUY",sig_style=""):
+        return (f'<tr data-sym="{r.get("symbol")}">'
+                f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>{mid}'
+                f'<td class="cmpcell" data-eod="{r.get("cmp") or ""}">₹{r.get("cmp") or "—"}</td>'
+                f'<td>{bval(r.get("beta_1y"))}</td>'
+                f'<td{sig_style}>{r.get("signal","—")}</td>'
+                f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary)}</td></tr>')
+
+    def by_signal(r):
+        return "SELL" if r.get("signal")=="SELL" else "BUY"
+
+    top25_rows={
+      "vpi":"".join(t25_row(r,f'<td>{pill(r.get("atip_score"))}</td><td>{pill(r.get("vpi"))}</td>',
+                            by_signal(r)) for r in top25.get("vpi",[])),
+      "zpi":"".join(t25_row(r,f'<td>{pill(r.get("zpi"))}</td><td>{pill(r.get("atip_score"))}</td>',
+                            "BUY"," style='color:#059669;font-weight:600'") for r in top25.get("zpi",[])),
+      "rri":"".join(t25_row(r,f'<td>{pill(r.get("rri"))}</td><td>{pill(r.get("atip_score"))}</td>',
+                            by_signal(r)) for r in top25.get("rri",[])),
+      "mri":"".join(t25_row(r,f'<td>{pill(r.get("mri"))}</td><td>{pill(r.get("atip_score"))}</td>',
+                            by_signal(r)) for r in top25.get("mri",[])),
+      "cri":"".join(t25_row(r,f'<td style="color:#dc2626;font-weight:700">{(r.get("cri") or 0):.0f}</td>'
+                              f'<td>{pill(r.get("atip_score"))}</td>',
+                            "SELL"," style='color:#dc2626'") for r in top25.get("cri",[]))}
+
+    # ── FII/DII panel + Sector Rotation heatmap ──────────────────────────────
+    fii_dii=state.get("fii_dii",[]) or []
+    def cr(v):
+        """₹Cr flow, green for net buying, red for net selling."""
+        if v is None: return '<span style="color:#64748b">—</span>'
+        c="#059669" if v>0 else "#dc2626" if v<0 else "#94a3b8"
+        return f'<span style="color:{c};font-weight:600">{v:+,.0f}</span>'
+    fii_rows="".join(
+        f'<tr><td>{r.get("date")}</td><td>{cr(r.get("fii_net_cr"))}</td><td>{cr(r.get("dii_net_cr"))}</td>'
+        f'<td>{cr(r.get("fii_5d_avg"))}</td><td>{cr(r.get("dii_5d_avg"))}</td></tr>' for r in fii_dii)
+    sectors=get_sector_rotation(idx)
+    def heat(v):
+        """Background intensity scaled to ±2%, which covers a normal NSE day."""
+        cap=min(abs(v)/2.0,1.0)
+        base="5,150,105" if v>=0 else "220,38,38"
+        return f"rgba({base},{0.15+0.55*cap:.2f})"
+    sector_tiles="".join(
+        f'<div style="background:{heat(v)};border:1px solid #33415577;border-radius:6px;'
+        f'padding:7px 9px;min-width:96px;text-align:center">'
+        f'<div style="font-size:11px;color:#e2e8f0">{lbl}</div>'
+        f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
+        for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
@@ -187,6 +256,7 @@ def build_html(state):
   <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">India VIX</div><div class="kpi-v" style="color:{'#dc2626' if (idx.get('india_vix') or 0)>20 else '#94a3b8'}">{idx.get('india_vix','—')}</div></div>
+  <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">Sentiment</div><div class="kpi-v" style="color:{'#059669' if idx.get('overall_sentiment')=='BULLISH' else '#dc2626' if idx.get('overall_sentiment')=='BEARISH' else '#94a3b8'}">{idx.get('overall_sentiment') or '—'}</div></div>
   <div class="kpi"><div class="kpi-l">S&P 500</div><div class="kpi-v">{chg(glb.get('sp500_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">Gold</div><div class="kpi-v">{chg(glb.get('gold_chg'))}</div></div>
@@ -207,7 +277,10 @@ def build_html(state):
       <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'))}</div>
     </div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('news',this)">News</div></div>
+  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
+  </div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div></div>
   <div id="scores" class="tc active section">
     <div style="display:flex;gap:6px;margin-bottom:8px"><input id="srch" placeholder="Search…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select></div>
     <table id="st"><thead><tr><th onclick="srt('st',0)">#</th><th onclick="srt('st',1)">Symbol</th><th onclick="srt('st',2)">ATIP</th><th onclick="srt('st',3)">VPI</th><th onclick="srt('st',4)">MRI</th><th onclick="srt('st',5)">RRI</th><th onclick="srt('st',6)">ZPI</th><th onclick="srt('st',7)">CRI↓</th><th onclick="srt('st',8)">ACS</th><th onclick="srt('st',9)">CMP <span style="color:#38bdf8">●live</span></th><th onclick="srt('st',10)">Beta</th><th onclick="srt('st',11)">Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -215,7 +288,10 @@ def build_html(state):
   <div id="port" class="tc section"><table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
   <div id="vpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ATIP</th><th>VPI</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('vpi','')}</tbody></table></div>
   <div id="zpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ZPI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('zpi','')}</tbody></table></div>
+  <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>RRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>
+  <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>MRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
   <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>CRI 🔴</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','')}</tbody></table></div>
+  <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
   <div id="news" class="tc section"><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
