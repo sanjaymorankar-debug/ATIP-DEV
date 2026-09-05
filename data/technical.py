@@ -227,6 +227,10 @@ def compute_indicators(symbol, df):
     if fib: r.update(fib)
 
     cmp_=safe_val(close.iloc[-1]); sma200=r.get("sma_200")
+    # Carried for compute_tech_score's Bollinger-position component. Not in the
+    # `fields` list written to technical_indicators — prices_daily already holds
+    # the close, so this is in-memory only.
+    r["close"]=cmp_
     r["above_200dma"]=int(cmp_>sma200) if (cmp_ and sma200) else 0
     r["golden_cross"]=0; r["death_cross"]=0
     if len(df)>=210 and r.get("ema_50") and r.get("sma_200"):
@@ -269,11 +273,68 @@ def compute_tech_score(ind):
     elif ind.get("death_cross"): scores["SR"]=10
     else: scores["SR"]=50
     vr=ind.get("volume_ratio")
-    if vr: scores["Vol"]=min(vr*40,100)
+    if vr: scores["Volume"]=min(vr*40,100)
+    # ── components the doc specifies that were never scored ──────────────────
+    # Bollinger, Gap and RelativeVolume are all produced by compute_indicators()
+    # already — they simply weren't fed into the Technical Score.
+    bu,bl,bm=ind.get("bb_upper"),ind.get("bb_lower"),ind.get("bb_mid")
+    ref=ind.get("close") or bm
+    if bu and bl and ref and bu>bl:
+        # Position within the band: near the lower band scores well (room to
+        # run), riding the upper band scores poorly (extended).
+        scores["Bollinger"]=round(max(0.0,min(100.0,100-((ref-bl)/(bu-bl))*100)),2)
+    gap=ind.get("gap_pct")
+    if gap is not None:
+        # A modest positive gap is constructive; a large gap either way is risk.
+        scores["Gap"]=round(max(0.0,min(100.0,(60+gap*10) if abs(gap)<=2 else (30-abs(gap)*2))),2)
+    rv=ind.get("rel_volume")
+    if rv: scores["RelativeVolume"]=round(min(rv*50,100),2)
     if not scores: return 50.0
-    weights={"RSI":0.12,"MACD":0.12,"ADX":0.10,"ATR":0.10,"EMA":0.12,"Trend":0.15,"SR":0.12,"Vol":0.12}
-    tw=sum(weights[k] for k in scores); ts=sum(scores[k]*weights[k] for k in scores)
+    # Weights now match the doc's Technical Score formula. VWAP is the only
+    # component still missing — it needs intraday bars, not daily OHLC — so its
+    # 0.08 never contributes and the total is renormalised over what is present.
+    weights=_tech_weights()
+    tw=sum(weights[k] for k in scores if k in weights)
+    ts=sum(scores[k]*weights[k] for k in scores if k in weights)
     return round(ts/tw,2) if tw>0 else 50.0
+
+
+# Doc: TS = 0.10RSI + 0.10MACD + 0.10ADX + 0.08ATR + 0.08EMA + 0.08VWAP
+#         + 0.08Bollinger + 0.08Volume + 0.08Trend + 0.08SupportResistance
+#         + 0.07Gap + 0.07RelativeVolume
+# ("SR" is the doc's SupportResistance.) The previous hardcoded set had only 8
+# components and weighted Trend at 0.15 against the doc's 0.08.
+_TECH_WEIGHTS_FALLBACK={"RSI":0.10,"MACD":0.10,"ADX":0.10,"ATR":0.08,"EMA":0.08,"VWAP":0.08,
+                        "Bollinger":0.08,"Volume":0.08,"Trend":0.08,"SR":0.08,
+                        "Gap":0.07,"RelativeVolume":0.07}
+_TECH_WEIGHTS_CACHE=None
+
+def _tech_weights():
+    """
+    Technical Score weights, read from weight_config like every other index so
+    they're tunable in one place instead of hardcoded. Falls back to the doc's
+    published figures when the table hasn't been seeded yet. Cached — this is
+    called once per symbol per run.
+    """
+    global _TECH_WEIGHTS_CACHE
+    if _TECH_WEIGHTS_CACHE is not None:
+        return _TECH_WEIGHTS_CACHE
+    try:
+        from db.schema import get_connection
+        conn=get_connection()
+        try:
+            rows=conn.execute("SELECT variable,weight FROM weight_config "
+                              "WHERE index_name='TS' AND active=1").fetchall()
+        finally:
+            conn.close()
+        w={r[0]:r[1] for r in rows}
+        if w:
+            _TECH_WEIGHTS_CACHE=w
+            return w
+    except Exception as e:
+        log.debug(f"  TS weights unavailable from weight_config, using doc defaults: {e}")
+    _TECH_WEIGHTS_CACHE=dict(_TECH_WEIGHTS_FALLBACK)
+    return _TECH_WEIGHTS_CACHE
 
 def run_technical_pipeline(trade_date=None, symbol=None):
     if trade_date is None: trade_date=date.today()

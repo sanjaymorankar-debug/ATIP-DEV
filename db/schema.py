@@ -312,6 +312,24 @@ def seed_weights():
         ("INS","DII",0.30,"Market DII 5-day net flow","ALL"),
         ("INS","Promoter",0.20,"Promoter shareholding %","ALL"),
         ("INS","BulkDeals",0.10,"Net bulk/block deal value (10d)","ALL"),
+        # TS — Technical Score, exactly the architecture doc's formula. These
+        # were hardcoded inside compute_tech_score() with only 8 of the 12
+        # components and Trend at 0.15 instead of 0.08. VWAP is seeded for
+        # completeness but never contributes yet (it needs intraday bars);
+        # the score renormalises over whichever components are present.
+        ("TS","RSI",0.10,"RSI zone","ALL"),("TS","MACD",0.10,"MACD histogram","ALL"),
+        ("TS","ADX",0.10,"Trend strength","ALL"),("TS","ATR",0.08,"Volatility","ALL"),
+        ("TS","EMA",0.08,"EMA alignment","ALL"),("TS","VWAP",0.08,"VWAP (needs intraday)","ALL"),
+        ("TS","Bollinger",0.08,"Position in band","ALL"),("TS","Volume",0.08,"Volume ratio","ALL"),
+        ("TS","Trend",0.08,"Above 200-DMA","ALL"),("TS","SR",0.08,"Support/Resistance crosses","ALL"),
+        ("TS","Gap",0.07,"Gap analysis","ALL"),("TS","RelativeVolume",0.07,"Vs same-weekday avg","ALL"),
+        # PHS — Portfolio Health Score, the doc's formula (section 11).
+        ("PHS","Diversification",0.25,"Concentration across holdings","ALL"),
+        ("PHS","Risk",0.20,"Portfolio beta + CRI exposure","ALL"),
+        ("PHS","Drawdown",0.15,"Drawdown from peak","ALL"),
+        ("PHS","Quality",0.15,"Mean ATIP score of holdings","ALL"),
+        ("PHS","Allocation",0.15,"Position sizing vs regime","ALL"),
+        ("PHS","Performance",0.10,"Unrealised P&L","ALL"),
     ]
     conn = get_connection()
     conn.executemany(
