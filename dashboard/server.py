@@ -95,6 +95,16 @@ SECTOR_COLS=[("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg
              ("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg"),("Bank","banknifty_chg"),
              ("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("Nifty50","nifty50_chg")]
 
+def get_phs(td):
+    """Portfolio Health Score — the doc's section 11. Computed on demand rather
+    than read from a column so the panel is never stale relative to holdings."""
+    try:
+        from scores.portfolio_health import compute_phs
+        return compute_phs(td) or {}
+    except Exception as e:
+        log.warning(f"  portfolio health unavailable: {e}")
+        return {}
+
 def get_sector_rotation(idx):
     """[(label, pct_change)] sorted strongest-first, skipping any sector with
     no reading for the day."""
@@ -112,7 +122,7 @@ def get_top25(td):
 
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
-    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td)}
+    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td)}
     STATE_PATH.parent.mkdir(exist_ok=True); STATE_PATH.write_text(json.dumps(state,default=str))
     return state
 
@@ -205,6 +215,15 @@ def build_html(state):
     fii_rows="".join(
         f'<tr><td>{r.get("date")}</td><td>{cr(r.get("fii_net_cr"))}</td><td>{cr(r.get("dii_net_cr"))}</td>'
         f'<td>{cr(r.get("fii_5d_avg"))}</td><td>{cr(r.get("dii_5d_avg"))}</td></tr>' for r in fii_dii)
+    # ── Portfolio Health panel ───────────────────────────────────────────────
+    phs=state.get("phs") or {}
+    phs_score=phs.get("phs")
+    phs_col=("#059669" if (phs_score or 0)>=60 else "#f59e0b" if (phs_score or 0)>=40 else "#dc2626")
+    phs_comp="".join(
+        f'<div style="display:flex;justify-content:space-between;padding:4px 0;'
+        f'border-bottom:1px solid #33415533;font-size:12px">'
+        f'<span style="color:#94a3b8">{k}</span>{pill(v)}</div>'
+        for k,v in (phs.get("components") or {}).items())
     sectors=get_sector_rotation(idx)
     def heat(v):
         """Background intensity scaled to ±2%, which covers a normal NSE day."""
@@ -285,7 +304,19 @@ def build_html(state):
     <div style="display:flex;gap:6px;margin-bottom:8px"><input id="srch" placeholder="Search…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select></div>
     <table id="st"><thead><tr><th onclick="srt('st',0)">#</th><th onclick="srt('st',1)">Symbol</th><th onclick="srt('st',2)">ATIP</th><th onclick="srt('st',3)">VPI</th><th onclick="srt('st',4)">MRI</th><th onclick="srt('st',5)">RRI</th><th onclick="srt('st',6)">ZPI</th><th onclick="srt('st',7)">CRI↓</th><th onclick="srt('st',8)">ACS</th><th onclick="srt('st',9)">CMP <span style="color:#38bdf8">●live</span></th><th onclick="srt('st',10)">Beta</th><th onclick="srt('st',11)">Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
   </div>
-  <div id="port" class="tc section"><table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
+  <div id="port" class="tc section">
+    {f'''<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap">
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px 18px;min-width:190px">
+        <div class="kpi-l">Portfolio Health</div>
+        <div style="font-size:32px;font-weight:700;color:{phs_col}">{phs_score:.0f}</div>
+        <div style="font-size:12px;color:#94a3b8">{phs.get("band","—")} · {phs.get("holdings",0)} holdings</div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
+      </div>
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;min-width:270px">
+        <div class="kpi-l" style="margin-bottom:5px">Components</div>{phs_comp}
+      </div>
+    </div>''' if phs_score is not None else ''}
+    <table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
   <div id="vpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ATIP</th><th>VPI</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('vpi','')}</tbody></table></div>
   <div id="zpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ZPI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('zpi','')}</tbody></table></div>
   <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>RRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>

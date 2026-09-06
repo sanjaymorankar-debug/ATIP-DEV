@@ -348,6 +348,15 @@ def run_postmarket(force=False):
     # 5:30 PM — Re-sync portfolio with fresh AI scores
     _run_portfolio_sync(td)
 
+    # 5:35 PM — Portfolio Health Score (doc section 11). After the sync so it
+    # scores today's holdings; it reads per-stock scores from ai_scores directly,
+    # so a failed sync costs it inputs rather than the whole score.
+    try:
+        from scores.portfolio_health import store_phs
+        run_job("portfolio_health", store_phs, td)
+    except Exception as e:
+        log.warning(f"  Portfolio health: {e}")
+
     # 5:45 PM — Send Telegram alerts
     try:
         from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert
