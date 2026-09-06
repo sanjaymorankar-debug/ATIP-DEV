@@ -24,6 +24,7 @@ Usage:
     python main.py --status             # Show today's pipeline status
     python main.py --login-zerodha      # Authenticate with Zerodha Kite API
     python main.py --test-telegram      # Send test Telegram alert
+    python main.py --morning-brief      # Send the 8:30 AM "what should I do today" brief now
 """
 
 import sys
@@ -131,6 +132,7 @@ def main():
     ap.add_argument("--status",          action="store_true", help="Show today's pipeline status and exit")
     ap.add_argument("--login-zerodha",   action="store_true", help="Authenticate with Zerodha Kite API (run once per day)")
     ap.add_argument("--test-telegram",   action="store_true", help="Send a test Telegram alert")
+    ap.add_argument("--morning-brief",    action="store_true", help="Send the 8:30 AM Morning Brief now (what should I do today)")
     ap.add_argument("--live-feed",        action="store_true", help="Start Dhan WebSocket live tick feed (market hours only)")
     ap.add_argument("--dhan-securities",  action="store_true", help="Download Dhan security master list (run once after setup)")
     ap.add_argument("--dhan-history",     action="store_true", help="Download 600 days of historical data from Dhan")
@@ -146,8 +148,17 @@ def main():
         from db.schema import init_db, seed_weights
         db_path = init_db()
         seed_weights()
+        # Counted rather than hardcoded — the old "68 configurations" went stale
+        # the moment INS, TS and PHS weights were added.
+        from db.schema import get_connection
+        _c = get_connection()
+        try:
+            _n = _c.execute("SELECT COUNT(*) FROM weight_config WHERE active=1").fetchone()[0]
+            _i = _c.execute("SELECT COUNT(DISTINCT index_name) FROM weight_config WHERE active=1").fetchone()[0]
+        finally:
+            _c.close()
         print(f"\n✅  Database created  : {db_path}")
-        print(f"✅  Weights seeded    : 68 configurations")
+        print(f"✅  Weights seeded    : {_n} configurations across {_i} indexes")
         print(f"\nNext steps:")
         print(f"  1. Edit  atip_data\\config.json     ← add your API keys")
         print(f"  2. python main.py --run postmarket  ← first data run")
@@ -228,6 +239,14 @@ def main():
         ok = send_telegram(fmt("✅", "ATIP Test Alert",
                                "Telegram is working!\nATIP is connected and monitoring markets."))
         print("✅ Telegram alert sent!" if ok else "❌ Telegram not configured — check atip_data/config.json")
+        return
+
+    # ── MORNING BRIEF ─────────────────────────────────────────────────────
+    if args.morning_brief:
+        from alerts.telegram import send_morning_digest
+        ok = send_morning_digest()
+        print("✅ Morning brief sent!" if ok
+              else "❌ Not sent — either Telegram isn't configured or there are no scores yet")
         return
 
     # ── RUN ONE JOB ───────────────────────────────────────────────────────

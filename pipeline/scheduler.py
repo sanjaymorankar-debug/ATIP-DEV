@@ -387,6 +387,19 @@ def _rebuild_dashboard(td):
 #  REFRESH: US market close data, commodities, FX
 # ═════════════════════════════════════════════════════════════════════════
 
+def run_morning_digest():
+    """8:30 AM Morning Brief. Skips non-trading days — there is no 'what should
+    I do today' on a Sunday."""
+    if not is_market_day():
+        log.info("⏩  Not a trading day — skipping morning brief"); return
+    log.info(f"\n{'='*55}\n  MORNING BRIEF — {date.today()}\n{'='*55}")
+    try:
+        from alerts.telegram import send_morning_digest
+        run_job("morning_digest", lambda: {"status": "SUCCESS", "rows": int(bool(send_morning_digest()))})
+    except Exception as e:
+        log.warning(f"  Morning brief: {e}")
+
+
 def run_overnight():
     log.info(f"\n{'='*55}\n  OVERNIGHT PIPELINE — {date.today()}\n{'='*55}")
 
@@ -561,6 +574,13 @@ def start_scheduler():
 
     # ── Pre-market ──────────────────────────────────────────────────────
     schedule.every().day.at("07:00").do(run_premarket)
+
+    # ── 8:30 AM — the Morning Brief ────────────────────────────────────
+    # The architecture doc opens by promising an answer to "What should I do
+    # today?" every morning at 8:30 IST. Scores are written post-market the
+    # evening before and pre-market data lands at 07:00, so the answer exists
+    # by now — this is what actually delivers it, 45 minutes before the open.
+    schedule.every().day.at("08:30").do(run_morning_digest)
 
     # ── Intraday — every 15 min (9:15 AM to 3:30 PM) ───────────────────
     for hh in range(9, 16):

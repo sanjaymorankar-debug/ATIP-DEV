@@ -29,7 +29,7 @@ SYMBOLS={"RELIANCE":["Reliance","RIL"],"TCS":["TCS","Tata Consultancy"],"INFY":[
          "BHEL":["BHEL"],"SAIL":["SAIL","Steel Authority"],"SUNPHARMA":["Sun Pharma"]}
 
 SENTIMENT_PROMPT="""Analyse this Indian financial news headline. Return ONLY JSON:
-{{"sentiment":<float -1 to 1>,"importance":<"LOW"|"MEDIUM"|"HIGH">,"confidence":<float 0-1>,"category":<"EARNINGS"|"ORDERS"|"M&A"|"RBI"|"GOVT"|"GLOBAL"|"SECTOR"|"GENERAL">,"ai_summary":<max 80 chars>}}
+{{"sentiment":<float -1 to 1>,"importance":<"LOW"|"MEDIUM"|"HIGH">,"confidence":<float 0-1>,"category":<"EARNINGS"|"ORDERS"|"M&A"|"RBI"|"GOVT"|"GLOBAL"|"GEOPOLITICS"|"SECTOR"|"GENERAL">,"ai_summary":<max 80 chars>}}
 Headline: {headline}"""
 
 def fetch_feeds(hours_back=12):

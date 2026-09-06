@@ -153,6 +153,93 @@ def run_all_alert_checks(trade_date=None):
         except Exception as e: log.warning(f"  Alert {name}: {e}"); results[name]=False
     return results
 
+
+def send_morning_digest(trade_date=None):
+    """
+    The 8:30 AM answer to "What should I do today?" — the question the
+    architecture doc opens with.
+
+    Everything needed was already computed: the post-market run scores and
+    writes predictions the previous evening, and the 07:00 pre-market job
+    refreshes global markets, GIFT Nifty and news. Nothing ever delivered it, so
+    the answer sat in a dashboard nobody had open before the market opened.
+
+    Uses the most recent SCORED date, not today's calendar date — on a Monday
+    the actionable scores are Friday's, and reporting "no data" because today
+    has no rows yet would be wrong.
+    """
+    conn=get_connection()
+    try:
+        row=conn.execute("SELECT MAX(date) d FROM ai_scores").fetchone()
+        td=row["d"] if row and row["d"] else None
+        if not td:
+            log.info("  Morning digest: no scores yet — nothing to send"); return False
+        td=str(td)
+        mh=conn.execute("SELECT mh_score,regime,portfolio_health FROM market_health "
+                        "WHERE date<=? ORDER BY date DESC LIMIT 1",(td,)).fetchone()
+        idx=conn.execute("SELECT nifty50_chg,india_vix,gift_nifty_chg FROM index_levels "
+                         "WHERE date<=? ORDER BY date DESC,time DESC LIMIT 1",(td,)).fetchone()
+        glb=conn.execute("SELECT sp500_chg,global_score FROM global_markets "
+                         "WHERE date<=? ORDER BY date DESC LIMIT 1",(td,)).fetchone()
+        buys=conn.execute("SELECT symbol,atip_score,zpi,cri,acs FROM ai_scores "
+                          "WHERE date=? AND signal='BUY' ORDER BY atip_score DESC LIMIT 5",(td,)).fetchall()
+        sells=conn.execute("SELECT symbol,atip_score,cri FROM ai_scores "
+                           "WHERE date=? AND signal='SELL' ORDER BY cri DESC LIMIT 5",(td,)).fetchall()
+        tod=conn.execute("""SELECT s.symbol,s.acs,p.close cmp,t.atr_14 FROM ai_scores s
+                            LEFT JOIN prices_daily p ON p.symbol=s.symbol AND p.date=s.date
+                            LEFT JOIN technical_indicators t ON t.symbol=s.symbol AND t.date=s.date
+                            WHERE s.date=? AND s.is_tod=1 LIMIT 1""",(td,)).fetchone()
+        risky=conn.execute("SELECT COUNT(*) n FROM ai_scores WHERE date=? AND cri>75",(td,)).fetchone()
+    finally:
+        conn.close()
+
+    regime=(mh["regime"] if mh else None) or "—"
+    mh_s=mh["mh_score"] if mh else None
+    # The doc's own per-band action guidance (section 10).
+    action={"STRONG_BULL":"Full deployment — max position sizing",
+            "BULL":"Normal sizing — favour VPI/ZPI names",
+            "NEUTRAL":"Reduced sizing — only ACS &gt; 70 setups",
+            "BEAR":"Minimal exposure — defensives only",
+            "HIGH_RISK":"Cash / hedges only"}.get(regime,"No regime read")
+
+    body=[f"<b>Market Health:</b> {mh_s:.0f} ({regime})" if mh_s is not None else "<b>Market Health:</b> —",
+          f"<b>Stance:</b> {action}"]
+    if idx:
+        bits=[]
+        if idx["nifty50_chg"] is not None: bits.append(f"Nifty {idx['nifty50_chg']:+.2f}%")
+        if idx["india_vix"]: bits.append(f"VIX {idx['india_vix']:.1f}")
+        if idx["gift_nifty_chg"] is not None: bits.append(f"GIFT {idx['gift_nifty_chg']:+.2f}%")
+        if bits: body.append("<b>Open:</b> "+" · ".join(bits))
+    if glb and glb["global_score"] is not None:
+        body.append(f"<b>Global:</b> score {glb['global_score']:.0f}"
+                    +(f", S&amp;P {glb['sp500_chg']:+.2f}%" if glb["sp500_chg"] is not None else ""))
+    if mh and mh["portfolio_health"] is not None:
+        body.append(f"<b>Portfolio Health:</b> {mh['portfolio_health']:.0f}")
+
+    if tod:
+        lv=""
+        if tod["cmp"] and tod["atr_14"]:
+            lv=f", SL ₹{tod['cmp']-1.5*tod['atr_14']:.1f}, T1 ₹{tod['cmp']+2.0*tod['atr_14']:.1f}"
+        body.append(f"\n🎯 <b>Trade of the Day:</b> {tod['symbol']} (ACS {(tod['acs'] or 0):.0f}{lv})")
+
+    if buys:
+        body.append("\n🟢 <b>BUY candidates</b>")
+        for b in buys:
+            body.append(f"  {b['symbol']} — ATIP {b['atip_score']:.0f}, ZPI {(b['zpi'] or 0):.0f}, "
+                        f"CRI {(b['cri'] or 0):.0f}, ACS {(b['acs'] or 0):.0f}")
+    else:
+        body.append("\n🟢 <b>BUY candidates:</b> none clear the gates today")
+    if sells:
+        body.append("\n🔴 <b>Exit / avoid</b>")
+        for s in sells:
+            body.append(f"  {s['symbol']} — CRI {(s['cri'] or 0):.0f}, ATIP {s['atip_score']:.0f}")
+    if risky and risky["n"]:
+        body.append(f"\n⚠️ {risky['n']} stock(s) with CRI &gt; 75 — suppressed from Buy regardless of ATIP")
+
+    return send_telegram(fmt("☀️","Morning Brief — What should I do today?","\n".join(body),
+                             f"Scores from {td}. Verify against live prices before acting — "
+                             f"model output, not advice."))
+
 if __name__=="__main__":
     import argparse; logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")
     ap=argparse.ArgumentParser()
