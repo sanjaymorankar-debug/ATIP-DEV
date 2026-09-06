@@ -311,6 +311,7 @@ def build_html(state):
         <div style="font-size:32px;font-weight:700;color:{phs_col}">{phs_score:.0f}</div>
         <div style="font-size:12px;color:#94a3b8">{phs.get("band","—")} · {phs.get("holdings",0)} holdings</div>
         <div style="font-size:11px;color:#64748b;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
+        {f'<div style="font-size:11px;color:#f59e0b;margin-top:4px">⚠ holdings as of {phs.get("date")} — portfolio sync has not run since</div>' if phs.get("stale") else ''}
       </div>
       <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;min-width:270px">
         <div class="kpi-l" style="margin-bottom:5px">Components</div>{phs_comp}

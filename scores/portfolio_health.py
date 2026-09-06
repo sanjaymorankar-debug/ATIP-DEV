@@ -16,8 +16,14 @@ Each component is normalised to 0–100 and only the components that have data
 are weighted, so a portfolio missing (say) beta for every holding still gets a
 meaningful score from the rest rather than a silently diluted one.
 
-Returns None when there are no holdings — an empty portfolio has no health,
-and reporting 50 would read as "average" rather than "nothing to measure".
+Holdings exist only for dates the portfolio sync actually ran, which lags the
+scored dates whenever that job fails. Rather than disappear, the score falls
+back to the most recent date that has holdings and returns it as `as_of` with a
+`stale` flag, so callers can label the figure instead of showing nothing.
+
+Returns None only when there are no holdings at all on or before the requested
+date — an empty portfolio has no health, and reporting 50 would read as
+"average" rather than "nothing to measure".
 """
 from __future__ import annotations
 
@@ -67,6 +73,19 @@ def compute_phs(trade_date=None, conn=None) -> dict | None:
         # aliased COALESCE columns below become DUPLICATE keys (h.* already
         # emits atip_score/cri/beta_1y) and dict(row) then keeps the NULL one,
         # silently defeating the whole point of the join.
+        # Holdings only exist for dates the portfolio sync actually ran, which
+        # lags the scored dates whenever that job fails. Rather than vanish,
+        # fall back to the most recent date that HAS holdings and report it as
+        # `as_of` so the caller can label the figure honestly.
+        as_of = str(trade_date)
+        have = conn.execute("SELECT COUNT(*) FROM portfolio_holdings WHERE date=?", (as_of,)).fetchone()[0]
+        if not have:
+            row = conn.execute("SELECT MAX(date) FROM portfolio_holdings WHERE date<=?",
+                               (as_of,)).fetchone()
+            if not row or not row[0]:
+                return None
+            as_of = str(row[0])
+
         holdings = [dict(r) for r in conn.execute("""
             SELECT h.symbol, h.qty, h.avg_price, h.cmp, h.current_val, h.pnl_pct,
                    h.weight_pct, h.sector,
@@ -76,7 +95,7 @@ def compute_phs(trade_date=None, conn=None) -> dict | None:
             FROM portfolio_holdings h
             LEFT JOIN ai_scores s ON s.symbol = h.symbol AND s.date = h.date
             WHERE h.date = ?
-        """, (str(trade_date),)).fetchall()]
+        """, (as_of,)).fetchall()]
         if not holdings:
             return None
 
@@ -86,6 +105,9 @@ def compute_phs(trade_date=None, conn=None) -> dict | None:
             weights = {"Diversification": .25, "Risk": .20, "Drawdown": .15,
                        "Quality": .15, "Allocation": .15, "Performance": .10}
 
+        # Deliberately the REQUESTED date's regime, not the holdings date's.
+        # Allocation asks "is this book sized right for current conditions", so
+        # it should read today's regime even when the holdings are older.
         mh = conn.execute("SELECT mh_score,regime FROM market_health WHERE date<=? "
                           "ORDER BY date DESC LIMIT 1", (str(trade_date),)).fetchone()
         regime = mh["regime"] if mh else "NEUTRAL"
@@ -157,12 +179,15 @@ def compute_phs(trade_date=None, conn=None) -> dict | None:
         score = round(sum(c[k] * weights[k] for k in c if k in weights and c[k] is not None) / tw, 2) \
             if tw else 50.0
 
-        out = {"date": str(trade_date), "phs": score, "band": _band(score),
+        out = {"date": as_of, "requested_date": str(trade_date),
+               "stale": as_of != str(trade_date),
+               "phs": score, "band": _band(score),
                "holdings": n, "portfolio_beta": round(pbeta, 3) if pbeta else None,
                "regime": regime, "mh_score": mh_score, "components": c,
                "weight_covered": round(tw, 3)}
         log.info(f"  ✓ Portfolio Health: {score} ({out['band']}) over {n} holdings"
-                 + (f", beta {out['portfolio_beta']}" if out['portfolio_beta'] else ""))
+                 + (f", beta {out['portfolio_beta']}" if out['portfolio_beta'] else "")
+                 + (f"  [holdings as of {as_of}, requested {trade_date}]" if out["stale"] else ""))
         return out
     finally:
         if own:
