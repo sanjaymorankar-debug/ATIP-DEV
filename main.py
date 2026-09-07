@@ -1,4 +1,4 @@
-"""
+r"""
 ATIP — AI Trading Intelligence Platform  v0.2
 ================================================
 Run ALL commands from the project root — the folder containing this file
@@ -78,7 +78,12 @@ def check_dependencies():
     # Everything else is optional — warn but don't block
     optional_pkgs = [
         ("yfinance",    "pip install yfinance          (live NSE/global market data)"),
-        ("pandas_ta",   "pip install pandas-ta         (technical indicators)"),
+        # `ta`, not pandas-ta. pandas-ta cannot install on this stack at all:
+        # it does `from numpy import NaN` (removed in numpy 2.0) and pulls in
+        # numba, which has no Python 3.14 wheel. Telling the user to install it
+        # sends them down a dead end — technical.py prefers pandas_ta only if it
+        # happens to import cleanly on an older stack, and uses `ta` otherwise.
+        ("ta",          "pip install ta                (technical indicators — REQUIRED)"),
         ("schedule",    "pip install schedule          (daily scheduler)"),
         ("fastapi",     "pip install fastapi uvicorn   (web dashboard)"),
         ("uvicorn",     "pip install fastapi uvicorn   (web dashboard)"),
