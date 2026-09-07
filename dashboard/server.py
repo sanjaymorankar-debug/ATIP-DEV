@@ -15,6 +15,29 @@ try:
 except ImportError:
     HAS_FASTAPI=False; log.warning("pip install fastapi uvicorn")
 
+def json_safe(obj):
+    """
+    Make DB rows serialisable by JSONResponse.
+
+    get_connection() uses detect_types=PARSE_DECLTYPES, so every DATE column
+    comes back as datetime.date and every TIMESTAMP as datetime.datetime.
+    json.dumps cannot encode either, so any /api/* route returning raw rows
+    answered 500 — /api/scores, /api/mh and /api/news all did. The rest only
+    looked healthy because they happened to be empty; they would have failed
+    the moment they had rows.
+
+    The HTML page was unaffected because build_html() stringifies everything
+    and generate_state() writes its JSON with default=str, which is why the
+    dashboard looked fine while the API was broken.
+    """
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    return obj
+
 def q(conn,sql,*params):
     try: rows=conn.execute(sql,params).fetchall(); return [dict(r) for r in rows]
     except: return []
@@ -568,15 +591,15 @@ if HAS_FASTAPI:
     async def dashboard():
         return HTMLResponse(content=build_html(generate_state(latest_scored_date())))
     @app.get("/api/scores")
-    async def api_scores(): return JSONResponse(get_scores(latest_scored_date()))
+    async def api_scores(): return JSONResponse(json_safe(get_scores(latest_scored_date())))
     @app.get("/api/mh")
-    async def api_mh(): return JSONResponse(get_mh(latest_scored_date()))
+    async def api_mh(): return JSONResponse(json_safe(get_mh(latest_scored_date())))
     @app.get("/api/tod")
-    async def api_tod(): return JSONResponse(get_tod(latest_scored_date()))
+    async def api_tod(): return JSONResponse(json_safe(get_tod(latest_scored_date())))
     @app.get("/api/news")
-    async def api_news(): return JSONResponse(get_news())
+    async def api_news(): return JSONResponse(json_safe(get_news()))
     @app.get("/api/portfolio")
-    async def api_portfolio(): return JSONResponse(get_portfolio(latest_scored_date()))
+    async def api_portfolio(): return JSONResponse(json_safe(get_portfolio(latest_scored_date())))
     @app.post("/api/refresh")
     async def api_refresh():
         import threading
@@ -596,17 +619,17 @@ if HAS_FASTAPI:
     async def api_create_order(request: Request):
         payload = await request.json()
         try:
-            return JSONResponse(oe.create_rule(payload))
+            return JSONResponse(json_safe(oe.create_rule(payload)))
         except (ValueError, KeyError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
     @app.get("/api/orders")
     async def api_list_orders(symbol: str = None, status: str = None):
-        return JSONResponse(oe.list_rules(symbol=symbol, status=status))
+        return JSONResponse(json_safe(oe.list_rules(symbol=symbol, status=status)))
 
     @app.get("/api/orders/pending")
     async def api_pending_orders():
-        return JSONResponse(oe.list_rules(status=oe.PENDING_CONFIRMATION))
+        return JSONResponse(json_safe(oe.list_rules(status=oe.PENDING_CONFIRMATION)))
 
     @app.post("/api/orders/{rule_id}/confirm")
     async def api_confirm_order(rule_id: str, force: bool = False):
@@ -623,14 +646,14 @@ if HAS_FASTAPI:
                                  "drift_pct": result.get("drift_pct")}, status_code=409)
         if result.get("status") == "FAILED" and "not found" in str(result.get("error", "")):
             return JSONResponse({"error": result["error"]}, status_code=404)
-        return JSONResponse({"rule": oe.get_rule(rule_id), "result": result})
+        return JSONResponse(json_safe({"rule": oe.get_rule(rule_id), "result": result}))
 
     @app.post("/api/orders/{rule_id}/reject")
     async def api_reject_order(rule_id: str):
         rule = oe.reject_rule(rule_id)
         if not rule:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(rule)
+        return JSONResponse(json_safe(rule))
 
     @app.delete("/api/orders/{rule_id}")
     async def api_delete_order(rule_id: str):
