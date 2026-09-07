@@ -357,6 +357,16 @@ def run_postmarket(force=False):
     except Exception as e:
         log.warning(f"  Portfolio health: {e}")
 
+    # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
+    # momentum outcomes for every open signal. Append-only: unlike ai_scores and
+    # predictions, a re-run never overwrites what was previously said.
+    try:
+        from scores.signal_log import log_signals, evaluate_outcomes
+        run_job("signal_log", log_signals, td)
+        run_job("signal_outcomes", evaluate_outcomes)
+    except Exception as e:
+        log.warning(f"  Signal log: {e}")
+
     # 5:45 PM — Send Telegram alerts
     try:
         from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert

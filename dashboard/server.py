@@ -188,6 +188,17 @@ SECTOR_COLS=[("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg
              ("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg"),("Bank","banknifty_chg"),
              ("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("Nifty50","nifty50_chg")]
 
+def get_signal_history(limit=150):
+    """Signal history + momentum success rates for the History tab."""
+    try:
+        from scores.signal_log import success_report, recent_signals, momentum_thresholds
+        return {"report": success_report(), "recent": recent_signals(limit=limit),
+                "thresholds": list(momentum_thresholds())}
+    except Exception as e:
+        log.warning(f"  signal history unavailable: {e}")
+        return {"report": {"buckets": [], "total_signals": 0}, "recent": [], "thresholds": []}
+
+
 def get_phs(td):
     """Portfolio Health Score — the doc's section 11. Computed on demand rather
     than read from a column so the panel is never stale relative to holdings."""
@@ -215,7 +226,7 @@ def get_top25(td):
 
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
-    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td)}
+    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history()}
     STATE_PATH.parent.mkdir(exist_ok=True); STATE_PATH.write_text(json.dumps(state,default=str))
     return state
 
@@ -371,6 +382,87 @@ def build_html(state):
         f'<div style="font-size:11px;color:#e2e8f0">{lbl}</div>'
         f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
         for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
+    # ── Signal history + momentum success rates ──────────────────────────────
+    sh = state.get("sighist") or {}
+    sh_rep = sh.get("report") or {}
+    ths = sh.get("thresholds") or []
+
+    def _pct(v, good=55.0):
+        if v is None:
+            return '<span style="color:#64748b">-</span>'
+        c = "#059669" if v >= good else "#f59e0b" if v >= 35 else "#dc2626"
+        return f'<span style="color:{c};font-weight:700">{v:.0f}%</span>'
+
+    def _num(v, suffix="d"):
+        return f"{v}{suffix}" if v else '<span style="color:#64748b">n/a</span>'
+
+    def _signed(v):
+        if v is None:
+            return "-"
+        c = "#059669" if v >= 0 else "#dc2626"
+        return f'<span style="color:{c}">{v:+.1f}%</span>'
+
+    succ_rows = ""
+    for b in sh_rep.get("buckets", []):
+        sig_c = "#059669" if b["signal"] == "BUY" else "#dc2626"
+        succ_rows += (
+            f'<tr><td style="font-weight:600;color:{sig_c}">{b["signal"]}</td>'
+            f'<td><b>{b["threshold_pct"]:g}%</b></td>'
+            f'<td>{b["resolved"]}</td><td>{b["hits"]}</td>'
+            f'<td>{_pct(b["hit_rate"])}</td>'
+            f'<td>{_num(b["median_sessions"])}</td>'
+            f'<td>{_num(b["fastest_sessions"])}</td>'
+            f'<td>{_num(b["slowest_sessions"])}</td>'
+            f'<td>{_signed(b.get("avg_mfe"))}</td>'
+            f'<td>{_signed(b.get("avg_mae"))}</td>'
+            f'<td style="color:#64748b">{b["open"]}</td></tr>')
+
+    def _oc(o):
+        """One threshold cell: hit / miss / still open, with sessions taken."""
+        if not o:
+            return '<span style="color:#64748b">-</span>'
+        if o.get("still_open"):
+            return '<span style="color:#64748b">open</span>'
+        if o.get("hit"):
+            d = o.get("sessions_to_hit")
+            if d:
+                return f'<span style="color:#059669;font-weight:700">OK</span><span style="color:#94a3b8;font-size:10px"> {d}d</span>'
+            # Hit, but a price-history gap makes the elapsed time unknowable.
+            return '<span style="color:#059669;font-weight:700">OK</span><span style="color:#f59e0b;font-size:10px" title="price history gap - timing unknown"> ?</span>'
+        return '<span style="color:#dc2626">X</span>'
+
+    hist_rows = ""
+    for r in sh.get("recent", []):
+        outs = r.get("outcomes", [])
+        omap = {o["threshold_pct"]: o for o in outs}
+        cells = "".join(f'<td style="text-align:center">{_oc(omap.get(t))}</td>' for t in ths)
+        mfe = next((o.get("max_favourable_pct") for o in outs if o.get("max_favourable_pct") is not None), None)
+        mae = next((o.get("max_adverse_pct") for o in outs if o.get("max_adverse_pct") is not None), None)
+        sig_c = "#059669" if r.get("signal") == "BUY" else "#dc2626"
+        hist_rows += (
+            f'<tr data-sym="{r.get("symbol")}"><td>{r.get("signal_date")}</td>'
+            f'<td><b>{r.get("symbol")}</b>{"*" if r.get("is_tod") else ""}</td>'
+            f'<td style="color:{sig_c};font-weight:600">{r.get("signal")}</td>'
+            f'<td>Rs{r.get("entry_price") or "-"}</td>'
+            f'<td>{pill(r.get("atip_score"))}</td><td>{pill(r.get("zpi"))}</td>'
+            f'<td>{pill(r.get("cri"),inv=True)}</td>{cells}'
+            f'<td>{_signed(mfe)}</td><td>{_signed(mae)}</td>'
+            f'<td style="font-size:10px;color:#64748b">{r.get("model_version") or "-"}</td></tr>')
+
+    th_heads = "".join(f'<th style="text-align:center">{t:g}%</th>' for t in ths)
+    hist_rows_or_empty = hist_rows or (
+        '<tr><td colspan="14" style="text-align:center;color:#64748b;padding:20px">'
+        'No signals logged yet. The post-market run appends them; backfill past '
+        'dates with: python -m scores.signal_log --backfill</td></tr>')
+    sh_total = sh_rep.get("total_signals", 0)
+    sh_span = (f'{sh_rep.get("first","")} to {sh_rep.get("last","")}'
+               if sh_rep.get("first") else "no signals yet")
+    sh_thin = any(b["resolved"] and b["resolved"] < 20 for b in sh_rep.get("buckets", []))
+    sh_note = ('<div style="color:#f59e0b;font-size:11.5px;margin-top:6px">'
+               'Small sample - treat these percentages as indicative, not a track record. '
+               'A cell showing OK with "?" means the target was reached but a gap in price '
+               'history makes the elapsed time unknowable.</div>') if sh_thin else ''
+
     # ── Data freshness banner ────────────────────────────────────────────────
     shown_d, expected_d, stale_n = data_freshness()
     if stale_n >= 1:
@@ -448,7 +540,7 @@ def build_html(state):
   <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div></div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div></div>
   <div id="scores" class="tc active section">
     <div style="display:flex;gap:6px;margin-bottom:8px"><input id="srch" placeholder="Search…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select></div>
     <table id="st"><thead><tr><th onclick="srt('st',0)">#</th><th onclick="srt('st',1)">Symbol</th><th onclick="srt('st',2)">ATIP</th><th onclick="srt('st',3)">VPI</th><th onclick="srt('st',4)">MRI</th><th onclick="srt('st',5)">RRI</th><th onclick="srt('st',6)">ZPI</th><th onclick="srt('st',7)">CRI↓</th><th onclick="srt('st',8)">ACS</th><th onclick="srt('st',9)">CMP <span style="color:#38bdf8">●live</span></th><th onclick="srt('st',10)">Beta</th><th onclick="srt('st',11)">Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -474,6 +566,21 @@ def build_html(state):
   <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>CRI 🔴</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','')}</tbody></table></div>
   <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
   <div id="news" class="tc section"><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
+  <div id="hist" class="tc section">
+    <div class="st">Momentum success rate &mdash; did price move the way the signal said?</div>
+    <table><thead><tr><th>Signal</th><th>Target</th><th>Resolved</th><th>Hits</th><th>Hit rate</th>
+      <th>Median</th><th>Fastest</th><th>Slowest</th><th>Avg best</th><th>Avg worst</th><th>Open</th></tr></thead>
+      <tbody>{succ_rows}</tbody></table>
+    {sh_note}
+    <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="hsrch" placeholder="Filter by symbol..." oninput="hft()">
+      <select id="hsf" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
+    </div>
+    <table id="ht"><thead><tr><th>Date</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
+      {th_heads}<th>Best</th><th>Worst</th><th>Model</th></tr></thead>
+      <tbody>{hist_rows_or_empty}</tbody></table>
+  </div>
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
 
@@ -514,6 +621,16 @@ function ft(){{
   for(var i=0;i<rows.length;i++){{
     var txt=rows[i].innerText.toLowerCase();
     rows[i].style.display=(txt.indexOf(q)>=0&&(s===''||txt.indexOf(s)>=0))?'':'none';
+  }}
+}}
+
+function hft(){{
+  var q=(document.getElementById('hsrch')||{{value:''}}).value.toLowerCase();
+  var s=(document.getElementById('hsf')||{{value:''}}).value.toLowerCase();
+  var rows=document.querySelectorAll('#ht tbody tr');
+  for(var i=0;i<rows.length;i++){{
+    var t=rows[i].innerText.toLowerCase();
+    rows[i].style.display=(t.indexOf(q)>=0&&(s===''||t.indexOf(s)>=0))?'':'none';
   }}
 }}
 
