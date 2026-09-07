@@ -240,6 +240,40 @@ def order_btns(sym,cmp,primary="BUY"):
     return (f'<button class="{b_cls}" onclick="openOrderModal(\'{sym}\',{c},\'BUY\')">Buy</button>'
             f'<button class="{s_cls}" onclick="openOrderModal(\'{sym}\',{c},\'SELL\')">Sell</button>')
 
+def _check_js(html):
+    """
+    Fail loudly if the generated <script> block has an unterminated string
+    literal.
+
+    The whole UI is one inline script, so a single broken literal is a
+    SyntaxError that prevents showTab/srt/ft from ever being defined — every
+    tab silently stops working while the page still renders and the server
+    still returns 200. That happened: a backslash-n written in the Python
+    f-string became a REAL newline in the emitted JS and split two alert()
+    strings across lines.
+
+    Cheap heuristic, run on every render: inside the script, ignore // comments
+    and count unescaped quotes per line. Logs a warning rather than raising, so
+    a false positive can never take the dashboard down.
+    """
+    import re as _re
+    m = _re.search(r"<script>(.*?)</script>", html, _re.S)
+    if not m:
+        return
+    bad = []
+    for i, line in enumerate(m.group(1).splitlines(), 1):
+        code = line.split("//", 1)[0] if "//" in line and not ("://" in line) else line
+        for ch in ("'", '"'):
+            n = len([1 for j, c in enumerate(code) if c == ch and (j == 0 or code[j-1] != "\\")])
+            if n % 2:
+                bad.append(f"line {i}: unbalanced {ch} -> {code.strip()[:70]}")
+                break
+    if bad:
+        log.error("  ⚠ GENERATED JS LOOKS BROKEN - dashboard tabs will not work:")
+        for b in bad[:6]:
+            log.error(f"      {b}")
+
+
 def build_html(state):
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
     scores=state.get("scores",[]); news=state.get("news",[]); port=state.get("portfolio",[]); top25=state.get("top25",{})
@@ -329,7 +363,7 @@ def build_html(state):
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
-    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
 <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:10px;color:#475569;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
 .ob{{background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer}}.ob:hover{{background:#38bdf8;color:#0f172a}}
 .acts{{white-space:nowrap}}.acts button{{padding:3px 11px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;margin-right:4px}}
@@ -609,7 +643,7 @@ async function confirmRule(id,force){{
     // Price ran away between the trigger and your tap — say by how much and
     // let it be an explicit decision rather than a silent fill.
     var e=await res.json().catch(()=>({{}}));
-    if(confirm((e.error||'Price moved since the trigger.')+'\n\nPlace the order anyway at the current price?')){{
+    if(confirm((e.error||'Price moved since the trigger.')+'\\n\\nPlace the order anyway at the current price?')){{
       await fetch('/api/orders/'+id+'/confirm?force=true',{{method:'POST'}});
     }}
   }} else if(!res.ok){{
@@ -618,7 +652,7 @@ async function confirmRule(id,force){{
   }} else {{
     var out=await res.json().catch(()=>({{}}));
     var legs=(out.result&&out.result.bracket_legs)||[];
-    if(legs.length) alert('Order placed. Protective legs created:\n'+legs.map(l=>l.role+' @ ₹'+l.trigger+' x'+l.qty).join('\n'));
+    if(legs.length) alert('Order placed. Protective legs created:\\n'+legs.map(l=>l.role+' @ ₹'+l.trigger+' x'+l.qty).join('\\n'));
   }}
   pollPending(); loadMiniRules();
 }}
@@ -653,6 +687,9 @@ async function pollLiveQuotes(){{
 }}
 setInterval(pollLiveQuotes,15000); pollLiveQuotes();
 </script></body></html>"""
+    # Catch a broken inline script before it silently disables every tab.
+    _check_js(html)
+    return html
 
 if HAS_FASTAPI:
     app=FastAPI(title="ATIP Dashboard",version="0.2")
