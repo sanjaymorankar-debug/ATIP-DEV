@@ -212,8 +212,22 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
         now = datetime.now().isoformat()
         ver, wh = _git_commit(), _weights_hash(conn)
 
+        # Append only when something actually CHANGED. Append-only is about
+        # never rewriting history, not about recording the same fact twice: a
+        # re-run that produces an identical signal from identical code adds no
+        # information and would double-count that signal in every hit rate.
+        # A DIFFERENT signal, or the same one under a different model/weights,
+        # is exactly the record worth keeping, so that still appends.
+        existing = {(r["symbol"], r["signal"]) for r in conn.execute(
+            "SELECT symbol, signal FROM signal_log "
+            "WHERE signal_date=? AND model_version=? AND weights_hash=?",
+            (str(trade_date), ver, wh)).fetchall()}
+
         for r in rows:
             d = dict(r)
+            if (d["symbol"], d["signal"]) in existing:
+                result["skipped"] = result.get("skipped", 0) + 1
+                continue
             conn.execute("""
                 INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal,
                     entry_price, atip_score, vpi, spi, rri, mri, cri, msi, zpi, acs,
@@ -227,8 +241,10 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
             result["logged"] += 1
 
         conn.commit()
-        log.info(f"  ✓ Signal log: {result['logged']} signals appended "
-                 f"(run {run_id}, model {ver}, weights {wh})")
+        skipped = result.get("skipped", 0)
+        log.info(f"  ✓ Signal log: {result['logged']} appended"
+                 + (f", {skipped} unchanged (already recorded for this model+weights)" if skipped else "")
+                 + f"  [run {run_id}, model {ver}, weights {wh}]")
         log_job("signal_log", "SUCCESS", result["logged"], run_date=trade_date)
     except Exception as e:
         conn.rollback()
