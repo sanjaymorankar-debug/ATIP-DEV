@@ -129,8 +129,23 @@ def get_mh(td):
     finally: conn.close()
 
 def get_indexes(td):
+    """
+    Latest NSE index snapshot on or before td — the last close if today's
+    intraday feed hasn't run.
+
+    This used to match the date EXACTLY, which meant the entire index panel,
+    the Nifty/BankNifty/VIX/GIFT KPI tiles and Sector Rotation all rendered
+    blank whenever index_levels had no row for the scored date. That is the
+    normal case outside market hours: the index feed is Dhan live quotes, and
+    Dhan's marketfeed returns empty when the market is closed, so a post-market
+    scoring run produces scores for a date that has no index row at all.
+
+    get_global() beside it already fell back this way; indexes now match. The
+    caller can compare the returned `date` against the view date to tell the
+    user how old the reading is.
+    """
     conn=get_connection()
-    try: return q1(conn,"SELECT * FROM index_levels WHERE date=? ORDER BY time DESC LIMIT 1",str(td))
+    try: return q1(conn,"SELECT * FROM index_levels WHERE date<=? ORDER BY date DESC,time DESC LIMIT 1",str(td))
     finally: conn.close()
 
 def get_global(td):
@@ -336,6 +351,14 @@ def build_html(state):
         f'border-bottom:1px solid #33415533;font-size:12px">'
         f'<span style="color:#94a3b8">{k}</span>{pill(v)}</div>'
         for k,v in (phs.get("components") or {}).items())
+    # Index readings can legitimately predate the scored date (the feed only
+    # runs during market hours), so label them rather than let an old close
+    # read as today's.
+    idx_date=str(idx.get("date") or "")
+    idx_time=str(idx.get("time") or "")
+    idx_note=(f'<span style="color:#f59e0b">as of {idx_date} {idx_time}</span>'
+              if idx_date and idx_date != str(state.get("trade_date") or "")
+              else f'<span style="color:#64748b">{idx_time}</span>')
     sectors=get_sector_rotation(idx)
     def heat(v):
         """Background intensity scaled to ±2%, which covers a normal NSE day."""
@@ -408,7 +431,7 @@ def build_html(state):
   <div class="kpi"><div class="kpi-l">USD/INR</div><div class="kpi-v">{chg(glb.get('usd_inr_chg'))}</div></div>
 </div>
 <div class="body">
-<div class="sidebar"><h3>NSE Indexes</h3>{idx_rows}<h3>Global</h3>{glb_rows}</div>
+<div class="sidebar"><h3>NSE Indexes &nbsp;{idx_note}</h3>{idx_rows}<h3>Global</h3>{glb_rows}</div>
 <div class="main">
   <div class="section"><div class="st">🎯 Trade of the Day</div>
     <div class="tod-card" data-sym="{tod_sym}">
@@ -422,7 +445,7 @@ def build_html(state):
       <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'))}</div>
     </div>
   </div>
-  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first</span></div>
+  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
   <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div></div>
