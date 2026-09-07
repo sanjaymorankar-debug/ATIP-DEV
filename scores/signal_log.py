@@ -144,11 +144,17 @@ def ensure_tables(conn):
             mh_score REAL, regime TEXT, is_tod INTEGER DEFAULT 0,
             model_version  TEXT,
             weights_hash   TEXT,
-            notes          TEXT
+            notes          TEXT,
+            duplicate_of   TEXT
         )
     """)
     # No UNIQUE on (signal_date,symbol) — that is the point. Multiple runs of the
     # same date coexist, distinguished by run_id, so history is never rewritten.
+    #
+    # duplicate_of is how a redundant row is retired WITHOUT deleting it: it holds
+    # the id of the canonical (first) record of the same signal, and every rate and
+    # listing counts only rows where it IS NULL. Nothing is ever removed from this
+    # table; a row that should not be counted twice is flagged, not erased.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_siglog_date ON signal_log(signal_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_siglog_symbol ON signal_log(symbol,signal_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_siglog_run ON signal_log(run_id)")
@@ -176,8 +182,52 @@ def ensure_tables(conn):
             conn.execute("ALTER TABLE signal_outcome ADD COLUMN data_gap_sessions INTEGER DEFAULT 0")
     except Exception as e:
         log.warning(f"  signal_outcome migration skipped: {e}")
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(signal_log)").fetchall()}
+        if "duplicate_of" not in cols:
+            conn.execute("ALTER TABLE signal_log ADD COLUMN duplicate_of TEXT")
+    except Exception as e:
+        log.warning(f"  signal_log migration skipped: {e}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sigout_hit ON signal_outcome(threshold_pct,hit)")
     conn.commit()
+    flag_duplicates(conn)
+
+
+def flag_duplicates(conn) -> int:
+    """
+    Retire redundant rows by flagging, never by deleting.
+
+    An earlier version of the insert guard keyed on model_version, so any commit —
+    including a commit to this file, which cannot change what the engine
+    recommended — re-appended a date's whole signal set and double-counted it in
+    every hit rate. This repairs that, and is idempotent, so it also catches any
+    duplicate a future bug or a hand-run script introduces.
+
+    The row kept is the earliest logged_at: the honest record of when ATIP first
+    said it. The later copies keep their run_id and model_version and stay
+    queryable; they simply stop counting.
+    """
+    try:
+        n = conn.execute("""
+            UPDATE signal_log SET duplicate_of = (
+                SELECT c.id FROM signal_log c
+                WHERE c.signal_date=signal_log.signal_date AND c.symbol=signal_log.symbol
+                  AND c.signal=signal_log.signal
+                ORDER BY c.logged_at, c.id LIMIT 1)
+            WHERE duplicate_of IS NULL AND id <> (
+                SELECT c.id FROM signal_log c
+                WHERE c.signal_date=signal_log.signal_date AND c.symbol=signal_log.symbol
+                  AND c.signal=signal_log.signal
+                ORDER BY c.logged_at, c.id LIMIT 1)
+        """).rowcount
+        conn.commit()
+        if n:
+            log.info(f"  ✓ Signal log: {n} duplicate row(s) flagged, not counted "
+                     f"(kept the first record of each signal; nothing deleted)")
+        return n
+    except Exception as e:
+        log.warning(f"  duplicate flagging skipped: {e}")
+        return 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -212,16 +262,26 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
         now = datetime.now().isoformat()
         ver, wh = _git_commit(), _weights_hash(conn)
 
-        # Append only when something actually CHANGED. Append-only is about
-        # never rewriting history, not about recording the same fact twice: a
-        # re-run that produces an identical signal from identical code adds no
-        # information and would double-count that signal in every hit rate.
-        # A DIFFERENT signal, or the same one under a different model/weights,
-        # is exactly the record worth keeping, so that still appends.
+        # Append only what is not already on record for this date. Append-only
+        # means never rewriting history, not recording the same fact twice: a
+        # signal is a real-world event -- "on 2026-09-07 ATIP said BUY RRKABEL"
+        # happened once, and you cannot buy the same stock twice at the same
+        # entry. A re-run that reproduces it is not a second opportunity and
+        # must not count twice in any hit rate.
+        #
+        # The key is deliberately (date, symbol, signal) and NOT model_version:
+        # keying on the code version double-counts every signal whenever any
+        # commit lands, including commits to this very file, which obviously
+        # cannot change what the engine recommended. model_version/weights_hash
+        # stay on the row as metadata of the first emission.
+        #
+        # A DIFFERENT signal for the same symbol and date (a BUY that becomes a
+        # SELL) is genuinely new information, so that still appends, and both
+        # rows remain visible side by side.
         existing = {(r["symbol"], r["signal"]) for r in conn.execute(
             "SELECT symbol, signal FROM signal_log "
-            "WHERE signal_date=? AND model_version=? AND weights_hash=?",
-            (str(trade_date), ver, wh)).fetchall()}
+            "WHERE signal_date=? AND duplicate_of IS NULL",
+            (str(trade_date),)).fetchall()}
 
         for r in rows:
             d = dict(r)
@@ -243,7 +303,7 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
         conn.commit()
         skipped = result.get("skipped", 0)
         log.info(f"  ✓ Signal log: {result['logged']} appended"
-                 + (f", {skipped} unchanged (already recorded for this model+weights)" if skipped else "")
+                 + (f", {skipped} already on record for this date" if skipped else "")
                  + f"  [run {run_id}, model {ver}, weights {wh}]")
         log_job("signal_log", "SUCCESS", result["logged"], run_date=trade_date)
     except Exception as e:
@@ -278,6 +338,7 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
             SELECT id, symbol, signal, signal_date, entry_price
             FROM signal_log
             WHERE entry_price IS NOT NULL AND signal IN ('BUY','SELL')
+              AND duplicate_of IS NULL
             ORDER BY signal_date
         """).fetchall()
 
@@ -375,7 +436,7 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
     conn = get_connection()
     try:
         ensure_tables(conn)
-        where, params = ["l.entry_price IS NOT NULL"], []
+        where, params = ["l.entry_price IS NOT NULL", "l.duplicate_of IS NULL"], []
         if symbol:
             where.append("l.symbol=?"); params.append(symbol.upper())
         if since:
@@ -445,9 +506,9 @@ def recent_signals(limit=200, symbol=None):
     conn = get_connection()
     try:
         ensure_tables(conn)
-        w, p = "", []
+        w, p = "WHERE l.duplicate_of IS NULL", []
         if symbol:
-            w = "WHERE l.symbol=?"; p.append(symbol.upper())
+            w += " AND l.symbol=?"; p.append(symbol.upper())
         rows = conn.execute(f"""
             SELECT l.id, l.signal_date, l.symbol, l.signal, l.entry_price, l.atip_score,
                    l.zpi, l.cri, l.acs, l.regime, l.is_tod, l.model_version, l.logged_at
@@ -523,7 +584,8 @@ if __name__ == "__main__":
             ensure_tables(c)
             dates = [r[0] for r in c.execute("""
                 SELECT DISTINCT s.date FROM ai_scores s
-                WHERE NOT EXISTS (SELECT 1 FROM signal_log l WHERE l.signal_date=s.date)
+                WHERE NOT EXISTS (SELECT 1 FROM signal_log l
+                                  WHERE l.signal_date=s.date AND l.duplicate_of IS NULL)
                 ORDER BY s.date""").fetchall()]
         finally:
             c.close()
