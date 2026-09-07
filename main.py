@@ -289,7 +289,7 @@ def main():
     log.info("Starting ATIP — Scheduler + Dashboard")
     log.info(f"  Dashboard : http://localhost:{args.port}")
     log.info(f"  Logs      : {LOG_FILE}")
-    log.info(f"  Database  : {DATA_DIR / 'db'}\n")
+    log.info(f"  Database  : {DATA_DIR / 'atip.db'}\n")
 
     dash = threading.Thread(target=_start_dashboard, args=(args.port,), daemon=True)
     dash.start()
