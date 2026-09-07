@@ -236,9 +236,24 @@ def send_morning_digest(trade_date=None):
     if risky and risky["n"]:
         body.append(f"\n⚠️ {risky['n']} stock(s) with CRI &gt; 75 — suppressed from Buy regardless of ATIP")
 
+    # A brief built on week-old scores is worse than no brief — it reads as
+    # today's answer. Say so at the top, not in the footnote.
+    stale_n = 0
+    try:
+        from dashboard.server import expected_trade_date, sessions_between
+        exp = expected_trade_date()
+        stale_n = sessions_between(td, exp) if exp else 0
+        if stale_n >= 1:
+            body.insert(0, f"⚠️ <b>STALE — these are {td} scores, {stale_n} session"
+                           f"{'s' if stale_n != 1 else ''} behind the last completed session "
+                           f"({exp}). The pipeline has not run since. Do not trade off them.</b>\n")
+    except Exception as e:
+        log.debug(f"  freshness check unavailable: {e}")
+
     return send_telegram(fmt("☀️","Morning Brief — What should I do today?","\n".join(body),
-                             f"Scores from {td}. Verify against live prices before acting — "
-                             f"model output, not advice."))
+                             f"Scores from {td}"
+                             + (f" — {stale_n} session(s) STALE" if stale_n else " (current)")
+                             + ". Verify against live prices before acting — model output, not advice."))
 
 if __name__=="__main__":
     import argparse; logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")

@@ -68,6 +68,61 @@ def latest_scored_date():
     finally:
         conn.close()
 
+
+def expected_trade_date():
+    """
+    The trade date the system SHOULD have scores for right now.
+
+    The convention itself is correct and unchanged: scores describe the last
+    COMPLETED trading session — today once the market has closed and the
+    post-market run has finished, otherwise the previous trading day.
+    postmarket_target_date() already encodes exactly that and the pipeline
+    targets it, so the dashboard follows the same rule instead of inventing
+    its own.
+    """
+    try:
+        from utils.trading_calendar import postmarket_target_date
+        return str(postmarket_target_date())
+    except Exception as e:
+        log.warning(f"  expected trade date unavailable: {e}")
+        return None
+
+
+def sessions_between(d1, d2):
+    """Trading sessions from d1 (exclusive) to d2 (inclusive); bounded so a
+    wildly wrong date can't spin."""
+    try:
+        from utils.trading_calendar import is_trading_day
+        from datetime import timedelta
+        a = date.fromisoformat(str(d1)); b = date.fromisoformat(str(d2))
+        if b <= a:
+            return 0
+        n, cur = 0, a
+        while cur < b and n < 500:
+            cur += timedelta(days=1)
+            if is_trading_day(cur):
+                n += 1
+        return n
+    except Exception:
+        return 0
+
+
+def data_freshness():
+    """
+    (shown_date, expected_date, stale_sessions).
+
+    Deliberately does NOT hide or substitute anything — the newest scores
+    available are still what gets shown. It reports the gap so the UI can say
+    so out loud, because silently presenting week-old scores as today's is the
+    failure this is meant to prevent (spec DATA-005 / DASH-007: "stale/invalid
+    data cannot silently appear as current").
+    """
+    shown = latest_scored_date()
+    expected = expected_trade_date()
+    stale = sessions_between(shown, expected) if (shown and expected) else 0
+    return shown, expected, stale
+
+
 def get_mh(td):
     conn=get_connection()
     try: return q1(conn,"SELECT * FROM market_health WHERE date=?",str(td))
@@ -259,6 +314,19 @@ def build_html(state):
         f'<div style="font-size:11px;color:#e2e8f0">{lbl}</div>'
         f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
         for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
+    # ── Data freshness banner ────────────────────────────────────────────────
+    shown_d, expected_d, stale_n = data_freshness()
+    if stale_n >= 1:
+        _sev = "#dc2626" if stale_n >= 3 else "#f59e0b"
+        stale_banner = (
+            f'<div style="background:{_sev};color:#fff;padding:7px 18px;font-size:12.5px;font-weight:600">'
+            f'⚠ STALE DATA — showing scores for {shown_d}, but the last completed trading session is '
+            f'{expected_d} ({stale_n} session{"s" if stale_n != 1 else ""} behind). '
+            f'Run <code style="background:#00000030;padding:1px 5px;border-radius:3px">python main.py '
+            f'--run postmarket</code> to refresh. Do not trade off these numbers.</div>')
+    else:
+        stale_banner = (f'<div style="background:#065f46;color:#d1fae5;padding:5px 18px;font-size:11.5px">'
+                        f'✓ Scores current for the last completed session ({shown_d})</div>')
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
@@ -291,6 +359,7 @@ def build_html(state):
 </style></head>
 <body>
 <div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+{stale_banner}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
 <div id="pendBox" class="pend" style="margin:10px 18px 0"><b style="color:#dc2626">⚠️ Awaiting confirmation</b><div id="pendList"></div></div>
 <div class="kpi-row">
