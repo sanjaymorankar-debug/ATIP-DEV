@@ -19,10 +19,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Only what the tested modules import. The broker and scheduler
-          # dependencies are deliberately absent: no CI job should be able to
-          # reach a real brokerage account.
-          pip install pytest pandas numpy ta fastapi uvicorn requests
+          # Only what the tested modules import at module scope. yfinance is
+          # here because data/markets.py imports it unguarded and the index
+          # regression test reaches that module.
+          #
+          # dhanhq, kiteconnect, schedule, anthropic and the rest stay OUT
+          # deliberately — every one is behind a guarded import, and no CI job
+          # should be able to reach a real brokerage account.
+          pip install pytest pandas numpy ta fastapi uvicorn requests yfinance
 
       - name: Run tests
         run: python -m pytest tests/ -v
