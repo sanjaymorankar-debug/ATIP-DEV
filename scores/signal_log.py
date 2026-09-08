@@ -356,6 +356,21 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
                 WHERE symbol=? AND date>? ORDER BY date LIMIT ?
             """, (s["symbol"], str(s["signal_date"]), max_sessions)).fetchall()
             if not bars:
+                # No forward bar yet — the signal was raised on the most recent
+                # session. Open the tracking row anyway, at zero sessions, so the
+                # newest signals (the ones actually worth watching) show as "open"
+                # in the history rather than as a blank the UI cannot explain.
+                # MFE/MAE stay NULL, not 0.0: nothing has been measured yet, and a
+                # 0.0 would read as "best move so far: 0%" and drag the averages.
+                for t in todo:
+                    conn.execute("""
+                        INSERT INTO signal_outcome (signal_id, threshold_pct, hit,
+                            sessions_tracked, still_open, data_gap_sessions, evaluated_at)
+                        VALUES (?,?,0,0,1,0,?)
+                        ON CONFLICT(signal_id,threshold_pct) DO UPDATE SET
+                            evaluated_at=excluded.evaluated_at
+                    """, (s["id"], t, now))
+                    res["evaluated"] += 1
                 continue
 
             entry = s["entry_price"]
