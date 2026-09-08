@@ -106,6 +106,67 @@ def _claim_event(conn, position_id: str, event_key: str, event_type: str,
         return False
 
 
+def claim_event(position_id: str, event_key: str, event_type: str,
+                price=None, quantity=None, detail=None, conn=None) -> bool:
+    """
+    Reserve an event BEFORE acting on it, and return whether this caller won it.
+
+    The ordering matters and is the whole reason this is public. Recording the
+    state change first and placing the order second means a rejected order
+    leaves the position claiming shares it still holds. Placing the order first
+    and recording second means a crash in between silently repeats the order on
+    the next pass.
+
+    So: reserve, then place, then apply — and `release_event` gives the
+    reservation back if the order never happened. The reservation is an INSERT
+    against a UNIQUE constraint, so two concurrent passes cannot both win it.
+    """
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        ensure_tables(conn)
+        won = _claim_event(conn, position_id, event_key, event_type,
+                           price, quantity, detail)
+        conn.commit()
+        return won
+    finally:
+        if own:
+            conn.close()
+
+
+def release_event(position_id: str, event_key: str, conn=None) -> bool:
+    """
+    Hand a reservation back after the action failed to happen.
+
+    Only ever called on a path where the order was rejected or never reached the
+    broker; a filled order must keep its claim so it cannot be repeated.
+    """
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        ensure_tables(conn)
+        cur = conn.execute("DELETE FROM strategy_event WHERE position_id=? AND event_key=?",
+                           (position_id, event_key))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        if own:
+            conn.close()
+
+
+def event_log(position_id: str, conn=None) -> list[dict]:
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        ensure_tables(conn)
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM strategy_event WHERE position_id=? ORDER BY created_at",
+            (position_id,)).fetchall()]
+    finally:
+        if own:
+            conn.close()
+
+
 def open_position(symbol: str, entry_price: float, quantity: int, side: str = "BUY",
                   entry_rule_id: str = None, atr_pct: float = None,
                   cost_pct: float = 0.0, conn=None, cfg: dict = None) -> dict:
@@ -160,7 +221,7 @@ def open_positions(symbol: str = None, conn=None) -> list[dict]:
 
 
 def record_partial_exit(position_id: str, fill_price: float, quantity: int = None,
-                        conn=None, cfg: dict = None) -> dict:
+                        conn=None, cfg: dict = None, pre_claimed: bool = False) -> dict:
     """
     Book the T1 partial and switch the position to RUNNER.
 
@@ -177,8 +238,11 @@ def record_partial_exit(position_id: str, fill_price: float, quantity: int = Non
             return {"applied": False, "reason": "no such position"}
         if pos["t1_state"] != "PENDING":
             return {"applied": False, "reason": "target 1 already booked", "position": pos}
-        if not _claim_event(conn, position_id, "T1", TARGET_1_PARTIAL_EXIT,
-                            fill_price, quantity):
+        # pre_claimed: the caller already reserved this event with claim_event()
+        # before sending the order, so re-claiming here would always fail and
+        # discard a fill that really happened.
+        if not pre_claimed and not _claim_event(conn, position_id, "T1",
+                                                TARGET_1_PARTIAL_EXIT, fill_price, quantity):
             return {"applied": False, "reason": "duplicate T1 event", "position": pos}
 
         long_side = pos["side"] == "BUY"
@@ -247,7 +311,8 @@ def update_high_water(position_id: str, price: float, conn=None) -> dict:
 
 
 def record_checkpoint(position_id: str, price: float, momentum: Momentum,
-                      atr_pct: float = None, conn=None, cfg: dict = None) -> dict:
+                      atr_pct: float = None, conn=None, cfg: dict = None,
+                      pre_claimed: bool = False) -> dict:
     """
     Run the +6% momentum checkpoint, record the verdict, apply it to the trail.
 
@@ -267,7 +332,8 @@ def record_checkpoint(position_id: str, price: float, momentum: Momentum,
         if pos["t2_state"] != "PENDING":
             return {"applied": False, "reason": "checkpoint already run",
                     "verdict": pos["t2_verdict"], "position": pos}
-        if not _claim_event(conn, position_id, "T2", "CHECKPOINT", price):
+        if not pre_claimed and not _claim_event(conn, position_id, "T2",
+                                                "CHECKPOINT", price):
             return {"applied": False, "reason": "duplicate checkpoint event", "position": pos}
 
         d = checkpoint_decision(momentum, cfg, pos["trail_pct"], atr_pct)
@@ -289,7 +355,7 @@ def record_checkpoint(position_id: str, price: float, momentum: Momentum,
 
 
 def close_position(position_id: str, fill_price: float, reason: str,
-                   quantity: int = None, conn=None) -> dict:
+                   quantity: int = None, conn=None, pre_claimed: bool = False) -> dict:
     """Close the remainder. A repeated close event is a no-op."""
     own = conn is None
     conn = conn or get_connection()
@@ -300,8 +366,8 @@ def close_position(position_id: str, fill_price: float, reason: str,
             return {"applied": False, "reason": "no such position"}
         if pos["status"] == ST_CLOSED:
             return {"applied": False, "reason": "already closed", "position": pos}
-        if not _claim_event(conn, position_id, f"CLOSE:{reason}", reason,
-                            fill_price, quantity):
+        if not pre_claimed and not _claim_event(conn, position_id, f"CLOSE:{reason}",
+                                                reason, fill_price, quantity):
             return {"applied": False, "reason": "duplicate close event", "position": pos}
 
         qty = int(quantity) if quantity else int(pos["remaining_qty"])

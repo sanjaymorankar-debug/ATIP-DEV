@@ -94,9 +94,17 @@ def ensure_tables(conn):
             fill_price     REAL,
             status         TEXT,
             reason         TEXT,
-            brokerage      REAL DEFAULT 0
+            brokerage      REAL DEFAULT 0,
+            tag            TEXT
         )
     """)
+    # Additive migration, matching the pattern used everywhere else here.
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_order)").fetchall()}
+        if "tag" not in cols:
+            conn.execute("ALTER TABLE paper_order ADD COLUMN tag TEXT")
+    except Exception as e:
+        log.warning(f"  paper_order migration skipped: {e}")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS paper_position (
             symbol       TEXT PRIMARY KEY,
@@ -205,7 +213,8 @@ class PaperBroker:
 
     def place_order(self, security_id=None, exchange_segment=None,
                     transaction_type=None, quantity=None, order_type="MARKET",
-                    product_type="CNC", price=0, symbol=None, **kw) -> dict:
+                    product_type="CNC", price=0, symbol=None, tag=None,
+                    reference_price=None, **kw) -> dict:
         """
         Simulate an order against the live price.
 
@@ -218,21 +227,29 @@ class PaperBroker:
 
         if qty <= 0:
             return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
-                                qty, order_type, product_type, price, "quantity must be > 0")
+                                qty, order_type, product_type, price,
+                                "quantity must be > 0", tag)
 
         if random.random() < float(self.cfg["paper_reject_odds"]):
             return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
                                 qty, order_type, product_type, price,
-                                "simulated broker rejection")
+                                "simulated broker rejection", tag)
 
-        ltp = self._ltp(sym)
+        # `reference_price` is the price the CALLER acted on. Without it the
+        # broker fetches its own quote, so a decision made at one price fills at
+        # another — and the two can disagree badly. Seen end to end: a trailing
+        # stop that triggered at 1398.22 filled at 1289.85, turning a +12% runner
+        # into a booked loss. In live use the two prices are the same tick; the
+        # gap only appears under replay or a fast market, which is precisely when
+        # a silent mismatch is most damaging.
+        ltp = float(reference_price) if reference_price else self._ltp(sym)
         if ltp is None:
             # No live price means no honest fill. Refusing is correct: inventing
             # one would make the simulator disagree with the market at exactly
             # the moment the market is unavailable.
             return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
                                 qty, order_type, product_type, price,
-                                "no live quote available — cannot price the fill")
+                                "no live quote available — cannot price the fill", tag)
 
         if order_type == "LIMIT":
             lim = float(price or 0)
@@ -240,7 +257,7 @@ class PaperBroker:
             if not crossed:
                 self._write_order(oid, sym, security_id, exchange_segment, transaction_type,
                                   qty, 0, order_type, product_type, lim, None,
-                                  "PENDING", "limit not crossed", 0.0)
+                                  "PENDING", "limit not crossed", 0.0, tag)
                 return {"status": "success", "remarks": "",
                         "data": {"orderId": oid, "orderStatus": "PENDING"}}
             fill = self._slipped(min(lim, ltp) if transaction_type == "BUY"
@@ -260,21 +277,21 @@ class PaperBroker:
                 return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
                                     qty, order_type, product_type, price,
                                     f"insufficient paper funds: have {self.balance:,.2f}, "
-                                    f"need {value + brokerage:,.2f}")
+                                    f"need {value + brokerage:,.2f}", tag)
             self._adjust_balance(-(value + brokerage))
         else:
             held = self._position_qty(sym)
             if held < filled:
                 return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
                                     qty, order_type, product_type, price,
-                                    f"cannot sell {filled}, paper position holds {held}")
+                                    f"cannot sell {filled}, paper position holds {held}", tag)
             self._adjust_balance(value - brokerage)
 
         self._apply_position(sym, transaction_type, filled, fill)
         status = "TRADED" if filled == qty else "PARTIALLY_FILLED"
         self._write_order(oid, sym, security_id, exchange_segment, transaction_type,
                           qty, filled, order_type, product_type,
-                          float(price or 0), fill, status, None, brokerage)
+                          float(price or 0), fill, status, None, brokerage, tag)
         self.conn.commit()
         log.info(f"  [PAPER] {transaction_type} {filled}/{qty} {sym} @ {fill} "
                  f"(ltp {ltp}, brokerage {brokerage}) -> {oid}")
@@ -282,9 +299,10 @@ class PaperBroker:
                 "data": {"orderId": oid, "orderStatus": status,
                          "averageTradedPrice": fill, "filledQty": filled}}
 
-    def _reject(self, oid, sym, sec, exch, ttype, qty, otype, ptype, price, reason) -> dict:
+    def _reject(self, oid, sym, sec, exch, ttype, qty, otype, ptype, price, reason,
+                tag=None) -> dict:
         self._write_order(oid, sym, sec, exch, ttype, qty, 0, otype, ptype,
-                          float(price or 0), None, "REJECTED", reason, 0.0)
+                          float(price or 0), None, "REJECTED", reason, 0.0, tag)
         self.conn.commit()
         log.warning(f"  [PAPER] REJECTED {ttype} {qty} {sym}: {reason}")
         return {"status": "failure",
@@ -356,14 +374,14 @@ class PaperBroker:
             (symbol, held, avg, realized, _now()))
 
     def _write_order(self, oid, sym, sec, exch, ttype, qty, filled, otype, ptype,
-                     limit_price, fill_price, status, reason, brokerage):
+                     limit_price, fill_price, status, reason, brokerage, tag=None):
         self.conn.execute("""
             INSERT INTO paper_order (order_id, created_at, symbol, security_id, exchange,
                 transaction_type, quantity, filled_qty, order_type, product_type,
-                limit_price, fill_price, status, reason, brokerage)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                limit_price, fill_price, status, reason, brokerage, tag)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (oid, _now(), sym, str(sec) if sec else None, exch, ttype, qty, filled,
-              otype, ptype, limit_price, fill_price, status, reason, brokerage))
+              otype, ptype, limit_price, fill_price, status, reason, brokerage, tag))
 
     def _symbol_for(self, security_id):
         if not security_id:

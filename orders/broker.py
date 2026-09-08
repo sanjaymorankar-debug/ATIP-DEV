@@ -163,7 +163,8 @@ def _estimate_order_value(symbol, quantity, order_type, price):
 
 
 def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
-                  product_type="CNC", price=0, confirm=False):
+                  product_type="CNC", price=0, confirm=False, tag=None,
+                  reference_price=None):
     """
     transaction_type : "BUY" or "SELL"
     order_type        : "MARKET" or "LIMIT"
@@ -239,6 +240,16 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         # where it is accepted.
         if getattr(dhan, "accepts_symbol", False):
             kwargs["symbol"] = symbol
+        # dhanhq's place_order takes `tag`, and so does the paper broker, so an
+        # order can always be traced back to the position and event that caused
+        # it. That trace is what makes a crash between "order placed" and "state
+        # recorded" recoverable instead of a mystery.
+        if tag:
+            kwargs["tag"] = tag
+        # Only the simulator can be told what price to fill at; a real broker
+        # fills at the market and must never be handed this.
+        if reference_price and getattr(dhan, "accepts_symbol", False):
+            kwargs["reference_price"] = reference_price
         resp = dhan.place_order(**kwargs)
         if not resp or resp.get("status") == "failure":
             log.error(f"  X Order failed: {resp}")
@@ -266,12 +277,12 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         return {"status": "FAILED", "error": str(e)}
 
 
-def place_buy_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False):
-    return _place_order(symbol, "BUY", quantity, order_type, product_type, price, confirm)
+def place_buy_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False, tag=None):
+    return _place_order(symbol, "BUY", quantity, order_type, product_type, price, confirm, tag)
 
 
-def place_sell_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False):
-    return _place_order(symbol, "SELL", quantity, order_type, product_type, price, confirm)
+def place_sell_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False, tag=None, reference_price=None):
+    return _place_order(symbol, "SELL", quantity, order_type, product_type, price, confirm, tag, reference_price)
 
 
 if __name__ == "__main__":
