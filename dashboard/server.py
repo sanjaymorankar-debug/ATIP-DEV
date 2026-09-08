@@ -1,6 +1,6 @@
 """ATIP — FastAPI Dashboard Server (http://localhost:8000)"""
 import json, logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from db.schema import get_connection
 from data.companies import load_company_names
@@ -243,15 +243,31 @@ SECTOR_COLS=[("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg
              ("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg"),("Bank","banknifty_chg"),
              ("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("Nifty50","nifty50_chg")]
 
+def _stale_days(d):
+    """Calendar days between a YYYY-MM-DD string and today. None if unparseable."""
+    try:
+        return (date.today() - datetime.strptime(str(d)[:10], "%Y-%m-%d").date()).days
+    except Exception:
+        return None
+
+
 def get_signal_history(limit=150):
     """Signal history + momentum success rates for the History tab."""
     try:
         from scores.signal_log import success_report, recent_signals, momentum_thresholds
-        return {"report": success_report(), "recent": recent_signals(limit=limit),
+        # "How often has it hit target in the last year" is a different question
+        # from the all-time rate, and the more useful one — an all-time figure
+        # keeps counting signals from a model version that no longer exists.
+        year_ago = date.today() - timedelta(days=365)
+        return {"report": success_report(), "report_1y": success_report(since=year_ago),
+                "since_1y": str(year_ago),
+                "recent": recent_signals(limit=limit),
                 "thresholds": list(momentum_thresholds())}
     except Exception as e:
         log.warning(f"  signal history unavailable: {e}")
-        return {"report": {"buckets": [], "total_signals": 0}, "recent": [], "thresholds": []}
+        return {"report": {"buckets": [], "total_signals": 0},
+                "report_1y": {"buckets": [], "total_signals": 0}, "since_1y": "",
+                "recent": [], "thresholds": []}
 
 
 def get_phs(td):
@@ -436,6 +452,18 @@ def build_html(state):
     idx_note=(f'<span style="color:#f59e0b">as of {idx_date} {idx_time}</span>'
               if idx_date and idx_date != str(state.get("trade_date") or "")
               else f'<span style="color:#64748b">{idx_time}</span>')
+    # The Global panel carried no date at all, so a stale reading was
+    # indistinguishable from a live one. global_markets had not been written
+    # since 2026-08-03 — over a month — and the sidebar showed those figures
+    # as though they were today's, because get_global() falls back to the most
+    # recent row on or before the view date. The NSE panel beside it has said
+    # "as of ..." all along; this makes the two consistent.
+    glb_date=str(glb.get("date") or "")
+    glb_stale=_stale_days(glb_date)
+    glb_note=(f'<span style="color:{"#dc2626" if glb_stale and glb_stale>3 else "#f59e0b"}">'
+              f'as of {glb_date}</span>'
+              if glb_date and glb_date != str(state.get("trade_date") or "")
+              else f'<span style="color:#64748b">{glb_date}</span>')
     sectors=get_sector_rotation(idx)
     def heat(v):
         """Background intensity scaled to ±2%, which covers a normal NSE day."""
@@ -468,6 +496,21 @@ def build_html(state):
         c = "#059669" if v >= 0 else "#dc2626"
         return f'<span style="color:{c}">{v:+.1f}%</span>'
 
+    # "How often in the last year" asked separately from the all-time rate.
+    # An all-time figure keeps counting signals produced by a model version that
+    # no longer exists, so the two can disagree — and when they do, the recent
+    # one is the one that describes the system you are running now.
+    sh_1y = (sh.get("report_1y") or {})
+    by_1y = {(b["signal"], b["threshold_pct"]): b for b in sh_1y.get("buckets", [])}
+
+    def _cell_1y(sig, th):
+        b = by_1y.get((sig, th))
+        if not b or not b.get("resolved"):
+            return ('<span style="color:#64748b" title="no signal from the last '
+                    '12 months has resolved at this target yet">-</span>')
+        return (f'{_pct(b["hit_rate"])}'
+                f'<span style="color:#64748b;font-size:10px"> ({b["hits"]}/{b["resolved"]})</span>')
+
     succ_rows = ""
     for b in sh_rep.get("buckets", []):
         sig_c = "#059669" if b["signal"] == "BUY" else "#dc2626"
@@ -481,7 +524,8 @@ def build_html(state):
             f'<td>{_num(b["slowest_sessions"])}</td>'
             f'<td>{_signed(b.get("avg_mfe"))}</td>'
             f'<td>{_signed(b.get("avg_mae"))}</td>'
-            f'<td style="color:#64748b">{b["open"]}</td></tr>')
+            f'<td style="color:#64748b">{b["open"]}</td>'
+            f'<td>{_cell_1y(b["signal"], b["threshold_pct"])}</td></tr>')
 
     def _oc(o):
         """One threshold cell: hit / miss / still open, with sessions taken."""
@@ -506,6 +550,21 @@ def build_html(state):
                          'title="price history gap - timing unknown"> ?</span>')
         return '<span style="color:#dc2626">X</span>'
 
+    def _first_hit(outs):
+        """
+        Earliest date any target was reached, and which one.
+
+        The table showed how MANY sessions a hit took but never the date it
+        happened on, so a hit could not be lined up against anything else -- a
+        news event, a results day, or your own order log.
+        """
+        hits = [o for o in outs if o.get("hit") and o.get("hit_date")]
+        if not hits:
+            return '<span style="color:#64748b">-</span>'
+        first = min(hits, key=lambda o: str(o["hit_date"]))
+        return (f'<span style="color:#059669">{str(first["hit_date"])[:10]}</span>'
+                f'<span style="color:#94a3b8;font-size:10px"> @{first["threshold_pct"]:g}%</span>')
+
     hist_rows = ""
     for r in sh.get("recent", []):
         outs = r.get("outcomes", [])
@@ -521,17 +580,19 @@ def build_html(state):
             f'<td>Rs{r.get("entry_price") or "-"}</td>'
             f'<td>{pill(r.get("atip_score"))}</td><td>{pill(r.get("zpi"))}</td>'
             f'<td>{pill(r.get("cri"),inv=True)}</td>{cells}'
+            f'<td>{_first_hit(outs)}</td>'
             f'<td>{_signed(mfe)}</td><td>{_signed(mae)}</td>'
             f'<td style="font-size:10px;color:#64748b">{r.get("model_version") or "-"}</td></tr>')
 
     th_heads = "".join(f'<th style="text-align:center">{t:g}%</th>' for t in ths)
     hist_rows_or_empty = hist_rows or (
-        '<tr><td colspan="14" style="text-align:center;color:#64748b;padding:20px">'
+        '<tr><td colspan="15" style="text-align:center;color:#64748b;padding:20px">'
         'No signals logged yet. The post-market run appends them; backfill past '
         'dates with: python -m scores.signal_log --backfill</td></tr>')
     sh_total = sh_rep.get("total_signals", 0)
     sh_span = (f'{sh_rep.get("first","")} to {sh_rep.get("last","")}'
                if sh_rep.get("first") else "no signals yet")
+    sh_since_1y = sh.get("since_1y") or "-"
     sh_thin = any(b["resolved"] and b["resolved"] < 20 for b in sh_rep.get("buckets", []))
     _gh = sum(b.get("hits_gapped") or 0 for b in sh_rep.get("buckets", []))
     _ht = sum(b.get("hits") or 0 for b in sh_rep.get("buckets", []))
@@ -611,7 +672,7 @@ def build_html(state):
   <div class="kpi"><div class="kpi-l">USD/INR</div><div class="kpi-v">{chg(glb.get('usd_inr_chg'))}</div></div>
 </div>
 <div class="body">
-<div class="sidebar"><h3>NSE Indexes &nbsp;{idx_note}</h3>{idx_rows}<h3>Global</h3>{glb_rows}</div>
+<div class="sidebar"><h3>NSE Indexes &nbsp;{idx_note}</h3>{idx_rows}<h3>Global &nbsp;{glb_note}</h3>{glb_rows}</div>
 <div class="main">
   <div class="section"><div class="st">🎯 Trade of the Day</div>
     <div class="tod-card" data-sym="{tod_sym}">
@@ -657,16 +718,18 @@ def build_html(state):
   <div id="hist" class="tc section">
     <div class="st">Momentum success rate &mdash; did price move the way the signal said?</div>
     <table><thead><tr><th>Signal</th><th>Target</th><th>Resolved</th><th>Hits</th><th>Hit rate</th>
-      <th>Median</th><th>Fastest</th><th>Slowest</th><th>Avg best</th><th>Avg worst</th><th>Open</th></tr></thead>
+      <th>Median</th><th>Fastest</th><th>Slowest</th><th>Avg best</th><th>Avg worst</th><th>Open</th>
+      <th title="Hit rate over signals issued in the last 12 months">Last 1 year</th></tr></thead>
       <tbody>{succ_rows}</tbody></table>
     {sh_note}
-    <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)</div>
+    <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)
+      <span style="font-size:11px;color:#64748b;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input id="hsrch" placeholder="Filter by symbol..." oninput="hft()">
       <select id="hsf" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
     </div>
-    <table id="ht"><thead><tr><th>Date</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
-      {th_heads}<th>Best</th><th>Worst</th><th>Model</th></tr></thead>
+    <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
+      {th_heads}<th title="Date the first target was reached">Target hit</th><th>Best</th><th>Worst</th><th>Model</th></tr></thead>
       <tbody>{hist_rows_or_empty}</tbody></table>
   </div>
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>

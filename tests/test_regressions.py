@@ -255,3 +255,34 @@ def test_chg_span_shows_absolute_and_percentage():
 def test_chg_span_is_empty_without_a_previous_close():
     from dashboard.server import chg_span
     assert chg_span(100.0, None) == ""
+
+
+# ── stale global data must be visibly stale ───────────────────────────────
+
+def test_stale_days_measures_age():
+    """
+    global_markets had not been written since 2026-08-03 — over a month — and
+    the sidebar showed those figures with no date at all, so a month-old reading
+    was indistinguishable from a live one. The NSE panel beside it had always
+    shown "as of ...".
+    """
+    from dashboard.server import _stale_days
+    today = dt.date.today()
+    assert _stale_days(today.isoformat()) == 0
+    assert _stale_days((today - dt.timedelta(days=36)).isoformat()) == 36
+    assert _stale_days("not-a-date") is None
+    assert _stale_days(None) is None
+
+
+def test_signal_history_reports_a_one_year_window(temp_db):
+    """
+    An all-time hit rate keeps counting signals from a model version that no
+    longer exists. The tab now reports the last 12 months separately.
+    """
+    from dashboard.server import get_signal_history
+    sh = get_signal_history()
+    assert "report_1y" in sh
+    assert "since_1y" in sh
+    if sh["since_1y"]:
+        since = dt.date.fromisoformat(sh["since_1y"])
+        assert 364 <= (dt.date.today() - since).days <= 366
