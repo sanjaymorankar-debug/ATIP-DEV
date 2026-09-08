@@ -216,7 +216,17 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
 
         if not resp or resp.get("status") == "failure":
             log.warning(f"  {symbol}: Dhan API error — {resp}")
-            return pd.DataFrame()
+            # An empty frame alone cannot distinguish "the broker refused" from
+            # "this symbol simply had no bars", and callers were treating both as
+            # nothing-to-do. Tag the failure so the pipeline can count it.
+            bad = pd.DataFrame()
+            try:
+                rem = (resp or {}).get("remarks") or {}
+                bad.attrs["dhan_error"] = (rem.get("error_code")
+                                           if isinstance(rem, dict) else str(rem)) or "unknown"
+            except Exception:
+                bad.attrs["dhan_error"] = "unknown"
+            return bad
 
         data = resp.get("data", {})
         if not data:
@@ -873,6 +883,9 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
     conn  = get_connection()
     count = 0
     errors= 0
+    failed = 0          # broker refused (DH-902 not subscribed, DH-905 bad params, ...)
+    empty  = 0          # broker answered, but this symbol had no bars
+    codes  = {}
 
     for i, sym in enumerate(symbols):
         try:
@@ -882,6 +895,13 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                 df = fetch_historical_intraday(sym, start_dt, end_dt, interval_min, dhan)
 
             if df.empty:
+                # Separate a refusal from a genuinely empty symbol, so a total
+                # outage cannot be reported as a clean run.
+                if df.attrs.get("dhan_error"):
+                    failed += 1
+                    codes[df.attrs["dhan_error"]] = codes.get(df.attrs["dhan_error"], 0) + 1
+                else:
+                    empty += 1
                 continue
 
             if interval_min == 0:
@@ -924,9 +944,32 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
 
     conn.commit()
     conn.close()
-    result = {"status": "SUCCESS", "rows": count, "errors": errors}
-    log.info(f"  ✓ Historical download: {count} rows, {errors} errors")
-    log_job("dhan_historical", "SUCCESS", count)
+
+    # Tonight's run logged "0 rows, 0 errors" while every single symbol was
+    # refused with DH-902, because a refusal came back as an empty frame and the
+    # loop skipped it silently. A run that fetched nothing is not a success.
+    attempted = len(symbols)
+    refused_share = failed / attempted if attempted else 0
+    if count == 0 and attempted:
+        status = "FAILED"
+    elif refused_share > 0.2:
+        status = "PARTIAL"
+    else:
+        status = "SUCCESS"
+
+    detail = f"{count} rows, {errors} errors"
+    if failed:
+        top = ", ".join(f"{c}x{k}" for k, c in sorted(codes.items(), key=lambda kv: -kv[1])[:3])
+        detail += f", {failed}/{attempted} refused by broker ({top})"
+    if empty:
+        detail += f", {empty} with no bars"
+    mark = "✓" if status == "SUCCESS" else "✗" if status == "FAILED" else "!"
+    (log.info if status == "SUCCESS" else log.warning)(f"  {mark} Historical download: {detail}")
+
+    result = {"status": status, "rows": count, "errors": errors,
+              "refused": failed, "empty": empty, "error_codes": codes}
+    log_job("dhan_historical", status, count,
+            error=(f"{failed}/{attempted} refused: {codes}" if failed else None))
     return result
 
 
