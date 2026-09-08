@@ -633,15 +633,21 @@ def fetch_live_ohlc(symbols: list, dhan=None) -> pd.DataFrame:
             if not isinstance(stocks, dict):
                 continue
             for sid, q in stocks.items():
+                # Dhan nests OHLC under "ohlc"; there are no top-level open/high/
+                # low/close keys, so reading them flat returned None for every
+                # field while still producing a row that looked populated because
+                # ltp was set. Per Dhan, "ohlc.close" is the PREVIOUS day's close,
+                # not a live close — same convention as fetch_index_quotes().
+                ohlc = q.get("ohlc") or {}
                 rows.append({
-                    "symbol":   sec_map.get(sid, sid),
-                    "ltp":      q.get("last_price"),
-                    "open":     q.get("open"),
-                    "high":     q.get("high"),
-                    "low":      q.get("low"),
-                    "close":    q.get("close"),
-                    "volume":   q.get("volume"),
-                    "timestamp":datetime.now(),
+                    "symbol":     sec_map.get(sid, sid),
+                    "ltp":        q.get("last_price"),
+                    "open":       ohlc.get("open"),
+                    "high":       ohlc.get("high"),
+                    "low":        ohlc.get("low"),
+                    "prev_close": ohlc.get("close"),
+                    "volume":     q.get("volume"),
+                    "timestamp":  datetime.now(),
                 })
         return pd.DataFrame(rows)
 
