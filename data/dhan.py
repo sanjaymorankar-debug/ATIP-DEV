@@ -185,6 +185,25 @@ def get_security_id(symbol: str) -> dict:
 #  HISTORICAL DAILY DATA  (replaces NSE Bhavcopy + yfinance)
 # ═════════════════════════════════════════════════════════════════════════
 
+
+# Dhan stamps every candle at IST midnight. Read as UTC (pandas' default for
+# unit="s") that becomes 18:30 the PREVIOUS day, so every date silently shifts
+# back one: Monday's bar is filed under Sunday and Friday's under Thursday. It
+# corrupts quietly — prices_daily held 89 Sundays and only 50 Fridays — and every
+# indicator, score and forward-looking measurement inherits the error.
+IST = "Asia/Kolkata"
+
+
+def _ist_dates(timestamps):
+    """Epoch seconds -> IST calendar dates (numpy array of datetime.date)."""
+    return pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(IST).date
+
+
+def _ist_datetimes(timestamps):
+    """Epoch seconds -> tz-naive IST datetimes, for intraday bars."""
+    return pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(IST).tz_localize(None)
+
+
 def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
                            dhan=None) -> pd.DataFrame:
     """
@@ -233,7 +252,7 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
             return pd.DataFrame()
 
         df = pd.DataFrame({
-            "date":   pd.to_datetime(data.get("timestamp", []), unit="s").date,
+            "date":   _ist_dates(data.get("timestamp", [])),
             "open":   data.get("open",   []),
             "high":   data.get("high",   []),
             "low":    data.get("low",    []),
@@ -285,7 +304,7 @@ def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,
             return pd.DataFrame()
 
         df = pd.DataFrame({
-            "datetime": pd.to_datetime(data.get("timestamp", []), unit="s"),
+            "datetime": _ist_datetimes(data.get("timestamp", [])),
             "open":     data.get("open",   []),
             "high":     data.get("high",   []),
             "low":      data.get("low",    []),
@@ -560,7 +579,7 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
         if not data:
             return {"status": "FAILED", "error": "empty response"}
 
-        dates = pd.to_datetime(data.get("timestamp", []), unit="s").date
+        dates = _ist_dates(data.get("timestamp", []))
         closes = data.get("close", [])
         conn = get_connection()
         count = 0
