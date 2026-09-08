@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Only what the tested modules import. The broker and scheduler
+          # dependencies are deliberately absent: no CI job should be able to
+          # reach a real brokerage account.
+          pip install pytest pandas numpy ta fastapi uvicorn requests
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+      - name: Deterministic scenario replay
+        run: python -m strategy.backtest_aggressive
