@@ -53,6 +53,7 @@ import logging, argparse
 from datetime import datetime
 from db.schema import get_connection, log_job
 from data.dhan import get_dhan_client, get_security_id, fetch_live_quotes
+from orders.environment import broker_env, get_execution_client, describe, PAPER, LIVE
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,10 @@ def _log_order(conn, symbol, ttype, qty, order_type, product_type, price,
 def get_fund_limits() -> dict:
     """Raw fund-limit payload from Dhan. Returns {} on any failure."""
     try:
-        dhan, _ = get_dhan_client()
+        # Ask the broker that would actually receive the order. Checking live
+        # funds before a PAPER order would block on the real account's balance,
+        # which is both wrong and, at Rs.0.18 available, permanently blocking.
+        dhan, _ = get_execution_client()
     except RuntimeError as e:
         log.error(str(e)); return {}
     try:
@@ -169,7 +173,11 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
                           real order — real money, real trade.
     """
     conn = get_connection(); _ensure_order_log_table(conn)
-    mode = "REAL" if confirm else "DRY_RUN"
+    env = broker_env()
+    # Two independent gates. `confirm` is the caller saying "do it"; `env` is
+    # where "it" goes. Only LIVE + confirm spends real money; LIVE without
+    # confirm is still a dry run, and confirm in PAPER is still simulated.
+    mode = ("REAL" if env == LIVE else env) if confirm else "DRY_RUN"
 
     sec = get_security_id(symbol)
     if not sec:
@@ -186,7 +194,8 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
     else:
         funds = {"ok": True, "available": available_balance(), "message": "SELL — funds check not required"}
 
-    log.info(f"  {'LIVE ORDER' if confirm else 'DRY RUN'}: {transaction_type} {quantity} x {symbol} "
+    log.info(f"  [{describe()}]")
+    log.info(f"  {('ORDER: ' + env) if confirm else 'DRY RUN'}: {transaction_type} {quantity} x {symbol} "
              f"({order_type}{f' @ Rs.{price}' if order_type == 'LIMIT' else ' @ market'}, {product_type}) "
              f"— est. value Rs.{est_value:,.2f}")
 
@@ -199,15 +208,22 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         return {"status": "BLOCKED_INSUFFICIENT_FUNDS", **funds}
 
     if not confirm:
-        log.info("  Dry run only — pass confirm=True (Python) or --confirm (CLI) to place this for real.")
+        log.info(f"  Dry run only — pass confirm=True (Python) or --confirm (CLI) to send "
+                 f"this to {env}." + ("" if env == LIVE else
+                 "  Note: broker_env is not LIVE, so even confirmed orders are simulated."))
         _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
                    price, est_value, funds["available"], mode, "DRY_RUN_OK")
         conn.close()
         return {"status": "DRY_RUN_OK", "estimated_value": est_value, "funds": funds}
 
     try:
-        dhan, _ = get_dhan_client()
-        resp = dhan.place_order(
+        quotes = None
+        try:
+            quotes, _ = get_dhan_client()      # market data stays real in every env
+        except Exception:
+            pass
+        dhan, _ = get_execution_client(quote_source=quotes)
+        kwargs = dict(
             security_id=sec["security_id"],
             exchange_segment=sec["exchange"],
             transaction_type=transaction_type,
@@ -216,6 +232,14 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
             product_type=product_type,
             price=float(price) if order_type == "LIMIT" else 0,
         )
+        # The paper broker wants the ticker so it can price the fill from a live
+        # quote. dhanhq's place_order takes no `symbol` and no **kwargs, so
+        # passing it unconditionally raises TypeError on LIVE — the one
+        # environment where an unexpected failure matters most. Send it only
+        # where it is accepted.
+        if getattr(dhan, "accepts_symbol", False):
+            kwargs["symbol"] = symbol
+        resp = dhan.place_order(**kwargs)
         if not resp or resp.get("status") == "failure":
             log.error(f"  X Order failed: {resp}")
             _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
