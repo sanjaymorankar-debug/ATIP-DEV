@@ -214,3 +214,44 @@ def test_intraday_index_snapshot_refuses_a_past_date(monkeypatch):
 
     markets.fetch_intraday_indexes(_dt.date(2020, 1, 1))
     assert any("LIVE prices" in w for w in warnings),         f"a past date must be refused with an explanation, got: {warnings}"
+
+
+# ── CMP % change must be measured against the PREVIOUS close ──────────────
+
+def test_pct_change_is_against_the_previous_close():
+    """
+    The dashboard compared a live price against the DISPLAYED session's own
+    close. With scores a day behind that reported the move since that session —
+    NIACL showed -11.2%, which was the real 09-07 to 09-08 move, not today's
+    change. With scores current it reported 0.00%, comparing a close to itself.
+    """
+    from dashboard.server import pct_change
+    assert pct_change(205.22, 231.20) == -11.24     # NIACL, as it really moved
+    assert pct_change(1231.30, 1156.50) == 6.47     # PVRINOX
+    assert pct_change(100.0, 100.0) == 0.0
+
+
+@pytest.mark.parametrize("last,prev", [
+    (100.0, None), (100.0, 0), (100.0, -5), (None, 100.0),
+    ("", 100.0), (100.0, "n/a"),
+])
+def test_pct_change_is_none_when_unknowable(last, prev):
+    """A missing or nonsensical previous close must not render as 0%."""
+    from dashboard.server import pct_change
+    assert pct_change(last, prev) is None
+
+
+def test_chg_span_shows_absolute_and_percentage():
+    """Industry standard for a quote: the move in rupees and in percent."""
+    from dashboard.server import chg_span
+    out = chg_span(205.22, 231.20)
+    assert "-25.98" in out and "-11.24%" in out
+    assert "#dc2626" in out                       # red for a fall
+    up = chg_span(1231.30, 1156.50)
+    assert "+74.80" in up and "+6.47%" in up
+    assert "#059669" in up                        # green for a rise
+
+
+def test_chg_span_is_empty_without_a_previous_close():
+    from dashboard.server import chg_span
+    assert chg_span(100.0, None) == ""

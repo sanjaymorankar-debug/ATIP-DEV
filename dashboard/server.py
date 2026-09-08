@@ -46,9 +46,52 @@ def q1(conn,sql,*params):
     try: r=conn.execute(sql,params).fetchone(); return dict(r) if r else {}
     except: return {}
 
+# The close of the session BEFORE the one on screen. Every percentage change on
+# this dashboard is measured against it, because that is what a change figure
+# means everywhere else in finance: today's move, not the move since some other
+# session. Comparing a live price against the DISPLAYED session's own close was
+# the bug — with scores a day behind it reported NIACL at -11.2%, which was the
+# real 2026-09-07 to 2026-09-08 move, not today's change; with scores current it
+# reported 0.0%, because it was comparing today's close against itself.
+PREV_CLOSE_SQL = ("(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=%(sym)s "
+                  "AND p2.date < %(date)s ORDER BY p2.date DESC LIMIT 1)")
+
+
+def pct_change(last, prev):
+    """Change from prev close to last, as a percentage. None when unknowable."""
+    try:
+        last, prev = float(last), float(prev)
+    except (TypeError, ValueError):
+        return None
+    if prev <= 0:
+        return None
+    return round((last - prev) / prev * 100, 2)
+
+
+def chg_span(last, prev, size=10):
+    """
+    CMP change rendered the way a quote screen renders it: absolute move and
+    percentage, coloured, both against the previous close.
+    """
+    p = pct_change(last, prev)
+    if p is None:
+        return ""
+    diff = float(last) - float(prev)
+    col = "#059669" if p >= 0 else "#dc2626"
+    sign = "+" if p >= 0 else ""
+    return (f'<span style="font-size:{size}px;color:{col}"> {sign}{diff:.2f} '
+            f'({sign}{p:.2f}%)</span>')
+
+
 def get_scores(td,limit=50):
     conn=get_connection()
-    try: return q(conn,"SELECT s.*,p.close as cmp,t.rsi_14,t.adx_14,t.atr_pct,t.volume_ratio FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=? LEFT JOIN technical_indicators t ON s.symbol=t.symbol AND t.date=? WHERE s.date=? ORDER BY s.atip_score DESC LIMIT ?",str(td),str(td),str(td),limit)
+    try: return q(conn,"SELECT s.*,p.close as cmp,"
+                  "(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=s.symbol AND p2.date<? ORDER BY p2.date DESC LIMIT 1) AS prev_close,"
+                  "t.rsi_14,t.adx_14,t.atr_pct,t.volume_ratio FROM ai_scores s "
+                  "LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=? "
+                  "LEFT JOIN technical_indicators t ON s.symbol=t.symbol AND t.date=? "
+                  "WHERE s.date=? ORDER BY s.atip_score DESC LIMIT ?",
+                  str(td),str(td),str(td),str(td),limit)
     finally: conn.close()
 
 def latest_scored_date():
@@ -161,7 +204,11 @@ def get_global(td):
 def get_tod(td):
     conn=get_connection()
     try:
-        d=q1(conn,"SELECT s.*,p.close as cmp,t.atr_14 FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=? LEFT JOIN technical_indicators t ON s.symbol=t.symbol AND t.date=? WHERE s.date=? AND s.is_tod=1 LIMIT 1",str(td),str(td),str(td))
+        d=q1(conn,"SELECT s.*,p.close as cmp,"
+             "(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=s.symbol AND p2.date<? ORDER BY p2.date DESC LIMIT 1) AS prev_close,"
+             "t.atr_14 FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=? "
+             "LEFT JOIN technical_indicators t ON s.symbol=t.symbol AND t.date=? "
+             "WHERE s.date=? AND s.is_tod=1 LIMIT 1",str(td),str(td),str(td),str(td))
         if d.get("cmp") and d.get("atr_14"):
             d["sl"]=round(d["cmp"]-1.5*d["atr_14"],2); d["t1"]=round(d["cmp"]+2.0*d["atr_14"],2); d["t2"]=round(d["cmp"]+3.5*d["atr_14"],2)
         return d
@@ -174,7 +221,10 @@ def get_news(limit=20):
 
 def get_portfolio(td):
     conn=get_connection()
-    try: return q(conn,"SELECT * FROM portfolio_holdings WHERE date=? ORDER BY weight_pct DESC",str(td))
+    try: return q(conn,"SELECT h.*,"
+                  "(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=h.symbol AND p2.date<? ORDER BY p2.date DESC LIMIT 1) AS prev_close "
+                  "FROM portfolio_holdings h WHERE h.date=? ORDER BY h.weight_pct DESC",
+                  str(td),str(td))
     finally: conn.close()
 
 def get_fii_dii(td,days=10):
@@ -225,7 +275,10 @@ def get_top25(td):
     conn=get_connection()
     try:
         def t25(col,where=""):
-            return q(conn,f"SELECT s.symbol,s.atip_score,s.{col},s.signal,s.cri,s.acs,s.beta_1y,p.close as cmp FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=s.date WHERE s.date=? {where} ORDER BY s.{col} DESC LIMIT 25",str(td))
+            return q(conn,f"SELECT s.symbol,s.atip_score,s.{col},s.signal,s.cri,s.acs,s.beta_1y,p.close as cmp,"
+                          f"(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=s.symbol AND p2.date<s.date ORDER BY p2.date DESC LIMIT 1) AS prev_close "
+                          f"FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=s.date "
+                          f"WHERE s.date=? {where} ORDER BY s.{col} DESC LIMIT 25",str(td))
         return {"vpi":t25("vpi"),"rri":t25("rri"),"mri":t25("mri"),"zpi":t25("zpi","AND s.signal='BUY'"),"cri":t25("cri","AND s.cri>60")}
     finally: conn.close()
 
@@ -316,9 +369,9 @@ def build_html(state):
     def cname(sym):
         n=names.get((sym or "").upper())
         return f'<div style="font-size:9.5px;color:#64748b;font-weight:400;white-space:normal">{n}</div>' if n else ""
-    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-eod="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}</td><td>{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores[:50])
+    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores[:50])
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
-    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-eod="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
+    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
     # about where the market closed, which is the first thing you look for
     # outside market hours -- and pre-open every change legitimately reads 0.00%
@@ -335,8 +388,8 @@ def build_html(state):
     def t25_row(r,mid,primary="BUY",sig_style=""):
         return (f'<tr data-sym="{r.get("symbol")}">'
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>{mid}'
-                f'<td class="cmpcell" data-eod="{r.get("cmp") or ""}">₹{r.get("cmp") or "—"}</td>'
-                f'<td>{bval(r.get("beta_1y"))}</td>'
+                f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">₹{r.get("cmp") or "—"}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
+                f'<td data-v="{r.get("beta_1y") if r.get("beta_1y") is not None else ""}">{bval(r.get("beta_1y"))}</td>'
                 f'<td{sig_style}>{r.get("signal","—")}</td>'
                 f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary)}</td></tr>')
 
@@ -563,7 +616,7 @@ def build_html(state):
   <div class="section"><div class="st">🎯 Trade of the Day</div>
     <div class="tod-card" data-sym="{tod_sym}">
       <div class="tod-sym">{tod_sym} <span style="font-size:13px;color:#059669">{tod_sig}</span>{f'<div style="font-size:12px;color:#94a3b8;font-weight:400">{tod_cname}</div>' if tod_cname else ''}</div>
-      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-eod="{tod.get('cmp') or ''}">₹{tod_cmp}</div></div>
+      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">₹{tod_cmp}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
       <div><div class="tod-l">Stop Loss</div><div class="tod-v" style="color:#dc2626">₹{tod.get('sl','—')}</div></div>
       <div><div class="tod-l">Target 1</div><div class="tod-v" style="color:#059669">₹{tod.get('t1','—')}</div></div>
       <div><div class="tod-l">Target 2</div><div class="tod-v" style="color:#059669">₹{tod.get('t2','—')}</div></div>
@@ -648,7 +701,63 @@ def build_html(state):
 </div></div>
 <script>
 function showTab(id,el){{document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');el.classList.add('active');}}
-let ss={{}};function srt(tid,col){{const tb=document.getElementById(tid);const rows=[...tb.querySelectorAll('tbody tr')];const asc=ss[tid+col]!==true;ss[tid+col]=asc;rows.sort((a,b)=>{{const av=a.cells[col]?.innerText.replace(/[^0-9.\\-]/g,'');const bv=b.cells[col]?.innerText.replace(/[^0-9.\\-]/g,'');const an=parseFloat(av),bn=parseFloat(bv);if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;return asc?(av||'').localeCompare(bv||''):(bv||'').localeCompare(av||'');}});const tbody=tb.querySelector('tbody');rows.forEach(r=>tbody.appendChild(r));}}
+let ss={{}};
+// Sort any table column. Three things the previous version got wrong:
+//   * it parsed the RENDERED text, so a CMP cell reading "Rs3176.70 +2.45 (0.08%)"
+//     collapsed to a meaningless number once the change was added beside it;
+//   * a missing value (an em dash) became NaN and silently fell back to a STRING
+//     compare for the whole pair, so one blank beta scrambled the column;
+//   * nothing on screen said the headers were clickable at all.
+// Cells that carry a `data-v` attribute are sorted on that; everything else
+// falls back to text. Blanks always sort last, in both directions, because a
+// missing value is not "the smallest value".
+function cellVal(td){{
+  if(!td) return null;
+  if(td.dataset && td.dataset.v!==undefined) {{
+    if(td.dataset.v==='') return null;
+    var d=parseFloat(td.dataset.v); return isNaN(d)?null:d;
+  }}
+  var t=(td.innerText||'').trim();
+  if(!t||t==='—'||t==='-') return null;
+  var m=t.replace(/[,₹%]/g,'').match(/-?\\d+(\\.\\d+)?/);
+  return m?parseFloat(m[0]):t.toLowerCase();
+}}
+function srt(tid,col){{
+  const tb=document.getElementById(tid); if(!tb) return;
+  const rows=[...tb.querySelectorAll('tbody tr')];
+  const asc=ss[tid+col]!==true; ss[tid+col]=asc;
+  rows.sort((a,b)=>{{
+    const av=cellVal(a.cells[col]), bv=cellVal(b.cells[col]);
+    if(av===null&&bv===null) return 0;
+    if(av===null) return 1;          // blanks last, whichever direction
+    if(bv===null) return -1;
+    if(typeof av==='number'&&typeof bv==='number') return asc?av-bv:bv-av;
+    return asc?String(av).localeCompare(String(bv)):String(bv).localeCompare(String(av));
+  }});
+  const tbody=tb.querySelector('tbody'); rows.forEach(r=>tbody.appendChild(r));
+  tb.querySelectorAll('thead th').forEach((th,i)=>{{
+    th.dataset.sorted = (i===col) ? (asc?'asc':'desc') : '';
+  }});
+}}
+// Make every table sortable, and make it look sortable. Sorting already existed
+// on the ATIP Scores table but nothing indicated it, and the Top-25 tables --
+// which also show Beta -- had none at all.
+function makeSortable(){{
+  document.querySelectorAll('.tc table, #st').forEach(tb=>{{
+    if(!tb.id) tb.id='t'+Math.random().toString(36).slice(2,9);
+    tb.querySelectorAll('thead th').forEach((th,i)=>{{
+      if(th.dataset.sortable) return;
+      var label=(th.innerText||'').trim();
+      if(label==='Action'||label==='') return;
+      th.dataset.sortable='1';
+      th.style.cursor='pointer';
+      th.title='Sort by '+label;
+      th.addEventListener('click',function(){{srt(tb.id,i);}});
+    }});
+  }});
+}}
+document.addEventListener('DOMContentLoaded',makeSortable);
+makeSortable();
 function ft(){{
   var q=(document.getElementById('srch')||{{value:''}}).value.toLowerCase();
   var s=(document.getElementById('sf')||{{value:''}}).value.toLowerCase();
@@ -688,6 +797,11 @@ function liveCmpFor(sym){{
   // and it's the only source when the EOD join came back empty (cmp=0).
   var el=document.querySelector('[data-sym="'+sym+'"] .cmpcell')||document.querySelector('[data-sym="'+sym+'"].cmpcell');
   if(!el)return 0;
+  // Read the numeric attribute rather than parsing the cell text: the cell now
+  // also carries the absolute and percentage change, and a text parse would
+  // happily read part of that as the price.
+  var dv=parseFloat(el.dataset.cmp||'');
+  if(!isNaN(dv)&&dv>0)return dv;
   var v=parseFloat((el.textContent||'').replace(/[^0-9.]/g,''));
   return (!isNaN(v)&&v>0)?v:0;
 }}
@@ -853,10 +967,18 @@ async function pollLiveQuotes(){{
       if(!qd || !qd.ltp) return;
       var cell = el.classList.contains('cmpcell') ? el : el.querySelector('.cmpcell');
       if(!cell) return;
-      var eod=parseFloat(cell.dataset.eod);
-      var chgFromEod = (!isNaN(eod) && eod>0) ? ((qd.ltp-eod)/eod*100) : null;
-      var col = chgFromEod===null ? '#e2e8f0' : (chgFromEod>=0 ? '#059669' : '#dc2626');
-      cell.innerHTML = '₹'+qd.ltp.toFixed(2) + (chgFromEod!==null ? ' <span style="font-size:10px;color:'+col+'">'+(chgFromEod>=0?'+':'')+chgFromEod.toFixed(1)+'%</span>' : '');
+      // Against the PREVIOUS session's close, which is what a change figure
+      // means on any quote screen. Measuring against the displayed session's own
+      // close reported the move since THAT session: -11.2% for NIACL while
+      // scores were a day behind, and 0.00% once they were current.
+      var prev=parseFloat(cell.dataset.prev);
+      var pct = (!isNaN(prev) && prev>0) ? ((qd.ltp-prev)/prev*100) : null;
+      var col = pct===null ? '#e2e8f0' : (pct>=0 ? '#059669' : '#dc2626');
+      var sign = (pct!==null && pct>=0) ? '+' : '';
+      cell.innerHTML = '₹'+qd.ltp.toFixed(2) + (pct!==null
+        ? ' <span style="font-size:10px;color:'+col+'">'+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
+        : '');
+      cell.dataset.cmp = qd.ltp;
     }});
   }}catch(e){{}}
 }}
