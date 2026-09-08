@@ -344,8 +344,15 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
 
         now = datetime.now().isoformat()
         for s in sigs:
+            # A resolution reached across a data gap is PROVISIONAL. The bars that
+            # would have shown when the target was really hit were missing at the
+            # time; once the history is backfilled the answer can change, and
+            # treating it as settled froze "hit in 27 sessions" into the record
+            # even after the true 1-session move became visible. Anything resolved
+            # on contiguous data is final and stays skipped.
             done = {r["threshold_pct"] for r in conn.execute(
-                "SELECT threshold_pct FROM signal_outcome WHERE signal_id=? AND still_open=0",
+                "SELECT threshold_pct FROM signal_outcome "
+                "WHERE signal_id=? AND still_open=0 AND COALESCE(data_gap_sessions,0)=0",
                 (s["id"],)).fetchall()}
             todo = [t for t in ths if t not in done]
             if not todo:
