@@ -194,6 +194,24 @@ def get_security_id(symbol: str) -> dict:
 IST = "Asia/Kolkata"
 
 
+def _unwrap_feed(resp):
+    """
+    Return the exchange-segment dict from a /marketfeed/* response.
+
+    The SDK wraps the API's own envelope, so the payload sits at
+    resp["data"]["data"][SEGMENT] rather than resp["data"][SEGMENT]. Reading one
+    level too shallow yields {} and the caller reports "0 fetched" with no error
+    — which is exactly why the dashboard showed no NSE index. Peel any number of
+    envelope layers (dicts whose keys are only status/data/remarks) so this holds
+    whichever shape a given SDK version returns.
+    """
+    data = resp.get("data", {}) if isinstance(resp, dict) else {}
+    while (isinstance(data, dict) and "data" in data
+           and set(data.keys()) <= {"status", "data", "remarks"}):
+        data = data["data"]
+    return data if isinstance(data, dict) else {}
+
+
 def _ist_dates(timestamps):
     """Epoch seconds -> IST calendar dates (numpy array of datetime.date)."""
     return pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(IST).date
@@ -358,26 +376,13 @@ def fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
             return pd.DataFrame()
 
         rows = []
-        data = resp.get("data", {})
-
-        # Dhan's quote_data() (full quote w/ market depth) has been observed
-        # to double-wrap the payload — {"status":"success","data":{"status":
-        # "success","data":{"NSE_EQ":{...}}}} — one level deeper than
-        # ohlc_data()'s {"data":{"NSE_EQ":{...}}}. Unwrap any such envelope
-        # layers (dicts whose only keys are status/data/remarks) until we
-        # reach the actual exchange-segment dict. This was confirmed against
-        # a real response on 2026-07-30 — the un-unwrapped version silently
-        # produced a "quote" that was really {sec_id: {...}}, so every field
-        # read off it came back None.
-        _seen = 0
-        while isinstance(data, dict) and set(data.keys()) <= {"status", "data", "remarks"} and "data" in data:
-            data = data["data"]
-            _seen += 1
-            if _seen > 5:  # sanity guard against any unexpected infinite-envelope response
-                break
-
-        if not isinstance(data, dict):
-            log.error(f"  Live quotes failed: expected dict for resp['data'], got {type(data).__name__}: {str(data)[:200]}")
+        # Same envelope handling as every other market-feed call — see
+        # _unwrap_feed(). Confirmed against a real response on 2026-07-30, where
+        # the un-unwrapped version produced a "quote" that was really
+        # {sec_id: {...}}, so every field read off it came back None.
+        data = _unwrap_feed(resp)
+        if not data:
+            log.warning(f"  Live quotes: empty payload — {str(resp)[:200]}")
             return pd.DataFrame()
 
         for exch, stocks in data.items():
@@ -484,9 +489,9 @@ def fetch_index_quotes(cols: list = None, dhan=None) -> pd.DataFrame:
             log.warning(f"  Index quote data failed: {resp}")
             return pd.DataFrame()
 
-        data = resp.get("data", {})
-        if not isinstance(data, dict):
-            log.error(f"  Index quotes failed: expected dict, got {type(data).__name__}: {str(data)[:200]}")
+        data = _unwrap_feed(resp)
+        if not data:
+            log.warning(f"  Index quotes: empty payload — {str(resp)[:200]}")
             return pd.DataFrame()
 
         stocks = data.get(INDEX_EXCHANGE_SEGMENT, {})
@@ -624,7 +629,9 @@ def fetch_live_ohlc(symbols: list, dhan=None) -> pd.DataFrame:
             return pd.DataFrame()
 
         rows = []
-        for exch, stocks in resp.get("data", {}).items():
+        for exch, stocks in _unwrap_feed(resp).items():
+            if not isinstance(stocks, dict):
+                continue
             for sid, q in stocks.items():
                 rows.append({
                     "symbol":   sec_map.get(sid, sid),
