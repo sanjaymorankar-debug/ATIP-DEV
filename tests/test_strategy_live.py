@@ -265,9 +265,14 @@ def test_exit_fills_at_the_price_the_decision_was_made_on(temp_db, cfg, monkeypa
     # have no effect on the code actually under test.
     monkeypatch.setattr("orders.broker.get_execution_client",
                         lambda quote_source=None: (b, "PAPER"))
-    # A real ticker: this test drives the genuine _place_order path, which looks
-    # the symbol up in Dhan's security master and refuses an unknown one.
-    sym = "RELIANCE"
+    # This test drives the genuine _place_order path, which resolves the ticker
+    # through Dhan's security master — a 200k-row CSV that is not in the repo.
+    # Relying on it made this pass locally and fail in CI. Stub the lookup: this
+    # test is about the fill price matching the decision price, not about symbol
+    # resolution, and a test should not need a downloaded data file to run.
+    monkeypatch.setattr("orders.broker.get_security_id",
+                        lambda symbol: {"security_id": "1", "exchange": "NSE_EQ"})
+    sym = "ACME"
 
     r = b.place_order(transaction_type="BUY", quantity=100, symbol=sym,
                       reference_price=100.0)
