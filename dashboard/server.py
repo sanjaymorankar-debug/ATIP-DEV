@@ -128,24 +128,29 @@ def get_mh(td):
     try: return q1(conn,"SELECT * FROM market_health WHERE date=?",str(td))
     finally: conn.close()
 
-def get_indexes(td):
+def get_indexes(td=None):
     """
-    Latest NSE index snapshot on or before td — the last close if today's
-    intraday feed hasn't run.
+    The most recent NSE index snapshot there is — deliberately NOT tied to the
+    scored date.
 
-    This used to match the date EXACTLY, which meant the entire index panel,
-    the Nifty/BankNifty/VIX/GIFT KPI tiles and Sector Rotation all rendered
-    blank whenever index_levels had no row for the scored date. That is the
-    normal case outside market hours: the index feed is Dhan live quotes, and
-    Dhan's marketfeed returns empty when the market is closed, so a post-market
-    scoring run produces scores for a date that has no index row at all.
+    It used to match the scored date EXACTLY, so the whole index panel rendered
+    blank outside market hours. That was fixed with a `date<=td` fallback, which
+    fixed the blank but introduced the opposite fault: the reading is also
+    CAPPED at the scored date, so whenever scoring falls behind, the panel keeps
+    showing an old snapshot while fresher rows sit unused in the table.
 
-    get_global() beside it already fell back this way; indexes now match. The
-    caller can compare the returned `date` against the view date to tell the
-    user how old the reading is.
+    Seen on 2026-09-08 at 19:56: scores were a session behind at 2026-09-07, so
+    the panel showed a pre-open snapshot from 08:43 with every change at +0.00%,
+    while 2,743 rows from that day — including the actual close, Nifty 23,635.10
+    at -0.61% — were ignored.
+
+    These are two different things. Scores describe a session; the index panel
+    describes the market right now, and the freshness banner already says how
+    old the scores are. `td` is accepted and ignored, for callers that still
+    pass it.
     """
     conn=get_connection()
-    try: return q1(conn,"SELECT * FROM index_levels WHERE date<=? ORDER BY date DESC,time DESC LIMIT 1",str(td))
+    try: return q1(conn,"SELECT * FROM index_levels ORDER BY date DESC,time DESC LIMIT 1")
     finally: conn.close()
 
 def get_global(td):

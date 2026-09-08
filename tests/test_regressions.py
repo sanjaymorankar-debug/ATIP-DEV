@@ -171,3 +171,46 @@ def test_json_safe_encodes_dates():
     encoded = json.dumps(payload)
     assert "2026-09-07" in encoded
     assert json.loads(encoded)[0]["score"] == 68.2
+
+
+# ── the index panel must not be capped at a stale score date ──────────────
+
+def test_index_panel_shows_the_latest_reading_not_the_scored_date(temp_db):
+    """
+    Two faults, opposite directions. Matching the scored date exactly left the
+    panel blank outside market hours. The `date<=td` fix also CAPPED it, so when
+    scoring fell a session behind the panel showed a pre-open snapshot at
+    +0.00% while that day's actual close sat unused in the table.
+    """
+    from db.schema import get_connection
+    from dashboard.server import get_indexes
+
+    conn = get_connection()
+    conn.execute("CREATE TABLE IF NOT EXISTS index_levels "
+                 "(date DATE, time TEXT, nifty50 REAL, nifty50_chg REAL)")
+    conn.execute("INSERT INTO index_levels VALUES ('2026-09-07','08:43:16',23779.15,0.0)")
+    conn.execute("INSERT INTO index_levels VALUES ('2026-09-08','15:31:02',23635.10,-0.606)")
+    conn.commit()
+    conn.close()
+
+    idx = get_indexes("2026-09-07")          # scores a session behind
+    assert idx["nifty50"] == 23635.10, "must show the newest reading available"
+    assert idx["nifty50_chg"] == -0.606
+
+
+def test_intraday_index_snapshot_refuses_a_past_date(monkeypatch):
+    """
+    The row stamps `now`'s clock time and `now`'s prices, so dating it in the
+    past corrupts that day's index history.
+    """
+    import datetime as _dt
+    import logging
+    from data import markets
+
+    monkeypatch.setattr(markets, "fetch_index_quotes", lambda cols: pd.DataFrame())
+
+    warnings = []
+    monkeypatch.setattr(markets.log, "warning", lambda m, *a, **k: warnings.append(str(m)))
+
+    markets.fetch_intraday_indexes(_dt.date(2020, 1, 1))
+    assert any("LIVE prices" in w for w in warnings),         f"a past date must be refused with an explanation, got: {warnings}"

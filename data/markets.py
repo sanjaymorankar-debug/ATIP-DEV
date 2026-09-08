@@ -30,7 +30,23 @@ def safe_float(val):
     except: return None
 
 def fetch_intraday_indexes(trade_date=None):
-    if trade_date is None: trade_date = date.today()
+    """
+    Snapshot the live index quotes into index_levels.
+
+    The row pairs a date with `now`'s clock time and `now`'s prices, so the date
+    must be today. Passing a past date writes current prices under a historical
+    stamp and silently corrupts that day's index history — which is exactly how
+    a pre-open snapshot ended up filed as 2026-09-07 08:43:16 with every change
+    at 0.00%, and then surfaced on the dashboard as the previous session's close.
+    """
+    today = date.today()
+    if trade_date is None:
+        trade_date = today
+    elif trade_date != today:
+        log.warning(f"  Index refresh asked for {trade_date}, but these are LIVE prices "
+                    f"as of {today} — recording under {today} instead. Backfilling a past "
+                    f"session's indexes needs historical data, not a live snapshot.")
+        trade_date = today
     now_time = datetime.now().strftime("%H:%M:%S")  # matches dhan_ws.py's format so
                                                        # ORDER BY time DESC sorts correctly
                                                        # across rows from both writers
