@@ -471,14 +471,21 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
         buckets = {}
         for r in rows:
             k = (r["signal"], r["threshold_pct"])
-            b = buckets.setdefault(k, {"resolved": 0, "hits": 0, "open": 0,
-                                       "days": [], "mfe": [], "mae": [], "gapped": 0})
+            b = buckets.setdefault(k, {"resolved": 0, "hits": 0, "open": 0, "days": [],
+                                       "mfe": [], "mae": [], "gapped": 0, "hits_gapped": 0})
             if r["still_open"]:
                 b["open"] += 1
             else:
                 b["resolved"] += 1
                 if r["hit"]:
                     b["hits"] += 1
+                    # A hit established only across a data gap is weak evidence
+                    # about the SIGNAL: it says price was above target when the
+                    # feed came back, not that a momentum move played out. Counted
+                    # as a hit, but surfaced separately so the rate can be read
+                    # with that in mind.
+                    if r["gap"]:
+                        b["hits_gapped"] += 1
                     # Timing only counts when the forward data is contiguous. A
                     # signal whose next bar is weeks later did reach the target,
                     # but "how long it took" is unknowable — including it would
@@ -503,6 +510,7 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
                 "avg_mfe": round(sum(b["mfe"]) / len(b["mfe"]), 2) if b["mfe"] else None,
                 "avg_mae": round(sum(b["mae"]) / len(b["mae"]), 2) if b["mae"] else None,
                 "timing_unmeasurable": b["gapped"],
+                "hits_gapped": b["hits_gapped"],
             })
         totals = conn.execute(f"""
             SELECT COUNT(*) n, COUNT(DISTINCT l.signal_date) days,
@@ -535,7 +543,8 @@ def recent_signals(limit=200, symbol=None):
             d = dict(r)
             d["outcomes"] = [dict(o) for o in conn.execute(
                 "SELECT threshold_pct,hit,sessions_to_hit,hit_date,still_open,"
-                "max_favourable_pct,max_adverse_pct FROM signal_outcome "
+                "max_favourable_pct,max_adverse_pct,"
+                "COALESCE(data_gap_sessions,0) AS data_gap_sessions FROM signal_outcome "
                 "WHERE signal_id=? ORDER BY threshold_pct", (r["id"],)).fetchall()]
             out.append(d)
         return out

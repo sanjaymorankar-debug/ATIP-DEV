@@ -425,10 +425,19 @@ def build_html(state):
             return '<span style="color:#64748b">open</span>'
         if o.get("hit"):
             d = o.get("sessions_to_hit")
+            gap = o.get("data_gap_sessions") or 0
+            ok = '<span style="color:#059669;font-weight:700">OK</span>'
+            if d and not gap:
+                return ok + f'<span style="color:#94a3b8;font-size:10px"> {d}d</span>'
+            # Hit across a hole in the price history. It DID reach the target, but
+            # the elapsed time is only an upper bound - "27d" here would claim a
+            # precision the data cannot support, so show it as "<=27d".
             if d:
-                return f'<span style="color:#059669;font-weight:700">OK</span><span style="color:#94a3b8;font-size:10px"> {d}d</span>'
-            # Hit, but a price-history gap makes the elapsed time unknowable.
-            return '<span style="color:#059669;font-weight:700">OK</span><span style="color:#f59e0b;font-size:10px" title="price history gap - timing unknown"> ?</span>'
+                return ok + (f'<span style="color:#f59e0b;font-size:10px" '
+                             f'title="{gap} session(s) missing from price history - '
+                             f'target was reached somewhere inside that window"> &le;{d}d</span>')
+            return ok + ('<span style="color:#f59e0b;font-size:10px" '
+                         'title="price history gap - timing unknown"> ?</span>')
         return '<span style="color:#dc2626">X</span>'
 
     hist_rows = ""
@@ -458,10 +467,23 @@ def build_html(state):
     sh_span = (f'{sh_rep.get("first","")} to {sh_rep.get("last","")}'
                if sh_rep.get("first") else "no signals yet")
     sh_thin = any(b["resolved"] and b["resolved"] < 20 for b in sh_rep.get("buckets", []))
-    sh_note = ('<div style="color:#f59e0b;font-size:11.5px;margin-top:6px">'
-               'Small sample - treat these percentages as indicative, not a track record. '
-               'A cell showing OK with "?" means the target was reached but a gap in price '
-               'history makes the elapsed time unknowable.</div>') if sh_thin else ''
+    _gh = sum(b.get("hits_gapped") or 0 for b in sh_rep.get("buckets", []))
+    _ht = sum(b.get("hits") or 0 for b in sh_rep.get("buckets", []))
+    _msgs = []
+    if sh_thin:
+        _msgs.append("Small sample - treat these percentages as indicative, not a "
+                     "track record.")
+    if _gh:
+        # The single most misleading thing this table can do is show a high hit
+        # rate built out of gaps, so say it in the open rather than in a tooltip.
+        _msgs.append(f"<b>{_gh} of {_ht} hits were established across a gap in price "
+                     f"history</b> - price was already past the target when data "
+                     f"resumed, so those say nothing about how fast, or whether the "
+                     f"move would have been catchable. Marked &le; in the table. "
+                     f"Fix the daily price feed before reading these rates as "
+                     f"performance.")
+    sh_note = ('<div style="color:#f59e0b;font-size:11.5px;margin-top:6px;line-height:1.5">'
+               + " ".join(_msgs) + '</div>') if _msgs else ''
 
     # ── Data freshness banner ────────────────────────────────────────────────
     shown_d, expected_d, stale_n = data_freshness()
