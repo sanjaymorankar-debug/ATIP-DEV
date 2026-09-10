@@ -270,6 +270,23 @@ def get_signal_history(limit=150):
                 "recent": [], "thresholds": []}
 
 
+def get_order_book(limit=300):
+    """
+    Every order rule ATIP is tracking, in every state -- the 'where are my
+    orders' view. Deliberately not limited to Dhan-visible orders: a rule
+    still watching a trigger price, or one ATIP rejected or let expire, never
+    reaches Dhan at all, and that absence is exactly what a user needs to see
+    to understand why nothing shows up in Dhan's own order book.
+    """
+    try:
+        from orders import rules as oe
+        rows = oe.list_rules()
+        return rows[:limit]
+    except Exception as e:
+        log.warning(f"  order book unavailable: {e}")
+        return []
+
+
 def get_phs(td):
     """Portfolio Health Score — the doc's section 11. Computed on demand rather
     than read from a column so the panel is never stale relative to holdings."""
@@ -300,7 +317,7 @@ def get_top25(td):
 
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
-    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history()}
+    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history(),"orders_book":get_order_book()}
     STATE_PATH.parent.mkdir(exist_ok=True); STATE_PATH.write_text(json.dumps(state,default=str))
     return state
 
@@ -477,6 +494,74 @@ def build_html(state):
         f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
         for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
     # ── Signal history + momentum success rates ──────────────────────────────
+    ob = state.get("orders_book") or []
+
+    def _order_row(r):
+        status = r.get("status") or ""
+        scol = {"ACTIVE": "#2563eb", "PENDING_CONFIRMATION": "#f59e0b",
+                "EXECUTED": "#059669", "FAILED": "#dc2626",
+                "CANCELLED": "#64748b", "EXPIRED": "#64748b"}.get(status, "#94a3b8")
+        oid = r.get("dhan_order_id") or ""
+        # The order id prefix IS the ground truth for "was this ever real":
+        # execute_rule() stores whatever orders.broker.place_*_order() returns,
+        # and the paper broker's ids are always "PAPERxxxxxxxx". A rule with no
+        # id yet has simply never fired -- it is still watching its trigger.
+        if oid.startswith("PAPER"):
+            mode = ('<span style="color:#94a3b8;font-size:10px;border:1px solid #94a3b8;'
+                    'border-radius:3px;padding:0 4px" title="Filled by the paper broker '
+                    'at a live price -- never reached Dhan">PAPER</span>')
+        elif oid:
+            mode = ('<span style="color:#dc2626;font-size:10px;font-weight:700;border:1px '
+                    'solid #dc2626;border-radius:3px;padding:0 4px" title="Placed with '
+                    'Dhan for real">LIVE</span>')
+        else:
+            mode = ""
+        role = r.get("role") or "ENTRY"
+        role_badge = (f' <b style="color:{"#dc2626" if role=="STOP" else "#059669" if role=="TARGET" else "#38bdf8"}">'
+                     f'[{role}]</b>') if role != "ENTRY" else ""
+        dirsym = "≤" if r.get("trigger_direction") == "BELOW" else "≥"
+        trig = r.get("resolved_trigger_price")
+        trig_s = f'{dirsym} ₹{trig:,.2f}' if trig is not None else "—"
+        qty = r.get("quantity_value")
+        qty_s = (f'{qty:g} sh' if r.get("quantity_type") == "SHARES" else f'₹{qty:,.0f}') if qty is not None else "—"
+        exec_price = r.get("execution_price")
+        exec_s = (f'₹{exec_price:,.2f} × {r.get("execution_quantity") or "?"}'
+                  if exec_price else "—")
+        err = r.get("execution_error")
+        err_html = (f'<div style="color:#dc2626;font-size:10px;max-width:180px;'
+                    f'white-space:normal;margin-top:2px">{err}</div>') if err else ""
+        actions = ""
+        if status == "PENDING_CONFIRMATION":
+            actions = (f'<button onclick="confirmRule(\'{r["id"]}\')" '
+                      f'style="background:#059669;color:#fff;border:none;border-radius:4px;'
+                      f'padding:3px 10px;font-size:11px;cursor:pointer;margin-right:4px">Confirm</button>'
+                      f'<button onclick="rejectRule(\'{r["id"]}\')" '
+                      f'style="background:#dc2626;color:#fff;border:none;border-radius:4px;'
+                      f'padding:3px 10px;font-size:11px;cursor:pointer">Reject</button>')
+        elif status == "ACTIVE":
+            actions = (f'<button onclick="deleteRule(\'{r["id"]}\')" '
+                      f'style="background:none;border:1px solid #dc2626;color:#dc2626;'
+                      f'border-radius:4px;cursor:pointer;padding:2px 8px;font-size:11px">Cancel</button>')
+        created = str(r.get("created_at") or "")[:19].replace("T", " ")
+        return (f'<tr data-sym="{r.get("symbol")}">'
+                f'<td style="font-size:11px;color:#64748b">{created}</td>'
+                f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>'
+                f'<td style="color:{"#059669" if r.get("side")=="BUY" else "#dc2626"};'
+                f'font-weight:600">{r.get("side")}{role_badge}</td>'
+                f'<td data-v="{trig if trig is not None else ""}">{trig_s}</td>'
+                f'<td data-v="{qty if qty is not None else ""}">{qty_s}</td>'
+                f'<td><span style="background:{scol}20;color:{scol};padding:2px 7px;'
+                f'border-radius:4px;font-weight:600;font-size:11px">{status}</span></td>'
+                f'<td>{mode}</td>'
+                f'<td>{exec_s}{err_html}</td>'
+                f'<td style="font-size:10px;color:#64748b">{oid or "—"}</td>'
+                f'<td class="acts">{actions}</td></tr>')
+
+    order_rows = "".join(_order_row(r) for r in ob)
+    order_rows_or_empty = order_rows or (
+        '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px">'
+        'No orders yet. Use the Buy/Sell buttons on any stock to create one.</td></tr>')
+
     sh = state.get("sighist") or {}
     sh_rep = sh.get("report") or {}
     ths = sh.get("thresholds") or []
@@ -689,7 +774,7 @@ def build_html(state):
   <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div></div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div></div>
   <div id="scores" class="tc active section">
     <div style="display:flex;gap:6px;margin-bottom:8px"><input id="srch" placeholder="Search…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select></div>
     <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -731,6 +816,20 @@ def build_html(state):
     <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
       {th_heads}<th title="Date the first target was reached">Target hit</th><th>Best</th><th>Worst</th><th>Model</th></tr></thead>
       <tbody>{hist_rows_or_empty}</tbody></table>
+  </div>
+  <div id="orders" class="tc section">
+    <div id="brokerBanner2" class="banner dry" style="margin-bottom:12px">Checking broker status…</div>
+    <div class="st">Order book — every rule ATIP is tracking, in every state</div>
+    <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.5">
+      A rule with no order id has never been sent anywhere — it is still watching its
+      trigger price (Dhan has no idea it exists). PAPER means it fired and filled in the
+      simulator at a live price, never reaching Dhan. LIVE means it reached Dhan for real.
+      This is different from a broker-side GTT order: ATIP's rules are watched HERE, by
+      this dashboard, not on Dhan's servers.
+    </div>
+    <table id="obt"><thead><tr><th>Created</th><th>Symbol</th><th>Side</th><th>Trigger</th>
+      <th>Qty</th><th>Status</th><th>Mode</th><th>Fill</th><th>Order ID</th><th>Action</th></tr></thead>
+      <tbody>{order_rows_or_empty}</tbody></table>
   </div>
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
@@ -1013,9 +1112,20 @@ setInterval(pollPending,5000); pollPending();
 (async function(){{
   try{{
     var res=await fetch('/api/orders/broker-status'); var s=await res.json();
-    var b=document.getElementById('brokerBanner');
-    if(s.credentials_configured){{b.textContent='🔴 Dhan connected — tapping Confirm on a pending rule places a REAL order.';b.className='banner live';}}
-    else{{b.textContent='🟡 Dhan credentials not configured (atip_data/config.json) — Confirm will fail until set.';b.className='banner dry';}}
+    var msg, cls;
+    if(!s.credentials_configured){{
+      msg='🟡 Dhan credentials not configured (atip_data/config.json) — Confirm will fail until set.'; cls='banner dry';
+    }} else if(s.is_live){{
+      msg='🔴 LIVE — tapping Confirm on a pending rule places a REAL order with Dhan. Real money.'; cls='banner live';
+    }} else {{
+      // The bug this replaces: this used to say "REAL order" here too, purely
+      // because Dhan credentials existed -- regardless of broker_env. Every
+      // order actually fills in the paper simulator at a live price and NEVER
+      // reaches Dhan while broker_env is not LIVE.
+      msg='🟢 '+s.broker_env+' — orders are simulated at live prices and tracked here, but never reach Dhan. Set broker_env to LIVE in atip_data/config.json for real orders.'; cls='banner dry';
+    }}
+    var b=document.getElementById('brokerBanner'); if(b){{b.textContent=msg;b.className=cls;}}
+    var b2=document.getElementById('brokerBanner2'); if(b2){{b2.textContent=msg;b2.className=cls;}}
   }}catch(e){{}}
 }})();
 
@@ -1133,7 +1243,18 @@ if HAS_FASTAPI:
         from data.dhan import load_dhan_config
         cfg = load_dhan_config()
         configured = bool(cfg.get("dhan_client_id") and cfg.get("dhan_access_token"))
-        return JSONResponse({"credentials_configured": configured})
+        # credentials_configured alone is NOT "will this place a real order" --
+        # it only means Dhan is reachable for market data. Whether a confirmed
+        # rule reaches Dhan for real is broker_env, and the banner that reads
+        # this was claiming "REAL order" regardless of it, even while every
+        # order was actually filling in the paper simulator.
+        try:
+            from orders.environment import broker_env, LIVE
+            env = broker_env()
+        except Exception:
+            env = "PAPER"
+        return JSONResponse({"credentials_configured": configured,
+                             "broker_env": env, "is_live": env == "LIVE"})
 
     @app.get("/api/live-quotes")
     async def api_live_quotes():
