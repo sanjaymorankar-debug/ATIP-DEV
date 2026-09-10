@@ -122,6 +122,57 @@ def check_dependencies():
         print()
 
 
+def _acquire_single_instance_lock():
+    """
+    Refuse to start a second long-running ATIP process (scheduler and/or
+    dashboard) while one is already alive.
+
+    Without this, two premarket pipelines have raced every morning this week
+    around 07:00-07:03 IST. Confirmed in atip_data/atip.log on both 2026-09-09
+    and 2026-09-10: dhan_quotes_premarket fires twice within a few seconds,
+    then the whole process restarts before run_premarket() ever reaches
+    news_premarket -- so news silently stopped updating (last article before
+    the fix: 2026-08-03) even though nothing about news itself was broken; a
+    manual run the same morning fetched 125 articles fine. Task Scheduler's
+    own MultipleInstances=IgnoreNew only guards against a second instance of
+    ITS OWN task -- it has no way to know about a process started outside it
+    (e.g. a plain `python main.py`), so it did not prevent this.
+
+    A named Windows mutex is used rather than a PID/lock file: the OS releases
+    it automatically when the process exits for ANY reason, including a crash
+    or a hard kill, so there is no stale-lock cleanup to get wrong. Scoped to
+    the current desktop session (no "Global\\" prefix) since both launch paths
+    here — a manual `python main.py` and the Task Scheduler task — run in the
+    same interactive user session, not as a service.
+
+    Deliberately NOT applied to the one-shot CLI commands (--run, --status,
+    --dhan-quote, etc.) above this point in main() — those are meant to work
+    alongside an already-running instance, and this session used them that way
+    repeatedly.
+    """
+    if sys.platform != "win32":
+        return   # only Windows has been observed to double-launch this way
+    import ctypes
+    mutex_name = "ATIP_SingleInstance_D_Projects_ATIP"
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    ERROR_ALREADY_EXISTS = 183
+    if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        log.error("Another ATIP instance (scheduler/dashboard) is already running "
+                  "on this desktop session -- refusing to start a second one. If "
+                  "you believe that instance is actually dead, check Task Manager "
+                  "for a stray python.exe running main.py and end it first.")
+        sys.exit(1)
+    # Keep the handle alive for the process lifetime by stashing it at module
+    # scope -- garbage-collecting it would release the mutex early, and a local
+    # variable inside main() has no guarantee of surviving for the process's
+    # whole run once threads/loops below start using other stack frames.
+    global _SINGLE_INSTANCE_MUTEX
+    _SINGLE_INSTANCE_MUTEX = handle
+
+
+_SINGLE_INSTANCE_MUTEX = None
+
+
 def main():
     print_banner()
     check_dependencies()
@@ -276,6 +327,12 @@ def main():
             print(f"❌ Unknown job '{job}'")
             print(f"   Valid options: {', '.join(jobs.keys())}")
         return
+
+    # Everything above this point is a one-shot command that already `return`ed.
+    # Only the three long-running modes below (dashboard-only, scheduler-only,
+    # and the combined default) can collide with another running instance, so
+    # the single-instance guard applies here and nowhere earlier.
+    _acquire_single_instance_lock()
 
     # ── DASHBOARD ONLY ────────────────────────────────────────────────────
     if args.dashboard:
