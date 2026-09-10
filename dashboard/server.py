@@ -280,11 +280,46 @@ def get_order_book(limit=300):
     """
     try:
         from orders import rules as oe
-        rows = oe.list_rules()
-        return rows[:limit]
+        rule_rows = oe.list_rules()
     except Exception as e:
-        log.warning(f"  order book unavailable: {e}")
-        return []
+        log.warning(f"  order rules unavailable: {e}")
+        rule_rows = []
+
+    # Orders placed OUTSIDE the rule system -- direct/immediate orders via the
+    # CLI, strategy.live.py's enter()/exits, or any future "place now" button
+    # -- have no order_rules row at all. order_log is where every one of those
+    # actually lands, so it is the other half of a complete book.
+    already_shown = {r.get("dhan_order_id") for r in rule_rows if r.get("dhan_order_id")}
+    direct_rows = []
+    try:
+        conn = get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT timestamp,symbol,transaction_type,quantity,mode,status,"
+                "dhan_order_id,error,price,order_type FROM order_log "
+                "WHERE status != 'DRY_RUN_OK' ORDER BY id DESC LIMIT ?", (limit,))
+            for row in cur.fetchall():
+                d = dict(row)
+                if d.get("dhan_order_id") and d["dhan_order_id"] in already_shown:
+                    continue   # already visible as its order_rules row
+                direct_rows.append({
+                    "id": f"log-{d.get('dhan_order_id') or d['timestamp']}",
+                    "symbol": d.get("symbol"), "side": d.get("transaction_type"),
+                    "created_at": d.get("timestamp"), "status": d.get("status"),
+                    "dhan_order_id": d.get("dhan_order_id"),
+                    "execution_error": d.get("error"),
+                    "quantity_value": d.get("quantity"), "quantity_type": "SHARES",
+                    "order_type": d.get("order_type"), "limit_price": d.get("price"),
+                    "_direct": True,
+                })
+        finally:
+            conn.close()
+    except Exception as e:
+        log.warning(f"  direct order log unavailable: {e}")
+
+    merged = rule_rows + direct_rows
+    merged.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return merged[:limit]
 
 
 def get_phs(td):
@@ -498,14 +533,17 @@ def build_html(state):
 
     def _order_row(r):
         status = r.get("status") or ""
+        is_direct = bool(r.get("_direct"))
         scol = {"ACTIVE": "#2563eb", "PENDING_CONFIRMATION": "#f59e0b",
-                "EXECUTED": "#059669", "FAILED": "#dc2626",
+                "EXECUTED": "#059669", "PLACED": "#059669", "FAILED": "#dc2626",
+                "BLOCKED_INSUFFICIENT_FUNDS": "#dc2626",
                 "CANCELLED": "#64748b", "EXPIRED": "#64748b"}.get(status, "#94a3b8")
         oid = r.get("dhan_order_id") or ""
         # The order id prefix IS the ground truth for "was this ever real":
-        # execute_rule() stores whatever orders.broker.place_*_order() returns,
-        # and the paper broker's ids are always "PAPERxxxxxxxx". A rule with no
-        # id yet has simply never fired -- it is still watching its trigger.
+        # execute_rule() and orders.broker both store whatever
+        # orders.broker.place_*_order() returned, and the paper broker's ids
+        # are always "PAPERxxxxxxxx". A rule with no id yet has simply never
+        # fired -- it is still watching its trigger.
         if oid.startswith("PAPER"):
             mode = ('<span style="color:#94a3b8;font-size:10px;border:1px solid #94a3b8;'
                     'border-radius:3px;padding:0 4px" title="Filled by the paper broker '
@@ -516,17 +554,31 @@ def build_html(state):
                     'Dhan for real">LIVE</span>')
         else:
             mode = ""
-        role = r.get("role") or "ENTRY"
-        role_badge = (f' <b style="color:{"#dc2626" if role=="STOP" else "#059669" if role=="TARGET" else "#38bdf8"}">'
-                     f'[{role}]</b>') if role != "ENTRY" else ""
-        dirsym = "≤" if r.get("trigger_direction") == "BELOW" else "≥"
-        trig = r.get("resolved_trigger_price")
-        trig_s = f'{dirsym} ₹{trig:,.2f}' if trig is not None else "—"
+        if is_direct:
+            # Placed immediately -- CLI, strategy.live.py, or a future "place
+            # now" UI -- not a conditional watch, so there is no trigger price
+            # and no ENTRY/TARGET/STOP role; show what kind of order it was.
+            role_badge = (' <b style="color:#94a3b8">[DIRECT]</b>')
+            ot = r.get("order_type") or "MARKET"
+            lp = r.get("limit_price")
+            trig_s = f'LIMIT @ ₹{lp:,.2f}' if (ot == "LIMIT" and lp) else ot
+            trig = None
+        else:
+            role = r.get("role") or "ENTRY"
+            role_badge = (f' <b style="color:{"#dc2626" if role=="STOP" else "#059669" if role=="TARGET" else "#38bdf8"}">'
+                         f'[{role}]</b>') if role != "ENTRY" else ""
+            dirsym = "≤" if r.get("trigger_direction") == "BELOW" else "≥"
+            trig = r.get("resolved_trigger_price")
+            trig_s = f'{dirsym} ₹{trig:,.2f}' if trig is not None else "—"
         qty = r.get("quantity_value")
         qty_s = (f'{qty:g} sh' if r.get("quantity_type") == "SHARES" else f'₹{qty:,.0f}') if qty is not None else "—"
         exec_price = r.get("execution_price")
+        # order_log only records the ESTIMATED price at order time, not the
+        # actual average fill -- that lives in paper_order for PAPER mode, and
+        # would need a Dhan order-status lookup for LIVE (not built here).
+        # Left as "placed" rather than a fabricated fill price.
         exec_s = (f'₹{exec_price:,.2f} × {r.get("execution_quantity") or "?"}'
-                  if exec_price else "—")
+                  if exec_price else ("placed" if (is_direct and status == "PLACED") else "—"))
         err = r.get("execution_error")
         err_html = (f'<div style="color:#dc2626;font-size:10px;max-width:180px;'
                     f'white-space:normal;margin-top:2px">{err}</div>') if err else ""
@@ -819,13 +871,16 @@ def build_html(state):
   </div>
   <div id="orders" class="tc section">
     <div id="brokerBanner2" class="banner dry" style="margin-bottom:12px">Checking broker status…</div>
-    <div class="st">Order book — every rule ATIP is tracking, in every state</div>
+    <div class="st">Order book — every order and rule ATIP is tracking, in every state</div>
     <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.5">
-      A rule with no order id has never been sent anywhere — it is still watching its
-      trigger price (Dhan has no idea it exists). PAPER means it fired and filled in the
-      simulator at a live price, never reaching Dhan. LIVE means it reached Dhan for real.
-      This is different from a broker-side GTT order: ATIP's rules are watched HERE, by
-      this dashboard, not on Dhan's servers.
+      Two kinds of row here. <b style="color:#38bdf8">[ENTRY]/[TARGET]/[STOP]</b> rules are
+      conditional watches: a rule with no order id has never been sent anywhere — it is still
+      watching its trigger price, checked by this dashboard every 30 seconds, and Dhan has no
+      idea it exists yet. <b style="color:#94a3b8">[DIRECT]</b> rows are orders placed
+      immediately — via the CLI or the aggressive strategy — with no trigger to wait for.
+      For either kind: PAPER means it filled in the simulator at a live price and never
+      reached Dhan; LIVE means it reached Dhan for real. This is different from a
+      broker-side GTT order: ATIP's rules are watched HERE, not on Dhan's servers.
     </div>
     <table id="obt"><thead><tr><th>Created</th><th>Symbol</th><th>Side</th><th>Trigger</th>
       <th>Qty</th><th>Status</th><th>Mode</th><th>Fill</th><th>Order ID</th><th>Action</th></tr></thead>
