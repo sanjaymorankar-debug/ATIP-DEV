@@ -253,3 +253,76 @@ def test_filled_signal_becomes_trackable(db):
     assert res["entry_prices_filled"] == 1
     n = db.execute("SELECT COUNT(*) FROM signal_outcome").fetchone()[0]
     assert n > 0, "a signal with a filled entry price must get outcome rows"
+
+
+# ── FII/DII dating ────────────────────────────────────────────────────────
+
+class _NseSession:
+    """NSE's fiidiiTradeReact: only ever the latest published day."""
+    def __init__(self, nse_date):
+        self.rows = [
+            {"category": "DII **", "date": nse_date, "buyValue": "15,000.50", "sellValue": "13,650.86"},
+            {"category": "FII/FPI *", "date": nse_date, "buyValue": "11,000.00", "sellValue": "11,123.19"},
+        ]
+
+    def get(self, *a, **k):
+        rows = self.rows
+
+        class R:
+            def raise_for_status(self): pass
+            def json(self): return rows
+        return R()
+
+
+@pytest.mark.parametrize("asked,served,stored", [
+    # the backfill of 2026-09-18: asking for 09-10 got that evening's 09-18 figures
+    (dt.date(2026, 9, 10), "18-Sep-2026", "2026-09-18"),
+    # a run before NSE publishes gets the previous day's figures
+    (dt.date(2026, 9, 18), "17-Sep-2026", "2026-09-17"),
+    (dt.date(2026, 9, 18), "18-Sep-2026", "2026-09-18"),
+    (dt.date(2026, 9, 8), "8-Sep-2026", "2026-09-08"),
+])
+def test_fii_dii_flows_are_stored_under_nses_date(tmp_path, monkeypatch, asked, served, stored):
+    from data import bhavcopy
+    monkeypatch.setattr(bhavcopy, "RAW_DIR", tmp_path)
+    out = bhavcopy.download_fii_dii(asked, _NseSession(served))
+    assert out["date"] == stored
+    assert round(out["fii_net_cr"], 2) == -123.19
+    assert round(out["dii_net_cr"], 2) == 1349.64
+    # cached under the day the flows belong to, so a later run for `asked`
+    # still fetches the real figures once NSE publishes them
+    assert (tmp_path / f"fii_dii_{stored.replace('-', '')}.json").exists()
+    if stored != str(asked):
+        assert not (tmp_path / f"fii_dii_{asked:%Y%m%d}.json").exists()
+
+
+def test_fii_dii_response_without_dates_keeps_the_asked_date(tmp_path, monkeypatch):
+    from data import bhavcopy
+    monkeypatch.setattr(bhavcopy, "RAW_DIR", tmp_path)
+    s = _NseSession(None)
+    for r in s.rows:
+        del r["date"]
+    assert bhavcopy.download_fii_dii(dt.date(2026, 9, 18), s)["date"] == "2026-09-18"
+
+
+def test_fii_dii_response_mixing_dates_is_not_stored(tmp_path, monkeypatch):
+    from data import bhavcopy
+    monkeypatch.setattr(bhavcopy, "RAW_DIR", tmp_path)
+    s = _NseSession("18-Sep-2026")
+    s.rows[1]["date"] = "17-Sep-2026"
+    assert bhavcopy.download_fii_dii(dt.date(2026, 9, 18), s) == {}
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("18-Sep-2026", dt.date(2026, 9, 18)),
+    ("8-sep-2026", dt.date(2026, 9, 8)),
+    (" 01-JAN-2027 ", dt.date(2027, 1, 1)),
+    ("31-Feb-2026", None),
+    ("2026-09-18", None),
+    ("", None),
+    (None, None),
+])
+def test_nse_date_parsing(text, expected):
+    from data.bhavcopy import _nse_date
+    assert _nse_date(text) == expected
