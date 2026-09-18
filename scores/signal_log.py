@@ -321,6 +321,41 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
 #  OUTCOME EVALUATION
 # ═══════════════════════════════════════════════════════════════════════════
 
+def fill_missing_entry_prices(conn) -> int:
+    """
+    Give a signal the entry price it should have been logged with, once that
+    day's close exists. Fill-once: only a NULL is ever written; a recorded price
+    is never changed.
+
+    A signal logged before its day's close was in prices_daily got entry_price
+    NULL -- and evaluate_outcomes() skips NULLs, so such a signal could never be
+    tracked, permanently. From 2026-09-10 that was EVERY signal (31 in all),
+    because post-market ran before NSE published the day's Bhavcopy. The
+    scheduler no longer scores a day without its closes; this is the safety net
+    for anything logged before that, or if the guard is ever bypassed.
+
+    This completes the record rather than rewriting it: the signal, its scores,
+    and when it was logged are untouched, and the price used is the close of the
+    signal's own date -- the same convention every other entry was logged with.
+    A signal whose date never had a session (a holiday that was scored by
+    mistake) has no close to find and correctly stays NULL.
+    """
+    cur = conn.execute("""
+        UPDATE signal_log SET entry_price = (
+            SELECT p.close FROM prices_daily p
+            WHERE p.symbol = signal_log.symbol AND p.date = signal_log.signal_date)
+        WHERE entry_price IS NULL
+          AND EXISTS (SELECT 1 FROM prices_daily p
+                      WHERE p.symbol = signal_log.symbol AND p.date = signal_log.signal_date
+                        AND p.close IS NOT NULL)
+    """)
+    conn.commit()
+    if cur.rowcount:
+        log.info(f"  ✓ Signal log: filled {cur.rowcount} missing entry price(s) "
+                 f"from the signal date's close — those signals are now trackable")
+    return cur.rowcount
+
+
 def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
     """
     Walk forward from each signal and record, per threshold, whether price moved
@@ -333,6 +368,7 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
     res = {"evaluated": 0, "resolved": 0, "status": "SUCCESS"}
     try:
         ensure_tables(conn)
+        res["entry_prices_filled"] = fill_missing_entry_prices(conn)
         ths = momentum_thresholds()
         sigs = conn.execute("""
             SELECT id, symbol, signal, signal_date, entry_price

@@ -64,6 +64,77 @@ def now_ist(): return datetime.now().strftime("%H:%M:%S")
 
 def is_market_day(): return is_trading_day(date.today())  # Mon–Fri, minus known NSE holidays
 
+# When post-market runs. NSE's CM Bhavcopy -- the only source that delivers the
+# SAME day's closing prices on that day -- carries Last-Modified 11:03 GMT
+# (16:33 IST); Dhan's daily-history endpoint doesn't return a day's bar until the
+# next day. This used to be 16:05: every Bhavcopy attempt 404'd, and from
+# 2026-09-10 each day was scored on the previous day's closes, so every signal
+# was logged with no entry price and could never be tracked.
+POSTMARKET_RUN_TIME = "16:45"
+# Safety net: re-runs post-market only if the day still has no scores (late
+# NSE publication, or ATIP started after POSTMARKET_RUN_TIME).
+POSTMARKET_CATCHUP_TIME = "18:30"
+# Share of the scored universe that must have a bar for the target date before
+# it may be scored. Below this, the "day" would really be the previous close.
+EOD_COVERAGE_MIN = 0.5
+
+
+def _eod_coverage(td):
+    """
+    (ok, symbols_with_a_bar_for_td, universe_size) for the target date.
+
+    The universe is whatever was scored on the most recent earlier date, so this
+    measures "do we have today's close for the stocks we actually score" rather
+    than an absolute row count. With no earlier scores (first run) it can't
+    judge, and allows scoring as before.
+    """
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        prev = conn.execute("SELECT MAX(date) FROM ai_scores WHERE date < ?",
+                            (str(td),)).fetchone()[0]
+        if not prev:
+            return True, None, None
+        n_uni = conn.execute("SELECT COUNT(DISTINCT symbol) FROM ai_scores WHERE date=?",
+                             (str(prev),)).fetchone()[0]
+        n_eod = conn.execute(
+            "SELECT COUNT(DISTINCT symbol) FROM prices_daily WHERE date=? AND symbol IN "
+            "(SELECT symbol FROM ai_scores WHERE date=?)", (str(td), str(prev))).fetchone()[0]
+        return (bool(n_uni) and n_eod / n_uni >= EOD_COVERAGE_MIN), n_eod, n_uni
+    finally:
+        conn.close()
+
+
+def run_postmarket_if_missing():
+    """
+    Run post-market for the target trading day only if it has no scores yet.
+
+    `schedule` never catches up a missed slot: a process started after the
+    post-market time waits until TOMORROW. That lost 2026-09-15 outright (ATIP
+    started at 16:59) and 2026-09-11 (machine asleep from 10:44 until the next
+    morning) -- two trading days with no scores and no signals. Called at
+    scheduler start and again at POSTMARKET_CATCHUP_TIME; a no-op when the day
+    is already done, so it is safe to call as often as the process restarts.
+    """
+    td = postmarket_target_date()
+    now = datetime.now()
+    hh, mm = (int(x) for x in POSTMARKET_RUN_TIME.split(":"))
+    if td == now.date() and (now.hour, now.minute) < (hh, mm):
+        log.info(f"  Post-market for {td} is due at {POSTMARKET_RUN_TIME} — no catch-up needed yet")
+        return
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM ai_scores WHERE date=?", (str(td),)).fetchone()[0]
+    finally:
+        conn.close()
+    if n:
+        log.info(f"  ✓ Post-market for {td} already done ({n} scores) — no catch-up needed")
+        return
+    log.warning(f"  ⚠ No scores for {td} — post-market was missed (not running at "
+                f"{POSTMARKET_RUN_TIME}, or EOD data not yet published). Running it now.")
+    run_postmarket(force=True)
+
 def is_market_hours():
     now = datetime.now()
     return (is_market_day() and
@@ -324,6 +395,30 @@ def run_postmarket(force=False):
     except Exception as e:
         log.warning(f"  Benchmark history: {e}")
 
+    # ── Never score a day without that day's closing prices ──────────────
+    # Scoring on older bars and labelling the result `td` is what silently broke
+    # signals from 2026-09-10: indicators and scores for each day were really
+    # the previous day's, and every signal was logged with a NULL entry price
+    # (the join to prices_daily for td found nothing), which evaluate_outcomes
+    # skips -- so no signal since could ever be tracked. It is also what scored
+    # the Ganesh Chaturthi holiday as if it were a session. Skip instead, loudly;
+    # run_postmarket_if_missing() retries at POSTMARKET_CATCHUP_TIME.
+    ok, n_eod, n_uni = _eod_coverage(td)
+    if not ok:
+        log.warning(f"  ⏭  No EOD prices for {td} ({n_eod}/{n_uni} scored symbols have a bar) "
+                    f"— NOT scoring. Either NSE hasn't published yet or it wasn't a "
+                    f"trading session. Outcome tracking and the dashboard still update.")
+        try:
+            from scores.signal_log import evaluate_outcomes
+            run_job("signal_outcomes", evaluate_outcomes)
+        except Exception as e:
+            log.warning(f"  Signal outcomes: {e}")
+        run_job("dashboard_rebuild", _rebuild_dashboard, td)
+        log.info("⏭  Post-market finished WITHOUT scoring (no EOD data)\n")
+        return {"status": "SKIPPED_NO_EOD", "date": str(td), "bars": n_eod, "universe": n_uni}
+    if n_uni:
+        log.info(f"  ✓ EOD coverage for {td}: {n_eod}/{n_uni} scored symbols have today's bar")
+
     # 4:45 PM — Compute 35 technical indicators
     from data.technical import run_technical_pipeline
     run_job("technical_indicators", run_technical_pipeline, td)
@@ -572,11 +667,10 @@ def start_scheduler():
   12:30 PM   Midday      : ZPI buy-zone alert scan
   14:45 PM   Pre-close   : Power-hour snapshot
   15:30 PM   Market close: Final intraday snapshot
-  16:05 PM   Post-market : NSE Bhavcopy + Dhan historical
-  16:45 PM   Post-market : Technical indicators (35 indicators)
-  17:00 PM   Post-market : AI scoring (9 indexes + ATIP rank)
-  17:30 PM   Post-market : Portfolio re-sync with AI scores
-  18:00 PM   Post-market : Dashboard rebuild
+  16:45 PM   Post-market : Bhavcopy -> Dhan history -> indicators -> AI
+                           scoring -> signal log (one sequential run; skipped,
+                           with a warning, if the day has no EOD prices)
+  18:30 PM   Catch-up    : re-runs post-market only if today has no scores
   23:00 PM   Overnight   : US close + Commodities + FX
   Saturday   Weekly      : Accuracy audit + Fundamentals
   ──────────────────────────────────────────────────────────
@@ -610,13 +704,23 @@ def start_scheduler():
     schedule.every().day.at("14:45").do(run_preclose_scan)
 
     # ── Post-market ─────────────────────────────────────────────────────
-    schedule.every().day.at("16:05").do(run_postmarket)
+    # After NSE publishes the Bhavcopy (~16:33), not before it — see
+    # POSTMARKET_RUN_TIME. The catch-up re-runs only if the day has no scores.
+    schedule.every().day.at(POSTMARKET_RUN_TIME).do(run_postmarket)
+    schedule.every().day.at(POSTMARKET_CATCHUP_TIME).do(run_postmarket_if_missing)
 
     # ── Overnight ───────────────────────────────────────────────────────
     schedule.every().day.at("23:00").do(run_overnight)
 
     # ── Weekly ──────────────────────────────────────────────────────────
     schedule.every().saturday.at("08:00").do(run_weekly)
+
+    # A missed post-market (machine off or asleep at run time, or started late)
+    # is recovered here rather than silently skipped until tomorrow.
+    try:
+        run_postmarket_if_missing()
+    except Exception as e:
+        log.warning(f"  Post-market catch-up failed: {e}")
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
