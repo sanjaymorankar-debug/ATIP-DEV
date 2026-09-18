@@ -134,6 +134,17 @@ def run_bulk_deals_pipeline(trade_date=None):
     finally: conn.close()
     return result
 
+_MONTHS = {m: i for i, m in enumerate(
+    ("JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"), 1)}
+
+def _nse_date(s):
+    """NSE's "18-Sep-2026" as a date (None if unparseable). Not strptime("%b"),
+    which follows the OS locale."""
+    m = re.fullmatch(r"\s*(\d{1,2})-([A-Za-z]{3})-(\d{4})\s*", str(s or ""))
+    if not m or m.group(2).upper() not in _MONTHS: return None
+    try: return date(int(m.group(3)), _MONTHS[m.group(2).upper()], int(m.group(1)))
+    except ValueError: return None
+
 def download_fii_dii(trade_date, session):
     cache = RAW_DIR / f"fii_dii_{trade_date.strftime('%Y%m%d')}.json"
     if cache.exists():
@@ -141,7 +152,22 @@ def download_fii_dii(trade_date, session):
     try:
         r = session.get(FII_DII_URL, timeout=15, headers={**HEADERS,"Accept":"application/json"})
         r.raise_for_status(); data = r.json()
-        result = {"date":str(trade_date),"fii_buy_cr":0,"fii_sell_cr":0,"dii_buy_cr":0,"dii_sell_cr":0}
+        # This endpoint only serves the LATEST published day, and each row says
+        # which day that is ("date": "18-Sep-2026"). The figures used to be
+        # stamped with whatever trade_date was asked for, so a backfill stored
+        # today's flows under past dates, and a run before NSE published stored
+        # the previous day's flows under today. Label them with NSE's own date.
+        served = {_nse_date(row.get("date")) for row in data if row.get("date")}
+        served.discard(None)
+        if len(served) > 1:
+            log.warning(f"  FII/DII: NSE response mixes dates {sorted(map(str, served))} -- not stored")
+            return {}
+        flows_date = served.pop() if served else trade_date
+        if flows_date != trade_date:
+            log.info(f"  FII/DII: NSE is serving {flows_date}'s flows, not {trade_date}'s "
+                     f"-- storing them under {flows_date}")
+            cache = RAW_DIR / f"fii_dii_{flows_date.strftime('%Y%m%d')}.json"
+        result = {"date":str(flows_date),"fii_buy_cr":0,"fii_sell_cr":0,"dii_buy_cr":0,"dii_sell_cr":0}
         for row in data:
             cat = str(row.get("category","")).upper()
             buy = float(str(row.get("buyValue","0")).replace(",","") or 0)
