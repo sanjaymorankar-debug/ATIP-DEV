@@ -4,24 +4,45 @@ Lets pipelines know whether "today" is an actual NSE trading day, so they
 stop repeatedly requesting a Bhavcopy that will never exist on weekends
 and holidays, and instead fall back to the last working day's data.
 
-⚠️  NSE_HOLIDAYS below only has the fixed-date holidays pre-filled
-(Republic Day, Independence Day, Gandhi Jayanti, Christmas). Festival
-holidays (Holi, Ram Navami, Eid, Ganesh Chaturthi, Dussehra, Diwali
-Laxmi Puja, Gurpurab, etc.) move every year on the lunar calendar and
-must be added manually from NSE's official holiday circular:
-  https://www.nseindia.com/resources/exchange-communication-holidays
-Until you add this year's festival dates, the pipeline will still try
-(and gracefully fail-forward to the last cached trading day) on those
-specific dates — it just won't skip them proactively in advance.
+NSE_HOLIDAYS holds NSE's official Capital Market (equity) trading holidays,
+taken verbatim from NSE's own API (https://www.nseindia.com/api/holiday-master?
+type=trading, "CM" segment) on 2026-09-18. Festival holidays move every year on
+the lunar calendar, so this set must be refreshed each year from that endpoint
+or the circular at https://www.nseindia.com/resources/exchange-communication-holidays
+
+Why it matters: the list used to hold only the four fixed-date holidays, with a
+TODO for the rest. Ganesh Chaturthi (2026-09-14) was therefore treated as a
+trading day, and the post-market pipeline scored it -- producing four BUY
+signals for a day NSE was closed, computed on prices five days stale. The
+post-market pipeline now also refuses to score any day with no EOD prices
+(see pipeline/scheduler.py), so a holiday missing from this list degrades to
+"skipped, with a log line" rather than "phantom signals" -- but keep it current.
 """
 from datetime import date, timedelta, datetime, time as _time
 
 NSE_HOLIDAYS = {
+    # 2026 — NSE CM segment, official (holiday-master API, fetched 2026-09-18).
+    # Weekend entries are kept for completeness; weekday logic skips them anyway.
+    date(2026, 1, 15),   # Municipal Corporation Election - Maharashtra
     date(2026, 1, 26),   # Republic Day
-    date(2026, 8, 15),   # Independence Day
-    date(2026, 10, 2),   # Gandhi Jayanti
+    date(2026, 2, 15),   # Mahashivratri (Sunday)
+    date(2026, 3, 3),    # Holi
+    date(2026, 3, 21),   # Id-Ul-Fitr (Ramadan Eid) (Saturday)
+    date(2026, 3, 26),   # Shri Ram Navami
+    date(2026, 3, 31),   # Shri Mahavir Jayanti
+    date(2026, 4, 3),    # Good Friday
+    date(2026, 4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
+    date(2026, 5, 1),    # Maharashtra Day
+    date(2026, 5, 28),   # Bakri Id
+    date(2026, 6, 26),   # Muharram
+    date(2026, 8, 15),   # Independence Day (Saturday)
+    date(2026, 9, 14),   # Ganesh Chaturthi
+    date(2026, 10, 2),   # Mahatma Gandhi Jayanti
+    date(2026, 10, 20),  # Dussehra
+    date(2026, 11, 8),   # Diwali Laxmi Pujan (Sunday; Muhurat session is special)
+    date(2026, 11, 10),  # Diwali-Balipratipada
+    date(2026, 11, 24),  # Prakash Gurpurb Sri Guru Nanak Dev
     date(2026, 12, 25),  # Christmas
-    # TODO: add this year's festival holidays from the NSE circular linked above.
 }
 
 
@@ -39,7 +60,15 @@ def last_trading_day(d: date = None) -> date:
     return d
 
 
-POSTMARKET_CUTOFF = _time(16, 0)  # 4:00 PM IST — NSE Bhavcopy/EOD data is typically out by then
+# Which DAY post-market should target: after 16:00 the session (closed 15:30)
+# is over, so "today" is the day to process. This is NOT when the data exists:
+# NSE's CM Bhavcopy carries Last-Modified 11:03 GMT = 16:33 IST, and Dhan's
+# daily-history endpoint does not return a day's bar until the next day. The
+# old comment here claimed Bhavcopy was "typically out by" 16:00, and the
+# scheduler ran at 16:05 on that belief -- every attempt 404'd, and from
+# 2026-09-10 every day was scored on the previous day's closes. The scheduler
+# now runs post-market at 16:45 and re-checks at 18:30.
+POSTMARKET_CUTOFF = _time(16, 0)
 
 
 def postmarket_target_date(now: datetime = None) -> date:
