@@ -222,6 +222,37 @@ def _ist_datetimes(timestamps):
     return pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(IST).tz_localize(None)
 
 
+# How long a cached daily window that does NOT reach to_date may still be
+# served. Dhan doesn't publish day D's bar until D+1, so the 16:45 run
+# legitimately caches a window ending at D-1 -- and with no expiry that frozen
+# file was re-served to every later attempt, so the 18:30 catch-up could never
+# obtain D's bar from Dhan however many times it retried (2026-09-18 16:08 and
+# the 2026-09-20 08:14 re-run both logged 1503 rows: identical coverage, no
+# Friday bar). Short enough that a retry re-asks Dhan, long enough that the
+# repeated calls inside one run don't.
+INCOMPLETE_CACHE_TTL = 900
+
+
+def _cached_daily(cache_file, to_date):
+    """The cached window, or None when it must be fetched again."""
+    if not cache_file.exists():
+        return None
+    try:
+        df = pd.read_json(str(cache_file))
+    except Exception:
+        return None
+    if df.empty or "date" not in df.columns:
+        return None
+    try:
+        reaches_target = pd.to_datetime(df["date"]).dt.date.max() >= to_date
+    except Exception:
+        reaches_target = False
+    if reaches_target:
+        return df
+    age = time.time() - cache_file.stat().st_mtime
+    return df if age < INCOMPLETE_CACHE_TTL else None
+
+
 def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
                            dhan=None) -> pd.DataFrame:
     """
@@ -236,11 +267,9 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
         return pd.DataFrame()
 
     cache_file = CACHE_DIR / f"{symbol}_{from_date}_{to_date}_daily.json"
-    if cache_file.exists():
-        try:
-            return pd.read_json(str(cache_file))
-        except Exception:
-            pass
+    cached = _cached_daily(cache_file, to_date)
+    if cached is not None:
+        return cached
 
     try:
         resp = dhan.historical_daily_data(

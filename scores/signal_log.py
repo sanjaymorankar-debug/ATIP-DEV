@@ -487,9 +487,18 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
     """
     Hit rate per (signal, threshold) with median sessions-to-hit.
 
-    Rates are computed over RESOLVED signals only — one still inside its
-    tracking window is neither a hit nor a miss yet, and counting it as a miss
-    would understate the rate on recent signals.
+    The denominator is every signal that has been WATCHED for at least one
+    forward session, hit or not. It used to be resolved signals only — and a
+    signal can leave the tracking window early only by hitting, so a signal
+    being watched and not hitting was excluded from the rate entirely until it
+    either hit or aged out after 30 sessions. That is not neutral, it is
+    one-sided: on 2026-09-20 it reported 95.2% / 78.6% / 60.0% at the 3/6/8%
+    targets where the rates over all watched signals were 52.6% / 28.9% /
+    15.8%, and it drifts further toward 100% for as long as signals are added
+    faster than the window expires.
+
+    A signal logged today has no forward session yet, so it is in neither the
+    numerator nor the denominator — reported as `not_yet_watched`.
     """
     conn = get_connection()
     try:
@@ -505,6 +514,7 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
 
         rows = conn.execute(f"""
             SELECT l.signal, o.threshold_pct, o.hit, o.sessions_to_hit, o.still_open,
+                   COALESCE(o.sessions_tracked,0) AS tracked,
                    o.max_favourable_pct, o.max_adverse_pct,
                    COALESCE(o.data_gap_sessions,0) AS gap
             FROM signal_log l JOIN signal_outcome o ON o.signal_id=l.id
@@ -514,29 +524,36 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
         buckets = {}
         for r in rows:
             k = (r["signal"], r["threshold_pct"])
-            b = buckets.setdefault(k, {"resolved": 0, "hits": 0, "open": 0, "days": [],
+            b = buckets.setdefault(k, {"resolved": 0, "hits": 0, "open": 0, "watched": 0,
+                                       "not_yet_watched": 0, "days": [],
                                        "mfe": [], "mae": [], "gapped": 0, "hits_gapped": 0})
+            # Watched = at least one forward session has been measured against
+            # this signal, so it has had a chance to hit. That is the denominator.
+            if r["tracked"] > 0:
+                b["watched"] += 1
+            else:
+                b["not_yet_watched"] += 1
             if r["still_open"]:
                 b["open"] += 1
             else:
                 b["resolved"] += 1
-                if r["hit"]:
-                    b["hits"] += 1
-                    # A hit established only across a data gap is weak evidence
-                    # about the SIGNAL: it says price was above target when the
-                    # feed came back, not that a momentum move played out. Counted
-                    # as a hit, but surfaced separately so the rate can be read
-                    # with that in mind.
-                    if r["gap"]:
-                        b["hits_gapped"] += 1
-                    # Timing only counts when the forward data is contiguous. A
-                    # signal whose next bar is weeks later did reach the target,
-                    # but "how long it took" is unknowable — including it would
-                    # report a 27-session move as 1 session.
-                    if r["sessions_to_hit"] and not r["gap"]:
-                        b["days"].append(r["sessions_to_hit"])
-                    elif r["gap"]:
-                        b["gapped"] += 1
+            if r["hit"]:
+                b["hits"] += 1
+                # A hit established only across a data gap is weak evidence
+                # about the SIGNAL: it says price was above target when the
+                # feed came back, not that a momentum move played out. Counted
+                # as a hit, but surfaced separately so the rate can be read
+                # with that in mind.
+                if r["gap"]:
+                    b["hits_gapped"] += 1
+                # Timing only counts when the forward data is contiguous. A
+                # signal whose next bar is weeks later did reach the target,
+                # but "how long it took" is unknowable — including it would
+                # report a 27-session move as 1 session.
+                if r["sessions_to_hit"] and not r["gap"]:
+                    b["days"].append(r["sessions_to_hit"])
+                elif r["gap"]:
+                    b["gapped"] += 1
             if r["max_favourable_pct"] is not None:
                 b["mfe"].append(r["max_favourable_pct"]); b["mae"].append(r["max_adverse_pct"])
 
@@ -546,7 +563,8 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
             out.append({
                 "signal": sig, "threshold_pct": th,
                 "resolved": b["resolved"], "hits": b["hits"], "open": b["open"],
-                "hit_rate": round(b["hits"] / b["resolved"] * 100, 1) if b["resolved"] else None,
+                "watched": b["watched"], "not_yet_watched": b["not_yet_watched"],
+                "hit_rate": round(b["hits"] / b["watched"] * 100, 1) if b["watched"] else None,
                 "median_sessions": round(statistics.median(b["days"]), 1) if b["days"] else None,
                 "fastest_sessions": min(b["days"]) if b["days"] else None,
                 "slowest_sessions": max(b["days"]) if b["days"] else None,
