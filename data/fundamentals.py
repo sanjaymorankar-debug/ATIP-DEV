@@ -1,5 +1,5 @@
 """ATIP — Fundamental Data Fetcher (Alpha Vantage + Screener.in fallback)"""
-import os, json, time, logging, argparse
+import os, re, json, time, logging, argparse
 import requests, pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -80,7 +80,11 @@ def fetch_screener(symbol):
         for li in soup.select("#top-ratios li"):
             n=li.select_one(".name"); v=li.select_one(".value .nowrap") or li.select_one(".value")
             if n and v:
-                val=re.sub(r"[^\d.\-]","",v.text.strip()) if __import__("re").search(r"\d",v.text) else None
+                # `re` is imported at module level: the inline __import__ used to
+                # guard this line only imported it for the CONDITION, so every
+                # value containing a digit -- i.e. every ratio on the page --
+                # raised NameError on re.sub and the whole symbol was dropped.
+                val=re.sub(r"[^\d.\-]","",v.text.strip()) if re.search(r"\d",v.text) else None
                 if val: ratios[n.text.strip()]=safe_num(val)
         result["pe_ratio"]=ratios.get("Stock P/E"); result["pb_ratio"]=ratios.get("Price to Book")
         result["roe"]=ratios.get("Return on equity"); result["debt_equity"]=ratios.get("Debt to equity")
