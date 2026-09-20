@@ -213,3 +213,18 @@ def test_closed_market_does_not_serve_yesterdays_quotes(monkeypatch):
     out = _live_quotes_json(monkeypatch, False,
                             {"date": "2026-01-01", "data": {"ACME": {"ltp": 1.0}}})
     assert out == {}
+
+
+# ── universe hygiene ──────────────────────────────────────────────────────
+
+def test_nse_placeholder_scrips_are_not_tracked():
+    """
+    NSE's ind_nifty500list.csv carries corporate-action placeholders:
+        Dummy HEG Ltd.,Metals & Mining,DUMMYHEG,EQ,DUM545A01024
+    Not tradeable, no Dhan security_id -- DUMMYHEG was scored daily on empty
+    inputs and warned "security_id not found" on every quote fetch.
+    """
+    import pandas as pd
+    from data.index_constituents import _extract_symbols
+    df = pd.DataFrame({"Symbol": ["RELIANCE", "DUMMYHEG", "heg", " TCS "]})
+    assert _extract_symbols(df) == ["HEG", "RELIANCE", "TCS"]
