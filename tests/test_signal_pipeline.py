@@ -390,3 +390,30 @@ def test_flows_are_stored_under_nses_date_via_the_pipeline(db, monkeypatch):
     assert bhavcopy.store_fii_dii(db, dt.date(2026, 9, 18), session=None) == 1
     rows = db.execute("SELECT date, fii_net_cr FROM fii_dii_market").fetchall()
     assert [(str(r[0]), r[1]) for r in rows] == [("2026-09-17", -100.0)]
+
+
+# ── a re-score must refresh everything it recomputed ──────────────────────
+
+def test_rescoring_refreshes_every_recomputed_column(db):
+    """
+    The upsert's update list stopped at beta_1y, so a re-score left spi,
+    confidence, the component scores, the regime and the factors frozen at the
+    first run's values. Re-scoring 2026-09-18 on the real closes left 499 of 502
+    rows with a confidence that no longer matched their acs, and ai_scores
+    saying NEUTRAL/59.9 while market_health said BULL/60.01 for the same date.
+    """
+    import re, io
+    src = io.open("scores/engine.py", encoding="utf-8").read()
+    m = re.search(r"INSERT INTO ai_scores \((.*?)\).*?DO UPDATE SET (.*?)\"\"\"", src, re.S)
+    assert m, "the ai_scores upsert moved — re-point this test"
+    inserted = {c.strip() for c in m.group(1).split(",")} - {"symbol", "date"}
+    updated = {p.split("=")[0].strip() for p in m.group(2).split(",") if "=" in p}
+    assert inserted <= updated, f"never refreshed on a re-score: {sorted(inserted - updated)}"
+
+
+def test_rescoring_leaves_one_trade_of_the_day(db):
+    """is_tod was only ever set, never cleared, so 2026-09-18 ended up with two."""
+    import io
+    src = io.open("scores/engine.py", encoding="utf-8").read()
+    assert "SET is_tod=0 WHERE date=?" in src, "the previous pick must be cleared first"
+    assert src.index("SET is_tod=0 WHERE date=?") < src.index("SET is_tod=1 WHERE symbol=?")
