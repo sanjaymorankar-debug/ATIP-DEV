@@ -286,3 +286,41 @@ def test_signal_history_reports_a_one_year_window(temp_db):
     if sh["since_1y"]:
         since = dt.date.fromisoformat(sh["since_1y"])
         assert 364 <= (dt.date.today() - since).days <= 366
+
+
+def test_global_panel_shows_the_newest_snapshot_of_the_day(temp_db):
+    """
+    global_markets holds three rows per date and `time` is a LABEL, not a clock
+    ('premarket', 'intraday', 'overnight'). With no tie-break, SQLite served
+    `ORDER BY date DESC` from the UNIQUE(date,time) index -- alphabetical within
+    a date -- so the panel always showed the 01:30 premarket row: on 2026-09-18
+    S&P +1.138% while the 17:30 row said -0.174%, the opposite sign.
+    """
+    from db.schema import get_connection
+    from dashboard.server import get_global
+
+    conn = get_connection()
+    conn.execute("CREATE TABLE IF NOT EXISTS global_markets (id INTEGER PRIMARY KEY, date DATE, "
+                 "time TEXT, sp500_chg REAL, created_at TIMESTAMP, UNIQUE(date,time))")
+    conn.executemany("INSERT INTO global_markets (id,date,time,sp500_chg,created_at) VALUES (?,?,?,?,?)", [
+        (254, "2026-09-18", "premarket", 1.138, "2026-09-18 01:30:08"),
+        (272, "2026-09-18", "intraday", 1.138, "2026-09-18 10:00:15"),
+        (273, "2026-09-18", "overnight", -0.174, "2026-09-18 17:30:05"),
+    ])
+    conn.commit()
+    conn.close()
+
+    assert get_global("2026-09-18")["sp500_chg"] == -0.174
+
+
+def test_live_quote_payload_carries_the_brokers_previous_close():
+    """
+    The page's data-prev is the close before the SCORED date, and scores only
+    land at 16:45 — so through a session it is one close too old. The payload
+    must carry Dhan's own prev_close for the page to use instead.
+    """
+    import inspect
+    from dashboard import server
+    src = inspect.getsource(server)
+    assert '"prev_close": prev' in src
+    assert "if(qd.prev_close!=null && qd.prev_close>0) prev=qd.prev_close;" in src
