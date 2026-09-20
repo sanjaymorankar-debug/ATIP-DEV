@@ -67,9 +67,17 @@ def _bar(conn, d, symbols, close=100.0):
 UNIVERSE = [f"S{i}" for i in range(10)]
 
 
+@pytest.fixture
+def tracked(monkeypatch):
+    """The tracked universe the coverage guard measures against."""
+    import data.dhan
+    monkeypatch.setattr(data.dhan, "get_tracked_symbols", lambda conn=None: list(UNIVERSE))
+    return UNIVERSE
+
+
 # ── EOD coverage guard ────────────────────────────────────────────────────
 
-def test_coverage_fails_when_the_days_bars_are_missing(db):
+def test_coverage_fails_when_the_days_bars_are_missing(db, tracked):
     """Exactly the 09-10..09-18 condition: scores exist for yesterday, no bars today."""
     from pipeline import scheduler as S
     _score(db, "2026-09-17", UNIVERSE)
@@ -79,14 +87,14 @@ def test_coverage_fails_when_the_days_bars_are_missing(db):
     assert (n_eod, n_uni) == (0, 10)
 
 
-def test_coverage_passes_when_the_days_bars_are_present(db):
+def test_coverage_passes_when_the_days_bars_are_present(db, tracked):
     from pipeline import scheduler as S
     _score(db, "2026-09-17", UNIVERSE)
     _bar(db, "2026-09-18", UNIVERSE)
     assert S._eod_coverage(dt.date(2026, 9, 18))[0] is True
 
 
-def test_coverage_uses_a_share_not_a_single_bar(db):
+def test_coverage_uses_a_share_not_a_single_bar(db, tracked):
     """One stray bar must not pass for 'we have today's closes'."""
     from pipeline import scheduler as S
     _score(db, "2026-09-17", UNIVERSE)
@@ -94,10 +102,30 @@ def test_coverage_uses_a_share_not_a_single_bar(db):
     assert S._eod_coverage(dt.date(2026, 9, 18))[0] is False
 
 
-def test_coverage_allows_a_first_ever_run(db):
-    """With nothing scored before, there is no universe to judge -- don't block."""
+def test_coverage_allows_a_first_ever_run(db, monkeypatch):
+    """With nothing tracked and nothing scored, there is nothing to judge."""
+    import data.dhan
     from pipeline import scheduler as S
+    monkeypatch.setattr(data.dhan, "get_tracked_symbols", lambda conn=None: [])
     assert S._eod_coverage(dt.date(2026, 9, 18))[0] is True
+
+
+def test_coverage_bar_does_not_ratchet_down_after_a_partial_day(db, tracked):
+    """
+    Scoring only covers symbols that have a bar, so a half-covered day scores
+    half the universe. Judged against the previous run's scored count, the
+    requirement would halve every time: 10, 5, 2... Each day must be measured
+    against the TRACKED universe instead.
+    """
+    from pipeline import scheduler as S
+    _score(db, "2026-09-16", UNIVERSE)
+    _bar(db, "2026-09-17", UNIVERSE[:5])              # half covered -> admitted
+    assert S._eod_coverage(dt.date(2026, 9, 17)) == (True, 5, 10)
+    _score(db, "2026-09-17", UNIVERSE[:5])            # so only 5 got scored
+    _bar(db, "2026-09-18", UNIVERSE[:3])              # 3 of 10 the next day
+    ok, n_eod, n_uni = S._eod_coverage(dt.date(2026, 9, 18))
+    assert (n_eod, n_uni) == (3, 10), "the denominator must stay the tracked universe"
+    assert ok is False, "3 of 10 is not a session, however few were scored yesterday"
 
 
 def test_postmarket_does_not_score_a_day_without_its_closes(db, monkeypatch):
@@ -326,3 +354,39 @@ def test_fii_dii_response_mixing_dates_is_not_stored(tmp_path, monkeypatch):
 def test_nse_date_parsing(text, expected):
     from data.bhavcopy import _nse_date
     assert _nse_date(text) == expected
+
+
+# ── FII/DII must still be fetched when prices are already stored ───────────
+
+def test_flows_are_still_fetched_when_prices_are_already_stored(db, monkeypatch):
+    """
+    NSE publishes a session's flows in the evening, after 16:45 has already
+    stored its prices. While the flows fetch sat behind the "bhavcopy already
+    stored" early return, the 18:30 catch-up skipped it and no session's own
+    flows were ever ingested.
+    """
+    from data import bhavcopy
+    _bar(db, "2026-09-18", ["RELIANCE"])
+    db.execute("UPDATE prices_daily SET source='bhavcopy' WHERE date='2026-09-18'")
+    db.commit()
+    called = []
+    monkeypatch.setattr(bhavcopy, "store_fii_dii",
+                        lambda conn, td, session=None: called.append(td) or 1)
+    monkeypatch.setattr(bhavcopy, "get_nse_session", lambda: None)
+
+    out = bhavcopy.run_bhavcopy_pipeline(dt.date(2026, 9, 18))
+
+    assert out["status"] == "SKIPPED", "prices were already there"
+    assert called == [dt.date(2026, 9, 18)], "but the flows must still be fetched"
+
+
+def test_flows_are_stored_under_nses_date_via_the_pipeline(db, monkeypatch):
+    from data import bhavcopy
+    monkeypatch.setattr(bhavcopy, "download_fii_dii",
+                        lambda td, session: {"date": "2026-09-17", "fii_net_cr": -100.0,
+                                             "dii_net_cr": 250.0, "fii_buy_cr": 1.0,
+                                             "fii_sell_cr": 101.0, "dii_buy_cr": 300.0,
+                                             "dii_sell_cr": 50.0})
+    assert bhavcopy.store_fii_dii(db, dt.date(2026, 9, 18), session=None) == 1
+    rows = db.execute("SELECT date, fii_net_cr FROM fii_dii_market").fetchall()
+    assert [(str(r[0]), r[1]) for r in rows] == [("2026-09-17", -100.0)]
