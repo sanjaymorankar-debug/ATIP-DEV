@@ -191,18 +191,22 @@ def test_catchup_runs_a_missed_postmarket(db, monkeypatch):
     """09-15: ATIP started at 16:59, after the slot -- that day was never scored."""
     from pipeline import scheduler as S
     calls = []
-    monkeypatch.setattr(S, "run_postmarket", lambda force=False: calls.append(force))
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((force, target_date, backfill)))
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 15))
     _freeze(monkeypatch, S, dt.datetime(2026, 9, 15, 16, 59))
     S.run_postmarket_if_missing()
-    assert calls == [True]
+    assert calls == [(True, dt.date(2026, 9, 15), False)]
 
 
 def test_catchup_is_a_noop_when_the_day_is_done(db, monkeypatch):
     from pipeline import scheduler as S
     _score(db, "2026-09-15", UNIVERSE)
     calls = []
-    monkeypatch.setattr(S, "run_postmarket", lambda force=False: calls.append(force))
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((force, target_date, backfill)))
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 15))
     _freeze(monkeypatch, S, dt.datetime(2026, 9, 15, 18, 30))
     S.run_postmarket_if_missing()
@@ -213,7 +217,9 @@ def test_catchup_waits_for_the_scheduled_run_on_the_day(db, monkeypatch):
     """Before 16:45 today's run hasn't happened yet -- don't fire a doomed early one."""
     from pipeline import scheduler as S
     calls = []
-    monkeypatch.setattr(S, "run_postmarket", lambda force=False: calls.append(force))
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((force, target_date, backfill)))
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
     _freeze(monkeypatch, S, dt.datetime(2026, 9, 18, 16, 10))
     S.run_postmarket_if_missing()
@@ -224,11 +230,13 @@ def test_catchup_recovers_the_previous_session_on_a_weekend_start(db, monkeypatc
     """09-11: machine asleep from 10:44; ATIP next started Saturday 09-12 11:31."""
     from pipeline import scheduler as S
     calls = []
-    monkeypatch.setattr(S, "run_postmarket", lambda force=False: calls.append(force))
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((force, target_date, backfill)))
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 11))
     _freeze(monkeypatch, S, dt.datetime(2026, 9, 12, 11, 31))
     S.run_postmarket_if_missing()
-    assert calls == [True]
+    assert calls == [(True, dt.date(2026, 9, 11), False)]
 
 
 # ── entry-price backfill ──────────────────────────────────────────────────
@@ -417,3 +425,135 @@ def test_rescoring_leaves_one_trade_of_the_day(db):
     src = io.open("scores/engine.py", encoding="utf-8").read()
     assert "SET is_tod=0 WHERE date=?" in src, "the previous pick must be cleared first"
     assert src.index("SET is_tod=0 WHERE date=?") < src.index("SET is_tod=1 WHERE symbol=?")
+
+
+# ── the hit rate must not exclude signals that are being watched ───────────
+
+def _outcome(conn, signal_id, th, hit, tracked, still_open):
+    conn.execute("INSERT INTO signal_outcome (signal_id, threshold_pct, hit, sessions_tracked, "
+                 "still_open, max_favourable_pct, max_adverse_pct, sessions_to_hit) "
+                 "VALUES (?,?,?,?,?,?,?,?)",
+                 (signal_id, th, hit, tracked, still_open, 1.0, -1.0, 2 if hit else None))
+    conn.commit()
+
+
+def _one_signal(conn, sym, d="2026-09-10"):
+    from scores.signal_log import ensure_tables
+    import uuid
+    ensure_tables(conn)
+    sid = str(uuid.uuid4())
+    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal, "
+                 "entry_price) VALUES (?,?,?,?,?,?,?)",
+                 (sid, "r", f"{d}T16:45:00", d, sym, "BUY", 100.0))
+    conn.commit()
+    return sid
+
+
+def test_hit_rate_counts_signals_that_are_being_watched(db):
+    """
+    A signal can leave the tracking window early only by hitting, so counting
+    only resolved signals excluded every watched-but-unhit one: the live DB
+    reported 95.2% at the 3% target where the rate over all watched signals was
+    52.6%, and it drifts toward 100% as signals are added.
+    """
+    from scores.signal_log import success_report
+    _outcome(db, _one_signal(db, "HITTER"), 3.0, hit=1, tracked=2, still_open=0)
+    _outcome(db, _one_signal(db, "WATCHED"), 3.0, hit=0, tracked=6, still_open=1)
+    _outcome(db, _one_signal(db, "EXPIRED"), 3.0, hit=0, tracked=30, still_open=0)
+    _outcome(db, _one_signal(db, "TOONEW", "2026-09-18"), 3.0, hit=0, tracked=0, still_open=1)
+
+    b = success_report()["buckets"][0]
+
+    assert b["hits"] == 1
+    assert b["watched"] == 3, "the hitter, the one still being watched, and the expired one"
+    assert b["not_yet_watched"] == 1, "no forward session yet — in neither side of the rate"
+    assert b["hit_rate"] == round(1 / 3 * 100, 1)
+    assert b["hit_rate"] != 100.0, "the old definition reported 1/1 = 100%"
+
+
+# ── catch-up must reach further back than yesterday ───────────────────────
+
+def test_catchup_recovers_an_older_unscored_session(db, monkeypatch):
+    """
+    2026-09-11 and 09-15 both have bars and no scores. Resolving only the newest
+    session meant nothing ever revisited them: by the next evening that date is
+    no longer the target, and the 18:30 catch-up looks at one date only.
+    """
+    from pipeline import scheduler as S
+    calls = []
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((target_date, backfill)))
+    monkeypatch.setattr(S, "run_job", lambda name, *a, **k: calls.append((name, None)))
+    monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
+    _bar(db, "2026-09-15", UNIVERSE)          # data arrived, scoring never ran
+    _score(db, "2026-09-16", UNIVERSE)
+    _score(db, "2026-09-17", UNIVERSE)
+    _score(db, "2026-09-18", UNIVERSE)
+    _freeze(monkeypatch, S, dt.datetime(2026, 9, 18, 18, 30))
+
+    S.run_postmarket_if_missing()
+
+    assert (dt.date(2026, 9, 15), True) in calls, "the old session must be backfilled"
+    assert ("dashboard_rebuild", None) in calls, "and the dashboard rebuilt once after"
+
+
+def test_catchup_does_not_backfill_a_session_with_no_bars(db, monkeypatch):
+    """A fresh install must not fan out five days of downloads."""
+    from pipeline import scheduler as S
+    calls = []
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        calls.append((target_date, backfill)))
+    monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
+    _score(db, "2026-09-18", UNIVERSE)        # today done, nothing else in the DB
+    _freeze(monkeypatch, S, dt.datetime(2026, 9, 18, 18, 30))
+
+    S.run_postmarket_if_missing()
+
+    assert calls == []
+
+
+def test_catchup_runs_oldest_first(db, monkeypatch):
+    from pipeline import scheduler as S
+    order = []
+    monkeypatch.setattr(S, "run_postmarket",
+                        lambda force=False, target_date=None, backfill=False:
+                        order.append(target_date))
+    monkeypatch.setattr(S, "run_job", lambda name, *a, **k: None)
+    monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
+    for d in ("2026-09-15", "2026-09-16", "2026-09-17"):
+        _bar(db, d, UNIVERSE)
+    _score(db, "2026-09-18", UNIVERSE)
+    _freeze(monkeypatch, S, dt.datetime(2026, 9, 18, 18, 30))
+
+    S.run_postmarket_if_missing()
+
+    assert order == sorted(order), f"indicators depend on prior bars: {order}"
+
+
+# ── the Dhan history cache must not freeze a day out of reach ──────────────
+
+def test_incomplete_history_cache_is_refetched(tmp_path, monkeypatch):
+    """
+    Dhan doesn't publish day D's bar until D+1, so the 16:45 run caches a window
+    ending at D-1. Served forever, that meant the 18:30 catch-up could never get
+    D's bar from Dhan: 2026-09-18 16:08 and the 09-20 08:14 re-run both reported
+    1503 rows — identical coverage, no Friday bar.
+    """
+    import json, os, time as _time
+    import pandas as pd
+    from data.dhan import _cached_daily, INCOMPLETE_CACHE_TTL
+
+    f = tmp_path / "RELIANCE_2026-09-13_2026-09-18_daily.json"
+    pd.DataFrame({"date": ["2026-09-15", "2026-09-16", "2026-09-17"],
+                  "close": [1.0, 2.0, 3.0]}).to_json(str(f))
+
+    assert _cached_daily(f, dt.date(2026, 9, 17)) is not None, "window reaches the target"
+    assert _cached_daily(f, dt.date(2026, 9, 18)) is not None, "fresh: fine within one run"
+
+    old = _time.time() - INCOMPLETE_CACHE_TTL - 60
+    os.utime(f, (old, old))
+    assert _cached_daily(f, dt.date(2026, 9, 18)) is None, "stale and short: must refetch"
+    assert _cached_daily(f, dt.date(2026, 9, 17)) is not None, "complete stays cached"
+    assert _cached_daily(tmp_path / "nope.json", dt.date(2026, 9, 18)) is None

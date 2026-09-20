@@ -651,11 +651,11 @@ def build_html(state):
 
     def _cell_1y(sig, th):
         b = by_1y.get((sig, th))
-        if not b or not b.get("resolved"):
+        if not b or not b.get("watched"):
             return ('<span style="color:#64748b" title="no signal from the last '
-                    '12 months has resolved at this target yet">-</span>')
+                    '12 months has been watched for a session yet">-</span>')
         return (f'{_pct(b["hit_rate"])}'
-                f'<span style="color:#64748b;font-size:10px"> ({b["hits"]}/{b["resolved"]})</span>')
+                f'<span style="color:#64748b;font-size:10px"> ({b["hits"]}/{b["watched"]})</span>')
 
     succ_rows = ""
     for b in sh_rep.get("buckets", []):
@@ -663,14 +663,14 @@ def build_html(state):
         succ_rows += (
             f'<tr><td style="font-weight:600;color:{sig_c}">{b["signal"]}</td>'
             f'<td><b>{b["threshold_pct"]:g}%</b></td>'
-            f'<td>{b["resolved"]}</td><td>{b["hits"]}</td>'
+            f'<td>{b.get("watched", 0)}</td><td>{b["hits"]}</td>'
             f'<td>{_pct(b["hit_rate"])}</td>'
             f'<td>{_num(b["median_sessions"])}</td>'
             f'<td>{_num(b["fastest_sessions"])}</td>'
             f'<td>{_num(b["slowest_sessions"])}</td>'
             f'<td>{_signed(b.get("avg_mfe"))}</td>'
             f'<td>{_signed(b.get("avg_mae"))}</td>'
-            f'<td style="color:#64748b">{b["open"]}</td>'
+            f'<td style="color:#64748b">{b.get("not_yet_watched", 0)}</td>'
             f'<td>{_cell_1y(b["signal"], b["threshold_pct"])}</td></tr>')
 
     def _oc(o):
@@ -863,8 +863,13 @@ def build_html(state):
   <div id="news" class="tc section"><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
   <div id="hist" class="tc section">
     <div class="st">Momentum success rate &mdash; did price move the way the signal said?</div>
-    <table><thead><tr><th>Signal</th><th>Target</th><th>Resolved</th><th>Hits</th><th>Hit rate</th>
-      <th>Median</th><th>Fastest</th><th>Slowest</th><th>Avg best</th><th>Avg worst</th><th>Open</th>
+    <table><thead><tr><th>Signal</th>
+      <th>Target</th>
+      <th title="Signals watched for at least one session since they were issued — the denominator of the hit rate">Watched</th>
+      <th>Hits</th>
+      <th title="Hits divided by signals watched for at least one session, whether or not they have hit">Hit rate</th>
+      <th>Median</th><th>Fastest</th><th>Slowest</th><th>Avg best</th><th>Avg worst</th>
+      <th title="Issued too recently to have a forward session yet — in neither the hits nor the denominator">Too new</th>
       <th title="Hit rate over signals issued in the last 12 months">Last 1 year</th></tr></thead>
       <tbody>{succ_rows}</tbody></table>
     {sh_note}

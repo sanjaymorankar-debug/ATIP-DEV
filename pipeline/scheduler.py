@@ -50,7 +50,7 @@ Run:
 
 import time, logging, argparse, traceback
 from datetime import date, datetime, timedelta
-from utils.trading_calendar import is_trading_day, postmarket_target_date
+from utils.trading_calendar import is_trading_day, postmarket_target_date, last_trading_day
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +77,32 @@ POSTMARKET_CATCHUP_TIME = "18:30"
 # Share of the scored universe that must have a bar for the target date before
 # it may be scored. Below this, the "day" would really be the previous close.
 EOD_COVERAGE_MIN = 0.5
+
+# Fundamentals are held OFF pending a decision on how fundamental_score is
+# weighted. scores/engine.py's atip_comp passes the SAME field twice -- as SPI
+# (0.15) and as FS (0.10) -- so one number drives 25% of the master score that
+# every BUY gate reads, and data/fundamentals.py's compute_fs returns a
+# hardcoded 50.0 when no ratio parses. fundamental_data is empty today, so that
+# 25% currently drops out and the score renormalises over the rest; switching
+# the (now working) Screener fetch back on would move the BUY gate for reasons
+# unrelated to price. Flip this, or set "fundamentals_enabled": true in
+# atip_data/config.json, once the weighting is settled.
+FUNDAMENTALS_ENABLED = False
+FUNDAMENTALS_HOLD_REASON = ("fundamental_score is weighted twice (SPI 0.15 + FS 0.10) and "
+                            "defaults to 50.0 when nothing parses; see FUNDAMENTALS_ENABLED")
+
+
+def fundamentals_enabled() -> bool:
+    """config.json wins if it says anything; otherwise the constant above."""
+    try:
+        import json
+        from pathlib import Path
+        cfg = json.loads(Path("atip_data/config.json").read_text(encoding="utf-8"))
+        if "fundamentals_enabled" in cfg:
+            return bool(cfg["fundamentals_enabled"])
+    except Exception:
+        pass
+    return FUNDAMENTALS_ENABLED
 
 
 def _eod_coverage(td):
@@ -119,35 +145,80 @@ def _eod_coverage(td):
         conn.close()
 
 
+CATCHUP_LOOKBACK_SESSIONS = 5
+
+
+def _recent_sessions(n, upto):
+    """The last n trading days up to and including `upto`, oldest first."""
+    out, d = [], upto
+    while len(out) < n:
+        if is_trading_day(d):
+            out.append(d)
+        d -= timedelta(days=1)
+    return list(reversed(out))
+
+
 def run_postmarket_if_missing():
     """
-    Run post-market for the target trading day only if it has no scores yet.
+    Score any of the last CATCHUP_LOOKBACK_SESSIONS trading days that still has
+    no scores, oldest first.
 
     `schedule` never catches up a missed slot: a process started after the
     post-market time waits until TOMORROW. That lost 2026-09-15 outright (ATIP
     started at 16:59) and 2026-09-11 (machine asleep from 10:44 until the next
-    morning) -- two trading days with no scores and no signals. Called at
-    scheduler start and again at POSTMARKET_CATCHUP_TIME; a no-op when the day
-    is already done, so it is safe to call as often as the process restarts.
+    morning). Recovering only the NEWEST session was not enough either -- both of
+    those days have bars in prices_daily and no ai_scores at all, and once the
+    calendar moved past them nothing would ever have revisited them: the 18:30
+    catch-up resolves one date, and by the next evening that date is yesterday.
+
+    An older session is only re-run when its bars are already stored, so a fresh
+    install does not fan out five days of downloads; the newest session is run
+    regardless, because "EOD not published yet" is exactly what it is for.
+    Called at scheduler start and again at POSTMARKET_CATCHUP_TIME; a no-op when
+    everything is scored, so it is safe to call as often as the process restarts.
     """
-    td = postmarket_target_date()
     now = datetime.now()
+    td = postmarket_target_date()
     hh, mm = (int(x) for x in POSTMARKET_RUN_TIME.split(":"))
-    if td == now.date() and (now.hour, now.minute) < (hh, mm):
-        log.info(f"  Post-market for {td} is due at {POSTMARKET_RUN_TIME} — no catch-up needed yet")
+    due_later = (td == now.date() and (now.hour, now.minute) < (hh, mm))
+
+    sessions = _recent_sessions(CATCHUP_LOOKBACK_SESSIONS, td)
+    if due_later:
+        log.info(f"  Post-market for {td} is due at {POSTMARKET_RUN_TIME} — "
+                 f"checking earlier sessions only")
+        sessions = [d for d in sessions if d != td]
+    if not sessions:
         return
+
     from db.schema import get_connection
     conn = get_connection()
     try:
-        n = conn.execute("SELECT COUNT(*) FROM ai_scores WHERE date=?", (str(td),)).fetchone()[0]
+        scored = {str(r[0]) for r in conn.execute(
+            "SELECT DISTINCT date FROM ai_scores WHERE date >= ?", (str(sessions[0]),))}
+        has_bars = {str(r[0]) for r in conn.execute(
+            "SELECT DISTINCT date FROM prices_daily WHERE date >= ?", (str(sessions[0]),))}
     finally:
         conn.close()
-    if n:
-        log.info(f"  ✓ Post-market for {td} already done ({n} scores) — no catch-up needed")
+
+    missing = [d for d in sessions
+               if str(d) not in scored and (d == td or str(d) in has_bars)]
+    if not missing:
+        log.info(f"  ✓ Every recent session through {sessions[-1]} is scored — "
+                 f"no catch-up needed")
         return
-    log.warning(f"  ⚠ No scores for {td} — post-market was missed (not running at "
-                f"{POSTMARKET_RUN_TIME}, or EOD data not yet published). Running it now.")
-    run_postmarket(force=True)
+
+    log.warning(f"  ⚠ No scores for {', '.join(str(d) for d in missing)} — post-market was "
+                f"missed (not running at {POSTMARKET_RUN_TIME}, or EOD data not published "
+                f"at the time). Running now, oldest first.")
+    for d in missing:
+        try:
+            run_postmarket(force=True, target_date=d, backfill=(d != td))
+        except Exception as e:
+            log.error(f"  Catch-up for {d} failed: {e}")
+    if any(d != td for d in missing):
+        # One rebuild, for the newest session, rather than one per recovered day.
+        run_job("dashboard_rebuild", _rebuild_dashboard, td)
+
 
 def is_market_hours():
     now = datetime.now()
@@ -370,7 +441,17 @@ def run_preclose_scan():
 #  6:00 PM:   Dashboard rebuild
 # ═════════════════════════════════════════════════════════════════════════
 
-def run_postmarket(force=False):
+def run_postmarket(force=False, target_date=None, backfill=False):
+    """
+    Score one trading session end to end.
+
+    target_date scores a session other than the one the clock implies, and
+    backfill=True marks it as recovering an OLDER session: the steps whose data
+    is "as of now" rather than as of that session — the live quote snapshot, the
+    portfolio re-sync, the alerts — are skipped, because running them would
+    stamp today's prices and holdings onto a past date and raise alerts about a
+    session that is already over.
+    """
     if not force and not is_market_day():
         log.info("⏩  Weekend — skipping post-market"); return
 
@@ -378,11 +459,14 @@ def run_postmarket(force=False):
     # - trading day, on/after 4:00 PM IST -> today
     # - trading day, before 4:00 PM IST   -> previous trading day (today's isn't out yet)
     # - non-trading day (forced run)      -> previous trading day
-    td = postmarket_target_date()
+    # ...unless a specific session is being scored (catch-up/backfill).
+    td = target_date or postmarket_target_date()
     log.info(f"\n{'='*55}\n  POST-MARKET PIPELINE — target date {td}\n{'='*55}")
 
-    # 3:35 PM — Final live snapshot from Dhan
-    _run_dhan_quotes(td, label="market_close")
+    # 3:35 PM — Final live snapshot from Dhan. "Live" means as of now, so a
+    # backfill would stamp today's prices onto a session that is already over.
+    if not backfill:
+        _run_dhan_quotes(td, label="market_close")
 
     # 4:05 PM — NSE Bhavcopy (official EOD prices + delivery data)
     from data.bhavcopy import run_bhavcopy_pipeline, run_bulk_deals_pipeline
@@ -454,8 +538,9 @@ def run_postmarket(force=False):
     except Exception as e:
         log.warning(f"  Accuracy update: {e}")
 
-    # 5:30 PM — Re-sync portfolio with fresh AI scores
-    _run_portfolio_sync(td)
+    # 5:30 PM — Re-sync portfolio with fresh AI scores (holdings are as of now)
+    if not backfill:
+        _run_portfolio_sync(td)
 
     # 5:35 PM — Portfolio Health Score (doc section 11). After the sync so it
     # scores today's holdings; it reads per-stock scores from ai_scores directly,
@@ -476,19 +561,25 @@ def run_postmarket(force=False):
     except Exception as e:
         log.warning(f"  Signal log: {e}")
 
-    # 5:45 PM — Send Telegram alerts
-    try:
-        from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert
-        check_cri_alerts(td)
-        check_fii_alert(td)
-        send_tod_alert(td)
-    except Exception as e:
-        log.warning(f"  Post-market alerts: {e}")
+    # 5:45 PM — Send Telegram alerts. Never for a backfill: an alert about a
+    # session that closed days ago is noise, and the TOD pick is not actionable.
+    if not backfill:
+        try:
+            from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert
+            check_cri_alerts(td)
+            check_fii_alert(td)
+            send_tod_alert(td)
+        except Exception as e:
+            log.warning(f"  Post-market alerts: {e}")
 
-    # 6:00 PM — Rebuild dashboard state
-    run_job("dashboard_rebuild", _rebuild_dashboard, td)
+    # 6:00 PM — Rebuild dashboard state. A backfill leaves this to its caller,
+    # which rebuilds once for the newest session instead of once per old one.
+    if not backfill:
+        run_job("dashboard_rebuild", _rebuild_dashboard, td)
 
-    log.info("✅  Post-market pipeline complete\n")
+    log.info("✅  Post-market pipeline complete"
+             + (f" (backfilled {td})" if backfill else "") + "\n")
+    return {"status": "SCORED", "date": str(td)}
 
 
 def _rebuild_dashboard(td):
@@ -545,21 +636,29 @@ def run_weekly():
         log.warning(f"  Accuracy audit: {e}")
 
     # Fundamental data refresh (top 100 ATIP stocks)
-    try:
-        from db.schema import get_connection
-        from data.fundamentals import run_fundamentals_pipeline
-        conn = get_connection()
-        yesterday = str(date.today() - timedelta(days=1))
-        rows = conn.execute(
-            "SELECT symbol FROM ai_scores WHERE date=? ORDER BY atip_score DESC LIMIT 100",
-            (yesterday,)
-        ).fetchall()
-        conn.close()
-        top_syms = [r["symbol"] for r in rows]
-        if top_syms:
-            run_job("fundamentals_weekly", run_fundamentals_pipeline, top_syms)
-    except Exception as e:
-        log.warning(f"  Weekly fundamentals: {e}")
+    if not fundamentals_enabled():
+        log.info(f"  ⏸  Fundamentals refresh held off — {FUNDAMENTALS_HOLD_REASON}")
+    else:
+        try:
+            from db.schema import get_connection
+            from data.fundamentals import run_fundamentals_pipeline
+            conn = get_connection()
+            # The last session, not "yesterday": on a Saturday run yesterday is
+            # a Friday only by luck, and after a Monday holiday it is a day with
+            # no scores at all, which silently selected no symbols.
+            prev = str(last_trading_day(date.today()))
+            rows = conn.execute(
+                "SELECT symbol FROM ai_scores WHERE date=? ORDER BY atip_score DESC LIMIT 100",
+                (prev,)
+            ).fetchall()
+            conn.close()
+            top_syms = [r["symbol"] for r in rows]
+            if top_syms:
+                run_job("fundamentals_weekly", run_fundamentals_pipeline, top_syms)
+            else:
+                log.warning(f"  Weekly fundamentals: no scored symbols for {prev} — skipped")
+        except Exception as e:
+            log.warning(f"  Weekly fundamentals: {e}")
 
     # Refresh Dhan security list (in case of new listings/delistings)
     try:
