@@ -197,8 +197,17 @@ def get_indexes(td=None):
     finally: conn.close()
 
 def get_global(td):
+    # global_markets holds up to three rows per date (time = 'premarket' at
+    # 01:30, 'intraday', 'overnight' at 17:30) and time is that LABEL, not a
+    # clock. With no tie-break SQLite satisfied `ORDER BY date DESC` from the
+    # UNIQUE(date,time) index, whose order within a date is alphabetical --
+    # 'premarket' first -- so the panel always showed the OLDEST snapshot of the
+    # day: on 2026-09-18 S&P +1.14% (01:30) while the 17:30 row said -0.17%,
+    # the opposite sign, under a label that only showed the date. Order by when
+    # the row was actually written.
     conn=get_connection()
-    try: return q1(conn,"SELECT * FROM global_markets WHERE date<=? ORDER BY date DESC LIMIT 1",str(td))
+    try: return q1(conn,"SELECT * FROM global_markets WHERE date<=? "
+                        "ORDER BY date DESC, created_at DESC, id DESC LIMIT 1",str(td))
     finally: conn.close()
 
 def get_tod(td):
@@ -1199,7 +1208,13 @@ async function pollLiveQuotes(){{
       // means on any quote screen. Measuring against the displayed session's own
       // close reported the move since THAT session: -11.2% for NIACL while
       // scores were a day behind, and 0.00% once they were current.
+      //
+      // Prefer the broker's own prev_close over data-prev. data-prev is the
+      // close before the SCORED date, and scores only land at 16:45 -- so all
+      // through a session it is one close too old: on Monday it would have
+      // shown ATGL's Friday move (+12.56%) as today's change.
       var prev=parseFloat(cell.dataset.prev);
+      if(qd.prev_close!=null && qd.prev_close>0) prev=qd.prev_close;
       var pct = (!isNaN(prev) && prev>0) ? ((qd.ltp-prev)/prev*100) : null;
       var col = pct===null ? '#e2e8f0' : (pct>=0 ? '#059669' : '#dc2626');
       var sign = (pct!==null && pct>=0) ? '+' : '';
@@ -1350,7 +1365,12 @@ if HAS_FASTAPI:
             ltp = row.get("ltp")
             prev = row.get("prev_close")
             chg = round((ltp - prev) / prev * 100, 2) if ltp and prev else None
-            out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg}
+            # prev_close comes from Dhan and is the LAST COMPLETED session's
+            # close, which is the only correct baseline for a live price. The
+            # page's own data-prev is the close before the SCORED date, so
+            # between 09:15 and the 16:45 post-market run it is one session too
+            # old and renders a two-session move as today's change.
+            out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg, "prev_close": prev}
         _live_quotes_cache.update(date=str(date.today()), data=out)
         return JSONResponse(out)
 

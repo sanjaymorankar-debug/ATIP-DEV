@@ -36,6 +36,12 @@ def test_feed_window(when, open_):
 
 # ── a manager with a stub SDK ─────────────────────────────────────────────
 
+class _FakeThread:
+    """Stands in for the SDK's WS thread, which dies on a refused connect."""
+    def __init__(self): self.alive = True
+    def is_alive(self): return self.alive
+
+
 class _FakeFeed:
     IDX = 0
     Ticker = 15
@@ -45,9 +51,13 @@ class _FakeFeed:
     def __init__(self, *a, **k):
         self.started = False
         self.closed = False
+        self.thread = _FakeThread()
         _FakeFeed.instances.append(self)
 
-    def start(self): self.started = True
+    def start(self):
+        self.started = True
+        return self.thread          # dhanhq's MarketFeed.start() returns its thread
+
     def close_connection(self): self.closed = True
 
 
@@ -133,6 +143,104 @@ def test_connecting_clears_the_error_history(feed, monkeypatch):
     feed._on_error(feed._feed, "boom")
     feed._on_connect(feed._feed)
     assert not feed._errors
+    feed.stop()
+
+
+# ── frames that are not ticks ─────────────────────────────────────────────
+
+def test_market_status_frame_is_not_treated_as_an_error(feed, monkeypatch):
+    """
+    dhanhq decodes Dhan's market-status frame (response code 7) to the bare
+    string "Markets Open", and calls on_error from the same except clause it
+    uses for a dropped socket. Dhan sends one per subscribed instrument at the
+    09:15 open -- 14 of them -- which is above ERROR_BURST, so a healthy feed
+    used to be parked at the open.
+    """
+    from data import dhan_ws
+    _window(monkeypatch, True)
+    feed.start()
+    sdk = feed._feed
+    for _ in range(len(feed._sec_to_col)):          # 14 indexes -> 14 status frames
+        feed._on_message(sdk, "Markets Open")
+    assert not feed._errors, "a status frame is not a connection error"
+    feed._supervise_once()
+    assert feed._feed is sdk and not sdk.closed, "the feed must survive the open"
+    feed.stop()
+
+
+@pytest.mark.parametrize("frame", ["Markets Open", "", None, 0, [1, 2], 3.5])
+def test_non_tick_frames_are_ignored_quietly(feed, frame):
+    feed._on_message(None, frame)                   # must not raise
+    assert feed.snapshot() == {}
+
+
+def test_a_real_status_packet_from_the_sdk_is_handled(feed):
+    """The actual bytes Dhan sends, decoded by the installed SDK."""
+    import struct
+    pytest.importorskip("dhanhq")
+    from dhanhq.marketfeed import MarketFeed
+    packet = struct.pack("<BHBI", 7, 8, 0, 13)
+    try:
+        decoded = MarketFeed.process_data(packet)
+    except TypeError:
+        decoded = MarketFeed.process_data(object.__new__(MarketFeed), packet)
+    assert not isinstance(decoded, dict), "if this becomes a dict, revisit _on_message"
+    feed._on_message(None, decoded)                 # must not raise
+    assert not feed._errors
+
+
+# ── a feed that looks alive and is not ─────────────────────────────────────
+
+def test_dead_sdk_thread_is_recycled(feed, monkeypatch):
+    """
+    dhanhq's run() awaits its FIRST connect outside its try block and catches
+    only KeyboardInterrupt, so a refused connect at 09:00 kills the SDK thread
+    while _feed stays bound: the feed is dead, silently, for the whole session.
+    """
+    _window(monkeypatch, True)
+    feed.start()
+    sdk = feed._feed
+    sdk.thread.alive = False                        # the thread died on its first connect
+    feed._supervise_once()
+    assert sdk.closed and feed._feed is None, "a dead thread must be recycled"
+    assert feed._cooldown_until > time.monotonic(), "and retried under the backoff"
+    feed._cooldown_until = 0.0
+    feed._supervise_once()
+    assert feed._feed is not None and feed._feed is not sdk
+    feed.stop()
+
+
+def test_a_live_thread_is_left_alone(feed, monkeypatch):
+    _window(monkeypatch, True)
+    feed.start()
+    sdk = feed._feed
+    feed._supervise_once()
+    assert feed._feed is sdk and not sdk.closed
+    feed.stop()
+
+
+@pytest.mark.parametrize("now,last_tick_min_ago,stalled", [
+    (dt.datetime(2026, 9, 21, 12, 0), 11, True),    # mid-session silence
+    (dt.datetime(2026, 9, 21, 12, 0), 2, False),    # ticking normally
+    (dt.datetime(2026, 9, 21, 9, 5), 11, False),    # pre-open: no ticks expected yet
+    (dt.datetime(2026, 9, 21, 15, 40), 11, False),  # after the close: silence is correct
+    (dt.datetime(2026, 9, 21, 12, 0), None, False),  # freshly connected, no tick yet
+])
+def test_stall_detection(feed, now, last_tick_min_ago, stalled):
+    sec = next(iter(feed._sec_to_col))
+    if last_tick_min_ago is not None:
+        feed._last_tick_at[sec] = now - dt.timedelta(minutes=last_tick_min_ago)
+    assert feed._stalled(now) is stalled
+
+
+def test_a_connection_that_never_ticks_is_stalled_too(feed, monkeypatch):
+    """Subscription accepted, nothing ever delivered -- the silent failure."""
+    from data import dhan_ws
+    _window(monkeypatch, True)
+    feed.start()
+    assert feed._stalled(dt.datetime(2026, 9, 21, 12, 0)) is False   # just connected
+    feed._connected_since = time.monotonic() - dhan_ws.TICK_STALL_SECONDS - 1
+    assert feed._stalled(dt.datetime(2026, 9, 21, 12, 0)) is True
     feed.stop()
 
 

@@ -65,6 +65,11 @@ ERROR_BURST      = 10      # errors within ERROR_WINDOW that mean "stop asking"
 ERROR_WINDOW     = 60.0
 BACKOFF_START    = 300.0   # 5 min after a burst, doubling
 BACKOFF_MAX      = 1800.0  # ...to 30 min
+# A connected-but-silent feed is recycled: indices tick constantly while the
+# market is open, so this only fires when the socket is up and dead.
+TICK_STALL_FROM    = _time(9, 20)   # after the pre-open auction settles
+TICK_CLOSE         = _time(15, 30)
+TICK_STALL_SECONDS = 600.0
 
 
 def feed_window_open(now=None) -> bool:
@@ -99,12 +104,14 @@ class IndexFeedManager:
         self._last_tick_at = {}  # security_id (int) -> datetime
         self._sec_to_col = {int(v): k for k, v in NSE_INDEX_SECURITY_IDS.items()}
         self._feed = None
+        self._sdk_thread = None      # the SDK's own WS thread; dies on a failed connect
         self._flush_thread = None
         self._supervisor_thread = None
         self._running = False
         self._connected = False
         self._errors = deque()       # monotonic timestamps of recent feed errors
         self._cooldown_until = 0.0   # monotonic; no connect attempts before this
+        self._connected_since = None # monotonic; when the current socket was opened
         self._backoff = BACKOFF_START
 
     # ── WebSocket lifecycle ────────────────────────────────────────────
@@ -148,15 +155,23 @@ class IndexFeedManager:
                 on_error=self._on_error,
             )
             self._errors.clear()
-            self._feed.start()  # SDK spawns its own daemon thread for the WS loop
+            # Keep the thread: dhanhq's run() awaits its FIRST connect outside
+            # its try block and catches only KeyboardInterrupt, so a refused
+            # connect (429 at 09:00, a DNS blip) kills this thread while
+            # self._feed stays bound -- a feed that looks alive and is not.
+            self._sdk_thread = self._feed.start()
+            self._connected_since = time.monotonic()
             log.info(f"  ✓ Index WebSocket feed started — {len(instruments)} indexes subscribed")
         except Exception as e:
             self._feed = None
+            self._sdk_thread = None
             self._park(f"could not start feed: {e}")
 
     def _disconnect(self, why):
         feed, self._feed = self._feed, None
+        self._sdk_thread = None
         self._connected = False
+        self._connected_since = None
         # Drop the snapshot: without this the last tick stays "current" and the
         # flush loop keeps writing it. That is how index_levels collected 7,583
         # rows stamped 2026-09-19/20 -- a Saturday and a Sunday -- all holding
@@ -199,6 +214,12 @@ class IndexFeedManager:
         if self._feed is not None and not want:
             self._disconnect("market closed")
             self._backoff = BACKOFF_START
+        elif self._feed is not None and self._sdk_thread is not None \
+                and not self._sdk_thread.is_alive():
+            self._park("the SDK feed thread died (its first connect was refused)")
+        elif self._feed is not None and self._stalled():
+            self._park(f"connected but no index tick for over "
+                       f"{TICK_STALL_SECONDS / 60:.0f} min during the session")
         elif self._feed is not None and self._error_burst():
             self._park(f"{len(self._errors)} errors in the last "
                        f"{ERROR_WINDOW:.0f}s (Dhan is refusing the connection)")
@@ -210,6 +231,29 @@ class IndexFeedManager:
         while self._errors and self._errors[0] < cutoff:
             self._errors.popleft()
         return len(self._errors) >= ERROR_BURST
+
+    def _stalled(self, now=None) -> bool:
+        """
+        Connected, inside the ticking part of the session, and silent.
+
+        NSE indices tick several times a second while the market is open, so a
+        long silence means the socket is up but dead -- which otherwise shows up
+        only as a missing afternoon in index_levels. Checked from TICK_STALL_FROM
+        (after the pre-open auction) until the close, and never on the
+        first tick-less minutes of a fresh connection.
+        """
+        now = now or datetime.now()
+        if not (TICK_STALL_FROM <= now.time() <= TICK_CLOSE):
+            return False
+        with self._lock:
+            last = max(self._last_tick_at.values()) if self._last_tick_at else None
+        if last is not None:
+            return (now - last).total_seconds() > TICK_STALL_SECONDS
+        # Never ticked at all -- a subscription that was accepted and then went
+        # nowhere. Measure from when this connection was opened instead, so the
+        # silent case is caught too and not mistaken for "just connected".
+        return (self._connected_since is not None
+                and time.monotonic() - self._connected_since > TICK_STALL_SECONDS)
 
     # ── Callbacks (called by the SDK's internal WS thread) ─────────────
     def _on_connect(self, instance):
@@ -231,7 +275,14 @@ class IndexFeedManager:
         log.warning("  Index WebSocket closed")
 
     def _on_message(self, instance, data):
-        if not data:
+        # Not every frame is a tick dict: the SDK hands back a bare string for
+        # Dhan's market-status frame (response code 7 -> "Markets Open"), which
+        # arrives per subscribed instrument at the 09:15 open. data.get() on a
+        # str raises AttributeError, and the SDK calls on_error from the same
+        # except clause it uses for a dropped socket -- so 14 status frames used
+        # to look like 14 connection errors and, past ERROR_BURST, parked a
+        # perfectly healthy feed at the open.
+        if not isinstance(data, dict) or not data:
             return
         try:
             sec_id = int(data.get("security_id"))

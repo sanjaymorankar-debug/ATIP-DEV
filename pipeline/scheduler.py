@@ -83,24 +83,38 @@ def _eod_coverage(td):
     """
     (ok, symbols_with_a_bar_for_td, universe_size) for the target date.
 
-    The universe is whatever was scored on the most recent earlier date, so this
-    measures "do we have today's close for the stocks we actually score" rather
-    than an absolute row count. With no earlier scores (first run) it can't
-    judge, and allows scoring as before.
+    The universe is the TRACKED universe, so this measures "do we have today's
+    close for the stocks we are supposed to score". Judging against the previous
+    run's scored count instead lets the bar ratchet down: scoring only covers
+    symbols that have a bar, so a half-covered day scores half the universe, and
+    the next day then only has to beat half of THAT -- 502, 251, 126, 63 -- while
+    each log line still reads like a full session. With nothing tracked and
+    nothing scored before (first run) it can't judge, and allows scoring.
     """
     from db.schema import get_connection
     conn = get_connection()
     try:
-        prev = conn.execute("SELECT MAX(date) FROM ai_scores WHERE date < ?",
-                            (str(td),)).fetchone()[0]
-        if not prev:
+        try:
+            from data.dhan import get_tracked_symbols
+            universe = set(get_tracked_symbols(conn))
+        except Exception as e:
+            log.warning(f"  Coverage: tracked universe unavailable ({e}) — "
+                        f"falling back to the last scored set")
+            universe = set()
+        if not universe:
+            prev = conn.execute("SELECT MAX(date) FROM ai_scores WHERE date < ?",
+                                (str(td),)).fetchone()[0]
+            if not prev:
+                return True, None, None
+            universe = {r[0] for r in conn.execute(
+                "SELECT DISTINCT symbol FROM ai_scores WHERE date=?", (str(prev),))}
+        if not universe:
             return True, None, None
-        n_uni = conn.execute("SELECT COUNT(DISTINCT symbol) FROM ai_scores WHERE date=?",
-                             (str(prev),)).fetchone()[0]
-        n_eod = conn.execute(
-            "SELECT COUNT(DISTINCT symbol) FROM prices_daily WHERE date=? AND symbol IN "
-            "(SELECT symbol FROM ai_scores WHERE date=?)", (str(td), str(prev))).fetchone()[0]
-        return (bool(n_uni) and n_eod / n_uni >= EOD_COVERAGE_MIN), n_eod, n_uni
+        have = {r[0] for r in conn.execute(
+            "SELECT DISTINCT symbol FROM prices_daily WHERE date=?", (str(td),))}
+        n_eod = len(universe & have)
+        n_uni = len(universe)
+        return (n_eod / n_uni >= EOD_COVERAGE_MIN), n_eod, n_uni
     finally:
         conn.close()
 

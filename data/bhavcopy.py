@@ -184,6 +184,39 @@ def download_fii_dii(trade_date, session):
     except Exception as e:
         log.warning(f"  FII/DII unavailable: {e}"); return {}
 
+def store_fii_dii(conn, trade_date, session=None) -> int:
+    """
+    Fetch the published FII/DII flows and store them under NSE's own date.
+
+    Deliberately NOT inside the price-download path. A session's prices are
+    stored at 16:45, but NSE publishes that session's flows later in the
+    evening, so the 18:30 catch-up is the run that can actually get them --
+    and by then the Bhavcopy step short-circuits as "already stored". While
+    this lived behind that early return, no session's own flows were ever
+    ingested: market_health carried the 2026-09-09 figures on 09-10, 09-14,
+    09-16 and 09-17 alike, because get_fii() silently falls back to the newest
+    earlier row.
+    """
+    try:
+        fii = download_fii_dii(trade_date, session or get_nse_session())
+    except Exception as e:
+        log.warning(f"  FII/DII unavailable: {e}")
+        return 0
+    if not fii:
+        return 0
+    hist = pd.read_sql("SELECT fii_net_cr,dii_net_cr FROM fii_dii_market "
+                       "ORDER BY date DESC LIMIT 5", conn)
+    conn.execute("""INSERT OR REPLACE INTO fii_dii_market
+        (date,fii_buy_cr,fii_sell_cr,fii_net_cr,dii_buy_cr,dii_sell_cr,dii_net_cr,fii_5d_avg,dii_5d_avg)
+        VALUES(?,?,?,?,?,?,?,?,?)""",
+        (fii.get("date"),fii.get("fii_buy_cr",0),fii.get("fii_sell_cr",0),fii.get("fii_net_cr",0),
+         fii.get("dii_buy_cr",0),fii.get("dii_sell_cr",0),fii.get("dii_net_cr",0),
+         hist["fii_net_cr"].mean() if not hist.empty else 0,
+         hist["dii_net_cr"].mean() if not hist.empty else 0))
+    conn.commit()
+    return 1
+
+
 def _bhavcopy_already_stored(conn, trade_date) -> int:
     """Row count already in prices_daily for this date, sourced from bhavcopy."""
     row = conn.execute(
@@ -210,6 +243,9 @@ def run_bhavcopy_pipeline(trade_date=None):
         existing = _bhavcopy_already_stored(conn, trade_date)
         if existing > 0:
             log.info(f"  ✓ Bhavcopy for {trade_date} already in database ({existing} rows) — skipping download")
+            # Prices are done, flows may not be: NSE publishes them later in the
+            # evening, so a later run of the same date must still try.
+            result["fii_dii"] = store_fii_dii(conn, trade_date)
             result["rows"] = existing
             result["status"] = "SKIPPED"
             log_job("bhavcopy","SKIPPED",existing,run_date=trade_date)
@@ -231,17 +267,9 @@ def run_bhavcopy_pipeline(trade_date=None):
                  None if pd.isna(dq) else dq, None if pd.isna(dp) else dp,
                  row.get("series","EQ"),row.get("source","bhavcopy")))
             count += 1
-        fii = download_fii_dii(trade_date, session)
-        if fii:
-            hist = pd.read_sql("SELECT fii_net_cr,dii_net_cr FROM fii_dii_market ORDER BY date DESC LIMIT 5", conn)
-            conn.execute("""INSERT OR REPLACE INTO fii_dii_market
-                (date,fii_buy_cr,fii_sell_cr,fii_net_cr,dii_buy_cr,dii_sell_cr,dii_net_cr,fii_5d_avg,dii_5d_avg)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
-                (fii.get("date"),fii.get("fii_buy_cr",0),fii.get("fii_sell_cr",0),fii.get("fii_net_cr",0),
-                 fii.get("dii_buy_cr",0),fii.get("dii_sell_cr",0),fii.get("dii_net_cr",0),
-                 hist["fii_net_cr"].mean() if not hist.empty else 0,
-                 hist["dii_net_cr"].mean() if not hist.empty else 0))
-        conn.commit(); result["rows"] = count
+        conn.commit()
+        result["fii_dii"] = store_fii_dii(conn, trade_date, session)
+        result["rows"] = count
         log.info(f"  ✓ {count} prices stored")
         log_job("bhavcopy","SUCCESS",count,run_date=trade_date)
     except Exception as e:
