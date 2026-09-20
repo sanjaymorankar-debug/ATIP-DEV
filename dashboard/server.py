@@ -1311,10 +1311,24 @@ if HAS_FASTAPI:
         return JSONResponse({"credentials_configured": configured,
                              "broker_env": env, "is_live": env == "LIVE"})
 
+    # Last successful quote fetch, served while the market is shut. The page
+    # polls /api/live-quotes every 15s for as long as a tab is open, and each
+    # call asks Dhan for ~500 quotes: a tab left open on Friday evening kept
+    # fetching 501 quotes a minute all night (atip.log, 2026-09-18 20:00 ->
+    # 2026-09-19 09:15, where the quote thread finally died), on top of the
+    # index WebSocket's own reconnect storm. Outside market hours there is no
+    # new price to fetch -- the last one IS the close.
+    _live_quotes_cache = {"date": None, "data": {}}
+
     @app.get("/api/live-quotes")
     async def api_live_quotes():
         """Live LTP for every symbol currently shown on the dashboard (scores + portfolio)."""
         from data.dhan import fetch_live_quotes
+        from pipeline.scheduler import is_market_hours
+        if not is_market_hours():
+            cached = (_live_quotes_cache["data"]
+                      if _live_quotes_cache["date"] == str(date.today()) else {})
+            return JSONResponse(cached)
         td = latest_scored_date()
         conn = get_connection()
         try:
@@ -1337,6 +1351,7 @@ if HAS_FASTAPI:
             prev = row.get("prev_close")
             chg = round((ltp - prev) / prev * 100, 2) if ltp and prev else None
             out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg}
+        _live_quotes_cache.update(date=str(date.today()), data=out)
         return JSONResponse(out)
 
     def _order_monitor_loop():
