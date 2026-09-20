@@ -83,9 +83,14 @@ def fetch_nifty500_symbols(force_refresh: bool = False) -> list:
 
 
 def _extract_symbols(df: pd.DataFrame) -> list:
+    # NSE's own list carries placeholder scrips created for corporate actions
+    # ("Dummy HEG Ltd.,Metals & Mining,DUMMYHEG,EQ,DUM545A01024"). They are not
+    # tradeable and have no Dhan security_id, so DUMMYHEG was scored every day
+    # on empty inputs and logged "security_id not found" on every quote fetch.
     for col in ("Symbol", "SYMBOL", "symbol"):
         if col in df.columns:
-            return sorted({str(s).strip().upper() for s in df[col].dropna() if str(s).strip()})
+            return sorted({str(s).strip().upper() for s in df[col].dropna()
+                           if str(s).strip() and not str(s).strip().upper().startswith("DUMMY")})
     return []
 
 
