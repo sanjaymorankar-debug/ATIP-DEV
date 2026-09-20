@@ -467,7 +467,15 @@ def run_scoring_pipeline(trade_date=None):
                 factors=[f for f in [f"VPI:{vpi:.0f}",f"ZPI:{zpi:.0f}",f"MRI:{mri:.0f}",f"CRI:{cri:.0f}"] if f]
                 conn.execute("""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,signal,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,inst_score=excluded.inst_score,atip_score=excluded.atip_score,signal=excluded.signal,tod_score=excluded.tod_score,beta_1y=excluded.beta_1y""",
+                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,signal=excluded.signal,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3""",
+                    # Every column the run just recomputed is refreshed. The
+                    # list used to stop at beta_1y, so a re-score left spi,
+                    # confidence, the four component scores, the regime and the
+                    # factors frozen at the FIRST run's values: re-scoring
+                    # 2026-09-18 on the real closes left 499 of 502 rows with a
+                    # confidence that no longer matched their acs, and ai_scores
+                    # saying NEUTRAL/59.9 for that date while market_health --
+                    # rewritten by the same run -- said BULL/60.01.
                     (sym,str(trade_date),vpi,spi,rri,mri,cri,msi,zpi,acs,ts,fund.get("fundamental_score"),ins,ns,atip_score,tod_score,signal,acs,beta_1y,mh.get("mh_score"),mh.get("regime"),
                      factors[0] if len(factors)>0 else None,factors[1] if len(factors)>1 else None,factors[2] if len(factors)>2 else None))
                 all_scores_list.append({"symbol":sym,"atip_score":atip_score,"cri":cri,"acs":acs,"zpi":zpi,"tod_score":tod_score})
@@ -480,6 +488,10 @@ def run_scoring_pipeline(trade_date=None):
             tod_cand=df_s[(df_s["cri"]<30)&(df_s["acs"]>=60)&(df_s["zpi"]>=60)]
             if not tod_cand.empty:
                 ts=tod_cand.sort_values("tod_score",ascending=False).iloc[0]["symbol"]
+                # Clear first: is_tod was only ever set, never reset, so a
+                # re-score left the previous pick flagged too and 2026-09-18
+                # ended up with two Trades of the Day.
+                conn.execute("UPDATE ai_scores SET is_tod=0 WHERE date=? AND is_tod=1",(str(trade_date),))
                 conn.execute("UPDATE ai_scores SET is_tod=1 WHERE symbol=? AND date=?",(ts,str(trade_date)))
                 log.info(f"  🎯 TOD: {ts}")
         conn.commit(); result["rows"]=count
