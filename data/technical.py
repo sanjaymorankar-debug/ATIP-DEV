@@ -24,7 +24,14 @@ except (ImportError, Exception):
             def macd(self, close, fast=12, slow=26, signal=9):
                 import pandas as pd
                 m = ta_lib.trend.MACD(close, window_fast=fast, window_slow=slow, window_sign=signal)
-                return pd.DataFrame({"MACD":m.macd(),"Signal":m.macd_signal(),"Hist":m.macd_diff()})
+                # Column ORDER matters: compute_indicators reads this frame by
+                # position, and pandas_ta -- the other implementation behind this
+                # wrapper -- emits (MACD, Hist, Signal). Emitting (MACD, Signal,
+                # Hist) here put the SIGNAL LINE in macd_hist and the histogram in
+                # macd_signal for all 7,164 stored rows: a price-scale number in
+                # MRI's heaviest component (weight 0.25), whose mapping
+                # min(50+|x|*10,100) then saturated in 63% of them.
+                return pd.DataFrame({"MACD":m.macd(),"Hist":m.macd_diff(),"Signal":m.macd_signal()})
             def adx(self, high, low, close, length=14):
                 import pandas as pd
                 a = ta_lib.trend.ADXIndicator(high, low, close, window=length)
@@ -160,7 +167,8 @@ def compute_indicators(symbol, df):
 
     macd_df=_step(symbol,"macd",lambda: ta.macd(close,fast=12,slow=26,signal=9))
     if macd_df is not None and not macd_df.empty:
-        r["macd_line"]=safe_val(macd_df.iloc[-1,0]); r["macd_signal"]=safe_val(macd_df.iloc[-1,2]); r["macd_hist"]=safe_val(macd_df.iloc[-1,1])
+        # (MACD, Hist, Signal) in both implementations -- see the wrapper above.
+        r["macd_line"]=safe_val(macd_df.iloc[-1,0]); r["macd_hist"]=safe_val(macd_df.iloc[-1,1]); r["macd_signal"]=safe_val(macd_df.iloc[-1,2])
 
     adx_df=_step(symbol,"adx",lambda: ta.adx(high,low,close,length=14))
     if adx_df is not None and not getattr(adx_df,"empty",True):
