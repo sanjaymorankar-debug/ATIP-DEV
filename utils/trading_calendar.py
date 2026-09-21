@@ -21,6 +21,28 @@ post-market pipeline now also refuses to score any day with no EOD prices
 from datetime import date, timedelta, datetime, time as _time
 
 NSE_HOLIDAYS = {
+    # 2025 — NSE CM segment, from 2025-01-27 (where prices_daily starts). Each
+    # date verified on 2026-09-21 against NSE's Bhavcopy archive, which serves a
+    # file only for a trading session (every one below returned 404). Without
+    # these, every 2025 holiday read as a trading day -- and the pre-2026-09-08
+    # UTC date shift had left a copy of the next session's bar on each weekday
+    # holiday, which nothing could then recognise as out of place.
+    date(2025, 2, 26),   # Mahashivratri
+    date(2025, 3, 14),   # Holi
+    date(2025, 3, 31),   # Id-Ul-Fitr (Ramadan Eid)
+    date(2025, 4, 10),   # Shri Mahavir Jayanti
+    date(2025, 4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
+    date(2025, 4, 18),   # Good Friday
+    date(2025, 5, 1),    # Maharashtra Day
+    date(2025, 8, 15),   # Independence Day
+    date(2025, 8, 27),   # Ganesh Chaturthi
+    date(2025, 10, 2),   # Mahatma Gandhi Jayanti / Dussehra
+    date(2025, 10, 22),  # Diwali-Balipratipada
+    date(2025, 11, 5),   # Prakash Gurpurb Sri Guru Nanak Dev
+    date(2025, 12, 25),  # Christmas
+    # (2025-10-21, Diwali Laxmi Pujan, is NOT here: NSE held the Muhurat
+    #  session and published a Bhavcopy for it.)
+
     # 2026 — NSE CM segment, official (holiday-master API, fetched 2026-09-18).
     # Weekend entries are kept for completeness; weekday logic skips them anyway.
     date(2026, 1, 15),   # Municipal Corporation Election - Maharashtra
@@ -46,8 +68,24 @@ NSE_HOLIDAYS = {
 }
 
 
+# Weekend days on which NSE nonetheless held a full session -- both Union
+# Budget days, each confirmed by a Bhavcopy in NSE's archive. Treating them as
+# closed would mark two days of real prices as non-session data, and a cleanup
+# keyed on is_trading_day() would delete them.
+NSE_SPECIAL_SESSIONS = {
+    date(2025, 2, 1),    # Union Budget (Saturday)
+    date(2026, 2, 1),    # Union Budget (Sunday)
+}
+
+
 def is_trading_day(d: date) -> bool:
-    """Mon–Fri and not in the known NSE holiday list."""
+    """Mon–Fri and not an NSE holiday, or a special weekend session."""
+    if isinstance(d, datetime):
+        d = d.date()
+    elif isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    if d in NSE_SPECIAL_SESSIONS:
+        return True
     return d.weekday() < 5 and d not in NSE_HOLIDAYS
 
 

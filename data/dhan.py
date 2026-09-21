@@ -570,6 +570,32 @@ def fetch_index_quotes(cols: list = None, dhan=None) -> pd.DataFrame:
 
 BETA_BENCHMARK_SYMBOL = "NIFTY50"  # synthetic symbol stored in prices_daily as the beta benchmark
 
+def _store_benchmark_rows(conn, symbol, dates, closes) -> int:
+    """
+    Upsert a close-only benchmark series: open, high and low are set to close,
+    volume to 0, because that is all Dhan's index history is used for here.
+
+    On conflict EVERY price column is refreshed. It used to refresh close only,
+    so when the 2026-09-08 fix re-synced the series with correct dates, the
+    close was corrected but open/high/low kept the values the one-day UTC shift
+    had put there -- the NEXT session's close -- in 280 of the NIFTY50 rows,
+    leaving every one of them with close outside [low, high].
+    """
+    count = 0
+    for d, c in zip(dates, closes):
+        if c is None:
+            continue
+        conn.execute("""
+            INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source)
+            VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(symbol,date) DO UPDATE SET
+                open=excluded.open, high=excluded.high,
+                low=excluded.low, close=excluded.close
+        """, (symbol, str(d), c, c, c, c, 0, "dhan_index"))
+        count += 1
+    return count
+
+
 def sync_index_benchmark_history(days: int = 420, end_date: date = None,
                                   index_key: str = "nifty50", dhan=None) -> dict:
     """
@@ -616,16 +642,7 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
         dates = _ist_dates(data.get("timestamp", []))
         closes = data.get("close", [])
         conn = get_connection()
-        count = 0
-        for d, c in zip(dates, closes):
-            if c is None:
-                continue
-            conn.execute("""
-                INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source)
-                VALUES(?,?,?,?,?,?,?,?)
-                ON CONFLICT(symbol,date) DO UPDATE SET close=excluded.close
-            """, (BETA_BENCHMARK_SYMBOL, str(d), c, c, c, c, 0, "dhan_index"))
-            count += 1
+        count = _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, dates, closes)
         conn.commit(); conn.close()
         log.info(f"  ✓ Benchmark ({index_key}) history: {count} days stored as {BETA_BENCHMARK_SYMBOL}")
         return {"status": "SUCCESS", "rows": count}
