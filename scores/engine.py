@@ -232,8 +232,12 @@ def compute_vpi(tech,prices,fund,inst,ns,weights,rs=None,liquidity=None):
 
 def compute_mri(tech,ns,weights):
     c={}
-    hist=tech.get("macd_hist")
-    if hist is not None: c["MACD"]=min(50+abs(hist)*10,100) if hist>0 else max(0,50-abs(hist)*10)
+    # Normalised by price -- an absolute rupee histogram is not comparable
+    # across a universe priced from Rs 7 to Rs 134,860. See
+    # data.technical.MACD_HIST_FULL_SCALE_PCT.
+    from data.technical import macd_component
+    macd=macd_component(tech.get("macd_hist_pct"))
+    if macd is not None: c["MACD"]=macd
     rsi=tech.get("rsi_14")
     if rsi is not None: c["RSI"]=(85 if 40<=rsi<=55 else 60 if rsi<40 else 20 if rsi>70 else 50)
     adx=tech.get("adx_14")

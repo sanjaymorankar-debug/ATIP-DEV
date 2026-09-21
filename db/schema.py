@@ -57,7 +57,28 @@ def get_connection():
     conn.execute("PRAGMA foreign_keys=ON")
     _migrate_index_levels_chg_columns(conn)
     _migrate_ai_scores_beta_column(conn)
+    _migrate_technical_macd_pct_column(conn)
     return conn
+
+def _migrate_technical_macd_pct_column(conn):
+    """Self-healing, non-destructive migration — adds
+    technical_indicators.macd_hist_pct, the MACD histogram as a percentage of
+    price, which is what the scores read: the raw rupee histogram is not
+    comparable across a universe priced from Rs 7 to Rs 134,860. Never drops or
+    rewrites existing rows."""
+    try:
+        existing = {row[1] for row in conn.execute(
+            "PRAGMA table_info(technical_indicators)").fetchall()}
+    except sqlite3.OperationalError:
+        return  # table doesn't exist yet — init_db() creates it with the column
+    if existing and "macd_hist_pct" not in existing:
+        try:
+            conn.execute("ALTER TABLE technical_indicators ADD COLUMN macd_hist_pct REAL")
+            conn.commit()
+            log.info("  ✓ technical_indicators migrated — added column: macd_hist_pct")
+        except sqlite3.OperationalError as e:
+            log.warning(f"  technical_indicators migration skipped macd_hist_pct: {e}")
+
 
 def _migrate_ai_scores_beta_column(conn):
     """Self-healing, non-destructive migration — adds ai_scores.beta_1y
@@ -118,7 +139,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS technical_indicators (
         id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
         rsi_14 REAL, stoch_k REAL, stoch_d REAL, williams_r REAL, cci_20 REAL,
-        macd_line REAL, macd_signal REAL, macd_hist REAL, adx_14 REAL,
+        macd_line REAL, macd_signal REAL, macd_hist REAL, macd_hist_pct REAL, adx_14 REAL,
         ema_9 REAL, ema_21 REAL, ema_50 REAL, sma_200 REAL,
         atr_14 REAL, atr_pct REAL, bb_upper REAL, bb_lower REAL, bb_mid REAL, bb_width REAL,
         obv REAL, volume_sma20 REAL, volume_ratio REAL, rel_volume REAL,

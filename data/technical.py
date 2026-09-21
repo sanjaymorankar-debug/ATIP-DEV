@@ -154,6 +154,35 @@ def _numeric(s):
     """
     return pd.to_numeric(s, errors="coerce")
 
+# A MACD histogram worth this much of the share price pins the component.
+# The histogram is a price-scale number, so an absolute threshold cannot work
+# across a universe priced from Rs 7 to Rs 134,860 (median 827): the old
+# +/-5-rupee full scale was nothing on a Rs 3,000 stock and enormous on a Rs 50
+# one, and it pinned the component at exactly 0 or 100 in 37.4% of rows.
+# Measured over the 7,027 stored rows, |hist| as a share of price is: median
+# 0.385%, p90 1.02%, p95 1.27%, p99 1.93%, max 3.53% -- so full scale at 1.667%
+# leaves the p99 tail saturating (about 1.8% of rows) and everything else
+# spread across the range.
+MACD_HIST_FULL_SCALE_PCT = 1.667
+
+
+def macd_component(hist_pct):
+    """
+    MACD histogram as a 0-100 score centred at 50, from the histogram expressed
+    as a percentage of the current price. Positive histogram scores above 50,
+    negative below, saturating at full scale. Returns None when unavailable, so
+    callers drop the component instead of scoring a guess.
+    """
+    if hist_pct is None:
+        return None
+    try:
+        pct = float(hist_pct)
+    except (TypeError, ValueError):
+        return None
+    offset = max(-50.0, min(50.0, pct / MACD_HIST_FULL_SCALE_PCT * 50.0))
+    return round(50.0 + offset, 2)
+
+
 def compute_indicators(symbol, df):
     if not HAS_TA or len(df)<20: return {}
     df=df.sort_values("date").copy()
@@ -169,6 +198,11 @@ def compute_indicators(symbol, df):
     if macd_df is not None and not macd_df.empty:
         # (MACD, Hist, Signal) in both implementations -- see the wrapper above.
         r["macd_line"]=safe_val(macd_df.iloc[-1,0]); r["macd_hist"]=safe_val(macd_df.iloc[-1,1]); r["macd_signal"]=safe_val(macd_df.iloc[-1,2])
+        # ...and the same histogram as a share of price, which is what the
+        # scores read: see MACD_HIST_FULL_SCALE_PCT above.
+        last_close=safe_val(close.iloc[-1])
+        if r.get("macd_hist") is not None and last_close:
+            r["macd_hist_pct"]=round(r["macd_hist"]/last_close*100,4)
 
     adx_df=_step(symbol,"adx",lambda: ta.adx(high,low,close,length=14))
     if adx_df is not None and not getattr(adx_df,"empty",True):
@@ -267,8 +301,8 @@ def compute_tech_score(ind):
         elif rsi<65: scores["RSI"]=80
         elif rsi<75: scores["RSI"]=55
         else: scores["RSI"]=30
-    hist=ind.get("macd_hist")
-    if hist is not None: scores["MACD"]=min(50+abs(hist)*10,100) if hist>0 else max(0,50-abs(hist)*10)
+    macd=macd_component(ind.get("macd_hist_pct"))
+    if macd is not None: scores["MACD"]=macd
     adx=ind.get("adx_14")
     if adx is not None: scores["ADX"]=90 if adx>40 else 75 if adx>25 else 50 if adx>15 else 25
     atr_pct=ind.get("atr_pct")
@@ -362,7 +396,7 @@ def run_technical_pipeline(trade_date=None, symbol=None):
                 df=df.sort_values("date"); ind=compute_indicators(sym,df)
                 if not ind: continue
                 ind["tech_score"]=compute_tech_score(ind)
-                fields=["rsi_14","stoch_k","stoch_d","williams_r","cci_20","macd_line","macd_signal","macd_hist","adx_14",
+                fields=["rsi_14","stoch_k","stoch_d","williams_r","cci_20","macd_line","macd_signal","macd_hist","macd_hist_pct","adx_14",
                         "ema_9","ema_21","ema_50","sma_200","atr_14","atr_pct","bb_upper","bb_lower","bb_mid","bb_width",
                         "obv","volume_sma20","volume_ratio","rel_volume","pivot","r1","r2","s1","s2",
                         "fib_236","fib_382","fib_500","fib_618","golden_cross","death_cross","above_200dma","gap_pct","tech_score"]
