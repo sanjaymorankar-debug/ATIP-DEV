@@ -618,3 +618,43 @@ def test_postmarket_does_not_score_a_stale_copy(db, monkeypatch):
     for forbidden in ("technical_indicators", "ai_scoring_engine", "signal_log"):
         assert forbidden not in ran, f"{forbidden} ran on yesterday's prices"
     assert "signal_outcomes" in ran and "dashboard_rebuild" in ran
+
+
+# ── 2025 holidays and the Budget sessions, verified against NSE's archive ───
+
+@pytest.mark.parametrize("d", [
+    "2025-02-26", "2025-03-14", "2025-03-31", "2025-04-10", "2025-04-14", "2025-04-18",
+    "2025-05-01", "2025-08-15", "2025-08-27", "2025-10-02", "2025-10-22", "2025-11-05",
+    "2025-12-25",
+])
+def test_2025_holidays_are_not_sessions(d):
+    """Each returned 404 from NSE's Bhavcopy archive on 2026-09-21. Without them,
+    every 2025 holiday read as a trading day."""
+    from utils.trading_calendar import is_trading_day
+    assert is_trading_day(dt.date.fromisoformat(d)) is False
+
+
+@pytest.mark.parametrize("d", ["2025-02-01", "2026-02-01"])
+def test_budget_weekend_sessions_are_sessions(d):
+    """Both Union Budget days traded (NSE archive returned 200). Marking them
+    closed would flag two days of real prices for deletion."""
+    from utils.trading_calendar import is_trading_day
+    assert is_trading_day(dt.date.fromisoformat(d)) is True
+
+
+def test_muhurat_session_is_a_session():
+    """2025-10-21 Diwali Laxmi Pujan: NSE held the Muhurat session."""
+    from utils.trading_calendar import is_trading_day
+    assert is_trading_day(dt.date(2025, 10, 21)) is True
+
+
+def test_ordinary_weekends_stay_closed():
+    from utils.trading_calendar import is_trading_day
+    assert is_trading_day(dt.date(2026, 1, 31)) is False     # Saturday before the Budget Sunday
+    assert is_trading_day(dt.date(2025, 2, 2)) is False      # Sunday after the Budget Saturday
+
+
+def test_calendar_accepts_the_types_the_database_returns():
+    from utils.trading_calendar import is_trading_day
+    assert is_trading_day("2025-12-25") is False
+    assert is_trading_day(dt.datetime(2025, 12, 26, 10, 0)) is True
