@@ -471,3 +471,167 @@ def test_benchmark_resync_overwrites_every_price(temp_db):
         assert tuple(row) == (22545.05,) * 4, tuple(row)
     finally:
         conn.close()
+
+
+# ── the benchmark lagged the stocks by one session ────────────────────────
+
+_NSE_INDEX_CLOSE_CSV = (
+    "Index Name,Index Date,Open Index Value,High Index Value,Low Index Value,"
+    "Closing Index Value,Points Change,Change(%),Volume,Turnover (Rs. Cr.),P/E,P/B,Div Yield\n"
+    "Nifty 50,21-09-2026,23330.2,23466.8,23314.8,23414.30,67.90,.29,213639227,17770.46,19.79,2.83,1.21\n"
+    "Nifty Bank,18-09-2026,56172.85,56497.45,56073.55,56358.70,302.95,.54,237801140,8027.68,13.33,1.69,.7\n"
+    "India VIX,21-09-2026,11.385,11.825,11.18,11.25,-0.14,-1.21,-,-,-,-,-\n"
+).encode()
+
+
+def test_nse_index_closes_are_read_for_their_own_date_only():
+    """A row NSE dates to another session is never filed under this one."""
+    from data.bhavcopy import parse_index_closes
+    closes = parse_index_closes(_NSE_INDEX_CLOSE_CSV, dt.date(2026, 9, 21))
+    assert closes["nifty50"] == (23414.30, 0.291)   # 67.90 / 23346.40, the 09-18 close
+    assert closes["india_vix"][0] == 11.25
+    assert "banknifty" not in closes, "a 09-18 row must not be read as 09-21"
+
+
+def _nse_closes(monkeypatch, closes):
+    from data import bhavcopy
+    monkeypatch.setattr(bhavcopy, "get_nse_session", lambda: None)
+    monkeypatch.setattr(bhavcopy, "download_index_closes", lambda d, s: closes)
+
+
+def test_benchmark_gets_the_session_being_scored(temp_db, monkeypatch):
+    """
+    Dhan's to_date is exclusive and it had no 2026-09-21 index bar even at
+    01:14 the next day, so at 16:45 the NIFTY50 benchmark always ended the
+    session before the stocks it was compared with.
+    """
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    init_db()
+    _nse_closes(monkeypatch, {"nifty50": (23414.3, 0.291), "india_vix": (11.25, -1.229)})
+    res = sync_nse_index_closes(dt.date(2026, 9, 21))
+    assert res["status"] == "SUCCESS"
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT open, high, low, close, source FROM prices_daily "
+                           "WHERE symbol='NIFTY50' AND date='2026-09-21'").fetchone()
+        assert tuple(row) == (23414.3, 23414.3, 23414.3, 23414.3, "nse_index")
+    finally:
+        conn.close()
+
+
+def test_unpublished_index_file_changes_nothing(temp_db, monkeypatch):
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    init_db()
+    _nse_closes(monkeypatch, None)                     # NSE answered 404
+    assert sync_nse_index_closes(dt.date(2026, 9, 21))["status"] == "SKIPPED"
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM prices_daily").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM index_levels").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_session_missed_by_the_feed_gets_nse_closing_values(temp_db, monkeypatch):
+    """
+    2026-09-16 had no index_levels row inside market hours -- only rows
+    stamped 00:00-07:00 holding 09-15's close -- so compute_mh read 09-15's
+    -1.195% and scored a +0.43% day BEAR. The session's latest row must now
+    be NSE's own close for it.
+    """
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    from scores.engine import get_idx
+    init_db()
+    conn = get_connection()
+    conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
+                 "VALUES ('2026-09-16','07:00:02',23118.6,-1.195)")
+    conn.commit(); conn.close()
+    _nse_closes(monkeypatch, {"nifty50": (23217.6, 0.428), "banknifty": (56000.0, 0.5)})
+    sync_nse_index_closes(dt.date(2026, 9, 16))
+    sync_nse_index_closes(dt.date(2026, 9, 16))        # a re-run adds nothing
+    conn = get_connection()
+    try:
+        idx = get_idx("2026-09-16", conn)
+        assert (idx["time"], idx["nifty50"], idx["nifty50_chg"]) == ("15:30:00", 23217.6, 0.428)
+        assert conn.execute("SELECT COUNT(*) FROM index_levels WHERE date='2026-09-16'"
+                            ).fetchone()[0] == 2
+    finally:
+        conn.close()
+
+
+def test_session_the_feed_covered_is_left_alone(temp_db, monkeypatch):
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    init_db()
+    conn = get_connection()
+    conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
+                 "VALUES ('2026-09-21','15:44:52',23414.3,0.291)")
+    conn.commit(); conn.close()
+    _nse_closes(monkeypatch, {"nifty50": (23414.3, 0.291)})
+    assert sync_nse_index_closes(dt.date(2026, 9, 21))["snapshot"] is False
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM index_levels").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def _series(dates, closes):
+    return pd.DataFrame({"date": dates, "close": closes})
+
+
+def test_relative_strength_matches_dates_not_rows():
+    """
+    With the benchmark one session short, row 0 of the stock was today and
+    row 0 of the index was yesterday: each stock's 20-session return was
+    compared with the index's 20 sessions ending a day earlier.
+    """
+    from scores.engine import compute_relative_strength, minmax
+    days = [f"2026-08-{d:02d}" for d in range(31, 6, -1)]           # 25 sessions, newest first
+    stock = [118] + [110 - 0.4 * i for i in range(1, 25)]           # jumps today
+    index = [1000 * (1.01 ** (i % 3)) for i in range(25)]
+    assert compute_relative_strength(_series(days, stock), _series(days, index)) is not None
+    lagging = compute_relative_strength(_series(days, stock), _series(days[1:], index[1:]))
+    both = days[1:]
+    expected = compute_relative_strength(_series(both, stock[1:]), _series(both, index[1:]))
+    assert lagging == expected, "compared over the dates both series have"
+    positional = minmax((stock[0] / stock[20] - 1) * 100 - (index[1] / index[21] - 1) * 100, -15, 15)
+    assert lagging != positional, "row positions pair the stock's today with the index's yesterday"
+
+
+def test_benchmark_rows_never_enter_the_backtest(temp_db):
+    from db.schema import init_db, get_connection
+    from scores.backtest import load_bars
+    init_db()
+    conn = get_connection()
+    try:
+        for sym, src in (("NIFTY50", "nse_index"), ("NIFTY50X", "dhan_index"), ("ACME", "bhavcopy")):
+            conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                         "VALUES (?, '2026-09-21', 10, 11, 9, 10, 100, ?)", (sym, src))
+        assert set(load_bars(conn)) == {"ACME"}
+    finally:
+        conn.close()
+
+
+def test_duplicate_index_rows_do_not_block_startup(temp_db, monkeypatch):
+    """The unique index is skipped, not forced, on a table that still holds
+    duplicates: nothing is deleted and every connection still opens."""
+    import sqlite3
+    from db import schema
+    monkeypatch.setattr(schema, "_index_levels_unique_blocked", False)
+    raw = sqlite3.connect(str(temp_db))
+    raw.execute("CREATE TABLE index_levels (id INTEGER PRIMARY KEY, date DATE, time TEXT)")
+    raw.executemany("INSERT INTO index_levels (date, time) VALUES (?, ?)",
+                    [("2026-09-09", "20:08:32")] * 2)
+    raw.commit(); raw.close()
+    conn = schema.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM index_levels").fetchone()[0] == 2
+        assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name=?",
+                                (schema.INDEX_LEVELS_UNIQUE,)).fetchone()
+    finally:
+        conn.close()
+    assert schema._index_levels_unique_blocked

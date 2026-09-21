@@ -79,7 +79,10 @@ def fetch_intraday_indexes(trade_date=None):
     conn = get_connection()
     try:
         cols = [k for k in record if k not in ("date","time")]
-        conn.execute(f"INSERT INTO index_levels (date,time,{','.join(cols)}) VALUES (?,?,{','.join(['?']*len(cols))})",
+        # (date, time) is unique; when the 15s WebSocket flush stamped the same
+        # second, this snapshot (sentiment from breadth across every index)
+        # replaces that one (sentiment from Nifty alone).
+        conn.execute(f"INSERT OR REPLACE INTO index_levels (date,time,{','.join(cols)}) VALUES (?,?,{','.join(['?']*len(cols))})",
                      [record["date"],record["time"]]+[record.get(c) for c in cols])
         conn.commit()
         log.info(f"  ✓ Nifty:{record.get('nifty50_chg',0):+.2f}% VIX:{record.get('india_vix','?')} → {record.get('overall_sentiment')}")

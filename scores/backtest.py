@@ -72,7 +72,8 @@ def load_bars(conn) -> dict:
     """symbol -> [(date, high, low, close, volume, open), ...] ascending by date."""
     rows = conn.execute(
         "SELECT symbol,date,high,low,close,volume,open FROM prices_daily "
-        "WHERE series='EQ' AND source!='dhan_index' AND close>0 AND high>0 AND low>0 "
+        "WHERE series='EQ' AND source NOT IN ('dhan_index','nse_index') "  # not the benchmark
+        "AND close>0 AND high>0 AND low>0 "
         "ORDER BY symbol,date"
     ).fetchall()
     bars = defaultdict(list)

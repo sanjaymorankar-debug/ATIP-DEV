@@ -99,11 +99,19 @@ def compute_relative_strength(prices,bench_prices):
     benchmark (synthetic 'NIFTY50' rows in prices_daily, populated by
     data.dhan.sync_index_benchmark_history() -- the same series
     compute_beta() already uses). Replaces VPI's RS component, which had a
-    seeded weight but was never actually computed."""
+    seeded weight but was never actually computed.
+
+    The two series are matched on date, not row position. Positionally, a
+    benchmark one session behind the stock -- which it always was at 16:45,
+    Dhan's index history ending the day before -- compared the stock's 20
+    sessions to the index's 20 sessions one day earlier."""
     if prices is None or prices.empty or len(prices)<21: return None
     if bench_prices is None or bench_prices.empty or len(bench_prices)<21: return None
-    s0,s20=prices["close"].iloc[0],prices["close"].iloc[20]
-    b0,b20=bench_prices["close"].iloc[0],bench_prices["close"].iloc[20]
+    m=prices[["date","close"]].merge(bench_prices[["date","close"]],on="date",suffixes=("","_b"))
+    m=m.sort_values("date",ascending=False)
+    if len(m)<21: return None
+    s0,s20=m["close"].iloc[0],m["close"].iloc[20]
+    b0,b20=m["close_b"].iloc[0],m["close_b"].iloc[20]
     if not s20 or not b20: return None
     stock_ret=(s0/s20-1)*100; bench_ret=(b0/b20-1)*100
     return minmax(stock_ret-bench_ret,-15,15)
