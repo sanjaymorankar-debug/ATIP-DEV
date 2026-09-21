@@ -1,0 +1,2086 @@
+{
+ "root": "D:\\Projects\\ATIP",
+ "git_head": "cb84a6adbbabf3d64a97ed076388b47e8080d97e Merge remote-tracking branch 'origin/master'",
+ "git_branch": "master",
+ "totals": {
+  "py_files": 57,
+  "py_lines": 15754,
+  "db_tables": 28,
+  "db_rows": 299105,
+  "api_routes": 15,
+  "scheduled_jobs": 11,
+  "tests": 191
+ },
+ "modules": [
+  {
+   "file": "alerts/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "alerts/telegram.py",
+   "lines": 266,
+   "doc": "ATIP \u2014 Telegram Alert Engine (10 alert types)",
+   "functions": [
+    "load_config",
+    "_is_placeholder",
+    "send_telegram",
+    "fmt",
+    "check_gap_alert",
+    "check_vix_alert",
+    "check_broad_selloff",
+    "check_zpi_alerts",
+    "check_cri_alerts",
+    "send_tod_alert",
+    "check_fii_alert",
+    "send_failure_alert",
+    "run_all_alert_checks",
+    "send_morning_digest"
+   ],
+   "classes": []
+  },
+  {
+   "file": "dashboard/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "dashboard/server.py",
+   "lines": 1413,
+   "doc": "ATIP \u2014 FastAPI Dashboard Server (http://localhost:8000)",
+   "functions": [
+    "json_safe",
+    "q",
+    "q1",
+    "pct_change",
+    "chg_span",
+    "get_scores",
+    "latest_scored_date",
+    "expected_trade_date",
+    "sessions_between",
+    "data_freshness",
+    "get_mh",
+    "get_indexes",
+    "get_global",
+    "get_tod",
+    "get_news",
+    "get_portfolio",
+    "get_fii_dii",
+    "_stale_days",
+    "get_signal_history",
+    "get_order_book",
+    "get_phs",
+    "get_sector_rotation",
+    "get_top25",
+    "generate_state",
+    "pill",
+    "bval",
+    "order_btns",
+    "_check_js",
+    "build_html"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "data/bhavcopy.py",
+   "lines": 292,
+   "doc": "ATIP \u2014 NSE Bhavcopy Downloader (Phase 2A)",
+   "functions": [
+    "get_nse_session",
+    "download_bhavcopy_cm",
+    "parse_bhavcopy_cm",
+    "download_bulk_block_deals",
+    "run_bulk_deals_pipeline",
+    "_nse_date",
+    "download_fii_dii",
+    "store_fii_dii",
+    "_bhavcopy_already_stored",
+    "run_bhavcopy_pipeline"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/companies.py",
+   "lines": 126,
+   "doc": "ATIP \u2014 Symbol \u2192 Company Name Lookup",
+   "functions": [
+    "_find_col",
+    "load_company_names",
+    "get_company_name"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/dhan.py",
+   "lines": 1275,
+   "doc": "ATIP \u2014 Dhan API Integration (Real-Time + Historical Data)",
+   "functions": [
+    "load_dhan_config",
+    "get_dhan_client",
+    "download_security_list",
+    "load_security_map",
+    "get_security_id",
+    "_unwrap_feed",
+    "_ist_dates",
+    "_ist_datetimes",
+    "_cached_daily",
+    "fetch_historical_daily",
+    "fetch_historical_intraday",
+    "fetch_live_quotes",
+    "fetch_index_quotes",
+    "sync_index_benchmark_history",
+    "fetch_live_ohlc",
+    "_default_symbols",
+    "get_tracked_symbols",
+    "run_historical_pipeline",
+    "run_live_quote_refresh",
+    "sync_dhan_portfolio"
+   ],
+   "classes": [
+    "DhanLiveFeed"
+   ]
+  },
+  {
+   "file": "data/dhan_ws.py",
+   "lines": 392,
+   "doc": "ATIP \u2014 Real-time NSE Index Feed via Dhan WebSocket (Live Market Feed)",
+   "functions": [
+    "feed_window_open",
+    "start_index_feed",
+    "get_index_feed_manager",
+    "stop_index_feed"
+   ],
+   "classes": [
+    "IndexFeedManager"
+   ]
+  },
+  {
+   "file": "data/fundamentals.py",
+   "lines": 146,
+   "doc": "ATIP \u2014 Fundamental Data Fetcher (Alpha Vantage + Screener.in fallback)",
+   "functions": [
+    "get_av_key",
+    "av_get",
+    "safe_num",
+    "parse_av",
+    "fetch_screener",
+    "compute_fs",
+    "run_fundamentals_pipeline"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/index_constituents.py",
+   "lines": 134,
+   "doc": "ATIP \u2014 NSE Index Constituent Lists",
+   "functions": [
+    "_cache_is_fresh",
+    "fetch_nifty500_symbols",
+    "_extract_symbols",
+    "get_symbol_industry_map"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/markets.py",
+   "lines": 139,
+   "doc": "ATIP \u2014 Global Markets & Intraday Index Fetcher",
+   "functions": [
+    "safe_float",
+    "fetch_intraday_indexes",
+    "compute_global_score",
+    "fetch_global_markets"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/news.py",
+   "lines": 179,
+   "doc": "ATIP \u2014 News Fetcher + Claude API Sentiment Classifier",
+   "functions": [
+    "fetch_feeds",
+    "build_symbol_aliases",
+    "detect_symbols",
+    "classify_rule_based",
+    "classify_with_claude",
+    "compute_news_score",
+    "store_articles",
+    "run_news_pipeline"
+   ],
+   "classes": []
+  },
+  {
+   "file": "data/technical.py",
+   "lines": 397,
+   "doc": "ATIP \u2014 Technical Indicators Engine (35 indicators via pandas-ta)",
+   "functions": [
+    "safe_val",
+    "compute_beta",
+    "_step",
+    "_numeric",
+    "compute_indicators",
+    "compute_tech_score",
+    "_tech_weights",
+    "run_technical_pipeline"
+   ],
+   "classes": []
+  },
+  {
+   "file": "db/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "db/purge.py",
+   "lines": 122,
+   "doc": "ATIP \u2014 Database Retention / Purge Utility",
+   "functions": [
+    "_purge_table",
+    "purge_old_data"
+   ],
+   "classes": []
+  },
+  {
+   "file": "db/schema.py",
+   "lines": 354,
+   "doc": "ATIP \u2014 Database Schema",
+   "functions": [
+    "_conv_date",
+    "_conv_timestamp",
+    "get_connection",
+    "_migrate_ai_scores_beta_column",
+    "_migrate_index_levels_chg_columns",
+    "init_db",
+    "seed_weights",
+    "log_job"
+   ],
+   "classes": []
+  },
+  {
+   "file": "dhan_test.py",
+   "lines": 270,
+   "doc": "ATIP \u2014 Dhan Connection Tester + Data Loader",
+   "functions": [
+    "load_config",
+    "get_dhan",
+    "test_connection",
+    "test_quote",
+    "test_history",
+    "fetch_quotes",
+    "load_history",
+    "build_dashboard"
+   ],
+   "classes": []
+  },
+  {
+   "file": "diagnose.py",
+   "lines": 252,
+   "doc": "ATIP Diagnostic Tool",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "find_index_tickers.py",
+   "lines": 44,
+   "doc": "Run this on your own machine (needs real internet access to Yahoo Finance).",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "main.py",
+   "lines": 393,
+   "doc": "ATIP \u2014 AI Trading Intelligence Platform  v0.2",
+   "functions": [
+    "print_banner",
+    "check_dependencies",
+    "_acquire_single_instance_lock",
+    "main",
+    "_start_index_feed",
+    "_start_dashboard"
+   ],
+   "classes": []
+  },
+  {
+   "file": "orders/__init__.py",
+   "lines": 2,
+   "doc": "ATIP - order rules engine and broker execution.",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "orders/broker.py",
+   "lines": 310,
+   "doc": "ATIP \u2014 Manual Order Execution (Buy / Sell via Dhan)",
+   "functions": [
+    "_ensure_order_log_table",
+    "_log_order",
+    "get_fund_limits",
+    "available_balance",
+    "check_funds",
+    "_estimate_order_value",
+    "_place_order",
+    "place_buy_order",
+    "place_sell_order"
+   ],
+   "classes": []
+  },
+  {
+   "file": "orders/environment.py",
+   "lines": 109,
+   "doc": "Which broker does an order actually reach?",
+   "functions": [
+    "broker_env",
+    "is_live",
+    "describe",
+    "get_execution_client"
+   ],
+   "classes": []
+  },
+  {
+   "file": "orders/paper.py",
+   "lines": 476,
+   "doc": "A simulated Dhan broker for real-time testing.",
+   "functions": [
+    "settings",
+    "ensure_tables",
+    "_now",
+    "_cli"
+   ],
+   "classes": [
+    "PaperBroker"
+   ]
+  },
+  {
+   "file": "orders/rules.py",
+   "lines": 945,
+   "doc": "ATIP \u2014 Buy/Sell Target & Stoploss Rules Engine",
+   "functions": [
+    "_ensure_table",
+    "_migrate_bracket_columns",
+    "init_orders_table",
+    "_resolve_trigger_price",
+    "_resolve_stoploss_price",
+    "create_rule",
+    "_create_bracket_legs",
+    "settle_oco_group",
+    "update_trailing_stops",
+    "broker_trailing_capability",
+    "_row_to_dict",
+    "get_rule",
+    "list_rules",
+    "delete_rule",
+    "cancel_rule",
+    "_condition_met",
+    "_quote_batch_age_seconds",
+    "confirm_rule",
+    "expire_stale_confirmations",
+    "check_triggers",
+    "_resolve_quantity",
+    "execute_rule",
+    "notify_order_event",
+    "reject_rule"
+   ],
+   "classes": []
+  },
+  {
+   "file": "pipeline/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "lines": 873,
+   "doc": "ATIP \u2014 Master Scheduler",
+   "functions": [
+    "now_ist",
+    "is_market_day",
+    "fundamentals_enabled",
+    "_eod_coverage",
+    "_recent_sessions",
+    "run_postmarket_if_missing",
+    "is_market_hours",
+    "_debounce",
+    "run_job",
+    "run_premarket",
+    "_run_dhan_quotes",
+    "_run_portfolio_sync",
+    "run_intraday_15min",
+    "run_intraday_30min",
+    "run_midday_news",
+    "run_midday_zpi_scan",
+    "run_preclose_scan",
+    "run_postmarket",
+    "_rebuild_dashboard",
+    "run_morning_digest",
+    "run_overnight",
+    "run_weekly",
+    "print_status",
+    "start_scheduler"
+   ],
+   "classes": []
+  },
+  {
+   "file": "portfolio/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "portfolio/zerodha.py",
+   "lines": 87,
+   "doc": "ATIP \u2014 Zerodha Kite API Portfolio Sync + Portfolio Health Score",
+   "functions": [
+    "load_cfg",
+    "get_kite",
+    "login",
+    "run_portfolio_sync"
+   ],
+   "classes": []
+  },
+  {
+   "file": "publish_snapshot.py",
+   "lines": 98,
+   "doc": "ATIP \u2014 publish a read-only dashboard snapshot to bkesari.com",
+   "functions": [
+    "load_targets",
+    "build_snapshot",
+    "main"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/__init__.py",
+   "lines": 2,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "scores/accuracy.py",
+   "lines": 230,
+   "doc": "ATIP \u2014 Accuracy Tracker: prediction vs actual 5/10/20-day outcomes",
+   "functions": [
+    "_trading_days_forward",
+    "_resolve_window",
+    "update_accuracy",
+    "generate_report",
+    "print_report"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/backtest.py",
+   "lines": 332,
+   "doc": "ATIP \u2014 Backtest Harness",
+   "functions": [
+    "load_bars",
+    "load_signals",
+    "build_features",
+    "_pick_candidates",
+    "simulate",
+    "print_result",
+    "run"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/engine.py",
+   "lines": 543,
+   "doc": "ATIP \u2014 AI Scoring Engine: VPI, MRI, RRI, CRI, ZPI, MSI, MH, ACS, ATIP Master",
+   "functions": [
+    "load_weights",
+    "minmax",
+    "weighted_score",
+    "get_tech",
+    "get_prices",
+    "get_fund",
+    "get_inst",
+    "get_ns",
+    "get_fii",
+    "get_idx",
+    "get_global",
+    "get_bulk",
+    "get_news_confidence",
+    "compute_liquidity",
+    "compute_relative_strength",
+    "compute_breakout",
+    "compute_sector_ranks",
+    "sector_score",
+    "compute_ins",
+    "compute_vpi",
+    "compute_mri",
+    "compute_rri",
+    "compute_cri",
+    "compute_zpi",
+    "compute_mh",
+    "compute_msi",
+    "compute_acs",
+    "determine_signal",
+    "run_scoring_pipeline"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/portfolio_health.py",
+   "lines": 255,
+   "doc": "ATIP \u2014 Portfolio Health Score",
+   "functions": [
+    "_band",
+    "_norm",
+    "compute_phs",
+    "store_phs",
+    "_ensure_column"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/predictions.py",
+   "lines": 212,
+   "doc": "ATIP \u2014 Prediction Writer",
+   "functions": [
+    "compute_trade_plan",
+    "_reasoning",
+    "write_predictions",
+    "backfill_predictions"
+   ],
+   "classes": []
+  },
+  {
+   "file": "scores/signal_log.py",
+   "lines": 689,
+   "doc": "ATIP \u2014 Append-only signal log and momentum outcome tracking",
+   "functions": [
+    "momentum_thresholds",
+    "sessions_between",
+    "_git_commit",
+    "_weights_hash",
+    "ensure_tables",
+    "flag_duplicates",
+    "log_signals",
+    "fill_missing_entry_prices",
+    "evaluate_outcomes",
+    "success_report",
+    "recent_signals",
+    "print_report"
+   ],
+   "classes": []
+  },
+  {
+   "file": "setup.py",
+   "lines": 14,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "strategy/__init__.py",
+   "lines": 2,
+   "doc": "Trade-management strategies layered on top of ATIP's existing signals.",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "strategy/aggressive.py",
+   "lines": 364,
+   "doc": "Aggressive exit management: book half at +3%, let the rest run.",
+   "functions": [
+    "config",
+    "validate_config",
+    "is_live",
+    "_clamp",
+    "checkpoint_decision",
+    "tighten",
+    "trail_distance_pct",
+    "partial_exit_quantity",
+    "target_price",
+    "new_trail_stop",
+    "ratchet",
+    "realised_pnl",
+    "unrealised_pnl"
+   ],
+   "classes": [
+    "ConfigError",
+    "Momentum",
+    "Decision"
+   ]
+  },
+  {
+   "file": "strategy/backtest_aggressive.py",
+   "lines": 333,
+   "doc": "Deterministic replay of the aggressive exit strategy over a price path.",
+   "functions": [
+    "simulate",
+    "metrics",
+    "_path",
+    "scenarios",
+    "run",
+    "print_report"
+   ],
+   "classes": [
+    "Bar",
+    "Trade"
+   ]
+  },
+  {
+   "file": "strategy/backtest_history.py",
+   "lines": 196,
+   "doc": "Measure the aggressive exit policy against real bars.",
+   "functions": [
+    "_load_bars",
+    "_atr_pct",
+    "_momentum_from_bars",
+    "run",
+    "print_report"
+   ],
+   "classes": []
+  },
+  {
+   "file": "strategy/live.py",
+   "lines": 392,
+   "doc": "Runs the aggressive strategy against a broker, in real time.",
+   "functions": [
+    "momentum_for",
+    "atr_for",
+    "_sell",
+    "_filled",
+    "_act",
+    "enter",
+    "manage_position",
+    "_quote_age_seconds",
+    "run_once",
+    "status",
+    "_cli"
+   ],
+   "classes": []
+  },
+  {
+   "file": "strategy/positions.py",
+   "lines": 418,
+   "doc": "Persistent state for aggressively-managed positions.",
+   "functions": [
+    "ensure_tables",
+    "_now",
+    "_claim_event",
+    "claim_event",
+    "release_event",
+    "event_log",
+    "open_position",
+    "get_position",
+    "open_positions",
+    "record_partial_exit",
+    "update_high_water",
+    "record_checkpoint",
+    "close_position",
+    "mark_to_market",
+    "total_pnl"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/conftest.py",
+   "lines": 42,
+   "doc": "Shared test fixtures.",
+   "functions": [
+    "temp_db",
+    "cfg",
+    "position"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/test_aggressive_backtest.py",
+   "lines": 117,
+   "doc": "Scenario replay tests.",
+   "functions": [
+    "result",
+    "test_all_seven_scenarios_run",
+    "test_stop_before_target_exits_whole_position",
+    "test_partial_then_reversal_keeps_the_partial_profit",
+    "test_strong_momentum_lets_the_runner_pass_target_2",
+    "test_weak_momentum_banks_at_the_checkpoint",
+    "test_multiple_positions_are_independent",
+    "test_gap_through_both_targets_still_books_the_partial",
+    "test_metrics_are_computed_not_declared",
+    "test_profit_factor_is_none_rather_than_infinite",
+    "test_costs_reduce_every_result",
+    "test_same_bar_ambiguity_resolves_against_us",
+    "test_simulation_is_deterministic",
+    "test_unfinished_trade_is_flagged_not_counted_as_a_strategy_exit"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/test_aggressive_decisions.py",
+   "lines": 275,
+   "doc": "Pure decision logic: configuration, sizing, trailing arithmetic, the +6%",
+   "functions": [
+    "test_defaults_are_the_agreed_strategy",
+    "test_execution_defaults_to_paper",
+    "test_alternative_splits_validate_and_size_correctly",
+    "test_invalid_config_is_rejected",
+    "test_partial_exit_quantity",
+    "test_partial_exit_always_leaves_a_runner",
+    "test_partial_exit_uses_original_size_not_remaining",
+    "test_trail_is_volatility_aware",
+    "test_trail_is_clamped_at_both_ends",
+    "test_trail_falls_back_when_atr_missing",
+    "test_tighten_shrinks_but_respects_the_floor",
+    "test_ratchet_rises_with_the_high_water_mark",
+    "test_ratchet_never_moves_down",
+    "test_ratchet_is_monotonic_over_a_whole_path",
+    "test_ratchet_mirrors_for_a_short",
+    "test_risk_indices_are_inverted",
+    "test_composite_ignores_missing_inputs",
+    "test_composite_is_bounded",
+    "test_target_2_never_forces_an_exit_on_strong_momentum",
+    "test_weak_momentum_banks_the_runner",
+    "test_neutral_momentum_holds_but_tightens",
+    "test_no_momentum_data_protects_rather_than_guesses",
+    "test_hold_does_not_loosen_the_trail",
+    "test_thresholds_are_configurable",
+    "test_decision_explains_itself",
+    "test_target_price",
+    "test_realised_pnl_without_costs",
+    "test_realised_pnl_is_reduced_by_costs",
+    "test_realised_pnl_mirrors_for_a_short",
+    "test_unrealised_pnl_is_zero_with_no_position",
+    "test_default_trail_is_not_tight",
+    "test_default_trail_on_a_typical_stock_is_wide_enough",
+    "test_agreed_targets_are_untouched"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/test_aggressive_lifecycle.py",
+   "lines": 283,
+   "doc": "Position lifecycle against a real (temporary) database: state transitions,",
+   "functions": [
+    "test_open_position_records_the_entry",
+    "test_new_position_defaults_to_paper",
+    "test_target_1_books_half_and_creates_a_runner",
+    "test_target_1_activates_the_trailing_stop",
+    "test_target_1_cannot_sell_twice",
+    "test_ten_duplicate_events_still_sell_once",
+    "test_single_share_position_is_not_split",
+    "test_odd_quantity_rounds_down_and_keeps_a_runner",
+    "test_high_water_ratchets_the_stop_up",
+    "test_stop_never_moves_down_on_a_pullback",
+    "test_trail_state_survives_a_restart",
+    "test_checkpoint_does_not_close_the_runner",
+    "test_weak_checkpoint_recommends_exit_but_does_not_itself_sell",
+    "test_checkpoint_runs_once",
+    "test_checkpoint_never_loosens_the_stop",
+    "test_initial_stop_before_target_1_exits_everything",
+    "test_close_is_idempotent",
+    "test_a_second_close_with_a_different_reason_still_cannot_double_book",
+    "test_full_winning_sequence_reconciles",
+    "test_total_pnl_combines_realised_and_unrealised",
+    "test_closing_zeroes_unrealised",
+    "test_two_positions_do_not_share_state",
+    "test_same_symbol_twice_is_tracked_separately",
+    "test_open_positions_excludes_closed",
+    "test_unknown_position_is_handled",
+    "test_gap_straight_through_both_targets",
+    "test_checkpoint_on_a_closed_position_is_refused",
+    "test_partial_exit_cannot_exceed_the_position"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/test_fundamentals_screener.py",
+   "lines": 57,
+   "doc": "Screener.in is the only fundamentals source ATIP has without an Alpha Vantage",
+   "functions": [
+    "test_screener_parses_ratios",
+    "test_screener_ignores_a_value_with_no_number"
+   ],
+   "classes": [
+    "_Resp"
+   ]
+  },
+  {
+   "file": "tests/test_index_feed.py",
+   "lines": 339,
+   "doc": "Regression tests for the Dhan index WebSocket feed, after the 2026-09-19/20",
+   "functions": [
+    "test_feed_window",
+    "feed",
+    "_window",
+    "test_no_connection_outside_the_session",
+    "test_connects_inside_the_session",
+    "test_connection_is_dropped_when_the_session_ends",
+    "test_error_burst_parks_the_feed_instead_of_retrying",
+    "test_a_few_errors_do_not_park_a_live_feed",
+    "test_connecting_clears_the_error_history",
+    "test_market_status_frame_is_not_treated_as_an_error",
+    "test_non_tick_frames_are_ignored_quietly",
+    "test_a_real_status_packet_from_the_sdk_is_handled",
+    "test_dead_sdk_thread_is_recycled",
+    "test_a_live_thread_is_left_alone",
+    "test_stall_detection",
+    "test_a_connection_that_never_ticks_is_stalled_too",
+    "test_disconnect_clears_the_snapshot",
+    "test_flush_writes_nothing_when_the_market_is_shut",
+    "test_flush_stores_a_row_during_the_session",
+    "_live_quotes_json",
+    "test_closed_market_serves_the_last_quotes_without_calling_dhan",
+    "test_closed_market_does_not_serve_yesterdays_quotes",
+    "test_nse_placeholder_scrips_are_not_tracked"
+   ],
+   "classes": [
+    "_FakeThread",
+    "_FakeFeed"
+   ]
+  },
+  {
+   "file": "tests/test_paper_broker.py",
+   "lines": 261,
+   "doc": "Paper broker and environment routing.",
+   "functions": [
+    "broker",
+    "test_default_environment_is_paper",
+    "test_unrecognised_environment_falls_back_to_paper",
+    "test_unreadable_config_falls_back_to_paper",
+    "test_explicit_environments_are_honoured",
+    "test_only_live_is_live",
+    "test_paper_client_is_never_a_real_dhan_client",
+    "test_market_buy_fills_and_debits_cash",
+    "test_sell_credits_cash_and_reduces_position",
+    "test_cannot_sell_more_than_held",
+    "test_insufficient_funds_is_rejected",
+    "test_no_live_quote_refuses_rather_than_inventing_a_price",
+    "test_zero_quantity_is_rejected",
+    "test_slippage_always_hurts",
+    "test_limit_order_does_not_fill_until_crossed",
+    "test_pending_limit_order_can_be_cancelled",
+    "test_realized_pnl_is_tracked",
+    "test_fund_limits_mirror_the_live_payload_shape",
+    "test_orders_and_positions_are_queryable",
+    "test_summary_reports_state",
+    "test_reset_clears_only_paper_tables",
+    "test_quote_is_cached_within_ttl",
+    "test_stale_cache_entry_is_refetched"
+   ],
+   "classes": [
+    "FakeQuotes"
+   ]
+  },
+  {
+   "file": "tests/test_regressions.py",
+   "lines": 327,
+   "doc": "Regression tests for defects that actually occurred.",
+   "functions": [
+    "test_ist_conversion_does_not_shift_the_date",
+    "test_ist_conversion_never_lands_on_a_weekend_for_trading_days",
+    "test_unwrap_feed_handles_the_sdk_envelope",
+    "test_unwrap_feed_handles_the_unwrapped_shape_too",
+    "test_unwrap_feed_survives_junk",
+    "test_signal_log_dedupes_on_date_symbol_signal",
+    "test_signal_log_keeps_a_genuinely_different_signal",
+    "test_sessions_between_counts_sessions_not_calendar_days",
+    "test_sessions_between_skips_the_weekend",
+    "test_json_safe_encodes_dates",
+    "test_index_panel_shows_the_latest_reading_not_the_scored_date",
+    "test_intraday_index_snapshot_refuses_a_past_date",
+    "test_pct_change_is_against_the_previous_close",
+    "test_pct_change_is_none_when_unknowable",
+    "test_chg_span_shows_absolute_and_percentage",
+    "test_chg_span_is_empty_without_a_previous_close",
+    "test_stale_days_measures_age",
+    "test_signal_history_reports_a_one_year_window",
+    "test_global_panel_shows_the_newest_snapshot_of_the_day",
+    "test_live_quote_payload_carries_the_brokers_previous_close"
+   ],
+   "classes": []
+  },
+  {
+   "file": "tests/test_signal_pipeline.py",
+   "lines": 560,
+   "doc": "Regression tests for the signal pipeline breakage found on 2026-09-18.",
+   "functions": [
+    "test_nse_calendar_knows_festival_holidays",
+    "test_postmarket_after_a_holiday_targets_the_last_session",
+    "db",
+    "_score",
+    "_bar",
+    "tracked",
+    "test_coverage_fails_when_the_days_bars_are_missing",
+    "test_coverage_passes_when_the_days_bars_are_present",
+    "test_coverage_uses_a_share_not_a_single_bar",
+    "test_coverage_allows_a_first_ever_run",
+    "test_coverage_bar_does_not_ratchet_down_after_a_partial_day",
+    "test_postmarket_does_not_score_a_day_without_its_closes",
+    "test_postmarket_scores_normally_when_closes_are_present",
+    "test_postmarket_runs_after_nse_publishes",
+    "_freeze",
+    "test_catchup_runs_a_missed_postmarket",
+    "test_catchup_is_a_noop_when_the_day_is_done",
+    "test_catchup_waits_for_the_scheduled_run_on_the_day",
+    "test_catchup_recovers_the_previous_session_on_a_weekend_start",
+    "_log_signal",
+    "test_null_entry_price_is_filled_from_the_signal_dates_close",
+    "test_recorded_entry_price_is_never_overwritten",
+    "test_holiday_signal_stays_null",
+    "test_filled_signal_becomes_trackable",
+    "test_fii_dii_flows_are_stored_under_nses_date",
+    "test_fii_dii_response_without_dates_keeps_the_asked_date",
+    "test_fii_dii_response_mixing_dates_is_not_stored",
+    "test_nse_date_parsing",
+    "test_flows_are_still_fetched_when_prices_are_already_stored",
+    "test_flows_are_stored_under_nses_date_via_the_pipeline",
+    "test_rescoring_refreshes_every_recomputed_column",
+    "test_rescoring_leaves_one_trade_of_the_day",
+    "_outcome",
+    "_one_signal",
+    "test_hit_rate_counts_signals_that_are_being_watched",
+    "test_catchup_recovers_an_older_unscored_session",
+    "test_catchup_does_not_backfill_a_session_with_no_bars",
+    "test_catchup_runs_oldest_first",
+    "test_incomplete_history_cache_is_refetched"
+   ],
+   "classes": [
+    "_FrozenNow",
+    "_NseSession"
+   ]
+  },
+  {
+   "file": "tests/test_strategy_live.py",
+   "lines": 314,
+   "doc": "The wiring between strategy, state and broker.",
+   "functions": [
+    "orders",
+    "pos",
+    "test_entry_places_a_buy_and_tracks_the_actual_fill",
+    "test_entry_that_does_not_fill_creates_no_position",
+    "test_entry_order_is_tagged",
+    "test_reaching_target_1_sells_half",
+    "test_below_target_1_does_nothing",
+    "test_repeated_passes_place_only_one_order",
+    "test_rejected_exit_leaves_the_position_intact_and_retryable",
+    "test_partial_exit_records_the_real_fill_not_the_target",
+    "test_initial_stop_exits_the_whole_position",
+    "test_stop_takes_precedence_within_one_pass",
+    "test_checkpoint_runs_at_target_2_and_holds_on_strong_momentum",
+    "test_weak_momentum_at_the_checkpoint_banks_the_runner",
+    "test_trailing_stop_closes_the_runner",
+    "test_trail_only_ratchets_upward_through_the_wiring",
+    "test_exit_orders_are_tagged_with_position_and_event",
+    "test_run_once_manages_every_open_position",
+    "test_run_once_is_idle_with_no_positions",
+    "test_run_once_skips_symbols_with_no_price",
+    "test_closed_positions_are_not_managed",
+    "test_momentum_reads_existing_scores_without_inventing_them",
+    "test_exit_fills_at_the_price_the_decision_was_made_on",
+    "test_reference_price_is_never_sent_to_a_real_broker"
+   ],
+   "classes": []
+  },
+  {
+   "file": "utils/__init__.py",
+   "lines": 1,
+   "doc": "",
+   "functions": [],
+   "classes": []
+  },
+  {
+   "file": "utils/trading_calendar.py",
+   "lines": 90,
+   "doc": "ATIP \u2014 NSE Trading Calendar",
+   "functions": [
+    "is_trading_day",
+    "last_trading_day",
+    "postmarket_target_date"
+   ],
+   "classes": []
+  }
+ ],
+ "database": [
+  {
+   "table": "accuracy_tracker",
+   "rows": 2004,
+   "n_columns": 17,
+   "columns": [
+    "id",
+    "pred_date",
+    "symbol",
+    "signal",
+    "entry_price",
+    "price_5d",
+    "return_5d",
+    "correct_5d",
+    "price_10d",
+    "return_10d",
+    "correct_10d",
+    "price_20d",
+    "return_20d",
+    "correct_20d",
+    "hit_target_1",
+    "hit_stop_loss",
+    "created_at"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-08 03:08:18",
+    "max": "2026-09-20 02:46:39"
+   }
+  },
+  {
+   "table": "ai_scores",
+   "rows": 6637,
+   "n_columns": 28,
+   "columns": [
+    "id",
+    "symbol",
+    "date",
+    "vpi",
+    "spi",
+    "rri",
+    "mri",
+    "cri",
+    "msi",
+    "zpi",
+    "acs",
+    "tech_score",
+    "fund_score",
+    "inst_score",
+    "news_score",
+    "atip_score",
+    "atip_rank",
+    "signal",
+    "confidence",
+    "tod_score",
+    "is_tod",
+    "mh_score",
+    "regime",
+    "top_factor_1",
+    "top_factor_2",
+    "top_factor_3",
+    "created_at",
+    "beta_1y"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-25",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "bulk_deals",
+   "rows": 421,
+   "n_columns": 7,
+   "columns": [
+    "id",
+    "symbol",
+    "date",
+    "net_value_cr",
+    "deal_count",
+    "source",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-09-07",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "fii_dii_market",
+   "rows": 6,
+   "n_columns": 14,
+   "columns": [
+    "id",
+    "date",
+    "fii_buy_cr",
+    "fii_sell_cr",
+    "fii_net_cr",
+    "dii_buy_cr",
+    "dii_sell_cr",
+    "dii_net_cr",
+    "fii_5d_avg",
+    "dii_5d_avg",
+    "pcr",
+    "mwpl_pct",
+    "adv_decline",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-28",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "fundamental_data",
+   "rows": 0,
+   "n_columns": 34,
+   "columns": [
+    "id",
+    "symbol",
+    "quarter",
+    "report_date",
+    "roe",
+    "roce",
+    "net_margin",
+    "operating_margin",
+    "roa",
+    "eps_ttm",
+    "eps_growth_yoy",
+    "revenue_cr",
+    "revenue_growth_yoy",
+    "profit_cr",
+    "profit_growth_yoy",
+    "qoq_revenue_chg",
+    "qoq_profit_chg",
+    "debt_equity",
+    "current_ratio",
+    "interest_coverage",
+    "fcf_cr",
+    "cash_cr",
+    "pe_ratio",
+    "pb_ratio",
+    "ev_ebitda",
+    "peg_ratio",
+    "dividend_yield",
+    "book_value_ps",
+    "promoter_hold",
+    "promoter_pledge",
+    "inst_hold",
+    "fundamental_score",
+    "source",
+    "created_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "global_markets",
+   "rows": 40,
+   "n_columns": 37,
+   "columns": [
+    "id",
+    "date",
+    "time",
+    "sp500",
+    "sp500_chg",
+    "dow",
+    "dow_chg",
+    "nasdaq",
+    "nasdaq_chg",
+    "nikkei",
+    "nikkei_chg",
+    "hangseng",
+    "hangseng_chg",
+    "ftse100",
+    "ftse100_chg",
+    "dax",
+    "dax_chg",
+    "crude_wti",
+    "crude_wti_chg",
+    "crude_brent",
+    "crude_brent_chg",
+    "gold",
+    "gold_chg",
+    "silver",
+    "silver_chg",
+    "usd_inr",
+    "usd_inr_chg",
+    "usd_index",
+    "usd_index_chg",
+    "us_10y",
+    "us_10y_chg",
+    "global_score",
+    "us_score",
+    "asia_score",
+    "commodity_score",
+    "global_sentiment",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-25",
+    "max": "2026-09-19"
+   }
+  },
+  {
+   "table": "index_levels",
+   "rows": 41624,
+   "n_columns": 33,
+   "columns": [
+    "id",
+    "date",
+    "time",
+    "nifty50",
+    "nifty50_chg",
+    "banknifty",
+    "banknifty_chg",
+    "midcap150",
+    "midcap150_chg",
+    "smallcap250",
+    "smallcap250_chg",
+    "nifty_it",
+    "nifty_auto",
+    "nifty_fmcg",
+    "nifty_metal",
+    "nifty_realty",
+    "nifty_psubank",
+    "nifty_energy",
+    "nifty_pharma",
+    "india_vix",
+    "gift_nifty",
+    "overall_sentiment",
+    "created_at",
+    "nifty_it_chg",
+    "nifty_auto_chg",
+    "nifty_fmcg_chg",
+    "nifty_metal_chg",
+    "nifty_realty_chg",
+    "nifty_psubank_chg",
+    "nifty_energy_chg",
+    "nifty_pharma_chg",
+    "india_vix_chg",
+    "gift_nifty_chg"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-27",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "institutional_data",
+   "rows": 0,
+   "n_columns": 11,
+   "columns": [
+    "id",
+    "symbol",
+    "date",
+    "fii_net_cr",
+    "dii_net_cr",
+    "mf_net_cr",
+    "promoter_buy",
+    "promoter_sell",
+    "delivery_pct",
+    "inst_score",
+    "created_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "live_quotes",
+   "rows": 5506,
+   "n_columns": 11,
+   "columns": [
+    "id",
+    "symbol",
+    "ltp",
+    "open",
+    "high",
+    "low",
+    "prev_close",
+    "volume",
+    "chg_pct",
+    "timestamp",
+    "source"
+   ],
+   "span": {
+    "column": "timestamp",
+    "min": "2026-07-27 12:56:06",
+    "max": "2026-09-20 22:01:42"
+   }
+  },
+  {
+   "table": "live_ticks",
+   "rows": 0,
+   "n_columns": 11,
+   "columns": [
+    "id",
+    "symbol",
+    "security_id",
+    "ltp",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "timestamp",
+    "received_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "market_health",
+   "rows": 15,
+   "n_columns": 17,
+   "columns": [
+    "id",
+    "date",
+    "mh_score",
+    "regime",
+    "nifty_trend",
+    "banknifty",
+    "breadth",
+    "vix_score",
+    "fii_score",
+    "dii_score",
+    "global_score",
+    "sector_score",
+    "adv_decline",
+    "nifty_close",
+    "vix_level",
+    "created_at",
+    "portfolio_health"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-25",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "news_articles",
+   "rows": 1249,
+   "n_columns": 14,
+   "columns": [
+    "id",
+    "fetched_at",
+    "headline",
+    "source",
+    "url",
+    "category",
+    "symbols_mentioned",
+    "sentiment",
+    "importance",
+    "confidence",
+    "news_score",
+    "ai_summary",
+    "processed",
+    "created_at"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-07-25 06:22:44",
+    "max": "2026-09-10 05:00:32"
+   }
+  },
+  {
+   "table": "order_log",
+   "rows": 15,
+   "n_columns": 14,
+   "columns": [
+    "id",
+    "timestamp",
+    "symbol",
+    "transaction_type",
+    "quantity",
+    "order_type",
+    "product_type",
+    "price",
+    "estimated_value",
+    "available_funds",
+    "mode",
+    "status",
+    "dhan_order_id",
+    "error"
+   ],
+   "span": {
+    "column": "timestamp",
+    "min": "2026-09-08 12:05:34",
+    "max": "2026-09-17 09:17:30"
+   }
+  },
+  {
+   "table": "order_rules",
+   "rows": 10,
+   "n_columns": 45,
+   "columns": [
+    "id",
+    "symbol",
+    "side",
+    "trigger_type",
+    "trigger_value",
+    "trigger_percent",
+    "reference_price",
+    "resolved_trigger_price",
+    "quantity_type",
+    "quantity_value",
+    "stoploss_type",
+    "stoploss_value",
+    "resolved_stoploss_price",
+    "product_type",
+    "order_type",
+    "limit_price",
+    "require_confirmation",
+    "status",
+    "notes",
+    "created_at",
+    "updated_at",
+    "triggered_at",
+    "trigger_hit_price",
+    "confirmation_expires_at",
+    "dhan_order_id",
+    "execution_price",
+    "execution_quantity",
+    "execution_error",
+    "trigger_direction",
+    "role",
+    "parent_rule_id",
+    "oco_group_id",
+    "bracket_target_pct",
+    "bracket_target2_pct",
+    "bracket_stop_pct",
+    "bracket_auto_exit",
+    "bracket_target_split",
+    "trail_enabled",
+    "trail_type",
+    "trail_value",
+    "trail_jump",
+    "trail_high_water",
+    "trail_moves",
+    "broker_leg_type",
+    "broker_leg_id"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-10T11:45:01",
+    "max": "2026-09-10T13:10:32"
+   }
+  },
+  {
+   "table": "paper_account",
+   "rows": 1,
+   "n_columns": 3,
+   "columns": [
+    "id",
+    "balance",
+    "opened_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "paper_order",
+   "rows": 7,
+   "n_columns": 16,
+   "columns": [
+    "order_id",
+    "created_at",
+    "symbol",
+    "security_id",
+    "exchange",
+    "transaction_type",
+    "quantity",
+    "filled_qty",
+    "order_type",
+    "product_type",
+    "limit_price",
+    "fill_price",
+    "status",
+    "reason",
+    "brokerage",
+    "tag"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-08T14:21:32",
+    "max": "2026-09-17T09:17:30"
+   }
+  },
+  {
+   "table": "paper_position",
+   "rows": 2,
+   "n_columns": 5,
+   "columns": [
+    "symbol",
+    "quantity",
+    "avg_price",
+    "realized_pnl",
+    "updated_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "pipeline_log",
+   "rows": 928,
+   "n_columns": 9,
+   "columns": [
+    "id",
+    "run_date",
+    "job_name",
+    "start_time",
+    "end_time",
+    "status",
+    "rows_processed",
+    "error_msg",
+    "created_at"
+   ],
+   "span": {
+    "column": "run_date",
+    "min": "2026-07-25",
+    "max": "2026-09-20"
+   }
+  },
+  {
+   "table": "portfolio_holdings",
+   "rows": 86,
+   "n_columns": 18,
+   "columns": [
+    "id",
+    "date",
+    "symbol",
+    "qty",
+    "avg_price",
+    "cmp",
+    "current_val",
+    "pnl",
+    "pnl_pct",
+    "atip_score",
+    "vpi",
+    "cri",
+    "zpi",
+    "signal",
+    "weight_pct",
+    "sector",
+    "beta_1y",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-25",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "predictions",
+   "rows": 2506,
+   "n_columns": 21,
+   "columns": [
+    "id",
+    "pred_date",
+    "symbol",
+    "signal",
+    "atip_score",
+    "vpi",
+    "zpi",
+    "mri",
+    "cri",
+    "acs",
+    "entry_price",
+    "stop_loss",
+    "target_1",
+    "target_2",
+    "risk_reward",
+    "position_size_pct",
+    "confidence",
+    "reasoning",
+    "regime",
+    "is_tod",
+    "created_at"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-05 14:23:40",
+    "max": "2026-09-20 02:46:37"
+   }
+  },
+  {
+   "table": "prices_daily",
+   "rows": 231544,
+   "n_columns": 14,
+   "columns": [
+    "id",
+    "symbol",
+    "date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "adj_close",
+    "volume",
+    "delivery_qty",
+    "delivery_pct",
+    "series",
+    "source",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2025-01-27",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "signal_log",
+   "rows": 62,
+   "n_columns": 23,
+   "columns": [
+    "id",
+    "run_id",
+    "logged_at",
+    "signal_date",
+    "symbol",
+    "signal",
+    "entry_price",
+    "atip_score",
+    "vpi",
+    "spi",
+    "rri",
+    "mri",
+    "cri",
+    "msi",
+    "zpi",
+    "acs",
+    "mh_score",
+    "regime",
+    "is_tod",
+    "model_version",
+    "weights_hash",
+    "notes",
+    "duplicate_of"
+   ],
+   "span": {
+    "column": "signal_date",
+    "min": "2026-07-30",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "signal_outcome",
+   "rows": 159,
+   "n_columns": 12,
+   "columns": [
+    "signal_id",
+    "threshold_pct",
+    "hit",
+    "hit_date",
+    "sessions_to_hit",
+    "hit_price",
+    "max_favourable_pct",
+    "max_adverse_pct",
+    "sessions_tracked",
+    "still_open",
+    "data_gap_sessions",
+    "evaluated_at"
+   ],
+   "span": null
+  },
+  {
+   "table": "sqlite_sequence",
+   "rows": 16,
+   "n_columns": 2,
+   "columns": [
+    "name",
+    "seq"
+   ],
+   "span": null
+  },
+  {
+   "table": "strategy_event",
+   "rows": 3,
+   "n_columns": 8,
+   "columns": [
+    "id",
+    "position_id",
+    "event_key",
+    "event_type",
+    "price",
+    "quantity",
+    "detail",
+    "created_at"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-08T14:21:33",
+    "max": "2026-09-08T14:21:35"
+   }
+  },
+  {
+   "table": "strategy_position",
+   "rows": 1,
+   "n_columns": 28,
+   "columns": [
+    "id",
+    "entry_rule_id",
+    "symbol",
+    "side",
+    "entry_price",
+    "initial_qty",
+    "remaining_qty",
+    "t1_state",
+    "t1_qty",
+    "t1_price",
+    "t1_at",
+    "t2_state",
+    "t2_at",
+    "t2_verdict",
+    "high_water",
+    "trail_pct",
+    "trail_stop",
+    "trail_moves",
+    "realized_pnl",
+    "unrealized_pnl",
+    "cost_pct",
+    "status",
+    "exit_reason",
+    "exit_price",
+    "closed_at",
+    "mode",
+    "created_at",
+    "updated_at"
+   ],
+   "span": {
+    "column": "created_at",
+    "min": "2026-09-08T14:21:33",
+    "max": "2026-09-08T14:21:33"
+   }
+  },
+  {
+   "table": "technical_indicators",
+   "rows": 6158,
+   "n_columns": 41,
+   "columns": [
+    "id",
+    "symbol",
+    "date",
+    "rsi_14",
+    "stoch_k",
+    "stoch_d",
+    "williams_r",
+    "cci_20",
+    "macd_line",
+    "macd_signal",
+    "macd_hist",
+    "adx_14",
+    "ema_9",
+    "ema_21",
+    "ema_50",
+    "sma_200",
+    "atr_14",
+    "atr_pct",
+    "bb_upper",
+    "bb_lower",
+    "bb_mid",
+    "bb_width",
+    "obv",
+    "volume_sma20",
+    "volume_ratio",
+    "rel_volume",
+    "pivot",
+    "r1",
+    "r2",
+    "s1",
+    "s2",
+    "fib_236",
+    "fib_382",
+    "fib_500",
+    "fib_618",
+    "golden_cross",
+    "death_cross",
+    "above_200dma",
+    "gap_pct",
+    "tech_score",
+    "created_at"
+   ],
+   "span": {
+    "column": "date",
+    "min": "2026-07-25",
+    "max": "2026-09-18"
+   }
+  },
+  {
+   "table": "weight_config",
+   "rows": 105,
+   "n_columns": 8,
+   "columns": [
+    "id",
+    "index_name",
+    "variable",
+    "weight",
+    "description",
+    "regime",
+    "active",
+    "updated_at"
+   ],
+   "span": null
+  }
+ ],
+ "api_routes": [
+  {
+   "file": "dashboard/server.py",
+   "line": 1241,
+   "match": "/"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1244,
+   "match": "/api/scores"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1246,
+   "match": "/api/mh"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1248,
+   "match": "/api/tod"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1250,
+   "match": "/api/news"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1252,
+   "match": "/api/portfolio"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1254,
+   "match": "/api/refresh"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1269,
+   "match": "/api/orders"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1277,
+   "match": "/api/orders"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1281,
+   "match": "/api/orders/pending"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1285,
+   "match": "/api/orders/{rule_id}/confirm"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1302,
+   "match": "/api/orders/{rule_id}/reject"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1309,
+   "match": "/api/orders/{rule_id}"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1316,
+   "match": "/api/orders/broker-status"
+  },
+  {
+   "file": "dashboard/server.py",
+   "line": 1343,
+   "match": "/api/live-quotes"
+  }
+ ],
+ "scheduled_jobs": [
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 793,
+   "match": "schedule.every().day.at(\"07:00\").do(run_premarket)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 800,
+   "match": "schedule.every().day.at(\"08:30\").do(run_morning_digest)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 807,
+   "match": "schedule.every().day.at(f\"{hh:02d}:{mm:02d}\").do(run_intraday_15min)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 812,
+   "match": "schedule.every().day.at(f\"{hh:02d}:{mm:02d}\").do(run_intraday_30min)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 815,
+   "match": "schedule.every().day.at(\"12:00\").do(run_midday_news)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 816,
+   "match": "schedule.every().day.at(\"12:30\").do(run_midday_zpi_scan)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 817,
+   "match": "schedule.every().day.at(\"14:45\").do(run_preclose_scan)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 822,
+   "match": "schedule.every().day.at(POSTMARKET_RUN_TIME).do(run_postmarket)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 823,
+   "match": "schedule.every().day.at(POSTMARKET_CATCHUP_TIME).do(run_postmarket_if_missing)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 826,
+   "match": "schedule.every().day.at(\"23:00\").do(run_overnight)"
+  },
+  {
+   "file": "pipeline/scheduler.py",
+   "line": 829,
+   "match": "schedule.every().saturday.at(\"08:00\").do(run_weekly)"
+  }
+ ],
+ "job_functions": [
+  "run_intraday_15min",
+  "run_intraday_30min",
+  "run_midday_news",
+  "run_midday_zpi_scan",
+  "run_morning_digest",
+  "run_overnight",
+  "run_postmarket",
+  "run_postmarket_if_missing",
+  "run_preclose_scan",
+  "run_premarket",
+  "run_weekly"
+ ],
+ "score_functions": [
+  "load_weights",
+  "minmax",
+  "weighted_score",
+  "get_tech",
+  "get_prices",
+  "get_fund",
+  "get_inst",
+  "get_ns",
+  "get_fii",
+  "get_idx",
+  "get_global",
+  "get_bulk",
+  "get_news_confidence",
+  "compute_liquidity",
+  "compute_relative_strength",
+  "compute_breakout",
+  "compute_sector_ranks",
+  "sector_score",
+  "compute_ins",
+  "compute_vpi",
+  "compute_mri",
+  "compute_rri",
+  "compute_cri",
+  "compute_zpi",
+  "compute_mh",
+  "compute_msi",
+  "compute_acs",
+  "determine_signal",
+  "run_scoring_pipeline"
+ ],
+ "engine_constants": [
+  [
+   "BUY_STRICT",
+   "{\"atip\": 75, \"vpi\": 70, \"zpi\": 65, \"acs\": 60, \"mh\": 50}"
+  ],
+  [
+   "BUY_LOOSE",
+   "{\"atip\": 65, \"vpi\": 60, \"zpi\": 55, \"mh\": 40}"
+  ],
+  [
+   "SELL_CRI_DANGER",
+   "75      # above this, exit/avoid regardless of other scores"
+  ],
+  [
+   "SELL_ATIP_FLOOR",
+   "30      # below this, treat as a sell candidate"
+  ],
+  [
+   "HOLD_ATIP_FLOOR",
+   "50      # below this (and not a sell), sit out as WAIT"
+  ]
+ ],
+ "technical_indicator_columns": [
+  "symbol",
+  "date",
+  "{'",
+  "'.join(fields"
+ ],
+ "config_keys_read": [
+  "alpha_vantage_key",
+  "dhan_access_token",
+  "dhan_client_id",
+  "execution_mode",
+  "momentum_thresholds",
+  "targets",
+  "telegram_token"
+ ],
+ "tests": [
+  {
+   "file": "tests/test_aggressive_backtest.py",
+   "tests": 13,
+   "parametrized": 0
+  },
+  {
+   "file": "tests/test_aggressive_decisions.py",
+   "tests": 33,
+   "parametrized": 3
+  },
+  {
+   "file": "tests/test_aggressive_lifecycle.py",
+   "tests": 28,
+   "parametrized": 0
+  },
+  {
+   "file": "tests/test_fundamentals_screener.py",
+   "tests": 2,
+   "parametrized": 0
+  },
+  {
+   "file": "tests/test_index_feed.py",
+   "tests": 20,
+   "parametrized": 3
+  },
+  {
+   "file": "tests/test_paper_broker.py",
+   "tests": 22,
+   "parametrized": 2
+  },
+  {
+   "file": "tests/test_regressions.py",
+   "tests": 20,
+   "parametrized": 2
+  },
+  {
+   "file": "tests/test_signal_pipeline.py",
+   "tests": 31,
+   "parametrized": 3
+  },
+  {
+   "file": "tests/test_strategy_live.py",
+   "tests": 22,
+   "parametrized": 0
+  }
+ ],
+ "dependency_files": {
+  "requirements.txt": "# ATIP \u2014 AI Trading Intelligence Platform\n# Install: pip install -r requirements.txt\n\n# \u2500\u2500 Core (Required) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\npandas>=2.0.0\nnumpy>=1.24.0\nrequests>=2.31.0\n\n# \u2500\u2500 Dhan API (Primary data source \u2014 Indian stocks real-time + historical)\ndhanhq>=1.4.0\n\n# \u2500\u2500 Global markets data (yfinance \u2014 US/Asia/Europe/Commodities/FX) \u2500\u2500\u2500\u2500\u2500\u2500\nyfinance>=0.2.38\n\n# \u2500\u2500 Technical indicators \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n# `ta` is the pure-Python implementation and the one this project is verified\n# against (Python 3.14 / pandas 3.0 / numpy 2.5). It is REQUIRED \u2014 without a\n# TA library, compute_indicators() returns nothing and the whole scoring\n# engine silently produces empty technical inputs.\nta>=0.11.0\n#\n# pandas-ta is deliberately NOT pinned here. It cannot install or import on\n# this stack for two independent reasons:\n#   1. it does `from numpy import NaN`, removed in numpy 2.0 (you have 2.5.x);\n#   2. it pulls in numba, which has no Python 3.14 wheel.\n# technical.py still prefers pandas_ta when it imports cleanly (older stacks),\n# and falls back to `ta` automatically \u2014 so installing it is optional and only\n# worth trying on Python <= 3.12 with numpy < 2.\n# pandas-ta>=0.3.14b0\n\n# \u2500\u2500 Scheduling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nschedule>=1.2.0\n\n# \u2500\u2500 Web dashboard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfastapi>=0.110.0\nuvicorn[standard]>=0.29.0\n\n# \u2500\u2500 AI news classification \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+  "pytest.ini": "[pytest]\ntestpaths = tests\npython_files = test_*.py\naddopts = -q --strict-markers\nfilterwarnings =\n    # FastAPI's on_event deprecation fires on import of dashboard.server. It is\n    # a real thing to fix, but it is not a test failure and it drowns output.\n    # (?s) is required: the message begins with a newline, and warning filters\n    # match with re.match, where \".\" does not cross one.\n    ignore:(?s).*on_event is deprecated.*:DeprecationWarning\n"
+ }
+}

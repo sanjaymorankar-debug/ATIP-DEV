@@ -324,3 +324,33 @@ def test_live_quote_payload_carries_the_brokers_previous_close():
     src = inspect.getsource(server)
     assert '"prev_close": prev' in src
     assert "if(qd.prev_close!=null && qd.prev_close>0) prev=qd.prev_close;" in src
+
+
+def test_macd_columns_are_not_swapped():
+    """
+    compute_indicators reads the MACD frame BY POSITION, and the two libraries
+    behind the wrapper disagree: pandas_ta emits (MACD, Hist, Signal) while the
+    installed `ta` fallback used to emit (MACD, Signal, Hist). That put the
+    signal line — a price-scale number — into macd_hist for all 7,164 stored
+    rows, and macd_hist is MRI's heaviest input (weight 0.25), whose
+    min(50+|x|*10, 100) mapping saturated in 63% of them.
+
+    The invariant that catches either library drifting: hist == macd - signal.
+    """
+    import numpy as np
+    from data.technical import ta, HAS_TA
+
+    if not HAS_TA:
+        import pytest
+        pytest.skip("no TA library installed")
+
+    close = pd.Series(100 + np.cumsum(np.sin(np.arange(200) / 7.0)), name="close")
+    frame = ta.macd(close, fast=12, slow=26, signal=9)
+
+    macd, hist, signal = (frame.iloc[-1, i] for i in range(3))
+    assert abs(macd - (signal + hist)) < 1e-6, (
+        f"positions are not (MACD, Hist, Signal): macd={macd}, "
+        f"col1={hist}, col2={signal}")
+
+    # and the histogram must be small relative to the line it is derived from
+    assert abs(hist) <= abs(macd) + 1e-9
