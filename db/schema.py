@@ -56,9 +56,43 @@ def get_connection():
     conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys=ON")
     _migrate_index_levels_chg_columns(conn)
+    _migrate_index_levels_unique(conn)
     _migrate_ai_scores_beta_column(conn)
     _migrate_technical_macd_pct_column(conn)
     return conn
+
+INDEX_LEVELS_UNIQUE = "uq_index_levels_date_time"
+_index_levels_unique_blocked = False
+
+def _migrate_index_levels_unique(conn):
+    """Non-destructive migration -- one index_levels row per (date, time).
+
+    The table only had a plain index, so when two flush threads ran at once
+    (2026-09-09 and 09-10) every snapshot was stored twice: 2,191 byte-identical
+    pairs. Both writers now insert with OR IGNORE / OR REPLACE, which is valid
+    with or without this index, so a database that still holds duplicates keeps
+    working: the index is simply not created, and that is reported once per
+    process instead of retried (and the table re-scanned) on every connection.
+    Existing rows are never deleted here.
+    """
+    global _index_levels_unique_blocked
+    if _index_levels_unique_blocked:
+        return
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_levels'").fetchone():
+            return  # fresh install -- init_db() creates the table, then calls this
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                        (INDEX_LEVELS_UNIQUE,)).fetchone():
+            return
+        conn.execute(f"CREATE UNIQUE INDEX {INDEX_LEVELS_UNIQUE} ON index_levels(date,time)")
+        conn.commit()
+        log.info("  ✓ index_levels migrated — (date, time) is now unique")
+    except sqlite3.IntegrityError:
+        _index_levels_unique_blocked = True
+        log.warning("  index_levels still holds duplicate (date, time) rows — unique index "
+                    "not created; remove the duplicates to enable it")
+    except sqlite3.OperationalError as e:
+        log.warning(f"  index_levels unique-index migration skipped: {e}")
 
 def _migrate_technical_macd_pct_column(conn):
     """Self-healing, non-destructive migration — adds
@@ -282,7 +316,9 @@ def init_db():
         timestamp   TEXT,
         received_at TEXT)""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_lt_symbol ON live_ticks(symbol, received_at)")
-    conn.commit(); conn.close()
+    conn.commit()
+    _migrate_index_levels_unique(conn)
+    conn.close()
     log.info(f"✅ Database ready: {DB_PATH.resolve()}")
     return str(DB_PATH.resolve())
 

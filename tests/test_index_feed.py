@@ -292,6 +292,38 @@ def test_flush_stores_a_row_during_the_session(feed, monkeypatch, temp_db):
         conn.close()
 
 
+def test_two_flushes_in_one_second_store_one_row(feed, monkeypatch, temp_db):
+    """
+    Two flush threads ran at once on 2026-09-09 and 09-10 and stored 2,191
+    byte-identical (date, time) pairs. (date, time) is now unique, and a
+    second writer in the same second is ignored instead of raising.
+    """
+    from data import dhan_ws
+    from db.schema import init_db, get_connection
+
+    class _Frozen(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 21, 10, 15, 3)
+
+    init_db()
+    monkeypatch.setattr(dhan_ws, "datetime", _Frozen)
+    sec = next(iter(feed._sec_to_col))
+    feed._ltp[sec] = 23346.4
+    feed._prev_close[sec] = 23270.6
+    _window(monkeypatch, True)
+    feed._flush_to_db()
+    feed._flush_to_db()
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM index_levels").fetchone()[0] == 1
+        with pytest.raises(Exception):
+            conn.execute("INSERT INTO index_levels (date, time) VALUES (?, '10:15:03')",
+                         (str(dt.date.today()),))
+    finally:
+        conn.close()
+
+
 # ── the dashboard's own quote poll ────────────────────────────────────────
 
 def _live_quotes_json(monkeypatch, market_open, cache):

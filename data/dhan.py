@@ -569,11 +569,13 @@ def fetch_index_quotes(cols: list = None, dhan=None) -> pd.DataFrame:
 
 
 BETA_BENCHMARK_SYMBOL = "NIFTY50"  # synthetic symbol stored in prices_daily as the beta benchmark
+# Its rows carry source 'dhan_index' (this module) or 'nse_index' (NSE's daily
+# index-close file, data/bhavcopy.py); scores/backtest.py excludes both.
 
-def _store_benchmark_rows(conn, symbol, dates, closes) -> int:
+def _store_benchmark_rows(conn, symbol, dates, closes, source="dhan_index") -> int:
     """
     Upsert a close-only benchmark series: open, high and low are set to close,
-    volume to 0, because that is all Dhan's index history is used for here.
+    volume to 0, because the benchmark is only ever read for its close.
 
     On conflict EVERY price column is refreshed. It used to refresh close only,
     so when the 2026-09-08 fix re-synced the series with correct dates, the
@@ -591,7 +593,7 @@ def _store_benchmark_rows(conn, symbol, dates, closes) -> int:
             ON CONFLICT(symbol,date) DO UPDATE SET
                 open=excluded.open, high=excluded.high,
                 low=excluded.low, close=excluded.close
-        """, (symbol, str(d), c, c, c, c, 0, "dhan_index"))
+        """, (symbol, str(d), c, c, c, c, 0, source))
         count += 1
     return count
 
@@ -609,6 +611,11 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
     scoring universe (that comes from the Nifty 500 constituent list /
     portfolio holdings, not from scanning prices_daily), so this doesn't
     risk it being treated as a tradeable stock anywhere downstream.
+
+    This can never supply the session being scored: Dhan's to_date is
+    exclusive, and even asked past it, Dhan had no 2026-09-21 bar at 01:14 the
+    next morning. That session's close comes from NSE instead
+    (data.bhavcopy.sync_nse_index_closes); this call back-fills and confirms.
     """
     if not HAS_DHAN:
         return {"status": "FAILED", "error": "pip install dhanhq"}

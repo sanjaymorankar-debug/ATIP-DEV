@@ -536,6 +536,15 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     except Exception as e:
         log.warning(f"  Benchmark history: {e}")
 
+    # The session's own official closes from NSE -- Dhan's index history above
+    # ends the day before -- and, if the live feed missed the whole session, a
+    # closing index_levels snapshot for compute_mh. Must run before scoring.
+    try:
+        from data.bhavcopy import sync_nse_index_closes
+        run_job("nse_index_closes", sync_nse_index_closes, td)
+    except Exception as e:
+        log.warning(f"  NSE index closes: {e}")
+
     # ── Never score a day without that day's closing prices ──────────────
     # Scoring on older bars and labelling the result `td` is what silently broke
     # signals from 2026-09-10: indicators and scores for each day were really

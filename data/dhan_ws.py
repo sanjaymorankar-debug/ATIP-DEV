@@ -357,8 +357,11 @@ class IndexFeedManager:
         cols = list(record.keys())
         placeholders = ",".join("?" * len(cols))
         conn = get_connection()
+        # (date, time) is unique. OR IGNORE: a row already stamped this second
+        # is either our own or markets.py's fuller snapshot, and neither
+        # should be overwritten by this lighter one.
         conn.execute(
-            f"INSERT INTO index_levels ({','.join(cols)}) VALUES ({placeholders})",
+            f"INSERT OR IGNORE INTO index_levels ({','.join(cols)}) VALUES ({placeholders})",
             [record[c] for c in cols],
         )
         conn.commit()

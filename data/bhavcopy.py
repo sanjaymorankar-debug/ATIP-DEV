@@ -217,6 +217,125 @@ def store_fii_dii(conn, trade_date, session=None) -> int:
     return 1
 
 
+INDEX_CLOSE_URL = "https://archives.nseindia.com/content/indices/ind_close_all_{date}.csv"
+# index_levels column -> index name in NSE's daily index-close file. Checked on
+# 2026-09-10, 09-17, 09-18 and 09-21 against the feed's own 15:44 row: all 13
+# closes identical. gift_nifty is an NSE IX contract and is not in the file.
+NSE_INDEX_NAMES = {
+    "nifty50": "Nifty 50", "banknifty": "Nifty Bank", "midcap150": "Nifty Midcap 150",
+    "smallcap250": "Nifty Smallcap 250", "nifty_it": "Nifty IT", "nifty_auto": "Nifty Auto",
+    "nifty_fmcg": "Nifty FMCG", "nifty_metal": "Nifty Metal", "nifty_realty": "Nifty Realty",
+    "nifty_psubank": "Nifty PSU Bank", "nifty_energy": "Nifty Energy",
+    "nifty_pharma": "Nifty Pharma", "india_vix": "India VIX",
+}
+INDEX_CLOSE_SNAPSHOT_TIME = "15:30:00"
+
+def parse_index_closes(content, trade_date) -> dict:
+    """{index_levels column: (close, change %)} from NSE's daily index-close CSV.
+    A row dated other than trade_date is ignored: after the one-day date shift
+    in prices_daily, nothing is filed under a date it does not itself carry."""
+    df = pd.read_csv(io.BytesIO(content))
+    df["key"] = df["Index Name"].astype(str).str.strip().str.lower()
+    df["day"] = pd.to_datetime(df["Index Date"], format="%d-%m-%Y", errors="coerce").dt.date
+    out = {}
+    for col, name in NSE_INDEX_NAMES.items():
+        m = df[(df["key"] == name.lower()) & (df["day"] == trade_date)]
+        if len(m) != 1:
+            continue
+        close = pd.to_numeric(m["Closing Index Value"].iloc[0], errors="coerce")
+        pts = pd.to_numeric(m["Points Change"].iloc[0], errors="coerce")
+        if pd.isna(close) or close <= 0:
+            continue
+        prev = close - pts if not pd.isna(pts) else None
+        out[col] = (float(close), round(float(pts) / prev * 100, 3) if prev else None)
+    return out
+
+def download_index_closes(trade_date, session):
+    """Parsed closes for one session, or None while NSE has not published the
+    file (404 -- also the answer for a day with no session)."""
+    r = session.get(INDEX_CLOSE_URL.format(date=trade_date.strftime("%d%m%Y")), timeout=30)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return parse_index_closes(r.content, trade_date)
+
+def store_index_close_snapshot(conn, trade_date, closes) -> bool:
+    """
+    Store NSE's closing values as the session's index_levels row -- only when
+    the live feed stored no row inside its market-hours window that day.
+
+    compute_mh and compute_msi read the session's latest index_levels row. With
+    none they fall back to neutral defaults; before the feed was confined to
+    market hours they read the previous session's values stamped after
+    midnight, which is how 2026-09-16, a +0.43% day, was scored BEAR from
+    09-15's -1.2%. A session the feed did cover is never touched.
+    """
+    from data.dhan_ws import FEED_OPEN, FEED_CLOSE
+    covered = conn.execute(
+        "SELECT COUNT(*) FROM index_levels WHERE date=? AND time BETWEEN ? AND ?",
+        (str(trade_date), FEED_OPEN.strftime("%H:%M:%S"), FEED_CLOSE.strftime("%H:%M:%S"))
+    ).fetchone()[0]
+    if covered or not closes:
+        return False
+    record = {"date": str(trade_date), "time": INDEX_CLOSE_SNAPSHOT_TIME}
+    changes = []
+    for col, (close, chg) in closes.items():
+        record[col] = close
+        record[f"{col}_chg"] = chg
+        if chg is not None:
+            changes.append(chg)
+    if changes:  # the same breadth rule as data/markets.py's snapshot
+        pos = sum(1 for c in changes if c > 0.3); neg = sum(1 for c in changes if c < -0.3)
+        record["overall_sentiment"] = ("BULLISH" if pos >= len(changes) * 0.7 else
+                                       "BEARISH" if neg >= len(changes) * 0.7 else "NEUTRAL")
+    cols = list(record)
+    conn.execute(f"INSERT OR IGNORE INTO index_levels ({','.join(cols)}) "
+                 f"VALUES ({','.join('?' * len(cols))})", [record[c] for c in cols])
+    return True
+
+def sync_nse_index_closes(trade_date=None) -> dict:
+    """
+    The session's official NSE index closes, stored where ATIP needs them:
+    the NIFTY50 benchmark row (beta_1y and relative strength), and a closing
+    index_levels snapshot if the live feed missed the session.
+
+    Dhan's index history cannot supply the session being scored (see
+    data.dhan.sync_index_benchmark_history), so until this the benchmark always
+    ended one session before the stocks it was compared with.
+    """
+    if trade_date is None:
+        trade_date = postmarket_target_date()
+    elif isinstance(trade_date, str):
+        trade_date = date.fromisoformat(trade_date)
+    if not is_trading_day(trade_date):
+        return {"status": "SKIPPED", "rows": 0, "reason": f"{trade_date} is not a session"}
+    try:
+        closes = download_index_closes(trade_date, get_nse_session())
+    except Exception as e:
+        log.warning(f"  NSE index closes for {trade_date}: {e}")
+        return {"status": "FAILED", "rows": 0, "error": str(e)}
+    if closes is None:
+        log.warning(f"  NSE index closes for {trade_date} not published yet — "
+                    f"benchmark stays at the last stored session")
+        return {"status": "SKIPPED", "rows": 0, "reason": "not published"}
+    if "nifty50" not in closes:
+        log.warning(f"  NSE index-close file for {trade_date} has no Nifty 50 row")
+        return {"status": "FAILED", "rows": 0, "error": "no Nifty 50 row"}
+    from data.dhan import _store_benchmark_rows, BETA_BENCHMARK_SYMBOL
+    conn = get_connection()
+    try:
+        rows = _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, [trade_date],
+                                     [closes["nifty50"][0]], source="nse_index")
+        snapshot = store_index_close_snapshot(conn, trade_date, closes)
+        conn.commit()
+    finally:
+        conn.close()
+    log.info(f"  ✓ NSE index closes {trade_date}: Nifty 50 {closes['nifty50'][0]}"
+             f"{' + index snapshot (feed missed the session)' if snapshot else ''}")
+    return {"status": "SUCCESS", "rows": rows + int(snapshot),
+            "benchmark": closes["nifty50"][0], "snapshot": snapshot}
+
+
 def _bhavcopy_already_stored(conn, trade_date) -> int:
     """Row count already in prices_daily for this date, sourced from bhavcopy."""
     row = conn.execute(
