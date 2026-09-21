@@ -38,11 +38,22 @@ for _decl in ("date", "DATE"):
 for _decl in ("timestamp", "TIMESTAMP", "datetime", "DATETIME"):
     sqlite3.register_converter(_decl, _conv_timestamp)
 
+# How long a writer waits for another writer before giving up (milliseconds).
+BUSY_TIMEOUT_MS = 60_000
+
+
 def get_connection():
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # WAL lets readers and one writer coexist, but a second WRITER still has to
+    # wait -- and sqlite3's default patience is 5 seconds, which is shorter than
+    # this system's own write transactions: run_scoring_pipeline holds one across
+    # its whole 502-symbol loop (~50s). That is why the index feed logged "Index
+    # feed DB flush failed: database is locked" and why a post-market catch-up
+    # died with the same error on 2026-09-20. Wait instead of failing.
+    conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys=ON")
     _migrate_index_levels_chg_columns(conn)
     _migrate_ai_scores_beta_column(conn)

@@ -354,3 +354,21 @@ def test_macd_columns_are_not_swapped():
 
     # and the histogram must be small relative to the line it is derived from
     assert abs(hist) <= abs(macd) + 1e-9
+
+
+def test_connections_wait_for_a_busy_writer(temp_db):
+    """
+    WAL lets readers and one writer coexist, but a second writer waits — and
+    sqlite3's default patience is 5s, shorter than this system's own write
+    transactions (run_scoring_pipeline holds one across ~502 symbols). That is
+    what produced "Index feed DB flush failed: database is locked" and killed a
+    post-market catch-up on 2026-09-20.
+    """
+    from db.schema import get_connection, init_db, BUSY_TIMEOUT_MS
+    init_db()
+    conn = get_connection()
+    try:
+        assert BUSY_TIMEOUT_MS >= 30_000, "must outlast a full scoring loop"
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == BUSY_TIMEOUT_MS
+    finally:
+        conn.close()
