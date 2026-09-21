@@ -346,14 +346,22 @@ def test_macd_columns_are_not_swapped():
 
     close = pd.Series(100 + np.cumsum(np.sin(np.arange(200) / 7.0)), name="close")
     frame = ta.macd(close, fast=12, slow=26, signal=9)
+    macd_col, col1, col2 = (frame.iloc[:, i] for i in range(3))
 
-    macd, hist, signal = (frame.iloc[-1, i] for i in range(3))
-    assert abs(macd - (signal + hist)) < 1e-6, (
-        f"positions are not (MACD, Hist, Signal): macd={macd}, "
-        f"col1={hist}, col2={signal}")
+    # `macd == signal + hist` holds whichever way round the two are, so it
+    # cannot catch the swap. Recompute the signal line from the MACD column
+    # instead: it is an EMA of it, and the histogram is the remainder.
+    want_signal = macd_col.ewm(span=9, adjust=False).mean()
+    want_hist = macd_col - want_signal
 
-    # and the histogram must be small relative to the line it is derived from
-    assert abs(hist) <= abs(macd) + 1e-9
+    assert abs(col1.iloc[-1] - want_hist.iloc[-1]) < 1e-3, (
+        f"column 1 must be the HISTOGRAM: got {col1.iloc[-1]:.4f}, "
+        f"expected {want_hist.iloc[-1]:.4f} (signal is {want_signal.iloc[-1]:.4f})")
+    assert abs(col2.iloc[-1] - want_signal.iloc[-1]) < 1e-3, (
+        f"column 2 must be the SIGNAL line: got {col2.iloc[-1]:.4f}, "
+        f"expected {want_signal.iloc[-1]:.4f}")
+    # and they must be distinguishable at all, or the test proves nothing
+    assert abs(want_signal.iloc[-1] - want_hist.iloc[-1]) > 0.1
 
 
 def test_connections_wait_for_a_busy_writer(temp_db):
