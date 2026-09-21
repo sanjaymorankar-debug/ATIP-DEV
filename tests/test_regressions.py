@@ -380,3 +380,72 @@ def test_connections_wait_for_a_busy_writer(temp_db):
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == BUSY_TIMEOUT_MS
     finally:
         conn.close()
+
+
+# ── MACD must be comparable across a universe priced Rs 7 to Rs 134,860 ─────
+
+def test_macd_component_is_scale_free():
+    """
+    The histogram is a price-scale number, so the old absolute mapping
+    (50 + |hist| * 10, full scale at +/-5 rupees) meant something completely
+    different on a Rs 3,000 stock than on a Rs 50 one, and pinned the component
+    at exactly 0 or 100 in 37.4% of stored rows. Normalised by price, the same
+    percentage move must score the same at any price.
+    """
+    from data.technical import macd_component
+
+    cheap = macd_component(15.0 / 100 * 100)        # Rs 15 hist on a Rs 100 share
+    rich = macd_component(450.0 / 3000 * 100)       # Rs 450 hist on a Rs 3,000 share
+    assert cheap == rich, "15% of price must score the same at either price"
+
+    # ...and a rupee amount that used to saturate must no longer do so
+    modest_on_expensive = macd_component(5.0 / 3000 * 100)   # Rs 5 on Rs 3,000
+    assert modest_on_expensive == 55.0, modest_on_expensive   # barely off neutral...
+    real_on_cheap = macd_component(5.0 / 50 * 100)           # Rs 5 on Rs 50
+    assert real_on_cheap == 100.0
+
+
+@pytest.mark.parametrize("pct,expected", [
+    (0.0, 50.0),          # no momentum is neutral, not a score
+    (1.667, 100.0),       # full scale
+    (-1.667, 0.0),
+    (5.0, 100.0),         # clamped, not extrapolated
+    (-5.0, 0.0),
+])
+def test_macd_component_shape(pct, expected):
+    from data.technical import macd_component
+    assert macd_component(pct) == expected
+
+
+def test_macd_component_is_signed_around_fifty():
+    from data.technical import macd_component
+    assert macd_component(0.5) > 50 > macd_component(-0.5)
+    assert macd_component(0.5) - 50 == pytest.approx(50 - macd_component(-0.5))
+
+
+def test_macd_component_drops_out_when_unavailable():
+    """None must not become 50 — a fabricated neutral is indistinguishable from
+    a measured one, and weighted_score already renormalises over what is there."""
+    from data.technical import macd_component
+    assert macd_component(None) is None
+    assert macd_component("") is None
+
+
+def test_indicators_store_the_normalised_histogram(temp_db):
+    import numpy as np
+    from data.technical import compute_indicators, HAS_TA
+    if not HAS_TA:
+        pytest.skip("no TA library installed")
+
+    n = 120
+    close = 3000 + np.cumsum(np.sin(np.arange(n) / 5.0) * 8)
+    df = pd.DataFrame({
+        "date": pd.date_range("2026-01-01", periods=n).astype(str),
+        "open": close, "high": close * 1.01, "low": close * 0.99,
+        "close": close, "adj_close": [None] * n, "volume": [100000] * n,
+    })
+    ind = compute_indicators("EXPENSIVE", df)
+
+    assert ind["macd_hist_pct"] == pytest.approx(
+        ind["macd_hist"] / close[-1] * 100, abs=1e-4)   # stored to 4 decimals
+    assert abs(ind["macd_hist_pct"]) < 10, "a daily histogram is a small % of price"
