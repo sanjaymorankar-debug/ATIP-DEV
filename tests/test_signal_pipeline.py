@@ -557,3 +557,64 @@ def test_incomplete_history_cache_is_refetched(tmp_path, monkeypatch):
     assert _cached_daily(f, dt.date(2026, 9, 18)) is None, "stale and short: must refetch"
     assert _cached_daily(f, dt.date(2026, 9, 17)) is not None, "complete stays cached"
     assert _cached_daily(tmp_path / "nope.json", dt.date(2026, 9, 18)) is None
+
+
+# ── a bar that exists is not necessarily today's ──────────────────────────
+
+def test_freshness_passes_a_real_session(db, tracked):
+    from pipeline import scheduler as S
+    _bar(db, "2026-09-17", UNIVERSE, close=100.0)
+    _bar(db, "2026-09-18", UNIVERSE, close=101.0)
+    ok, same, n = S._eod_freshness(dt.date(2026, 9, 18))
+    assert ok is True and (same, n) == (0, 10)
+
+
+def test_freshness_rejects_a_copy_of_the_previous_session(db, tracked):
+    """
+    The session after every NSE holiday carried the pre-holiday bar, byte for
+    byte, on ~500 symbols (18 sessions, 99.6-99.8% identical). The coverage
+    guard passed them at 100% because a bar EXISTED, and they were scored on
+    yesterday's prices.
+    """
+    from pipeline import scheduler as S
+    _bar(db, "2026-01-26", UNIVERSE, close=100.0)     # the shifted holiday copy
+    _bar(db, "2026-01-27", UNIVERSE, close=100.0)     # identical to it
+    ok, same, n = S._eod_freshness(dt.date(2026, 1, 27))
+    assert ok is False and (same, n) == (10, 10)
+
+
+def test_freshness_tolerates_a_few_suspended_scrips(db, monkeypatch):
+    """Normal days peak at 0.40% identical (two suspended names in ~500)."""
+    import data.dhan
+    from pipeline import scheduler as S
+    universe = [f"S{i}" for i in range(100)]
+    monkeypatch.setattr(data.dhan, "get_tracked_symbols", lambda conn=None: universe)
+    _bar(db, "2026-09-17", universe, close=100.0)
+    _bar(db, "2026-09-18", universe[:2], close=100.0)  # suspended: unchanged
+    _bar(db, "2026-09-18", universe[2:], close=103.0)  # everyone else traded
+    ok, same, n = S._eod_freshness(dt.date(2026, 9, 18))
+    assert ok is True and (same, n) == (2, 100)
+
+
+def test_freshness_allows_a_first_ever_session(db, tracked):
+    from pipeline import scheduler as S
+    _bar(db, "2026-09-18", UNIVERSE)
+    assert S._eod_freshness(dt.date(2026, 9, 18))[0] is True
+
+
+def test_postmarket_does_not_score_a_stale_copy(db, monkeypatch):
+    from pipeline import scheduler as S
+    ran = []
+    monkeypatch.setattr(S, "run_job", lambda name, *a, **k: ran.append(name) or {})
+    monkeypatch.setattr(S, "_run_dhan_quotes", lambda *a, **k: None)
+    monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 1, 27))
+    monkeypatch.setattr(S, "_eod_coverage", lambda td: (True, 500, 502))    # bars exist...
+    monkeypatch.setattr(S, "_eod_freshness", lambda td: (False, 500, 502))  # ...but are copies
+
+    out = S.run_postmarket(force=True)
+
+    assert out["status"] == "SKIPPED_STALE_EOD"
+    assert out["identical"] == 500
+    for forbidden in ("technical_indicators", "ai_scoring_engine", "signal_log"):
+        assert forbidden not in ran, f"{forbidden} ran on yesterday's prices"
+    assert "signal_outcomes" in ran and "dashboard_rebuild" in ran

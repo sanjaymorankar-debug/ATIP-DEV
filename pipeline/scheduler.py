@@ -145,6 +145,49 @@ def _eod_coverage(td):
         conn.close()
 
 
+# Share of a session's bars (tracked universe) allowed to be byte-identical to
+# the same symbol's previous stored bar. A real session essentially never
+# repeats open/high/low/close AND volume to the unit: measured over 425 stored
+# sessions, normal days sit at median 0.00%, p95 0.12%, max 0.40% (a couple of
+# suspended scrips). The 18 stale-copy days -- the session after an NSE holiday,
+# carrying the pre-holiday bar left behind by the pre-2026-09-08 UTC date shift
+# -- sit at 99.6-99.8%. 5% is twelve times the worst normal day.
+EOD_STALE_MAX = 0.05
+
+
+def _eod_freshness(td):
+    """
+    (ok, identical, checked): are td's bars a real session, or a copy of the
+    previous one? The coverage guard only asks whether a bar EXISTS, so a day of
+    stale copies passes it at 100% and gets scored on yesterday's prices.
+    """
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        prev = conn.execute("SELECT MAX(date) FROM prices_daily WHERE date < ?",
+                            (str(td),)).fetchone()[0]
+        if not prev:
+            return True, 0, 0
+        try:
+            from data.dhan import get_tracked_symbols
+            universe = list(get_tracked_symbols(conn))
+        except Exception:
+            universe = []
+        where, params = "", [str(prev), str(td)]
+        if universe:
+            where = f" AND p.symbol IN ({','.join('?' * len(universe))})"
+            params += universe
+        n, same = conn.execute(
+            "SELECT COUNT(*), SUM(p.open=q.open AND p.high=q.high AND p.low=q.low "
+            "AND p.close=q.close AND p.volume=q.volume) "
+            "FROM prices_daily p JOIN prices_daily q ON q.symbol=p.symbol AND q.date=? "
+            "WHERE p.date=?" + where, params).fetchone()
+        n, same = n or 0, same or 0
+        return (n == 0 or same / n <= EOD_STALE_MAX), same, n
+    finally:
+        conn.close()
+
+
 CATCHUP_LOOKBACK_SESSIONS = 5
 
 
@@ -501,21 +544,39 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # skips -- so no signal since could ever be tracked. It is also what scored
     # the Ganesh Chaturthi holiday as if it were a session. Skip instead, loudly;
     # run_postmarket_if_missing() retries at POSTMARKET_CATCHUP_TIME.
-    ok, n_eod, n_uni = _eod_coverage(td)
-    if not ok:
-        log.warning(f"  ⏭  No EOD prices for {td} ({n_eod}/{n_uni} scored symbols have a bar) "
-                    f"— NOT scoring. Either NSE hasn't published yet or it wasn't a "
-                    f"trading session. Outcome tracking and the dashboard still update.")
+    def _finish_without_scoring(status, why, **info):
+        log.warning(f"  ⏭  {why} — NOT scoring. Outcome tracking and the dashboard "
+                    f"still update.")
         try:
             from scores.signal_log import evaluate_outcomes
             run_job("signal_outcomes", evaluate_outcomes)
         except Exception as e:
             log.warning(f"  Signal outcomes: {e}")
         run_job("dashboard_rebuild", _rebuild_dashboard, td)
-        log.info("⏭  Post-market finished WITHOUT scoring (no EOD data)\n")
-        return {"status": "SKIPPED_NO_EOD", "date": str(td), "bars": n_eod, "universe": n_uni}
+        log.info(f"⏭  Post-market finished WITHOUT scoring ({status})\n")
+        return {"status": status, "date": str(td), **info}
+
+    ok, n_eod, n_uni = _eod_coverage(td)
+    if not ok:
+        return _finish_without_scoring(
+            "SKIPPED_NO_EOD",
+            f"No EOD prices for {td} ({n_eod}/{n_uni} scored symbols have a bar). Either NSE "
+            f"hasn't published yet or it wasn't a trading session",
+            bars=n_eod, universe=n_uni)
     if n_uni:
         log.info(f"  ✓ EOD coverage for {td}: {n_eod}/{n_uni} scored symbols have today's bar")
+
+    # ...and a bar that exists is not necessarily today's. See EOD_STALE_MAX.
+    fresh, n_same, n_chk = _eod_freshness(td)
+    if not fresh:
+        return _finish_without_scoring(
+            "SKIPPED_STALE_EOD",
+            f"EOD prices for {td} are a copy of the previous session: {n_same}/{n_chk} tracked "
+            f"symbols carry a bar identical to their last one",
+            identical=n_same, checked=n_chk)
+    if n_chk:
+        log.info(f"  ✓ EOD freshness for {td}: {n_same}/{n_chk} bars identical to the "
+                 f"previous session")
 
     # 4:45 PM — Compute 35 technical indicators
     from data.technical import run_technical_pipeline
