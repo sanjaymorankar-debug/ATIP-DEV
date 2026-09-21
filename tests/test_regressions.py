@@ -449,3 +449,25 @@ def test_indicators_store_the_normalised_histogram(temp_db):
     assert ind["macd_hist_pct"] == pytest.approx(
         ind["macd_hist"] / close[-1] * 100, abs=1e-4)   # stored to 4 decimals
     assert abs(ind["macd_hist_pct"]) < 10, "a daily histogram is a small % of price"
+
+
+def test_benchmark_resync_overwrites_every_price(temp_db):
+    """
+    The upsert refreshed close only, so re-syncing the NIFTY50 series after the
+    2026-09-08 date fix corrected close and left open/high/low holding the next
+    session's close in 280 rows — close outside [low, high] in every one.
+    """
+    import datetime as _dt
+    from db.schema import init_db, get_connection
+    from data.dhan import _store_benchmark_rows
+    init_db()
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                     "VALUES ('NIFTY50','2025-02-27',22124.7,22124.7,22124.7,22545.05,0,'dhan_index')")
+        _store_benchmark_rows(conn, "NIFTY50", [_dt.date(2025, 2, 27)], [22545.05])
+        row = conn.execute("SELECT open, high, low, close FROM prices_daily "
+                           "WHERE symbol='NIFTY50' AND date='2025-02-27'").fetchone()
+        assert tuple(row) == (22545.05,) * 4, tuple(row)
+    finally:
+        conn.close()
