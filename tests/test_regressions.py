@@ -562,6 +562,30 @@ def test_session_missed_by_the_feed_gets_nse_closing_values(temp_db, monkeypatch
         conn.close()
 
 
+def test_feed_that_stopped_before_the_close_gets_the_close(temp_db, monkeypatch):
+    """
+    On 2026-09-09 the feed's last market-hours row was 12:00:13 and still held
+    09-08's close at 0.00%; the real close (-0.861%) survived only in rows
+    stamped that evening. Rows during the session are not the close.
+    """
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    from scores.engine import get_idx
+    init_db()
+    conn = get_connection()
+    conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
+                 "VALUES ('2026-09-09','12:00:13',23635.1,0.0)")
+    conn.commit(); conn.close()
+    _nse_closes(monkeypatch, {"nifty50": (23431.5, -0.861)})
+    assert sync_nse_index_closes(dt.date(2026, 9, 9))["snapshot"] is True
+    conn = get_connection()
+    try:
+        idx = get_idx("2026-09-09", conn)
+        assert (idx["time"], idx["nifty50_chg"]) == ("15:30:00", -0.861)
+    finally:
+        conn.close()
+
+
 def test_session_the_feed_covered_is_left_alone(temp_db, monkeypatch):
     from db.schema import init_db, get_connection
     from data.bhavcopy import sync_nse_index_closes

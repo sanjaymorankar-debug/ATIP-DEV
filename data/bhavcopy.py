@@ -228,7 +228,7 @@ NSE_INDEX_NAMES = {
     "nifty_psubank": "Nifty PSU Bank", "nifty_energy": "Nifty Energy",
     "nifty_pharma": "Nifty Pharma", "india_vix": "India VIX",
 }
-INDEX_CLOSE_SNAPSHOT_TIME = "15:30:00"
+INDEX_CLOSE_SNAPSHOT_TIME = "15:30:00"   # the close; the feed runs on to 15:45
 
 def parse_index_closes(content, trade_date) -> dict:
     """{index_levels column: (close, change %)} from NSE's daily index-close CSV.
@@ -261,19 +261,22 @@ def download_index_closes(trade_date, session):
 
 def store_index_close_snapshot(conn, trade_date, closes) -> bool:
     """
-    Store NSE's closing values as the session's index_levels row -- only when
-    the live feed stored no row inside its market-hours window that day.
+    Store NSE's closing values as the session's index_levels row, stamped at
+    the 15:30 close -- only when the live feed did not record the close itself
+    (no row between 15:30 and the end of its window).
 
     compute_mh and compute_msi read the session's latest index_levels row. With
     none they fall back to neutral defaults; before the feed was confined to
     market hours they read the previous session's values stamped after
     midnight, which is how 2026-09-16, a +0.43% day, was scored BEAR from
-    09-15's -1.2%. A session the feed did cover is never touched.
+    09-15's -1.2%. A feed that stops early is no better: on 09-09 its last
+    row was 12:00 and still held 09-08's close at 0.00%. A session whose close
+    the feed did record is never touched.
     """
-    from data.dhan_ws import FEED_OPEN, FEED_CLOSE
+    from data.dhan_ws import FEED_CLOSE
     covered = conn.execute(
         "SELECT COUNT(*) FROM index_levels WHERE date=? AND time BETWEEN ? AND ?",
-        (str(trade_date), FEED_OPEN.strftime("%H:%M:%S"), FEED_CLOSE.strftime("%H:%M:%S"))
+        (str(trade_date), INDEX_CLOSE_SNAPSHOT_TIME, FEED_CLOSE.strftime("%H:%M:%S"))
     ).fetchone()[0]
     if covered or not closes:
         return False
@@ -297,7 +300,7 @@ def sync_nse_index_closes(trade_date=None) -> dict:
     """
     The session's official NSE index closes, stored where ATIP needs them:
     the NIFTY50 benchmark row (beta_1y and relative strength), and a closing
-    index_levels snapshot if the live feed missed the session.
+    index_levels snapshot if the live feed did not record the close.
 
     Dhan's index history cannot supply the session being scored (see
     data.dhan.sync_index_benchmark_history), so until this the benchmark always
@@ -331,7 +334,7 @@ def sync_nse_index_closes(trade_date=None) -> dict:
     finally:
         conn.close()
     log.info(f"  ✓ NSE index closes {trade_date}: Nifty 50 {closes['nifty50'][0]}"
-             f"{' + index snapshot (feed missed the session)' if snapshot else ''}")
+             f"{' + index snapshot (the feed did not record the close)' if snapshot else ''}")
     return {"status": "SUCCESS", "rows": rows + int(snapshot),
             "benchmark": closes["nifty50"][0], "snapshot": snapshot}
 
