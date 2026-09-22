@@ -1,10 +1,10 @@
 # ATIP — status of all phases
 
-*As of 2026-09-22 09:35 IST (first written 2026-09-21 16:19, updated after the Tier 0 price, index, corporate-action and delivery work). Every figure below was measured from the repository, the database or the live log at that time.*
+*As of 2026-09-22 11:30 IST (first written 2026-09-21 16:19, updated after the Tier 0 price, index, corporate-action and delivery work, the ZPI delivery component and same-evening FII/DII). Every figure below was measured from the repository, the database or the live log at that time.*
 
 This engagement ran in two parts. It began as a defect investigation — **why signals were not working** — and then became Phase 1 of the institutional-quant master plan. The defect work turned out to be a large share of the value: most of what was wrong with ATIP was not missing capability but existing capability quietly producing wrong numbers.
 
-**26 commits, 25 files, +6,687 / −156 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 331 now, all passing.**
+**29 commits, 26 files, +7,084 / −161 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 345 now, all passing.**
 
 ---
 
@@ -42,6 +42,8 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | **Dashboard truth** | `db7f506` | Global panel always showed the day's *oldest* snapshot (S&P +1.14% shown, −0.17% true) — the "gold/S&P/USD-INR not updating" complaint; live CMP change used a baseline one session too old → both fixed |
 | | `cc8ce46` | Hit rate counted resolved signals only (95.2% shown vs 52.6% measured) → denominator is every signal watched for at least one session |
 | **Decisions you made** | `cc8ce46` | Fundamentals ingestion held off (`FUNDAMENTALS_ENABLED=False`) because `fundamental_score` is weighted twice (SPI 0.15 + FS 0.10) and defaults to a hardcoded 50.0 |
+| | `969f570` | **ZPI's Institutional component (weight 0.10) now scores delivery**: 10-session delivery % relative to the stock's own 60-session average, 50 at parity, full scale ±24%. It had always been absent (it read `institutional_data`, which nothing fills). Chosen on measured evidence: rank IC vs the next 5 sessions' return +0.020 (t +2.7, positive in both halves, +0.018 net of momentum) with the session's own delivery, +0.012 to +0.018 without it; the directional alternative scored −0.016 and was rejected |
+| | `969f570` | **Each session is scored on its own FII/DII.** NSE publishes them once a day after the close (no intraday source exists); signals are now held at 16:45, NSE is polled every 10 minutes 17:00–21:30 for the session's FII/DII and delivery (ZPI), and the session is re-scored and logged once both are in (at 21:30, on whichever arrived). The 5-day FII/DII averages now include the session itself |
 
 ### Data repairs executed
 
@@ -63,12 +65,13 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | Sessions given NSE's official index close (the feed never recorded it) | 7 |
 | NIFTY50 benchmark row for 09-21 from NSE | 1 |
 | Scores recomputed with each session's own index data and benchmark | 6 sessions |
+| FII/DII 5-day averages recomputed to include the session / sessions re-scored with the ZPI delivery component | 7 rows / 15 sessions |
 | NSE corporate-action calendar loaded, 2025-01 onward (price-basis events) | 277 |
 | Tracked events reconciled: prices already adjusted by Dhan / volume re-based | 45 / 6,862 rows |
 | Delivery history stored from NSE's full Bhavcopy | 223,854 rows, all 409 sessions |
 | Indicators and scores recomputed where `rel_volume` crossed a re-based event | 5 sessions (07-27 → 08-03): 13 score rows moved < 1.3 points, no signal changed |
 
-Each repair was a dry run first, then one count-checked transaction after an integrity-checked backup (`atip.db.bak-before-shift-repair-20260921-2329`, `atip.db.bak-before-index-repair-20260922-0533`, `atip.db.bak-before-ca-backfill-20260922-0900`).
+Each repair was a dry run first, then one count-checked transaction after an integrity-checked backup (`atip.db.bak-before-shift-repair-20260921-2329`, `atip.db.bak-before-index-repair-20260922-0533`, `atip.db.bak-before-ca-backfill-20260922-0900`, `atip.db.bak-before-zpi-fii-20260922-1111`).
 
 ### Measured impact
 
@@ -78,8 +81,9 @@ Each repair was a dry run first, then one count-checked transaction after an int
 | Hit rate shown at the 3% target | 95.2% (resolved only) | **46.6%** (27 / 58 watched) |
 | WebSocket errors per hour outside the session | ~3,300 | **0** |
 | MACD component pinned at 0 or 100 | 63.1% | **1.7%** |
-| Historical BUY signals in `ai_scores` | 52 | **27** |
-| Friday 2026-09-18 BUY list | 10 (stale-data run) | **2** — SYRMA, CPPLUS |
+| Historical BUY signals in `ai_scores` | 52 | **19** (27 before the ZPI delivery component) |
+| Friday 2026-09-18 BUY list | 10 (stale-data run) | **1** — CPPLUS (SYRMA's rally came on below-normal delivery) |
+| Sessions scored on their own FII/DII | 0 at 16:45 | from tonight, every session NSE publishes by 21:30 |
 | Non-session dates in scoring tables | 3 | **0** |
 | Bars that copy another session's bar | 8,858 | **0** |
 | One-session price moves over 25% | 304 | **270**, of which 2 in tracked stocks, both real (IndusInd 2025-03-11, IEX 2025-07-24) |
@@ -176,7 +180,7 @@ Research built on these would be measuring the data's defects rather than the ma
 4. VWAP is weighted 0.08 in `weight_config` and has never been computed.
 5. The 15-minute bars job fetches ~500 symbols every 30 minutes and stores nothing.
 6. `config.json`'s `schedule_*` keys are read by no code; `setup.py` lists the uninstallable pandas-ta and omits `ta`, so a fresh install computes no indicators.
-7. **No formula registry yet** — the MACD and hit-rate formulas changed today with your approval, recorded only in git. `ai_scores` history now reflects the new MACD while `signal_log` rows were produced under the old one.
+7. **No formula registry yet** — the MACD, hit-rate, ZPI-delivery and FII/DII 5-day formulas changed with your approval, recorded in git, in the code's docstrings and here. `ai_scores` history reflects the current formulas; `signal_log` rows were produced under whichever applied when they were logged.
 
 ### Then — Phases 2 to 14 as specified
 
@@ -193,8 +197,9 @@ Existing ATIP capabilities preserved: YES
   (nothing removed; two behaviour changes made with explicit approval —
    fundamentals ingestion held off, hit-rate denominator changed)
 New quantitative capabilities: 0
-New factors: 0   (1 existing factor corrected and normalised: MACD)
-New formulas: 0  (2 corrected with approval: MACD component, hit rate)
+New factors: 1   (delivery accumulation, in ZPI; MACD corrected and normalised)
+New formulas: 1  (ZPI delivery component; corrected with approval: MACD component,
+                  hit rate, FII/DII 5-day average)
 ML models: 0
 Regime models: 0 new (existing rule-based market-health regime)
 Risk models: 0 new
@@ -202,7 +207,7 @@ Execution algorithms: 0
 Backtest capabilities: 0 new
 
 Tests:
-Passed: 331
+Passed: 345
 Failed: 0
 Blocked: 0
 
@@ -232,11 +237,12 @@ Production blockers:
 
 ## Current state
 
-- **Live** at `D:\Projects\ATIP`, running `4416ac7`, restarted 09:03:32 IST on 2026-09-22 (before the open) with no migration warnings; the index feed reconnected and has written every 15 seconds since.
+- **Live** at `D:\Projects\ATIP`, running `969f570`, restarted 11:15:32 IST on 2026-09-22 between two 15-minute jobs (a 17-second gap in the index feed, which reconnected at once).
 - **`index_levels`:** 0 duplicates, 0 outside 09:00–15:45, the unique index in place, and every stored session holds its close.
 - **NIFTY50 benchmark:** through 2026-09-21 (from NSE). The shipped job was run once against the live database: it stored nothing new for 09-21 and correctly skipped a weekend.
 - **Corporate actions:** 277 price-basis events on file, every tracked one reconciled. A 620-day Dhan re-fetch of BAJFINANCE, ZFCVINDIA and HDFCBANK through the new guard (on a copy) changed 0 of 1,227 stored rows.
-- **16:45 today** is the first post-market run with the corporate-action step and the session's own NSE close; **19:30** is the first nightly delivery run.
-- **Not changed, for you to decide:** no score reads delivery yet. Separately, at 16:45 NSE is still serving the previous session's FII/DII flows (seen on 09-21), so each session is scored on the prior day's flows -- a timing question, like the benchmark was.
+- **Tonight is the first run of the new evening:** 16:45 scores the session and, if NSE has not published its FII/DII yet, holds the signals; 17:00–21:30 the watch re-scores and logs as soon as both the flows and the day's delivery are in (their publication times are not yet measured -- tonight's log will show them); the 19:30 delivery job remains as a back-stop. The corporate-action step and the NSE index close run inside 16:45.
+- **Delivery in scoring:** ZPI's component only. The 16:45 scores use delivery through the previous session; the evening re-score waits for the session's own, so final scores match the recomputed history.
+- **FII/DII history is sparse:** 7 stored sessions, and 09-08 and 09-09 carry identical figures (one of them is probably the other's). NSE's API serves only the latest day, so past sessions cannot be refilled from it.
 - **Disk:** D: has about 6 GB free; the three repair backups take 63 MB each.
 - The local repo carries one unpushed commit from another session, `4e864ef` (the bkesari snapshot publisher), left alone deliberately.
