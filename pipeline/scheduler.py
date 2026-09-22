@@ -537,7 +537,7 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         log.warning(f"  Benchmark history: {e}")
 
     # The session's own official closes from NSE -- Dhan's index history above
-    # ends the day before -- and, if the live feed missed the whole session, a
+    # ends the day before -- and, if the live feed did not record the close, a
     # closing index_levels snapshot for compute_mh. Must run before scoring.
     try:
         from data.bhavcopy import sync_nse_index_closes
