@@ -1,6 +1,6 @@
 # ATIP — status of all phases
 
-*As of 2026-09-22 05:50 IST (first written 2026-09-21 16:19, updated after the Tier 0 price and index repairs). Every figure below was measured from the repository, the database or the live log at that time.*
+*As of 2026-09-22 09:35 IST (first written 2026-09-21 16:19, updated after the Tier 0 price, index, corporate-action and delivery work). Every figure below was measured from the repository, the database or the live log at that time.*
 
 This engagement ran in two parts. It began as a defect investigation — **why signals were not working** — and then became Phase 1 of the institutional-quant master plan. The defect work turned out to be a large share of the value: most of what was wrong with ATIP was not missing capability but existing capability quietly producing wrong numbers.
 
@@ -38,6 +38,7 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | | `8526a9b` | The NIFTY50 re-sync refreshed close only, leaving 280 bars with close outside [low, high] → every price column refreshed |
 | | `8dd04fb` | The benchmark ended one session before the stocks at every scoring run (Dhan's `to_date` is exclusive, and a session's index bar is not published until the next day), and relative strength paired rows by position → the session's close comes from NSE's daily index file, RS matches by date; `index_levels` (date, time) made unique |
 | | `3135ea5` | A feed that stopped at midday still counted as covering the session → NSE's close is stored at 15:30 whenever the feed did not record the close |
+| | `4416ac7` | Dhan adjusts prices for splits and bonuses but never volume, so every past event left volume on two share bases (10× across BAJFINANCE's); a Dhan re-base after a new event would have moved only the re-sync window; delivery was never stored → NSE's corporate-action calendar reconciled against NSE's raw closes on each ex-date, re-sync bars kept on the stored basis, entry prices carried across ex-dates, delivery from NSE's full Bhavcopy nightly |
 | **Dashboard truth** | `db7f506` | Global panel always showed the day's *oldest* snapshot (S&P +1.14% shown, −0.17% true) — the "gold/S&P/USD-INR not updating" complaint; live CMP change used a baseline one session too old → both fixed |
 | | `cc8ce46` | Hit rate counted resolved signals only (95.2% shown vs 52.6% measured) → denominator is every signal watched for at least one session |
 | **Decisions you made** | `cc8ce46` | Fundamentals ingestion held off (`FUNDAMENTALS_ENABLED=False`) because `fundamental_score` is weighted twice (SPI 0.15 + FS 0.10) and defaults to a hardcoded 50.0 |
@@ -62,8 +63,12 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | Sessions given NSE's official index close (the feed never recorded it) | 7 |
 | NIFTY50 benchmark row for 09-21 from NSE | 1 |
 | Scores recomputed with each session's own index data and benchmark | 6 sessions |
+| NSE corporate-action calendar loaded, 2025-01 onward (price-basis events) | 277 |
+| Tracked events reconciled: prices already adjusted by Dhan / volume re-based | 45 / 6,862 rows |
+| Delivery history stored from NSE's full Bhavcopy | 223,854 rows, all 409 sessions |
+| Indicators and scores recomputed where `rel_volume` crossed a re-based event | 5 sessions (07-27 → 08-03): 13 score rows moved < 1.3 points, no signal changed |
 
-Each repair was a dry run first, then one count-checked transaction after an integrity-checked backup (`atip.db.bak-before-shift-repair-20260921-2329`, `atip.db.bak-before-index-repair-20260922-0533`).
+Each repair was a dry run first, then one count-checked transaction after an integrity-checked backup (`atip.db.bak-before-shift-repair-20260921-2329`, `atip.db.bak-before-index-repair-20260922-0533`, `atip.db.bak-before-ca-backfill-20260922-0900`).
 
 ### Measured impact
 
@@ -77,7 +82,9 @@ Each repair was a dry run first, then one count-checked transaction after an int
 | Friday 2026-09-18 BUY list | 10 (stale-data run) | **2** — SYRMA, CPPLUS |
 | Non-session dates in scoring tables | 3 | **0** |
 | Bars that copy another session's bar | 8,858 | **0** |
-| One-session price moves over 25% | 304 | **270** (not yet classified; expected to be mostly splits and bonuses, Tier 0 #3) |
+| One-session price moves over 25% | 304 | **270**, of which 2 in tracked stocks, both real (IndusInd 2025-03-11, IEX 2025-07-24) |
+| Tracked split/bonus events with volume on two share bases | 40 | **0** |
+| Rows with delivery data | 0 | **223,854** (99.0% of tracked-stock rows) |
 | Sessions scored from another moment's index data | 5 | **0** |
 | 2026-09-16 regime | BEAR, from 09-15's −1.195% | **NEUTRAL**, from its own +0.428% |
 | Benchmark sessions behind the stocks when scored | 1, every day | **0** |
@@ -92,6 +99,8 @@ Stated plainly, because each was repeated before it was caught:
 - **My first MACD regression test could not fail.** `macd == signal + hist` holds whichever way round the columns are.
 - **The AI news key is not set**, rather than rejected with a 401 as I first said — sentiment has always been the rule-based fallback.
 - **Dhan does not refuse index history for this account.** I said the benchmark stopped at 09-17 because of DH-901. That error was an expired token on the morning of 09-20 and has not recurred; the benchmark trails by a session because Dhan's `to_date` is exclusive and a session's daily bar is not out until the next day.
+- **The 270 big moves were not corporate actions.** I expected mostly splits and bonuses. 259 are untracked symbols whose only rows are ~40 days apart; in the tracked universe there are 2, both genuine market moves. Dhan's history was already split-adjusted in price -- the real defect was volume.
+- **Storing delivery changes no score.** I said it would shift INS; nothing in ATIP reads `delivery_pct`.
 - **The first `index_levels` rule was wrong.** I planned to treat any row during market hours as "the feed covered the session". The dry run showed 09-09, whose last market-hours row was 12:00 and still held 09-08's close at 0.00%; deleting its evening rows would have made the engine read that. The rule is now "the feed recorded the close".
 
 ---
@@ -140,9 +149,9 @@ Research built on these would be measuring the data's defects rather than the ma
 
 1. ~~8,845 stale duplicate bars~~ **Fixed.** They were not stale fetches: before `70269e4` Dhan's IST-midnight candles were read as UTC, filing each bar one day early, and a bar filed under a day with no session was never overwritten. 8,858 copies on 18 holiday dates and 22 pre-listing copies removed; the freshness guard (`ba31981`) now refuses such a session.
 2. ~~4,993 rows on 10 non-trading dates~~ **Fixed** with 1 — they were the same copies. The calendar now has 2025 (`7132017`).
-3. **No adjusted prices — open.** `adj_close` is NULL everywhere and 270 single-session moves exceed 25% (304 before the repair; HEG's 2.8× spikes were copies and are gone). Needs NSE corporate-actions data, and changes every affected stock's indicators, so the design comes to you first.
+3. ~~No adjusted prices~~ **Fixed** (`4416ac7`). Dhan's prices were already split/bonus-adjusted (`close` is the adjusted close; `adj_close` stays unused); its volume never was. 40 events' volume re-based, 5 demergers and 3 rights carry the factor Dhan applied, and every new event is reconciled on its ex-date. Open: TVSMOTOR's 2025-08-25 preference-share scheme, which Dhan did not adjust; ACUTAAS and TMPV events before their renames; untracked symbols' sparse Bhavcopy rows are raw and unadjusted (not scored).
 4. ~~The NIFTY50 benchmark is corrupt~~ **Fixed.** 280 impossible bars reset (`8526a9b`); each session's close now comes from NSE (`8dd04fb`); every stored close checked matches NSE on 8 sessions.
-5. **Delivery data never stored — open.** `delivery_qty` / `delivery_pct` are NULL in every row; the UDiFF CM Bhavcopy ATIP downloads has no delivery columns (header checked). Populating them shifts the INS score, so it needs your decision.
+5. ~~Delivery data never stored~~ **Fixed** (`4416ac7`): NSE's full Bhavcopy nightly at 19:30 over the last 5 sessions, history back-filled. **No score reads it yet** -- the natural slot is ZPI's "Institutional -- accumulation 10d" component, which is always empty; wiring it in is a formula change for you to decide.
 6. ~~`index_levels` leftovers~~ **Fixed.** Duplicates and out-of-hours rows removed, (date, time) unique, 7 sessions given NSE's close, 6 sessions re-scored (`8dd04fb`, `3135ea5`).
 
 ### Tier 1 — Safety (mandatory in the master plan before paper validation)
@@ -193,12 +202,12 @@ Execution algorithms: 0
 Backtest capabilities: 0 new
 
 Tests:
-Passed: 304
+Passed: 331
 Failed: 0
 Blocked: 0
 
 Research status: NOT READY
-  unadjusted prices and no delivery data (Tier 0); factor panel ~15 sessions deep;
+  factor panel ~15 sessions deep;
   no IC, decay or walk-forward machinery
 Paper trading: NOT READY
   the paper broker works, but there are no pre-trade risk limits
@@ -207,12 +216,12 @@ Live trading: DISABLED
   PAPER by default; LIVE requires config AND an explicit confirm
 
 Known limitations:
-  unadjusted prices; four frozen scoring inputs;
+  four frozen scoring inputs; delivery stored but unused;
   news sentiment rule-based only
 
 Missing data dependencies:
   corporate actions; bid/ask and depth; tick data (feed exists, never run);
-  intraday bars (fetched, never stored); delivery data; working AI key
+  intraday bars (fetched, never stored); working AI key
 
 Production blockers:
   no kill switch; no pre-trade limits; unauthenticated order routes on
@@ -223,9 +232,11 @@ Production blockers:
 
 ## Current state
 
-- **Live** at `D:\Projects\ATIP`, running `3135ea5`, restarted 05:34:25 IST on 2026-09-22 with no migration warnings and nothing to catch up.
-- **`index_levels`:** 12,769 rows, 0 duplicates, 0 outside 09:00–15:45, the unique index in place, and every stored session holds its close.
+- **Live** at `D:\Projects\ATIP`, running `4416ac7`, restarted 09:03:32 IST on 2026-09-22 (before the open) with no migration warnings; the index feed reconnected and has written every 15 seconds since.
+- **`index_levels`:** 0 duplicates, 0 outside 09:00–15:45, the unique index in place, and every stored session holds its close.
 - **NIFTY50 benchmark:** through 2026-09-21 (from NSE). The shipped job was run once against the live database: it stored nothing new for 09-21 and correctly skipped a weekend.
-- **16:45 today** is the first post-market run that fetches the session's own NSE close before scoring.
-- **Disk:** D: has 6.1 GB free; the two repair backups take 63 MB each.
+- **Corporate actions:** 277 price-basis events on file, every tracked one reconciled. A 620-day Dhan re-fetch of BAJFINANCE, ZFCVINDIA and HDFCBANK through the new guard (on a copy) changed 0 of 1,227 stored rows.
+- **16:45 today** is the first post-market run with the corporate-action step and the session's own NSE close; **19:30** is the first nightly delivery run.
+- **Not changed, for you to decide:** no score reads delivery yet. Separately, at 16:45 NSE is still serving the previous session's FII/DII flows (seen on 09-21), so each session is scored on the prior day's flows -- a timing question, like the benchmark was.
+- **Disk:** D: has about 6 GB free; the three repair backups take 63 MB each.
 - The local repo carries one unpushed commit from another session, `4e864ef` (the bkesari snapshot publisher), left alone deliberately.
