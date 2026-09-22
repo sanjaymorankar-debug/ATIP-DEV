@@ -77,6 +77,14 @@ POSTMARKET_CATCHUP_TIME = "18:30"
 # NSE's full Bhavcopy (the file with delivery) comes out in the evening, after
 # the post-market run.
 EOD_LATE_RUN_TIME = "19:30"
+# FII/DII cash-market flows are published by NSE once a day, after the close
+# (provisional figures; 2026-09-21's were out by 18:22, and at 16:45 NSE is
+# still serving the previous session's). There is no intraday source, so the
+# closest to real time is to poll from the close until they appear and then
+# score the session on its own flows.
+FII_DII_WATCH_START = "17:00"
+FII_DII_WATCH_END = "21:30"
+FII_DII_WATCH_EVERY = 10          # minutes
 # Share of the scored universe that must have a bar for the target date before
 # it may be scored. Below this, the "day" would really be the previous close.
 EOD_COVERAGE_MIN = 0.5
@@ -246,6 +254,7 @@ def run_postmarket_if_missing():
     finally:
         conn.close()
 
+    release_held_signals()
     missing = [d for d in sessions
                if str(d) not in scored and (d == td or str(d) in has_bars)]
     if not missing:
@@ -636,12 +645,20 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and
     # predictions, a re-run never overwrites what was previously said.
-    try:
-        from scores.signal_log import log_signals, evaluate_outcomes
-        run_job("signal_log", log_signals, td)
-        run_job("signal_outcomes", evaluate_outcomes)
-    except Exception as e:
-        log.warning(f"  Signal log: {e}")
+    # Held while NSE has not published this session's FII/DII: these scores
+    # carry the previous session's flows, and run_fii_dii_watch() re-scores the
+    # session and logs its signals once its own flows appear. A backfilled
+    # session is logged now -- NSE only ever serves the latest day, so an
+    # older session's flows will not arrive.
+    if not backfill and not _flows_stored(td):
+        _hold_signals(td)
+        try:
+            from scores.signal_log import evaluate_outcomes
+            run_job("signal_outcomes", evaluate_outcomes)
+        except Exception as e:
+            log.warning(f"  Signal outcomes: {e}")
+    else:
+        _log_session_signals(td)
 
     # 5:45 PM — Send Telegram alerts. Never for a backfill: an alert about a
     # session that closed days ago is noise, and the TOD pick is not actionable.
@@ -662,6 +679,112 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     log.info("✅  Post-market pipeline complete"
              + (f" (backfilled {td})" if backfill else "") + "\n")
     return {"status": "SCORED", "date": str(td)}
+
+
+def _flows_stored(td) -> bool:
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        return bool(conn.execute("SELECT 1 FROM fii_dii_market WHERE date=?", (str(td),)).fetchone())
+    finally:
+        conn.close()
+
+
+def _signal_log_state(td):
+    """'logged', 'held' or None, from this session's signal_log job records."""
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        states = {r[0] for r in conn.execute(
+            "SELECT status FROM pipeline_log WHERE job_name='signal_log' AND run_date=?", (str(td),))}
+    finally:
+        conn.close()
+    return "logged" if "SUCCESS" in states else "held" if "HELD" in states else None
+
+
+def _hold_signals(td):
+    from db.schema import log_job
+    log.info(f"  ⏸  Signals for {td} held: NSE has not published the session's FII/DII yet, so "
+             f"these scores carry the previous session's flows. Watching until "
+             f"{FII_DII_WATCH_END}; the session is re-scored and logged when they appear.")
+    log_job("signal_log", "HELD", 0, run_date=td)
+
+
+def _log_session_signals(td):
+    try:
+        from scores.signal_log import log_signals, evaluate_outcomes
+        run_job("signal_log", log_signals, td)
+        run_job("signal_outcomes", evaluate_outcomes)
+    except Exception as e:
+        log.warning(f"  Signal log: {e}")
+
+
+def settle_session_flows(td, final=False) -> dict:
+    """
+    For a session whose signals are held: fetch NSE's FII/DII; once the
+    session's own flows are stored, re-score it with them and log its signals.
+    With final=True and still no flows, log the signals on the scores as they
+    stand (the previous session's flows) rather than never.
+    """
+    from db.schema import get_connection
+    from data.bhavcopy import store_fii_dii
+    if not _flows_stored(td):
+        conn = get_connection()
+        try:
+            store_fii_dii(conn, td)
+        finally:
+            conn.close()
+    if _signal_log_state(td) != "held":
+        return {"status": "SKIPPED", "rows": 0, "reason": "signals not held"}
+    current = td == postmarket_target_date()
+    if _flows_stored(td):
+        log.info(f"  ✓ NSE's FII/DII for {td} is out ({now_ist()}) — re-scoring the session "
+                 f"with its own flows")
+        from scores.engine import run_scoring_pipeline
+        run_job("ai_scoring_engine", run_scoring_pipeline, td)
+        try:
+            from scores.portfolio_health import store_phs
+            run_job("portfolio_health", store_phs, td)
+        except Exception as e:
+            log.warning(f"  Portfolio health: {e}")
+        _log_session_signals(td)
+        if current:
+            try:
+                from alerts.telegram import check_fii_alert
+                check_fii_alert(td)
+            except Exception as e:
+                log.warning(f"  FII alert: {e}")
+            run_job("dashboard_rebuild", _rebuild_dashboard, td)
+        return {"status": "SUCCESS", "rows": 1, "rescored": True}
+    if final:
+        log.warning(f"  ⚠ NSE had not published FII/DII for {td} by {FII_DII_WATCH_END} — "
+                    f"logging its signals on the previous session's flows")
+        _log_session_signals(td)
+        return {"status": "PARTIAL", "rows": 1, "rescored": False}
+    return {"status": "SKIPPED", "rows": 0, "reason": "not published yet"}
+
+
+def run_fii_dii_watch():
+    """Every FII_DII_WATCH_EVERY minutes from FII_DII_WATCH_START to _END on a
+    trading day, while the session's signals are held."""
+    if not is_market_day():
+        return
+    td = date.today()
+    if _signal_log_state(td) != "held":
+        return          # logged already, or post-market has not scored yet
+    final = datetime.now().strftime("%H:%M") >= FII_DII_WATCH_END
+    run_job("fii_dii_watch", settle_session_flows, td, final)
+
+
+def release_held_signals(now=None):
+    """A session still held after its watch window -- ATIP was not running at
+    the time -- is settled now: re-scored if NSE still serves its flows,
+    otherwise logged as it stands."""
+    now = now or datetime.now()
+    for d in _recent_sessions(CATCHUP_LOOKBACK_SESSIONS, postmarket_target_date()):
+        closed = d < now.date() or now.strftime("%H:%M") >= FII_DII_WATCH_END
+        if closed and _signal_log_state(d) == "held":
+            run_job("fii_dii_watch", settle_session_flows, d, True)
 
 
 def _rebuild_dashboard(td):
@@ -915,6 +1038,10 @@ def start_scheduler():
     schedule.every().day.at(POSTMARKET_RUN_TIME).do(run_postmarket)
     schedule.every().day.at(POSTMARKET_CATCHUP_TIME).do(run_postmarket_if_missing)
     schedule.every().day.at(EOD_LATE_RUN_TIME).do(run_eod_late)
+    t = datetime.strptime(FII_DII_WATCH_START, "%H:%M")
+    while t <= datetime.strptime(FII_DII_WATCH_END, "%H:%M"):
+        schedule.every().day.at(t.strftime("%H:%M")).do(run_fii_dii_watch)
+        t += timedelta(minutes=FII_DII_WATCH_EVERY)
 
     # ── Overnight ───────────────────────────────────────────────────────
     schedule.every().day.at("23:00").do(run_overnight)

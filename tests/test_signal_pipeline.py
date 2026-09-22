@@ -146,7 +146,7 @@ def test_postmarket_does_not_score_a_day_without_its_closes(db, monkeypatch):
     assert "dashboard_rebuild" in ran
 
 
-def test_postmarket_scores_normally_when_closes_are_present(db, monkeypatch):
+def _postmarket(monkeypatch, flows):
     from pipeline import scheduler as S
     ran = []
     monkeypatch.setattr(S, "run_job", lambda name, *a, **k: ran.append(name) or {})
@@ -154,11 +154,24 @@ def test_postmarket_scores_normally_when_closes_are_present(db, monkeypatch):
     monkeypatch.setattr(S, "_run_portfolio_sync", lambda *a, **k: None)
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
     monkeypatch.setattr(S, "_eod_coverage", lambda td: (True, 501, 502))
-
+    monkeypatch.setattr(S, "_flows_stored", lambda td: flows)
     S.run_postmarket(force=True)
+    return ran
 
+
+def test_postmarket_scores_normally_when_closes_are_present(db, monkeypatch):
+    ran = _postmarket(monkeypatch, flows=True)
     for required in ("technical_indicators", "ai_scoring_engine", "signal_log"):
         assert required in ran
+
+
+def test_postmarket_holds_signals_until_the_sessions_own_flows(db, monkeypatch):
+    """At 16:45 NSE still serves the previous session's FII/DII (seen on
+    2026-09-21), so these scores carry yesterday's flows: scored, not logged."""
+    from pipeline import scheduler as S
+    ran = _postmarket(monkeypatch, flows=False)
+    assert "ai_scoring_engine" in ran and "signal_log" not in ran
+    assert S._signal_log_state(dt.date(2026, 9, 18)) == "held"
 
 
 # ── schedule ──────────────────────────────────────────────────────────────
