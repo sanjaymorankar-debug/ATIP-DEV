@@ -971,6 +971,15 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
     failed = 0          # broker refused (DH-902 not subscribed, DH-905 bad params, ...)
     empty  = 0          # broker answered, but this symbol had no bars
     codes  = {}
+    held   = 0          # bars before an unreconciled ex-date, left for corporate_actions
+    moved  = []         # symbols whose stored closes Dhan now reports differently
+    basis  = {}
+    if interval_min == 0:
+        try:
+            from data.corporate_actions import basis_events
+            basis = basis_events(conn)
+        except Exception as e:
+            log.warning(f"  Corporate-action basis unavailable, storing Dhan's bars as-is: {e}")
 
     for i, sym in enumerate(symbols):
         try:
@@ -990,7 +999,15 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                 continue
 
             if interval_min == 0:
-                # Store in prices_daily
+                # Store in prices_daily, on the stored corporate-action basis
+                # (data/corporate_actions.py): Dhan adjusts prices for splits
+                # and bonuses itself, possibly days late, and never adjusts volume.
+                from data.corporate_actions import to_stored_basis
+                events = basis.get(sym)
+                stored = {str(r[0]): (r[1], r[2]) for r in conn.execute(
+                    "SELECT date, close, volume FROM prices_daily WHERE symbol=? AND date>=?",
+                    (sym, str(start_dt)))}
+                shifted = 0
                 for _, row in df.iterrows():
                     raw_date = row.get("date")
                     # Normalize to a plain YYYY-MM-DD string. Values can arrive as a
@@ -1003,6 +1020,16 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                     # through pd.to_datetime(...).strftime(...) so the stored value
                     # is a clean date regardless of source.
                     date_str = pd.to_datetime(raw_date).strftime("%Y-%m-%d") if raw_date else ""
+                    bar = (row.get("open"), row.get("high"), row.get("low"),
+                           row.get("close"), row.get("volume"))
+                    if events:
+                        bar = to_stored_basis(date_str, bar, stored.get(date_str), events, end_dt)
+                        if bar is None:
+                            held += 1
+                            continue
+                    old = stored.get(date_str)
+                    if old and old[0] and bar[3] and abs(bar[3] / old[0] - 1) > 0.01:
+                        shifted += 1
                     conn.execute("""
                         INSERT INTO prices_daily
                             (symbol,date,open,high,low,close,volume,source)
@@ -1011,10 +1038,17 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                             open=excluded.open, high=excluded.high,
                             low=excluded.low,   close=excluded.close,
                             volume=excluded.volume
-                    """, (sym, date_str, row.get("open"),
-                          row.get("high"), row.get("low"), row.get("close"),
-                          row.get("volume"), "dhan"))
-                count += len(df)
+                    """, (sym, date_str) + tuple(bar) + ("dhan",))
+                    count += 1
+                if shifted >= 2:
+                    # Dhan re-based this stock's history for an event NSE's
+                    # calendar did not give us (or gave us late). Only the
+                    # fetched window moved, so the rows before it are now on
+                    # a different basis -- say so rather than fail silently.
+                    moved.append(sym)
+                    log.warning(f"  {sym}: Dhan reports {shifted} stored closes more than 1% "
+                                f"differently — a corporate action not in corporate_actions? "
+                                f"The rows before this window were not re-based.")
 
             # Commit every 10 symbols
             if (i + 1) % 10 == 0:
@@ -1048,11 +1082,16 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
         detail += f", {failed}/{attempted} refused by broker ({top})"
     if empty:
         detail += f", {empty} with no bars"
+    if held:
+        detail += f", {held} bars held for corporate-action reconciliation"
+    if moved:
+        detail += f", {len(moved)} with a shifted basis ({', '.join(moved[:5])})"
     mark = "✓" if status == "SUCCESS" else "✗" if status == "FAILED" else "!"
     (log.info if status == "SUCCESS" else log.warning)(f"  {mark} Historical download: {detail}")
 
     result = {"status": status, "rows": count, "errors": errors,
-              "refused": failed, "empty": empty, "error_codes": codes}
+              "refused": failed, "empty": empty, "error_codes": codes,
+              "held": held, "basis_shifted": moved}
     log_job("dhan_historical", status, count,
             error=(f"{failed}/{attempted} refused: {codes}" if failed else None))
     return result

@@ -74,6 +74,9 @@ POSTMARKET_RUN_TIME = "16:45"
 # Safety net: re-runs post-market only if the day still has no scores (late
 # NSE publication, or ATIP started after POSTMARKET_RUN_TIME).
 POSTMARKET_CATCHUP_TIME = "18:30"
+# NSE's full Bhavcopy (the file with delivery) comes out in the evening, after
+# the post-market run.
+EOD_LATE_RUN_TIME = "19:30"
 # Share of the scored universe that must have a bar for the target date before
 # it may be scored. Below this, the "day" would really be the previous close.
 EOD_COVERAGE_MIN = 0.5
@@ -520,6 +523,15 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # publishes each day's CSV for that trading day.
     run_job("bulk_block_deals", run_bulk_deals_pipeline, td)
 
+    # Corporate actions -- NSE's calendar, then any split or bonus whose ex-date
+    # has arrived is applied to the stored history. Before the Dhan re-sync,
+    # which must find the rows before an ex-date still on the old basis.
+    try:
+        from data.corporate_actions import run_corporate_actions
+        run_job("corporate_actions", run_corporate_actions, td)
+    except Exception as e:
+        log.warning(f"  Corporate actions: {e}")
+
     # 4:30 PM — Dhan historical daily data (fills any gaps + confirms EOD)
     try:
         from data.dhan import run_historical_pipeline
@@ -678,6 +690,17 @@ def run_morning_digest():
         run_job("morning_digest", lambda: {"status": "SUCCESS", "rows": int(bool(send_morning_digest()))})
     except Exception as e:
         log.warning(f"  Morning brief: {e}")
+
+
+def run_eod_late():
+    """
+    Data NSE publishes after the post-market run: delivery, from the full
+    Bhavcopy. Nothing scores on it yet; it is stored so the history is complete.
+    Looks back CATCHUP_LOOKBACK_SESSIONS sessions, so a missed evening (or a
+    file NSE publishes late) is picked up by the next one.
+    """
+    from data.bhavcopy import run_delivery_pipeline
+    run_job("delivery", run_delivery_pipeline, None, CATCHUP_LOOKBACK_SESSIONS)
 
 
 def run_overnight():
@@ -891,6 +914,7 @@ def start_scheduler():
     # POSTMARKET_RUN_TIME. The catch-up re-runs only if the day has no scores.
     schedule.every().day.at(POSTMARKET_RUN_TIME).do(run_postmarket)
     schedule.every().day.at(POSTMARKET_CATCHUP_TIME).do(run_postmarket_if_missing)
+    schedule.every().day.at(EOD_LATE_RUN_TIME).do(run_eod_late)
 
     # ── Overnight ───────────────────────────────────────────────────────
     schedule.every().day.at("23:00").do(run_overnight)
