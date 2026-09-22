@@ -1,10 +1,10 @@
 # ATIP — status of all phases
 
-*As of 2026-09-21 16:19 IST. Every figure below was measured from the repository, the database or the live log at that time.*
+*As of 2026-09-22 05:50 IST (first written 2026-09-21 16:19, updated after the Tier 0 price and index repairs). Every figure below was measured from the repository, the database or the live log at that time.*
 
 This engagement ran in two parts. It began as a defect investigation — **why signals were not working** — and then became Phase 1 of the institutional-quant master plan. The defect work turned out to be a large share of the value: most of what was wrong with ATIP was not missing capability but existing capability quietly producing wrong numbers.
 
-**15 commits, 20 files, +4,769 / −131 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 270 now, all passing.**
+**22 commits, 23 files, +5,666 / −149 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 304 now, all passing.**
 
 ---
 
@@ -33,6 +33,11 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | | `a7d92a7` | **MACD histogram and signal line were swapped in all 7,164 rows** (`ta` and pandas_ta order columns differently), pinning MRI's heaviest input in 63.1% of rows → fixed |
 | | `5a7ddff` | The MACD test asserted an identity that holds either way round, so it could not fail → now recomputes the signal line and catches the old ordering |
 | | `bbd0540` | MACD mapped on an absolute ±5-rupee scale across prices from ₹7 to ₹134,860 → normalised by price, full scale 1.667% chosen from the measured distribution |
+| **Price history** | `ba31981` | A session whose bars were byte copies of the previous one passed the coverage guard → refused when more than 5% of the tracked universe is identical |
+| | `7132017` | The calendar had no 2025 holidays and rejected the two Budget weekend sessions → 13 NSE 2025 holidays and 2025-02-01 / 2026-02-01, each verified against NSE's archive |
+| | `8526a9b` | The NIFTY50 re-sync refreshed close only, leaving 280 bars with close outside [low, high] → every price column refreshed |
+| | `8dd04fb` | The benchmark ended one session before the stocks at every scoring run (Dhan's `to_date` is exclusive, and a session's index bar is not published until the next day), and relative strength paired rows by position → the session's close comes from NSE's daily index file, RS matches by date; `index_levels` (date, time) made unique |
+| | `3135ea5` | A feed that stopped at midday still counted as covering the session → NSE's close is stored at 15:30 whenever the feed did not record the close |
 | **Dashboard truth** | `db7f506` | Global panel always showed the day's *oldest* snapshot (S&P +1.14% shown, −0.17% true) — the "gold/S&P/USD-INR not updating" complaint; live CMP change used a baseline one session too old → both fixed |
 | | `cc8ce46` | Hit rate counted resolved signals only (95.2% shown vs 52.6% measured) → denominator is every signal watched for at least one session |
 | **Decisions you made** | `cc8ce46` | Fundamentals ingestion held off (`FUNDAMENTALS_ENABLED=False`) because `fundamental_score` is weighted twice (SPI 0.15 + FS 0.10) and defaults to a hardcoded 50.0 |
@@ -49,18 +54,33 @@ Four things made it worse: the 09-14 holiday was scored as a session (the calend
 | Wrongly dated FII/DII rows deleted | 2 |
 | Non-session scoring artefacts deleted (07-25, 08-30, 09-14) | 1,630 |
 | Indicators and scores recomputed for every real session (MACD, twice) | 14 sessions |
+| Holiday-dated copies of the next session's bars (pre-09-08 UTC date shift) deleted | 8,858 on 18 dates |
+| Pre-listing copies of a new listing's first bar deleted | 22 symbols |
+| NIFTY50 bars with close outside [low, high] reset to close-only | 280 |
+| Indicators and scores recomputed on the repaired price history | 15 sessions |
+| `index_levels`: duplicates / rows outside 09:00–15:45 deleted | 2,191 / 28,160 |
+| Sessions given NSE's official index close (the feed never recorded it) | 7 |
+| NIFTY50 benchmark row for 09-21 from NSE | 1 |
+| Scores recomputed with each session's own index data and benchmark | 6 sessions |
+
+Each repair was a dry run first, then one count-checked transaction after an integrity-checked backup (`atip.db.bak-before-shift-repair-20260921-2329`, `atip.db.bak-before-index-repair-20260922-0533`).
 
 ### Measured impact
 
 | Measure | Before | Now |
 |---|---|---|
-| Signals being outcome-tracked | 21 | **58** |
-| Hit rate shown at the 3% target | 95.2% (resolved only) | **48.8%** (21 / 43 watched) |
+| Signals being outcome-tracked | 21 | **59** |
+| Hit rate shown at the 3% target | 95.2% (resolved only) | **46.6%** (27 / 58 watched) |
 | WebSocket errors per hour outside the session | ~3,300 | **0** |
 | MACD component pinned at 0 or 100 | 63.1% | **1.7%** |
-| Historical BUY signals in `ai_scores` | 52 | **26** |
-| Friday 2026-09-18 BUY list | 10 (stale-data run) | **3** — SYRMA, MEESHO, FINCABLES |
+| Historical BUY signals in `ai_scores` | 52 | **27** |
+| Friday 2026-09-18 BUY list | 10 (stale-data run) | **2** — SYRMA, CPPLUS |
 | Non-session dates in scoring tables | 3 | **0** |
+| Bars that copy another session's bar | 8,858 | **0** |
+| One-session price moves over 25% | 304 | **270** (not yet classified; expected to be mostly splits and bonuses, Tier 0 #3) |
+| Sessions scored from another moment's index data | 5 | **0** |
+| 2026-09-16 regime | BEAR, from 09-15's −1.195% | **NEUTRAL**, from its own +0.428% |
+| Benchmark sessions behind the stocks when scored | 1, every day | **0** |
 
 **Nearly half of every BUY ATIP ever produced was an artefact of the swapped MACD column.** `signal_log` was deliberately not rewritten — it remains the contemporaneous record of what ATIP said (67 rows), so its hit rates describe signals generated before the fix.
 
@@ -71,6 +91,8 @@ Stated plainly, because each was repeated before it was caught:
 - **SELL was not unreachable.** I twice said the BEAR gate blocked it. The CRI-danger SELL branch runs *before* the regime gates. SELL has never fired because no row has ever met any SELL condition: max CRI 62.69 against a threshold of 75, min ATIP 37.74 against a floor of 30, and `cri>60 AND mri<40` has matched zero rows.
 - **My first MACD regression test could not fail.** `macd == signal + hist` holds whichever way round the columns are.
 - **The AI news key is not set**, rather than rejected with a 401 as I first said — sentiment has always been the rule-based fallback.
+- **Dhan does not refuse index history for this account.** I said the benchmark stopped at 09-17 because of DH-901. That error was an expired token on the morning of 09-20 and has not recurred; the benchmark trails by a session because Dhan's `to_date` is exclusive and a session's daily bar is not out until the next day.
+- **The first `index_levels` rule was wrong.** I planned to treat any row during market hours as "the feed covered the session". The dry run showed 09-09, whose last market-hours row was 12:00 and still held 09-08's close at 0.00%; deleting its evening rows would have made the engine read that. The rule is now "the feed recorded the close".
 
 ---
 
@@ -116,12 +138,12 @@ The defect work closed a handful of gap items incidentally — the busy timeout,
 
 Research built on these would be measuring the data's defects rather than the market.
 
-1. **8,845 stale duplicate bars** — on the first session after every NSE holiday, ~500 symbols carry a bar byte-identical to the pre-holiday one (38 date-pairs). The coverage guard checks that a bar *exists*, not that it is *fresh*, so it passes these days.
-2. **4,993 rows on 10 non-trading dates** in `prices_daily`, including Republic Day and two weekend dates.
-3. **No adjusted prices.** `adj_close` is NULL in all 234,311 rows and 304 single-session moves exceed 25% — e.g. HEG 179.63 → 572.30 → 204.33 with two days sharing the identical volume. Every indicator, beta and backtest reads unadjusted prices.
-4. **The NIFTY50 benchmark is corrupt** — 280 of 425 rows are impossible bars and OHL is shifted one session forward, so every `beta_1y` (and the dashboard's beta sort) is unreliable.
-5. **Delivery data never stored** — `delivery_qty` / `delivery_pct` NULL in every row despite being parsed.
-6. `index_levels` history still holds 30,706 out-of-window rows and 2,191 duplicates from before the fix (today's data is clean).
+1. ~~8,845 stale duplicate bars~~ **Fixed.** They were not stale fetches: before `70269e4` Dhan's IST-midnight candles were read as UTC, filing each bar one day early, and a bar filed under a day with no session was never overwritten. 8,858 copies on 18 holiday dates and 22 pre-listing copies removed; the freshness guard (`ba31981`) now refuses such a session.
+2. ~~4,993 rows on 10 non-trading dates~~ **Fixed** with 1 — they were the same copies. The calendar now has 2025 (`7132017`).
+3. **No adjusted prices — open.** `adj_close` is NULL everywhere and 270 single-session moves exceed 25% (304 before the repair; HEG's 2.8× spikes were copies and are gone). Needs NSE corporate-actions data, and changes every affected stock's indicators, so the design comes to you first.
+4. ~~The NIFTY50 benchmark is corrupt~~ **Fixed.** 280 impossible bars reset (`8526a9b`); each session's close now comes from NSE (`8dd04fb`); every stored close checked matches NSE on 8 sessions.
+5. **Delivery data never stored — open.** `delivery_qty` / `delivery_pct` are NULL in every row; the UDiFF CM Bhavcopy ATIP downloads has no delivery columns (header checked). Populating them shifts the INS score, so it needs your decision.
+6. ~~`index_levels` leftovers~~ **Fixed.** Duplicates and out-of-hours rows removed, (date, time) unique, 7 sessions given NSE's close, 6 sessions re-scored (`8dd04fb`, `3135ea5`).
 
 ### Tier 1 — Safety (mandatory in the master plan before paper validation)
 
@@ -171,12 +193,12 @@ Execution algorithms: 0
 Backtest capabilities: 0 new
 
 Tests:
-Passed: 270
+Passed: 304
 Failed: 0
 Blocked: 0
 
 Research status: NOT READY
-  price series integrity (Tier 0); factor panel ~14 sessions deep;
+  unadjusted prices and no delivery data (Tier 0); factor panel ~15 sessions deep;
   no IC, decay or walk-forward machinery
 Paper trading: NOT READY
   the paper broker works, but there are no pre-trade risk limits
@@ -185,13 +207,12 @@ Live trading: DISABLED
   PAPER by default; LIVE requires config AND an explicit confirm
 
 Known limitations:
-  unadjusted prices; stale post-holiday bars; corrupt benchmark;
-  four frozen scoring inputs; news sentiment rule-based only
+  unadjusted prices; four frozen scoring inputs;
+  news sentiment rule-based only
 
 Missing data dependencies:
   corporate actions; bid/ask and depth; tick data (feed exists, never run);
-  intraday bars (fetched, never stored); delivery data; working AI key;
-  Dhan holdings and index history (DH-901 for this account)
+  intraday bars (fetched, never stored); delivery data; working AI key
 
 Production blockers:
   no kill switch; no pre-trade limits; unauthenticated order routes on
@@ -202,7 +223,9 @@ Production blockers:
 
 ## Current state
 
-- **Live** at `D:\Projects\ATIP`, running `bbd0540`, restarted 10:05:14 IST.
-- **Today's session:** 1,489 index rows 09:00:27 → 15:44:52, **0 outside the session window, 0 duplicates**; the feed closed on schedule at 15:45:29. Five WebSocket error lines, all network events: two handshake timeouts during an 11:34 hiccup (reconnected 11:38:35), two mid-session keepalive drops (recovered), and the SDK logging my scheduled 15:45 close. No lock errors, no tracebacks.
-- **16:45 today** is the first scoring run with both MACD fixes end to end.
+- **Live** at `D:\Projects\ATIP`, running `3135ea5`, restarted 05:34:25 IST on 2026-09-22 with no migration warnings and nothing to catch up.
+- **`index_levels`:** 12,769 rows, 0 duplicates, 0 outside 09:00–15:45, the unique index in place, and every stored session holds its close.
+- **NIFTY50 benchmark:** through 2026-09-21 (from NSE). The shipped job was run once against the live database: it stored nothing new for 09-21 and correctly skipped a weekend.
+- **16:45 today** is the first post-market run that fetches the session's own NSE close before scoring.
+- **Disk:** D: has 6.1 GB free; the two repair backups take 63 MB each.
 - The local repo carries one unpushed commit from another session, `4e864ef` (the bkesari snapshot publisher), left alone deliberately.
