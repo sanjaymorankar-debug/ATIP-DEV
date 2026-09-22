@@ -316,6 +316,11 @@ def compute_delivery_accumulation(prices):
     re-measures the last 10 days' price move, which tends to reverse. Full
     scale 0.24 is the 95th percentile of |ratio - 1|. None (component absent)
     without 8 of the last 10 and 40 of the last 60 sessions' delivery.
+
+    The session's own delivery is published in the evening, so the 16:45
+    scores use the window ending the session before (IC +0.012, t +1.5; +0.018
+    on dates offset by two) and the evening re-score (pipeline/scheduler.py,
+    settle_session_flows) includes it -- the figure above.
     """
     if prices is None or prices.empty or "delivery_pct" not in prices.columns:
         return None
