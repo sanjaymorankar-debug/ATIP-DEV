@@ -339,6 +339,101 @@ def sync_nse_index_closes(trade_date=None) -> dict:
             "benchmark": closes["nifty50"][0], "snapshot": snapshot}
 
 
+DELIVERY_URL = "https://archives.nseindia.com/products/content/sec_bhavdata_full_{date}.csv"
+
+def parse_delivery(content, trade_date) -> pd.DataFrame:
+    """symbol, deliv_qty, deliv_pct, volume for one session from NSE's full
+    Bhavcopy -- the file that carries delivery; the CM Bhavcopy does not (its
+    UDiFF header has no delivery columns). Rows dated other than trade_date
+    are dropped."""
+    df = pd.read_csv(io.BytesIO(content))
+    df.columns = [c.strip() for c in df.columns]
+    for c in ("SYMBOL", "SERIES", "DATE1"):
+        df[c] = df[c].astype(str).str.strip()
+    df = df[df["SERIES"].isin(["EQ", "BE", "SM"]) & (df["DATE1"].map(_nse_date) == trade_date)]
+    out = pd.DataFrame({
+        "symbol": df["SYMBOL"],
+        "rank": df["SERIES"].map({"EQ": 0, "BE": 1, "SM": 2}),
+        "deliv_qty": pd.to_numeric(df["DELIV_QTY"].astype(str).str.strip(), errors="coerce"),
+        "deliv_pct": pd.to_numeric(df["DELIV_PER"].astype(str).str.strip(), errors="coerce"),
+        "volume": pd.to_numeric(df["TTL_TRD_QNTY"], errors="coerce"),
+    }).dropna(subset=["deliv_pct"])
+    return out.sort_values("rank").drop_duplicates("symbol").drop(columns="rank")
+
+def download_delivery(trade_date, session):
+    """Parsed delivery for one session, or None while NSE has not published it."""
+    r = session.get(DELIVERY_URL.format(date=trade_date.strftime("%d%m%Y")), timeout=40)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return parse_delivery(r.content, trade_date)
+
+def store_delivery(conn, trade_date, df) -> int:
+    """
+    Delivery for the session's existing prices_daily rows; returns rows updated.
+
+    delivery_pct is NSE's own figure. delivery_qty is put on the stored
+    volume's basis: after a split or bonus prices_daily volumes are adjusted to
+    today's share count (data/corporate_actions.py) and NSE's are raw, so NSE's
+    quantity is scaled by stored volume / NSE volume -- NSE's figure exactly on
+    any day with no later corporate action.
+    """
+    rows = [{"q": None if pd.isna(r.deliv_qty) else float(r.deliv_qty),
+             "v": float(r.volume) if pd.notna(r.volume) and r.volume > 0 else None,
+             "p": float(r.deliv_pct), "s": r.symbol, "d": str(trade_date)}
+            for r in df.itertuples()]
+    cur = conn.executemany(
+        "UPDATE prices_daily SET delivery_pct=:p, "
+        "delivery_qty=CAST(ROUND(:q * COALESCE(volume * 1.0 / :v, 1)) AS INTEGER) "
+        "WHERE symbol=:s AND date=:d", rows)
+    return cur.rowcount
+
+def _sessions_upto(trade_date, n):
+    out, d = [], trade_date
+    while len(out) < n:
+        if is_trading_day(d):
+            out.append(d)
+        d -= timedelta(days=1)
+    return out[::-1]
+
+def run_delivery_pipeline(trade_date=None, lookback=5) -> dict:
+    """
+    Store delivery for each of the last `lookback` sessions that has prices but
+    no delivery yet. NSE publishes the full Bhavcopy in the evening, after the
+    16:45 run, so this runs later (pipeline/scheduler.py) and a missed evening
+    is recovered by the next one.
+    """
+    td = postmarket_target_date() if trade_date is None else trade_date
+    if isinstance(td, str):
+        td = date.fromisoformat(td)
+    conn = get_connection()
+    done, waiting = {}, []
+    try:
+        missing = [d for d in _sessions_upto(td, lookback) if conn.execute(
+            "SELECT COUNT(*) > 0 AND SUM(delivery_pct IS NOT NULL) = 0 FROM prices_daily "
+            "WHERE date=? AND source IN ('dhan','bhavcopy')", (str(d),)).fetchone()[0]]
+        session = get_nse_session() if missing else None
+        for d in missing:
+            try:
+                df = download_delivery(d, session)
+            except Exception as e:
+                log.warning(f"  Delivery {d}: {e}")
+                waiting.append(str(d)); continue
+            if df is None:
+                waiting.append(str(d)); continue
+            done[str(d)] = store_delivery(conn, d, df)
+            conn.commit()
+            time.sleep(1)
+    finally:
+        conn.close()
+    if done:
+        log.info(f"  ✓ Delivery stored: " + ", ".join(f"{d} ({n} rows)" for d, n in done.items()))
+    if waiting:
+        log.info(f"  Delivery not published yet for {', '.join(waiting)}")
+    log_job("delivery", "SUCCESS", sum(done.values()), run_date=td)
+    return {"status": "SUCCESS", "rows": sum(done.values()), "sessions": done, "waiting": waiting}
+
+
 def _bhavcopy_already_stored(conn, trade_date) -> int:
     """Row count already in prices_daily for this date, sourced from bhavcopy."""
     row = conn.execute(

@@ -57,9 +57,40 @@ def get_connection():
     conn.execute("PRAGMA foreign_keys=ON")
     _migrate_index_levels_chg_columns(conn)
     _migrate_index_levels_unique(conn)
+    _migrate_corporate_actions_table(conn)
     _migrate_ai_scores_beta_column(conn)
     _migrate_technical_macd_pct_column(conn)
     return conn
+
+# NSE's corporate-action calendar and how each event was reconciled with
+# prices_daily (data/corporate_actions.py). factor: from NSE's terms;
+# price_factor: the one the stored history carries; status: pending,
+# adjusted, already_adjusted, unadjusted, unverified or no_data.
+CORPORATE_ACTIONS_DDL = (
+    """CREATE TABLE IF NOT EXISTS corporate_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, ex_date DATE NOT NULL,
+        subject TEXT NOT NULL, kind TEXT, factor REAL,
+        status TEXT NOT NULL DEFAULT 'pending', price_factor REAL,
+        price_rows INTEGER, volume_rows INTEGER, note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, reconciled_at TIMESTAMP,
+        UNIQUE(symbol, ex_date, subject))""",
+    "CREATE INDEX IF NOT EXISTS idx_ca_symbol ON corporate_actions(symbol, ex_date)",
+)
+
+def _migrate_corporate_actions_table(conn):
+    """Self-healing, non-destructive migration -- init_db() runs only with
+    --init, so an existing database gets the corporate_actions table here."""
+    try:
+        names = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('prices_daily','corporate_actions')")}
+        if "prices_daily" in names and "corporate_actions" not in names:
+            for ddl in CORPORATE_ACTIONS_DDL:
+                conn.execute(ddl)
+            conn.commit()
+            log.info("  ✓ corporate_actions table created")
+    except sqlite3.OperationalError as e:
+        log.warning(f"  corporate_actions migration skipped: {e}")
 
 INDEX_LEVELS_UNIQUE = "uq_index_levels_date_time"
 _index_levels_unique_blocked = False
@@ -316,6 +347,8 @@ def init_db():
         timestamp   TEXT,
         received_at TEXT)""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_lt_symbol ON live_ticks(symbol, received_at)")
+    for ddl in CORPORATE_ACTIONS_DDL:
+        c.execute(ddl)
     conn.commit()
     _migrate_index_levels_unique(conn)
     conn.close()

@@ -356,6 +356,16 @@ def fill_missing_entry_prices(conn) -> int:
     return cur.rowcount
 
 
+def _entry_factor(conn, symbol, signal_date) -> float:
+    """1.0 unless a split/bonus after the signal re-based the stored history."""
+    import sqlite3
+    from data.corporate_actions import entry_factor
+    try:
+        return entry_factor(conn, symbol, signal_date)
+    except sqlite3.OperationalError:
+        return 1.0          # no corporate_actions table (e.g. an older test database)
+
+
 def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
     """
     Walk forward from each signal and record, per threshold, whether price moved
@@ -416,7 +426,10 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
                     res["evaluated"] += 1
                 continue
 
-            entry = s["entry_price"]
+            # entry_price is the close as recorded on the signal date; after a
+            # split or bonus the stored history is re-based, so bring the entry
+            # onto the same basis or a 1:1 bonus reads as a 50% loss.
+            entry = s["entry_price"] * _entry_factor(conn, s["symbol"], s["signal_date"])
             long_side = s["signal"] == "BUY"
 
             # Best/worst excursion, in the signal's own direction.
