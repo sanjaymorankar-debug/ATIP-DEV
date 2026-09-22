@@ -294,7 +294,41 @@ def compute_cri(tech,fund,ns,mh,weights):
     c["MarketWeakness"]=min(mw,100)
     return round(weighted_score(c,weights),2)
 
-def compute_zpi(tech,inst,ns,sector_val,weights):
+# ZPI's "Institutional -- Accumulation 10d" component. It used to read
+# institutional_data, which nothing has ever populated (there is no free
+# per-stock FII/DII source), so the component was always absent and its 0.10
+# weight renormalised away. Delivery is the per-stock accumulation evidence
+# NSE does publish.
+DELIVERY_SHORT, DELIVERY_BASE = 10, 60
+DELIVERY_FULL_SCALE = 0.24
+
+def compute_delivery_accumulation(prices):
+    """
+    The stock's average delivery % over its last 10 sessions relative to its
+    own average over the last 60: above 1 is more delivery-based buying than
+    usual for that stock. 50 at parity, 0 and 100 at -/+24%.
+
+    Measured 2026-09-22 on 409 sessions of delivery for the tracked universe:
+    rank IC against the next 5 sessions' return +0.020 (t +2.7, non-overlapping
+    windows; +0.011 and +0.029 in each half of the history; +0.018 net of
+    10-day momentum). The directional alternative -- delivered shares on up
+    days minus down days -- had IC -0.016 and was rejected: it mostly
+    re-measures the last 10 days' price move, which tends to reverse. Full
+    scale 0.24 is the 95th percentile of |ratio - 1|. None (component absent)
+    without 8 of the last 10 and 40 of the last 60 sessions' delivery.
+    """
+    if prices is None or prices.empty or "delivery_pct" not in prices.columns:
+        return None
+    p = pd.to_numeric(prices["delivery_pct"], errors="coerce")   # newest first
+    short, base = p.iloc[:DELIVERY_SHORT], p.iloc[:DELIVERY_BASE]
+    if short.notna().sum() < 8 or base.notna().sum() < 40:
+        return None
+    b = base.mean()
+    if not b or b <= 0:
+        return None
+    return minmax(short.mean() / b, 1 - DELIVERY_FULL_SCALE, 1 + DELIVERY_FULL_SCALE)
+
+def compute_zpi(tech,inst,ns,sector_val,weights,accumulation=None):
     c={}
     c["Support"]=80 if tech.get("above_200dma") else 30
     adx=tech.get("adx_14")
@@ -306,9 +340,8 @@ def compute_zpi(tech,inst,ns,sector_val,weights):
     vr=tech.get("volume_ratio")
     if vr: c["Volume"]=(80 if vr<0.7 else 65 if vr<1.0 else 45 if vr<1.5 else 20)
     c["Trend"]=85 if tech.get("above_200dma") else 15
-    if not inst.empty:
-        net=sum([inst.get("fii_net_cr",pd.Series([0])).sum(),inst.get("dii_net_cr",pd.Series([0])).sum()])
-        c["Institutional"]=minmax(float(net),-200,400)
+    if accumulation is not None:
+        c["Institutional"]=accumulation   # delivery-based -- see compute_delivery_accumulation()
     c["News"]=ns
     c["Sector"]=sector_val  # real per-day industry-relative-performance score — see compute_sector_ranks()/sector_score()
     return round(weighted_score(c,weights),2)
@@ -460,7 +493,8 @@ def run_scoring_pipeline(trade_date=None):
                 mri=compute_mri(tech,ns,w_mri)
                 rri=compute_rri(tech,prices,inst,ns,w_rri)
                 cri=compute_cri(tech,fund,ns,mh,w_cri)
-                zpi=compute_zpi(tech,inst,ns,sector_val,w_zpi)
+                zpi=compute_zpi(tech,inst,ns,sector_val,w_zpi,
+                                accumulation=compute_delivery_accumulation(prices))
                 spi=fund.get("fundamental_score"); ts=tech.get("tech_score")
                 ins=compute_ins(fii,fund,bulk,w_ins)
                 all_s={"vpi":vpi,"spi":spi,"rri":rri,"mri":mri,"cri":cri,"msi":msi,"zpi":zpi,"tech_score":ts}

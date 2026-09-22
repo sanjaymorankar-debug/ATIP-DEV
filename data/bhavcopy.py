@@ -204,15 +204,20 @@ def store_fii_dii(conn, trade_date, session=None) -> int:
         return 0
     if not fii:
         return 0
-    hist = pd.read_sql("SELECT fii_net_cr,dii_net_cr FROM fii_dii_market "
-                       "ORDER BY date DESC LIMIT 5", conn)
     conn.execute("""INSERT OR REPLACE INTO fii_dii_market
-        (date,fii_buy_cr,fii_sell_cr,fii_net_cr,dii_buy_cr,dii_sell_cr,dii_net_cr,fii_5d_avg,dii_5d_avg)
-        VALUES(?,?,?,?,?,?,?,?,?)""",
+        (date,fii_buy_cr,fii_sell_cr,fii_net_cr,dii_buy_cr,dii_sell_cr,dii_net_cr)
+        VALUES(?,?,?,?,?,?,?)""",
         (fii.get("date"),fii.get("fii_buy_cr",0),fii.get("fii_sell_cr",0),fii.get("fii_net_cr",0),
-         fii.get("dii_buy_cr",0),fii.get("dii_sell_cr",0),fii.get("dii_net_cr",0),
-         hist["fii_net_cr"].mean() if not hist.empty else 0,
-         hist["dii_net_cr"].mean() if not hist.empty else 0))
+         fii.get("dii_buy_cr",0),fii.get("dii_sell_cr",0),fii.get("dii_net_cr",0)))
+    # The 5-day averages include the day itself. They were taken from the five
+    # rows stored BEFORE it, so a session's own flows only reached MSI and INS
+    # a day later -- and a re-run of the same day averaged in its own old row.
+    conn.execute("""UPDATE fii_dii_market SET
+        fii_5d_avg=(SELECT AVG(fii_net_cr) FROM (SELECT fii_net_cr FROM fii_dii_market
+                    WHERE date<=:d ORDER BY date DESC LIMIT 5)),
+        dii_5d_avg=(SELECT AVG(dii_net_cr) FROM (SELECT dii_net_cr FROM fii_dii_market
+                    WHERE date<=:d ORDER BY date DESC LIMIT 5))
+        WHERE date=:d""", {"d": fii.get("date")})
     conn.commit()
     return 1
 
