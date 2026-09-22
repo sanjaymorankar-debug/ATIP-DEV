@@ -61,13 +61,22 @@ def watch(db, monkeypatch):
     from pipeline import scheduler as S
     import data.bhavcopy, scores.engine, scores.portfolio_health, scores.signal_log, alerts.telegram
     calls = []
-    published = {"yes": False}
+    published = {"flows": False, "delivery": False}
 
     def store(conn, d, session=None):
-        if published["yes"]:
+        if published["flows"]:
             _flows(conn, d, -1500.0, 2500.0); conn.commit()
         return 1
+
+    def delivery(d, lookback=5):
+        if published["delivery"]:
+            from db.schema import get_connection
+            c = get_connection()
+            c.execute("INSERT OR REPLACE INTO prices_daily (symbol, date, close, delivery_pct, source) "
+                      "VALUES ('ACME', ?, 10, 55.0, 'bhavcopy')", (str(d),)); c.commit(); c.close()
+        return {}
     monkeypatch.setattr(data.bhavcopy, "store_fii_dii", store)
+    monkeypatch.setattr(data.bhavcopy, "run_delivery_pipeline", delivery)
     monkeypatch.setattr(scores.engine, "run_scoring_pipeline", lambda d: calls.append("score") or {})
     monkeypatch.setattr(scores.portfolio_health, "store_phs", lambda d: calls.append("phs") or {})
     monkeypatch.setattr(scores.signal_log, "log_signals",
@@ -86,9 +95,21 @@ def test_nothing_is_logged_while_nse_has_not_published(watch):
     assert calls == [] and S._signal_log_state(TD) == "held"
 
 
+def test_flows_alone_are_not_enough_before_the_deadline(watch):
+    """Delivery (ZPI) comes in the same evening; re-scoring on the flows alone
+    would leave the session scored on the previous day's delivery."""
+    S, calls, published = watch
+    published["flows"] = True
+    assert S.settle_session_flows(TD)["reason"] == "not published yet"
+    assert calls == []
+    res = S.settle_session_flows(TD, final=True)          # 21:30: take what there is
+    assert res == {"status": "PARTIAL", "rows": 1, "rescored": True}
+    assert calls[:3] == ["score", "phs", "log"]
+
+
 def test_the_session_is_rescored_on_its_own_flows_when_they_appear(watch):
     S, calls, published = watch
-    published["yes"] = True
+    published["flows"] = published["delivery"] = True
     res = S.settle_session_flows(TD)
     assert res["rescored"] is True
     assert calls == ["score", "phs", "log", "alert", "dashboard"]
@@ -103,7 +124,7 @@ def test_by_the_deadline_signals_are_logged_anyway(watch):
     S, calls, published = watch
     res = S.settle_session_flows(TD, final=True)
     assert res == {"status": "PARTIAL", "rows": 1, "rescored": False}
-    assert calls == ["log"]
+    assert calls == ["log"], "nothing new to score on: the 16:45 scores stand"
 
 
 def test_a_session_held_while_atip_was_down_is_released(watch, monkeypatch):

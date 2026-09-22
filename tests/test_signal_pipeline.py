@@ -154,7 +154,7 @@ def _postmarket(monkeypatch, flows):
     monkeypatch.setattr(S, "_run_portfolio_sync", lambda *a, **k: None)
     monkeypatch.setattr(S, "postmarket_target_date", lambda: dt.date(2026, 9, 18))
     monkeypatch.setattr(S, "_eod_coverage", lambda td: (True, 501, 502))
-    monkeypatch.setattr(S, "_flows_stored", lambda td: flows)
+    monkeypatch.setattr(S, "_evening_data", lambda td: (flows, flows))
     S.run_postmarket(force=True)
     return ran
 
