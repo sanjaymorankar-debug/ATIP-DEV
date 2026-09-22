@@ -4,7 +4,7 @@
 
 This engagement ran in two parts. It began as a defect investigation — **why signals were not working** — and then became Phase 1 of the institutional-quant master plan. The defect work turned out to be a large share of the value: most of what was wrong with ATIP was not missing capability but existing capability quietly producing wrong numbers.
 
-**25 commits, 25 files, +6,698 / −167 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 331 now, all passing.**
+**26 commits, 25 files, +6,687 / −156 lines, all pushed to `origin/master` and deployed to `D:\Projects\ATIP`. Tests: 195 after the first fix, 331 now, all passing.**
 
 ---
 
