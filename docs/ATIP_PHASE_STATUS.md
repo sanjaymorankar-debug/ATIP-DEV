@@ -138,7 +138,7 @@ The defect work closed a handful of gap items incidentally — the busy timeout,
 | 8 · Portfolio & risk engine | Risk and portfolio | 1 | 6 | 9 | Portfolio Health and CRI exist; no covariance, VaR, ES or optimiser; sizing is orphaned |
 | 9 · Execution engine | Execution and microstructure | 1 | 4 | 6 | Paper broker works; no bid/ask, depth or measured slippage anywhere |
 | 10 · Dashboard | Dashboard, API, docs, tests | 1 | 7 | 5 | Daily workflow is covered; no quant, risk or model panels |
-| 11 · Testing | (same) | | | | 270 passing, but no test touches `scores/engine.py`, `data/technical.py` or `orders/rules.py` (945 lines, places orders) |
+| 11 · Testing | (same) | | | | 345 passing; `scores/engine.py` now has tests for relative strength, ZPI's delivery component and MACD, but `orders/rules.py` (945 lines, places orders) still has none |
 | 12 · Performance | not assessed | | | | Nothing profiled yet |
 | 13 · Paper-trading validation | Execution / safety | | | | Blocked on pre-trade risk checks |
 | 14 · Production readiness | Monitoring, safety, security | 2 | 6 | 3 | Live trading correctly gated; no kill switch, no limits, open API |
@@ -155,7 +155,7 @@ Research built on these would be measuring the data's defects rather than the ma
 2. ~~4,993 rows on 10 non-trading dates~~ **Fixed** with 1 — they were the same copies. The calendar now has 2025 (`7132017`).
 3. ~~No adjusted prices~~ **Fixed** (`4416ac7`). Dhan's prices were already split/bonus-adjusted (`close` is the adjusted close; `adj_close` stays unused); its volume never was. 40 events' volume re-based, 5 demergers and 3 rights carry the factor Dhan applied, and every new event is reconciled on its ex-date. Open: TVSMOTOR's 2025-08-25 preference-share scheme, which Dhan did not adjust; ACUTAAS and TMPV events before their renames; untracked symbols' sparse Bhavcopy rows are raw and unadjusted (not scored).
 4. ~~The NIFTY50 benchmark is corrupt~~ **Fixed.** 280 impossible bars reset (`8526a9b`); each session's close now comes from NSE (`8dd04fb`); every stored close checked matches NSE on 8 sessions.
-5. ~~Delivery data never stored~~ **Fixed** (`4416ac7`): NSE's full Bhavcopy nightly at 19:30 over the last 5 sessions, history back-filled. **No score reads it yet** -- the natural slot is ZPI's "Institutional -- accumulation 10d" component, which is always empty; wiring it in is a formula change for you to decide.
+5. ~~Delivery data never stored~~ **Fixed** (`4416ac7`): NSE's full Bhavcopy each evening, history back-filled. With your approval it now feeds ZPI's "Institutional -- accumulation 10d" component (`969f570`).
 6. ~~`index_levels` leftovers~~ **Fixed.** Duplicates and out-of-hours rows removed, (date, time) unique, 7 sessions given NSE's close, 6 sessions re-scored (`8dd04fb`, `3135ea5`).
 
 ### Tier 1 — Safety (mandatory in the master plan before paper validation)
@@ -194,8 +194,9 @@ With Tiers 0–3 done, Phase 2 starts from clean data and working monitoring, Ph
 ATIP QUANT PLATFORM
 
 Existing ATIP capabilities preserved: YES
-  (nothing removed; two behaviour changes made with explicit approval —
-   fundamentals ingestion held off, hit-rate denominator changed)
+  (nothing removed; behaviour changes made with explicit approval --
+   fundamentals ingestion held off, hit-rate denominator, MACD scaling,
+   ZPI's delivery component, signals logged after the evening FII/DII)
 New quantitative capabilities: 0
 New factors: 1   (delivery accumulation, in ZPI; MACD corrected and normalised)
 New formulas: 1  (ZPI delivery component; corrected with approval: MACD component,
@@ -221,11 +222,11 @@ Live trading: DISABLED
   PAPER by default; LIVE requires config AND an explicit confirm
 
 Known limitations:
-  four frozen scoring inputs; delivery stored but unused;
-  news sentiment rule-based only
+  four frozen scoring inputs; news sentiment rule-based only;
+  FII/DII history only 7 sessions deep
 
 Missing data dependencies:
-  corporate actions; bid/ask and depth; tick data (feed exists, never run);
+  bid/ask and depth; tick data (feed exists, never run);
   intraday bars (fetched, never stored); working AI key
 
 Production blockers:
@@ -237,7 +238,7 @@ Production blockers:
 
 ## Current state
 
-- **Live** at `D:\Projects\ATIP`, running `969f570`, restarted 11:15:32 IST on 2026-09-22 between two 15-minute jobs (a 17-second gap in the index feed, which reconnected at once).
+- **Live** at `D:\Projects\ATIP`, running `9e75458`, restarted 11:21:24 IST on 2026-09-22 between two 15-minute jobs (as at 11:15:32, about a 17-second gap in the index feed, which reconnected at once).
 - **`index_levels`:** 0 duplicates, 0 outside 09:00–15:45, the unique index in place, and every stored session holds its close.
 - **NIFTY50 benchmark:** through 2026-09-21 (from NSE). The shipped job was run once against the live database: it stored nothing new for 09-21 and correctly skipped a weekend.
 - **Corporate actions:** 277 price-basis events on file, every tracked one reconciled. A 620-day Dhan re-fetch of BAJFINANCE, ZFCVINDIA and HDFCBANK through the new guard (on a copy) changed 0 of 1,227 stored rows.
