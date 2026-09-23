@@ -253,3 +253,78 @@ def test_limits_work_before_the_order_and_paper_tables_exist(temp_db, cfgfile):
         assert pretrade_check(conn, "ACME", "BUY", 10, 1000.0, env="LIVE")["ok"] is True
     finally:
         conn.close()
+
+
+# ── the dashboard API ─────────────────────────────────────────────────────
+
+@pytest.fixture
+def api(tmp_path, monkeypatch, temp_db):
+    """A test client plus the install's token, both isolated from atip_data."""
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from db.schema import init_db
+    from dashboard import security, server
+    from orders import rules
+    init_db()
+    rules.init_orders_table()      # created at import against the real database
+    monkeypatch.setattr(security, "TOKEN_PATH", tmp_path / "dashboard_token.txt")
+    monkeypatch.setattr(security, "CONFIG_PATH", tmp_path / "config.json")
+    return TestClient(server.app), security
+
+
+def test_a_mutating_route_refuses_an_unauthenticated_caller(api):
+    """POST /api/orders could place a trade; it was open on 0.0.0.0."""
+    client, _ = api
+    r = client.post("/api/orders", json={"symbol": "ACME"})
+    assert r.status_code == 401 and "X-ATIP-Token" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("method,path", [
+    ("post", "/api/refresh"),
+    ("post", "/api/orders"),
+    ("post", "/api/orders/abc/confirm"),
+    ("post", "/api/orders/abc/reject"),
+    ("delete", "/api/orders/abc"),
+])
+def test_every_mutating_route_is_guarded(api, method, path):
+    client, _ = api
+    assert getattr(client, method)(path).status_code == 401, f"{method.upper()} {path} is open"
+
+
+def test_the_token_lets_the_call_through(api):
+    """With the token the request is authorised — and then fails on its own
+    merits (a payload with no trigger), not on authentication."""
+    client, security = api
+    r = client.post("/api/orders", json={"symbol": "ACME"},
+                    headers={security.TOKEN_HEADER: security.token()})
+    assert r.status_code == 400, r.text
+    assert client.post("/api/orders", json={"symbol": "ACME"},
+                       headers={security.TOKEN_HEADER: "wrong"}).status_code == 401
+
+
+def test_reading_stays_open_locally(api):
+    client, _ = api
+    assert client.get("/api/mh").status_code == 200
+    assert client.get("/api/orders").status_code == 200
+
+
+def test_the_served_page_carries_the_token_and_uses_it(api):
+    client, security = api
+    html = client.get("/").text
+    assert f'const ATIP_TOKEN="{security.token()}"' in html
+    assert "afetch('/api/orders'" in html and "X-ATIP-Token" in html
+    assert "await fetch('/api/orders'," not in html, "a mutating call without the token"
+
+
+def test_the_dashboard_binds_to_this_machine(api):
+    client, security = api
+    assert security.dashboard_host() == "127.0.0.1"
+    security.CONFIG_PATH.write_text('{"dashboard_host": "0.0.0.0"}', encoding="utf-8")
+    assert security.dashboard_host() == "0.0.0.0", "a deliberate override is honoured"
+
+
+def test_the_token_is_issued_once_and_reused(api, tmp_path):
+    client, security = api
+    first = security.token()
+    assert len(first) > 20 and security.token() == first
+    assert (tmp_path / "dashboard_token.txt").read_text(encoding="utf-8").strip() == first
