@@ -381,7 +381,9 @@ def _start_dashboard(port: int = 8000):
     try:
         import uvicorn
         from dashboard.server import app
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+        from dashboard.security import dashboard_host, token
+        token()          # issue it before the first page is served
+        uvicorn.run(app, host=dashboard_host(), port=port, log_level="warning")
     except ImportError:
         log.error("FastAPI/uvicorn not installed.  Run:  pip install fastapi uvicorn")
     except Exception as e:

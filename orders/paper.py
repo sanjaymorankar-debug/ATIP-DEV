@@ -457,6 +457,10 @@ def _cli():
             print(f"  reset — balance {b.balance:,.2f}")
         if args.buy or args.sell:
             side = "BUY" if args.buy else "SELL"
+            from orders.risk import halted
+            is_halted, why = halted()
+            if is_halted:
+                print(f"trading is halted ({why}) — not placing"); raise SystemExit(1)
             r = b.place_order(transaction_type=side, quantity=args.qty,
                               symbol=(args.buy or args.sell).upper())
             print(f"  {side}: {_json.dumps(r.get('data') or r, indent=2)}")

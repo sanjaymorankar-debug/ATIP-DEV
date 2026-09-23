@@ -772,6 +772,9 @@ def build_html(state):
         stale_banner = (f'<div style="background:#065f46;color:#d1fae5;padding:5px 18px;font-size:11.5px">'
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
+    # Served with the page so the dashboard keeps working; see dashboard/security.py.
+    from dashboard.security import token as _dash_token
+    token_js = json.dumps(_dash_token())
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
 <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:10px;color:#475569;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
@@ -931,6 +934,11 @@ def build_html(state):
   <div class="mactions"><button class="msave" onclick="saveOrderRule()">Save Rule</button><button class="mcancel" onclick="closeOrderModal()">Close</button></div>
 </div></div>
 <script>
+// Every route that changes anything needs this token (dashboard/security.py).
+// It is served with the page, so the dashboard works untouched, while a script
+// on another site cannot set the header without a preflight this server refuses.
+const ATIP_TOKEN={token_js};
+function afetch(u,o){{o=o||{{}};o.headers=Object.assign({{}},o.headers||{{}},{{'X-ATIP-Token':ATIP_TOKEN}});return fetch(u,o);}}
 function showTab(id,el){{document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');el.classList.add('active');}}
 let ss={{}};
 // Sort any table column. Three things the previous version got wrong:
@@ -1119,7 +1127,7 @@ async function saveOrderRule(){{
       payload.trail_value=b.trailV; payload.trail_jump=b.trailJ;
     }}
   }}
-  var res=await fetch('/api/orders',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+  var res=await afetch('/api/orders',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
   if(!res.ok){{var e=await res.json().catch(()=>({{}}));alert('Failed: '+(e.error||res.statusText));return;}}
   document.getElementById('mPreviewTxt').textContent='✓ Rule saved — it will be monitored while the dashboard is running, and flagged here for your confirmation when the target is hit.';
   document.getElementById('mTV').value=''; document.getElementById('mQV').value='';
@@ -1139,7 +1147,7 @@ async function loadMiniRules(){{
     ul.appendChild(li);
   }});
 }}
-async function deleteRule(id){{await fetch('/api/orders/'+id,{{method:'DELETE'}});loadMiniRules();}}
+async function deleteRule(id){{await afetch('/api/orders/'+id,{{method:'DELETE'}});loadMiniRules();}}
 
 // ── Pending confirmations + broker status (polled every 5s) ────────────
 async function pollPending(){{
@@ -1158,13 +1166,13 @@ async function pollPending(){{
   }}catch(e){{}}
 }}
 async function confirmRule(id,force){{
-  var res=await fetch('/api/orders/'+id+'/confirm'+(force?'?force=true':''),{{method:'POST'}});
+  var res=await afetch('/api/orders/'+id+'/confirm'+(force?'?force=true':''),{{method:'POST'}});
   if(res.status===409){{
     // Price ran away between the trigger and your tap — say by how much and
     // let it be an explicit decision rather than a silent fill.
     var e=await res.json().catch(()=>({{}}));
     if(confirm((e.error||'Price moved since the trigger.')+'\\n\\nPlace the order anyway at the current price?')){{
-      await fetch('/api/orders/'+id+'/confirm?force=true',{{method:'POST'}});
+      await afetch('/api/orders/'+id+'/confirm?force=true',{{method:'POST'}});
     }}
   }} else if(!res.ok){{
     var e2=await res.json().catch(()=>({{}}));
@@ -1176,7 +1184,7 @@ async function confirmRule(id,force){{
   }}
   pollPending(); loadMiniRules();
 }}
-async function rejectRule(id){{await fetch('/api/orders/'+id+'/reject',{{method:'POST'}});pollPending();}}
+async function rejectRule(id){{await afetch('/api/orders/'+id+'/reject',{{method:'POST'}});pollPending();}}
 setInterval(pollPending,5000); pollPending();
 (async function(){{
   try{{
@@ -1238,6 +1246,16 @@ setInterval(pollLiveQuotes,15000); pollLiveQuotes();
 
 if HAS_FASTAPI:
     app=FastAPI(title="ATIP Dashboard",version="0.2")
+    from fastapi import Depends, HTTPException, Request as _Req
+    from dashboard.security import TOKEN_HEADER, token_ok
+
+    async def _authorised(request: _Req):
+        """Guards every route that can change something. See dashboard/security.py."""
+        if not token_ok(request.headers.get(TOKEN_HEADER)):
+            raise HTTPException(status_code=401,
+                                detail=f"{TOKEN_HEADER} missing or wrong — this route can "
+                                       f"place, confirm or cancel orders")
+    _guard = [Depends(_authorised)]
     @app.get("/",response_class=HTMLResponse)
     async def dashboard():
         return HTMLResponse(content=build_html(generate_state(latest_scored_date())))
@@ -1251,7 +1269,7 @@ if HAS_FASTAPI:
     async def api_news(): return JSONResponse(json_safe(get_news()))
     @app.get("/api/portfolio")
     async def api_portfolio(): return JSONResponse(json_safe(get_portfolio(latest_scored_date())))
-    @app.post("/api/refresh")
+    @app.post("/api/refresh", dependencies=_guard)
     async def api_refresh():
         import threading
         from pipeline.scheduler import run_postmarket
@@ -1266,7 +1284,7 @@ if HAS_FASTAPI:
 
     oe.init_orders_table()
 
-    @app.post("/api/orders")
+    @app.post("/api/orders", dependencies=_guard)
     async def api_create_order(request: Request):
         payload = await request.json()
         try:
@@ -1282,7 +1300,7 @@ if HAS_FASTAPI:
     async def api_pending_orders():
         return JSONResponse(json_safe(oe.list_rules(status=oe.PENDING_CONFIRMATION)))
 
-    @app.post("/api/orders/{rule_id}/confirm")
+    @app.post("/api/orders/{rule_id}/confirm", dependencies=_guard)
     async def api_confirm_order(rule_id: str, force: bool = False):
         # Routed through confirm_rule() so the price is re-validated: the
         # confirmation window is 30 minutes now, so a tap can land well after
@@ -1299,14 +1317,14 @@ if HAS_FASTAPI:
             return JSONResponse({"error": result["error"]}, status_code=404)
         return JSONResponse(json_safe({"rule": oe.get_rule(rule_id), "result": result}))
 
-    @app.post("/api/orders/{rule_id}/reject")
+    @app.post("/api/orders/{rule_id}/reject", dependencies=_guard)
     async def api_reject_order(rule_id: str):
         rule = oe.reject_rule(rule_id)
         if not rule:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse(json_safe(rule))
 
-    @app.delete("/api/orders/{rule_id}")
+    @app.delete("/api/orders/{rule_id}", dependencies=_guard)
     async def api_delete_order(rule_id: str):
         ok = oe.delete_rule(rule_id)
         if not ok:
@@ -1407,6 +1425,7 @@ if HAS_FASTAPI:
 if __name__=="__main__":
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")
     if HAS_FASTAPI:
-        uvicorn.run("dashboard.server:app",host="0.0.0.0",port=8000,reload=False)
+        from dashboard.security import dashboard_host
+        uvicorn.run("dashboard.server:app",host=dashboard_host(),port=8000,reload=False)
     else:
         print("pip install fastapi uvicorn")
