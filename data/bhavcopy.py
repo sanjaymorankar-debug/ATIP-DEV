@@ -301,47 +301,76 @@ def store_index_close_snapshot(conn, trade_date, closes) -> bool:
                  f"VALUES ({','.join('?' * len(cols))})", [record[c] for c in cols])
     return True
 
-def sync_nse_index_closes(trade_date=None) -> dict:
+def _index_closes_needed(conn, trade_date) -> bool:
+    """True while a session that has prices is missing its NIFTY50 benchmark
+    close, or the live feed never recorded its index close."""
+    from data.dhan import BETA_BENCHMARK_SYMBOL
+    from data.dhan_ws import FEED_CLOSE
+    d = str(trade_date)
+    if not conn.execute("SELECT 1 FROM prices_daily WHERE date=? AND source IN ('dhan','bhavcopy') "
+                        "LIMIT 1", (d,)).fetchone():
+        return False          # a session ATIP has no bars for needs no benchmark
+    bench = conn.execute("SELECT 1 FROM prices_daily WHERE symbol=? AND date=?",
+                         (BETA_BENCHMARK_SYMBOL, d)).fetchone()
+    close = conn.execute("SELECT 1 FROM index_levels WHERE date=? AND time BETWEEN ? AND ?",
+                         (d, INDEX_CLOSE_SNAPSHOT_TIME, FEED_CLOSE.strftime("%H:%M:%S"))).fetchone()
+    return not bench or not close
+
+
+def sync_nse_index_closes(trade_date=None, lookback=5) -> dict:
     """
-    The session's official NSE index closes, stored where ATIP needs them:
-    the NIFTY50 benchmark row (beta_1y and relative strength), and a closing
-    index_levels snapshot if the live feed did not record the close.
+    The official NSE index closes ATIP needs: the NIFTY50 benchmark row (beta
+    and relative strength) and, when the live feed did not record a session's
+    close, a closing index_levels snapshot.
 
     Dhan's index history cannot supply the session being scored (see
-    data.dhan.sync_index_benchmark_history), so until this the benchmark always
-    ended one session before the stocks it was compared with.
+    data.dhan.sync_index_benchmark_history), so without this the benchmark
+    always ended one session before the stocks it was compared with.
+
+    NSE publishes this file in the evening, like the flows and delivery: on
+    2026-09-22 it was not out at 16:48 and nothing went back for it, so that
+    session never got a benchmark close at all. Every one of the last
+    `lookback` sessions that still needs it is therefore retried, and the
+    evening watch (pipeline/scheduler.py) calls this again once NSE publishes.
     """
-    if trade_date is None:
-        trade_date = postmarket_target_date()
-    elif isinstance(trade_date, str):
-        trade_date = date.fromisoformat(trade_date)
-    if not is_trading_day(trade_date):
-        return {"status": "SKIPPED", "rows": 0, "reason": f"{trade_date} is not a session"}
-    try:
-        closes = download_index_closes(trade_date, get_nse_session())
-    except Exception as e:
-        log.warning(f"  NSE index closes for {trade_date}: {e}")
-        return {"status": "FAILED", "rows": 0, "error": str(e)}
-    if closes is None:
-        log.warning(f"  NSE index closes for {trade_date} not published yet — "
-                    f"benchmark stays at the last stored session")
-        return {"status": "SKIPPED", "rows": 0, "reason": "not published"}
-    if "nifty50" not in closes:
-        log.warning(f"  NSE index-close file for {trade_date} has no Nifty 50 row")
-        return {"status": "FAILED", "rows": 0, "error": "no Nifty 50 row"}
     from data.dhan import _store_benchmark_rows, BETA_BENCHMARK_SYMBOL
+    td = postmarket_target_date() if trade_date is None else trade_date
+    if isinstance(td, str):
+        td = date.fromisoformat(td)
+    if not is_trading_day(td):
+        return {"status": "SKIPPED", "rows": 0, "reason": f"{td} is not a session"}
     conn = get_connection()
+    done, waiting, rows, snapshot = {}, [], 0, False
     try:
-        rows = _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, [trade_date],
-                                     [closes["nifty50"][0]], source="nse_index")
-        snapshot = store_index_close_snapshot(conn, trade_date, closes)
-        conn.commit()
+        need = [d for d in _sessions_upto(td, lookback) if _index_closes_needed(conn, d)]
+        session = get_nse_session() if need else None
+        for d in need:
+            try:
+                closes = download_index_closes(d, session)
+            except Exception as e:
+                log.warning(f"  NSE index closes for {d}: {e}")
+                waiting.append(str(d)); continue
+            if not closes or "nifty50" not in closes:
+                waiting.append(str(d)); continue
+            rows += _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, [d],
+                                          [closes["nifty50"][0]], source="nse_index")
+            snap = store_index_close_snapshot(conn, d, closes)
+            conn.commit()
+            rows += int(snap)
+            done[str(d)] = closes["nifty50"][0]
+            if d == td:
+                snapshot = snap
+            time.sleep(1)
     finally:
         conn.close()
-    log.info(f"  ✓ NSE index closes {trade_date}: Nifty 50 {closes['nifty50'][0]}"
-             f"{' + index snapshot (the feed did not record the close)' if snapshot else ''}")
-    return {"status": "SUCCESS", "rows": rows + int(snapshot),
-            "benchmark": closes["nifty50"][0], "snapshot": snapshot}
+    if done:
+        log.info("  ✓ NSE index closes: " + ", ".join(f"{d} Nifty 50 {v}" for d, v in done.items()))
+    if waiting:
+        log.warning(f"  NSE index closes not published yet for {', '.join(waiting)} — "
+                    f"the benchmark stays at the last stored session")
+    return {"status": "SUCCESS" if done else "SKIPPED", "rows": rows, "sessions": done,
+            "waiting": waiting, "benchmark": done.get(str(td)), "snapshot": snapshot,
+            "reason": "" if done else ("not published" if waiting else "already stored")}
 
 
 DELIVERY_URL = "https://archives.nseindia.com/products/content/sec_bhavdata_full_{date}.csv"
