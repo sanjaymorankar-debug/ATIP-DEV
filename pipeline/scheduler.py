@@ -732,7 +732,7 @@ def settle_session_flows(td, final=False) -> dict:
     best scores available rather than never.
     """
     from db.schema import get_connection
-    from data.bhavcopy import store_fii_dii, run_delivery_pipeline
+    from data.bhavcopy import store_fii_dii, run_delivery_pipeline, sync_nse_index_closes
     flows, deliv = _evening_data(td)
     if not flows:
         conn = get_connection()
@@ -742,6 +742,10 @@ def settle_session_flows(td, final=False) -> dict:
             conn.close()
     if not deliv:
         run_delivery_pipeline(td, lookback=1)
+    # NSE publishes the index-close file in the evening too -- 2026-09-22's was
+    # not out at 16:48, so that session never got a benchmark close. Fill it
+    # (and any recent session still missing one) before re-scoring.
+    sync_nse_index_closes(td, lookback=CATCHUP_LOOKBACK_SESSIONS)
     if _signal_log_state(td) != "held":
         return {"status": "SKIPPED", "rows": 0, "reason": "signals not held"}
     current = td == postmarket_target_date()

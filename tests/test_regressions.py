@@ -493,10 +493,18 @@ def test_nse_index_closes_are_read_for_their_own_date_only():
     assert "banknifty" not in closes, "a 09-18 row must not be read as 09-21"
 
 
-def _nse_closes(monkeypatch, closes):
+def _nse_closes(monkeypatch, closes, asked=None):
     from data import bhavcopy
     monkeypatch.setattr(bhavcopy, "get_nse_session", lambda: None)
-    monkeypatch.setattr(bhavcopy, "download_index_closes", lambda d, s: closes)
+    monkeypatch.setattr(bhavcopy, "download_index_closes",
+                        lambda d, s: (asked.append(str(d)) if asked is not None else None) or closes)
+    monkeypatch.setattr(bhavcopy.time, "sleep", lambda s: None)
+
+
+def _session_bar(conn, d, sym="ACME"):
+    """A session ATIP has bars for -- sync_nse_index_closes ignores any other."""
+    conn.execute("INSERT OR REPLACE INTO prices_daily (symbol,date,close,source) "
+                 "VALUES (?,?,100,'bhavcopy')", (sym, str(d)))
 
 
 def test_benchmark_gets_the_session_being_scored(temp_db, monkeypatch):
@@ -508,6 +516,8 @@ def test_benchmark_gets_the_session_being_scored(temp_db, monkeypatch):
     from db.schema import init_db, get_connection
     from data.bhavcopy import sync_nse_index_closes
     init_db()
+    conn = get_connection()
+    _session_bar(conn, "2026-09-21"); conn.commit(); conn.close()
     _nse_closes(monkeypatch, {"nifty50": (23414.3, 0.291), "india_vix": (11.25, -1.229)})
     res = sync_nse_index_closes(dt.date(2026, 9, 21))
     assert res["status"] == "SUCCESS"
@@ -548,7 +558,7 @@ def test_session_missed_by_the_feed_gets_nse_closing_values(temp_db, monkeypatch
     conn = get_connection()
     conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
                  "VALUES ('2026-09-16','07:00:02',23118.6,-1.195)")
-    conn.commit(); conn.close()
+    _session_bar(conn, "2026-09-16"); conn.commit(); conn.close()
     _nse_closes(monkeypatch, {"nifty50": (23217.6, 0.428), "banknifty": (56000.0, 0.5)})
     sync_nse_index_closes(dt.date(2026, 9, 16))
     sync_nse_index_closes(dt.date(2026, 9, 16))        # a re-run adds nothing
@@ -575,7 +585,7 @@ def test_feed_that_stopped_before_the_close_gets_the_close(temp_db, monkeypatch)
     conn = get_connection()
     conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
                  "VALUES ('2026-09-09','12:00:13',23635.1,0.0)")
-    conn.commit(); conn.close()
+    _session_bar(conn, "2026-09-09"); conn.commit(); conn.close()
     _nse_closes(monkeypatch, {"nifty50": (23431.5, -0.861)})
     assert sync_nse_index_closes(dt.date(2026, 9, 9))["snapshot"] is True
     conn = get_connection()
@@ -593,7 +603,7 @@ def test_session_the_feed_covered_is_left_alone(temp_db, monkeypatch):
     conn = get_connection()
     conn.execute("INSERT INTO index_levels (date,time,nifty50,nifty50_chg) "
                  "VALUES ('2026-09-21','15:44:52',23414.3,0.291)")
-    conn.commit(); conn.close()
+    _session_bar(conn, "2026-09-21"); conn.commit(); conn.close()
     _nse_closes(monkeypatch, {"nifty50": (23414.3, 0.291)})
     assert sync_nse_index_closes(dt.date(2026, 9, 21))["snapshot"] is False
     conn = get_connection()
@@ -659,3 +669,34 @@ def test_duplicate_index_rows_do_not_block_startup(temp_db, monkeypatch):
     finally:
         conn.close()
     assert schema._index_levels_unique_blocked
+
+
+def test_a_session_whose_index_close_nse_published_late_is_filled(temp_db, monkeypatch):
+    """2026-09-22's index-close file was not out at 16:48 and nothing went back
+    for it, so that session never got a benchmark close. Every recent session
+    that still needs one is retried; sessions with no bars are not fetched."""
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    init_db()
+    conn = get_connection()
+    for d in ("2026-09-21", "2026-09-22", "2026-09-23"):
+        _session_bar(conn, d)
+        conn.execute("INSERT INTO index_levels (date,time,nifty50) VALUES (?,'15:44:52',1)", (d,))
+    conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                 "VALUES ('NIFTY50','2026-09-21',1,1,1,1,0,'nse_index')")   # 09-21 already has one
+    conn.commit(); conn.close()
+    asked = []
+    _nse_closes(monkeypatch, {"nifty50": (23446.8, 0.14)}, asked=asked)
+
+    res = sync_nse_index_closes(dt.date(2026, 9, 23), lookback=5)
+
+    assert sorted(asked) == ["2026-09-22", "2026-09-23"], "09-21 has its close; older days have no bars"
+    conn = get_connection()
+    try:
+        assert [str(r[0]) for r in conn.execute(
+            "SELECT date FROM prices_daily WHERE symbol='NIFTY50' ORDER BY date")] == [
+            "2026-09-21", "2026-09-22", "2026-09-23"]
+    finally:
+        conn.close()
+    assert res["status"] == "SUCCESS" and res["benchmark"] == 23446.8
+    assert sync_nse_index_closes(dt.date(2026, 9, 23), lookback=5)["reason"] == "already stored"
