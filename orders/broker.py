@@ -54,6 +54,7 @@ from datetime import datetime
 from db.schema import get_connection, log_job
 from data.dhan import get_dhan_client, get_security_id, fetch_live_quotes
 from orders.environment import broker_env, get_execution_client, describe, PAPER, LIVE
+from orders.risk import halted, pretrade_check
 
 log = logging.getLogger(__name__)
 
@@ -180,6 +181,16 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
     # confirm is still a dry run, and confirm in PAPER is still simulated.
     mode = ("REAL" if env == LIVE else env) if confirm else "DRY_RUN"
 
+    # The kill switch, ahead of every other step: halted means nothing is sent,
+    # in any environment. A dry run still prices and previews below, and says so.
+    is_halted, halt_reason = halted()
+    if is_halted and confirm:
+        log.error(f"  ⛔ Order refused — trading is halted ({halt_reason})")
+        _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
+                   price, None, None, mode, "BLOCKED_HALTED", error=halt_reason)
+        conn.close()
+        return {"status": "BLOCKED_HALTED", "reason": halt_reason}
+
     sec = get_security_id(symbol)
     if not sec:
         msg = f"security_id not found for {symbol} — cannot place order (check security_id_list.csv is current)"
@@ -194,6 +205,15 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         funds = check_funds(est_value)
     else:
         funds = {"ok": True, "available": available_balance(), "message": "SELL — funds check not required"}
+
+    risk = pretrade_check(conn, symbol, transaction_type, quantity, est_value, env)
+    if not risk["ok"] and confirm:
+        log.error(f"  ⛔ Order refused — {risk['message']}")
+        _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
+                   price, est_value, funds["available"], mode, "BLOCKED_RISK_LIMIT",
+                   error=risk["message"])
+        conn.close()
+        return {"status": "BLOCKED_RISK_LIMIT", **risk}
 
     log.info(f"  [{describe()}]")
     log.info(f"  {('ORDER: ' + env) if confirm else 'DRY RUN'}: {transaction_type} {quantity} x {symbol} "
@@ -212,10 +232,16 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         log.info(f"  Dry run only — pass confirm=True (Python) or --confirm (CLI) to send "
                  f"this to {env}." + ("" if env == LIVE else
                  "  Note: broker_env is not LIVE, so even confirmed orders are simulated."))
+        if is_halted:
+            log.warning(f"  ⛔ Trading is halted ({halt_reason}) — a confirmed order "
+                        f"would be refused")
+        if not risk["ok"]:
+            log.warning(f"  ⛔ {risk['message']} — a confirmed order would be refused")
         _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
                    price, est_value, funds["available"], mode, "DRY_RUN_OK")
         conn.close()
-        return {"status": "DRY_RUN_OK", "estimated_value": est_value, "funds": funds}
+        return {"status": "DRY_RUN_OK", "estimated_value": est_value, "funds": funds,
+                "halted": is_halted, "halt_reason": halt_reason, "risk": risk}
 
     try:
         quotes = None
