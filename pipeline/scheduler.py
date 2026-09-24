@@ -763,6 +763,14 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("strategy_health", run_health_all, td)
         except Exception as e:
             log.warning(f"  Strategy engine: {e}")
+        # W4: new intents -> risk engine. Orders are sent only when
+        # execution.auto_execute_paper is true (default false) and only to the
+        # PAPER adapter; LIVE execution does not exist in W4.
+        try:
+            from execution.pipeline import run_execution_cycle
+            run_job("execution_cycle", run_execution_cycle, td)
+        except Exception as e:
+            log.warning(f"  Execution cycle: {e}")
 
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and

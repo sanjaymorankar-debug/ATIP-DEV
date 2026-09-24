@@ -70,5 +70,36 @@
     "sizing":             {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0, "max_positions": 10, "default_stop_pct": 5.0},
     "risk_free_rate_pct": 0.0
   },
-  "_backtest_note": "cost_model: nse_delivery | nse_intraday | flat | zero (rates in backtest/costs.py - verify against a contract note). slippage kind: none | fixed (Rs/share) | pct (basis points)."
+  "_backtest_note": "cost_model: nse_delivery | nse_intraday | flat | zero (rates in backtest/costs.py - verify against a contract note). slippage kind: none | fixed (Rs/share) | pct (basis points).",
+
+  "_SECTION_11": "=== RISK ENGINE & EXECUTION (execution/config.py, W4) — PAPER by default; LIVE trading is disabled ===",
+  "execution": {
+    "mode":                  "PAPER",
+    "live_trading_enabled":  false,
+    "auto_execute_paper":    false,
+    "require_manual_review": false,
+    "execute_books":         ["PAPER"],
+    "order_type":            "MARKET",
+    "product_type":          "CNC",
+    "max_intent_age_days":   5,
+    "paper_fill_price":      "live"
+  },
+  "_execution_note": "LIVE needs mode LIVE AND live_trading_enabled true, and even then the W4 Dhan adapter refuses: live execution is not built. auto_execute_paper false = the post-market cycle evaluates risk only. paper_fill_price: live (Dhan LTP) | reference (decision close).",
+  "w4_risk_limits": {
+    "max_position_pct":             10.0,
+    "max_portfolio_exposure_pct":   100.0,
+    "max_sector_exposure_pct":      30.0,
+    "max_strategy_exposure_pct":    25.0,
+    "max_capital_allocation_pct":   95.0,
+    "max_open_positions":           20,
+    "max_order_quantity":           5000,
+    "max_order_value_pct":          10.0,
+    "max_daily_trades":             20,
+    "per_trade_loss_pct":           1.0,
+    "default_stop_pct":             5.0,
+    "daily_loss_limit_pct":         3.0,
+    "portfolio_drawdown_limit_pct": 15.0,
+    "strategy_drawdown_limit_pct":  10.0
+  },
+  "_w4_risk_limits_note": "Percentages of equity unless stated; null disables a limit. PUT /api/risk/limits overrides these (stored in the risk_limit table). The W1 risk_limits above still apply on top."
 }
