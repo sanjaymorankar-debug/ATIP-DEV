@@ -163,8 +163,14 @@ class Evaluator:
             reasons=[reason[:1000]], regime=market.get("regime"), parameters=dict(self.params),
             risk_requirement=self.risk.get("requirement", "STANDARD"),
             stop_price=stop, target_price=target, max_hold_sessions=self.pos.get("max_hold_sessions"),
-            features=feats)
+            features=feats,
+            signal_source=f"{self.defn['kind']}:{self.defn['strategy_id']}@{self.defn['version']}")
         return risk_gate(it, self.risk, feats)
+
+    @staticmethod
+    def _coded(dec, *codes):
+        dec.reason_codes += list(codes)
+        return dec
 
     def limit_buys(self, candidates, held_count):
         """candidates: [(sort_key, symbol, intent)] best first. Applies
@@ -181,6 +187,7 @@ class Evaluator:
                 out.append(it)
             else:
                 it.action = NO_ACTION
+                it.reason_codes.append("POSITION_LIMIT")
                 it.reasons = it.reasons + ["entry conditions met but position limits reached "
                                            "(max_positions / max_new_per_day)"]
                 it.target_position_pct = None
@@ -204,7 +211,7 @@ class RuleEvaluator(Evaluator):
                 continue
             if sym in held:
                 if self.max_hold_exit(held[sym]):
-                    out.append(self.intent(sym, as_of, EXIT, 1.0, "max hold reached", ctx)); continue
+                    out.append(self._coded(self.intent(sym, as_of, EXIT, 1.0, "max hold reached", ctx), "MAX_HOLD")); continue
                 if self.defn.get("exit") is not None:
                     met, t, n, tr = R.evaluate(self.defn["exit"], ctx, self.params)
                     if met:
@@ -223,8 +230,10 @@ class RuleEvaluator(Evaluator):
                 t, n = t + ct, n + cn
                 why += " | confirmation: " + "; ".join(ctr)
                 if not cmet:
-                    out.append(self.intent(sym, as_of, NO_ACTION, t / n if n else None,
-                                           why + " | entry met, awaiting confirmation", ctx))
+                    wait = self.intent(sym, as_of, NO_ACTION, t / n if n else None,
+                                       why + " | entry met, awaiting confirmation", ctx)
+                    wait.reason_codes += ["ENTRY_RULES_MET", "AWAITING_CONFIRMATION"]
+                    out.append(wait)
                     continue
             conf = t / n if n else 1.0
             it = self.intent(sym, as_of, BUY, conf, why, ctx, entry=True)
@@ -275,7 +284,7 @@ class MultiFactorEvaluator(Evaluator):
             why += f", {confirms} confirmations; " + ", ".join(parts)
             if sym in held:
                 if self.max_hold_exit(held[sym]):
-                    out.append(self.intent(sym, as_of, EXIT, None, "max hold reached; " + why, ctx)); continue
+                    out.append(self._coded(self.intent(sym, as_of, EXIT, None, "max hold reached; " + why, ctx), "MAX_HOLD")); continue
                 if comp is None:
                     out.append(self.intent(sym, as_of, HOLD, None, why, ctx)); continue
                 conf = comp / 100
@@ -332,7 +341,7 @@ class QuantRankEvaluator(Evaluator):
                 continue
             r = rank.get(sym)
             if self.max_hold_exit(h):
-                out.append(self.intent(sym, as_of, EXIT, None, "max hold reached", ctx))
+                out.append(self._coded(self.intent(sym, as_of, EXIT, None, "max hold reached", ctx), "MAX_HOLD"))
             elif rebalance and (r is None or r > exit_rank):
                 out.append(self.intent(sym, as_of, EXIT, None,
                                        f"rank {r if r else 'unranked'} beyond exit_rank {exit_rank}", ctx))

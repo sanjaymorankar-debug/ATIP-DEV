@@ -100,7 +100,7 @@ def register(app, guard, Req, get_connection, json_safe):
         d["counts"] = json.loads(d.pop("counts_json") or "{}")
         d["top"] = [dict(x) for x in conn.execute(
             "SELECT symbol, decision, score FROM strategy_decision WHERE strategy_id=? AND version=? AND as_of=? "
-            "AND decision IN ('BUY','SELL') ORDER BY score DESC, symbol LIMIT 5", (sid, ver, str(d["as_of"])))]
+            "AND decision IN ('BUY','SELL','EXIT') ORDER BY score DESC, symbol LIMIT 5", (sid, ver, str(d["as_of"])))]
         return d
 
     # -- collection routes (registered before /{sid}) ------------------------

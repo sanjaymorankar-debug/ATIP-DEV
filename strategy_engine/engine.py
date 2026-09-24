@@ -141,7 +141,14 @@ def generate_decisions(strategy_id: str, version: str | None = None, as_of=None,
                          "n_universe,n_evaluated,counts_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                          (run_id, strategy_id, ver, str(as_of), book, "SUCCESS", json.dumps(params, sort_keys=True),
                           len(symbols), n_eval, json.dumps(dict(counts)), now))
-            # a re-run of the same (strategy, version, date) replaces that day's decisions and intents
+            # a re-run of the same (strategy, version, date) replaces that day's decisions and intents --
+            # unless the W4 risk engine has already acted on one: those stay, for the audit trail
+            acted = conn.execute("SELECT COUNT(*) FROM strategy_position_intent WHERE strategy_id=? AND version=? "
+                                 "AND as_of=? AND authorization_status<>'NOT_AUTHORIZED'",
+                                 (strategy_id, ver, str(as_of))).fetchone()[0]
+            if acted:
+                raise ValueError(f"{strategy_id} {ver} decisions for {as_of} already have {acted} intent(s) "
+                                 f"evaluated by the risk engine; they are kept for the audit trail, not replaced")
             conn.execute("DELETE FROM strategy_position_intent WHERE strategy_id=? AND version=? AND as_of=?",
                          (strategy_id, ver, str(as_of)))
             conn.execute("DELETE FROM strategy_decision WHERE strategy_id=? AND version=? AND as_of=?",
@@ -149,20 +156,23 @@ def generate_decisions(strategy_id: str, version: str | None = None, as_of=None,
             conn.executemany(
                 "INSERT INTO strategy_decision (decision_id,run_id,strategy_id,version,as_of,timestamp,symbol,decision,"
                 "action,confidence,score,regime,reasons_json,parameters_json,risk_requirement,target_position_pct,"
-                "stop_price,target_price,max_hold_sessions,blocked_reason,features_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stop_price,target_price,max_hold_sessions,blocked_reason,features_json,reason_codes_json,"
+                "signal_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(d.decision_id, run_id, d.strategy_id, d.strategy_version, str(d.as_of), d.timestamp, d.symbol,
                   d.decision, d.action, d.confidence, d.score, d.regime, json.dumps(d.reasons),
                   json.dumps(d.parameters, default=str, sort_keys=True), d.risk_requirement, d.target_position_pct,
                   d.stop_price, d.target_price, d.max_hold_sessions, d.blocked_reason,
-                  json.dumps(d.features, default=str)) for d in decisions])
+                  json.dumps(d.features, default=str), json.dumps(d.codes()), d.signal_source)
+                 for d in decisions])
             conn.executemany(
                 "INSERT INTO strategy_position_intent (intent_id,decision_id,strategy_id,version,as_of,timestamp,symbol,"
                 "side,action,target_position_pct,quantity,stop_price,target_price,max_hold_sessions,confidence,reason,"
-                "risk_requirement,authorization_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "risk_requirement,authorization_status,created_at,entry_reference,book) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(i.intent_id, i.decision_id, i.strategy_id, i.strategy_version, str(as_of), i.timestamp, i.symbol,
                   i.side, i.action, i.target_position_pct, i.quantity, i.stop_price, i.target_price,
-                  i.max_hold_sessions, i.confidence, i.reason, i.risk_requirement, NOT_AUTHORIZED, now)
+                  i.max_hold_sessions, i.confidence, i.reason, i.risk_requirement, NOT_AUTHORIZED, now,
+                  i.entry_reference, book)
                  for i in intents])
             conn.commit()
         return {"run_id": run_id if store else None, "strategy_id": strategy_id, "version": ver,

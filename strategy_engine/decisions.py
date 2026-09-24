@@ -3,13 +3,13 @@ The Strategy Engine's output: StrategyDecision and PositionIntent.
 
 StrategyDecision -- what a strategy concluded about one symbol on one date.
 
-    decision   BUY | SELL | HOLD | WAIT | NO_TRADE        (the engine's vocabulary)
+    decision   BUY | SELL | HOLD | WAIT | EXIT | NO_TRADE (the engine's vocabulary)
     action     the finer position action behind it:
                BUY    open a long (no position held)             -> decision BUY
                ADD    increase a held position                   -> decision BUY
                HOLD   keep a held position                       -> decision HOLD
                REDUCE partial exit                               -> decision SELL
-               EXIT   close a held position                      -> decision SELL
+               EXIT   close a held position                      -> decision EXIT
                SELL   sell/avoid signal on a symbol NOT held     -> decision SELL
                NO_ACTION  nothing to do                          -> decision WAIT
                BLOCKED_BY_RISK  wanted BUY/ADD, a risk
@@ -20,15 +20,22 @@ StrategyDecision -- what a strategy concluded about one symbol on one date.
     regime     the Market Health regime on the decision date
     reasons    why, as a list of readable lines
     parameters the resolved parameters that produced it
+    reason_codes  machine-readable reasons (ENTRY_RULES_MET, EXIT_RULES_MET,
+               MAX_HOLD, POSITION_LIMIT, AWAITING_CONFIRMATION, RISK_BLOCKED, ...)
+    signal_source  "<kind>:<strategy_id>@<version>" -- what produced the signal
+    features   snapshot of every feature the strategy used (the input data)
 
 The signal engine (scores/engine.py determine_signal) speaks the same
-language: its BUY / SELL / HOLD / WAIT are these decisions; NO_TRADE is the
-Strategy Engine's addition.
+language: its BUY / SELL / HOLD / WAIT are these decisions; EXIT and
+NO_TRADE are the Strategy Engine's additions.
 
 PositionIntent -- the hand-off object for a future risk/execution layer,
 made only for decisions that would change a position (BUY, ADD, REDUCE,
-EXIT). It is NOT an order: authorization_status is NOT_AUTHORIZED, always,
-in W3. Turning an intent into an order is W4; nothing in W3 sends one.
+EXIT). It is created NOT_AUTHORIZED. Only the W4 risk engine (execution/)
+changes that status; only an AUTHORIZED intent can become an order.
+
+    stop_loss / take_profit   are stored as stop_price / target_price
+    entry_reference           the close the decision was made on
 """
 
 from __future__ import annotations
@@ -38,14 +45,17 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 
 # decisions
-BUY, SELL, HOLD, WAIT, NO_TRADE = "BUY", "SELL", "HOLD", "WAIT", "NO_TRADE"
-DECISIONS = (BUY, SELL, HOLD, WAIT, NO_TRADE)
+BUY, SELL, HOLD, WAIT, EXIT, NO_TRADE = "BUY", "SELL", "HOLD", "WAIT", "EXIT", "NO_TRADE"
+DECISIONS = (BUY, SELL, HOLD, WAIT, EXIT, NO_TRADE)
 # actions
 A_BUY, A_ADD, A_HOLD, A_REDUCE, A_EXIT, A_SELL, A_NONE, A_BLOCKED = (
     "BUY", "ADD", "HOLD", "REDUCE", "EXIT", "SELL", "NO_ACTION", "BLOCKED_BY_RISK")
 ACTIONS = (A_BUY, A_ADD, A_HOLD, A_REDUCE, A_EXIT, A_SELL, A_NONE, A_BLOCKED)
-ACTION_TO_DECISION = {A_BUY: BUY, A_ADD: BUY, A_HOLD: HOLD, A_REDUCE: SELL, A_EXIT: SELL, A_SELL: SELL,
+ACTION_TO_DECISION = {A_BUY: BUY, A_ADD: BUY, A_HOLD: HOLD, A_REDUCE: SELL, A_EXIT: EXIT, A_SELL: SELL,
                       A_NONE: WAIT, A_BLOCKED: NO_TRADE}
+BASE_REASON_CODE = {A_BUY: "ENTRY_RULES_MET", A_ADD: "ADD_THRESHOLD_MET", A_HOLD: "HOLDING",
+                    A_REDUCE: "REDUCE_THRESHOLD_MET", A_EXIT: "EXIT_RULES_MET", A_SELL: "SELL_SIGNAL",
+                    A_NONE: "NO_SIGNAL", A_BLOCKED: "RISK_BLOCKED"}
 INTENT_ACTIONS = (A_BUY, A_ADD, A_REDUCE, A_EXIT)
 SIGNAL_ENGINE_EQUIVALENT = {"BUY": BUY, "SELL": SELL, "HOLD": HOLD, "WAIT": WAIT}
 
@@ -72,6 +82,8 @@ class StrategyDecision:
     features: dict = field(default_factory=dict)
     blocked_reason: str | None = None
     score: float | None = None
+    reason_codes: list = field(default_factory=list)     # extra codes; see codes()
+    signal_source: str | None = None
     decision_id: str = field(default_factory=lambda: uuid.uuid4().hex[:20])
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -96,6 +108,14 @@ class StrategyDecision:
     def reason(self) -> str:
         return "; ".join(self.reasons)
 
+    def codes(self) -> list:
+        """The action's base code followed by any extra codes, de-duplicated."""
+        out = [BASE_REASON_CODE[self.action]]
+        for c in self.reason_codes:
+            if c not in out:
+                out.append(c)
+        return out
+
     def block(self, why: str):
         self.action = A_BLOCKED
         self.blocked_reason = why
@@ -104,7 +124,8 @@ class StrategyDecision:
 
     def as_dict(self) -> dict:
         d = asdict(self)
-        d.update({"decision": self.decision, "as_of": str(self.as_of), "timestamp": self.timestamp.isoformat()})
+        d.update({"decision": self.decision, "as_of": str(self.as_of), "timestamp": self.timestamp.isoformat(),
+                  "reason_codes": self.codes()})
         return d
 
 
@@ -125,13 +146,14 @@ class PositionIntent:
     target_price: float | None = None
     max_hold_sessions: int | None = None
     risk_requirement: str = "STANDARD"
+    entry_reference: float | None = None  # the close the decision was made on
     authorization_status: str = NOT_AUTHORIZED
     intent_id: str = field(default_factory=lambda: uuid.uuid4().hex[:20])
 
     def __post_init__(self):
         if self.side not in ("BUY", "SELL"):
             raise ValueError("side must be BUY or SELL")
-        self.authorization_status = NOT_AUTHORIZED     # never authorised in W3
+        self.authorization_status = NOT_AUTHORIZED     # only the W4 risk engine authorises
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -150,7 +172,8 @@ def intent_for(dec: StrategyDecision, quantity: int | None = None) -> PositionIn
                           decision_id=dec.decision_id, timestamp=dec.timestamp, confidence=dec.confidence,
                           reason=dec.reason[:1000], action=dec.action, stop_price=dec.stop_price,
                           target_price=dec.target_price, max_hold_sessions=dec.max_hold_sessions,
-                          risk_requirement=dec.risk_requirement)
+                          risk_requirement=dec.risk_requirement,
+                          entry_reference=(dec.features or {}).get("close"))
 
 
 def risk_gate(dec: StrategyDecision, risk: dict, features: dict) -> StrategyDecision:
@@ -181,4 +204,5 @@ def risk_gate(dec: StrategyDecision, risk: dict, features: dict) -> StrategyDeci
         pass
     if why:
         dec.block("; ".join(why))
+        dec.reason_codes.append("RISK_BLOCKED")
     return dec

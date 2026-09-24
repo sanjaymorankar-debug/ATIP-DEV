@@ -14,6 +14,8 @@ split/bonus adjusted (prices_daily).
   Bars         close open high low volume prev_close change_pct gap_pct
   Parametric   sma_N ema_N rsi_N atr_pct_N ret_N vol_ratio_N zscore_N
                range_pos_N prior_high_N prior_low_N volatility_N rel_strength_N
+               adx_N vwap_N
+  Derived      macd macd_signal macd_hist (12/26/9)
   ATIP scores  vpi spi rri mri cri msi zpi acs atip_score score_signal
                (score_signal = the signal engine's BUY / SELL / HOLD / WAIT)
   Market       regime (Market Health label) mh_score vix vol_regime (LOW/NORMAL/HIGH)
@@ -33,6 +35,16 @@ Formulas (N = the number in the name, bars ending at the decision date):
   prior_low_N  lowest low of the N bars before the decision bar
   volatility_N sample stdev of the last N daily returns x sqrt(252) x 100
   rel_strength_N  ret_N of the stock - ret_N of NIFTY50 over the same dates
+  adx_N        Wilder ADX: +DM/-DM and true range smoothed with Wilder's method
+               over N, DX = |+DI - -DI| / (+DI + -DI) x 100, ADX = Wilder
+               average of DX over N (needs 2N+1 bars)
+  vwap_N       sum(typical price x volume) / sum(volume) over the last N daily
+               bars, typical price = (high + low + close) / 3. A daily-bar
+               ROLLING VWAP: ATIP has no intraday trade prints for a true
+               session VWAP
+  macd         EMA_12(close) - EMA_26(close)
+  macd_signal  EMA_9 of the macd series
+  macd_hist    macd - macd_signal
 
 A feature that cannot be computed (too little history, no score, no
 benchmark) is None, and a condition on it is not met.
@@ -47,10 +59,11 @@ import math
 import re
 
 _PARAMETRIC = re.compile(r"^(sma|ema|rsi|atr_pct|ret|vol_ratio|zscore|range_pos|prior_high|prior_low|"
-                         r"volatility|rel_strength)_(\d+)$")
+                         r"volatility|rel_strength|adx|vwap)_(\d+)$")
 SCORE_FEATURES = ("vpi", "spi", "rri", "mri", "cri", "msi", "zpi", "acs", "atip_score", "score_signal")
 MARKET_FEATURES = ("regime", "mh_score", "vix", "vol_regime", "market_trend")
-BAR_FEATURES = ("close", "open", "high", "low", "volume", "prev_close", "change_pct", "gap_pct")
+BAR_FEATURES = ("close", "open", "high", "low", "volume", "prev_close", "change_pct", "gap_pct",
+                "macd", "macd_signal", "macd_hist")
 
 _CUSTOM = {}      # name -> (fn(ctx) -> value, inputs tuple)
 
@@ -110,7 +123,8 @@ def inputs_of(name: str) -> tuple:
 def catalogue() -> dict:
     return {"bars": list(BAR_FEATURES), "scores": list(SCORE_FEATURES), "market": list(MARKET_FEATURES),
             "parametric": sorted({"sma_N", "ema_N", "rsi_N", "atr_pct_N", "ret_N", "vol_ratio_N", "zscore_N",
-                                  "range_pos_N", "prior_high_N", "prior_low_N", "volatility_N", "rel_strength_N"}),
+                                  "range_pos_N", "prior_high_N", "prior_low_N", "volatility_N", "rel_strength_N",
+                                  "adx_N", "vwap_N"}),
             "custom": sorted(_CUSTOM)}
 
 
@@ -152,6 +166,58 @@ def _rsi(values, n):
     return 100 - 100 / (1 + gain / loss)
 
 
+def _ema_series(values, n):
+    """EMA at every point from the n-th value on (seeded with the SMA of the first n)."""
+    if len(values) < n:
+        return []
+    e = sum(values[:n]) / n
+    out, a = [e], 2 / (n + 1)
+    for v in values[n:]:
+        e = a * v + (1 - a) * e
+        out.append(e)
+    return out
+
+
+def _macd(closes):
+    """(macd, signal, hist) with 12/26/9, or Nones when history is too short."""
+    fast, slow = _ema_series(closes, 12), _ema_series(closes, 26)
+    if not slow:
+        return None, None, None
+    line = [f - s for f, s in zip(fast[-len(slow):], slow)]
+    sig = _ema_series(line, 9)
+    if not sig:
+        return line[-1], None, None
+    return line[-1], sig[-1], line[-1] - sig[-1]
+
+
+def _adx(bars, n):
+    if len(bars) < 2 * n + 1:
+        return None
+    tr, pdm, mdm = [], [], []
+    for p, b in zip(bars[:-1], bars[1:]):
+        up, dn = b.high - p.high, p.low - b.low
+        pdm.append(up if up > dn and up > 0 else 0.0)
+        mdm.append(dn if dn > up and dn > 0 else 0.0)
+        tr.append(max(b.high - b.low, abs(b.high - p.close), abs(b.low - p.close)))
+    atr, sp, sm = sum(tr[:n]), sum(pdm[:n]), sum(mdm[:n])
+    dxs = []
+    for i in range(n, len(tr) + 1):
+        if i > n:
+            atr = atr - atr / n + tr[i - 1]
+            sp = sp - sp / n + pdm[i - 1]
+            sm = sm - sm / n + mdm[i - 1]
+        if not atr:
+            dxs.append(0.0); continue
+        pdi, mdi = 100 * sp / atr, 100 * sm / atr
+        dxs.append(abs(pdi - mdi) / (pdi + mdi) * 100 if pdi + mdi else 0.0)
+    if len(dxs) < n:
+        return None
+    adx = sum(dxs[:n]) / n
+    for dx in dxs[n:]:
+        adx = (adx * (n - 1) + dx) / n
+    return adx
+
+
 def _ret(values, n):
     if len(values) < n + 1 or not values[-1 - n]:
         return None
@@ -178,6 +244,8 @@ def compute(name, ctx):
         return (last.close / bars[-2].close - 1) * 100 if len(bars) > 1 and bars[-2].close else None
     if name == "gap_pct":
         return (last.open / bars[-2].close - 1) * 100 if len(bars) > 1 and bars[-2].close else None
+    if name in ("macd", "macd_signal", "macd_hist"):
+        return dict(zip(("macd", "macd_signal", "macd_hist"), _macd(_closes(ctx))))[name]
     m = _PARAMETRIC.match(name)
     if not m:
         raise KeyError(f"unknown feature {name!r}")
@@ -226,6 +294,14 @@ def compute(name, ctx):
         rets = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - n, len(closes))]
         sd = _sd(rets)
         return sd * math.sqrt(252) * 100 if sd is not None else None
+    if kind == "adx":
+        return _adx(bars, n)
+    if kind == "vwap":
+        if len(bars) < n:
+            return None
+        w = bars[-n:]
+        vol = sum(b.volume or 0 for b in w)
+        return sum((b.high + b.low + b.close) / 3 * (b.volume or 0) for b in w) / vol if vol else None
     if kind == "rel_strength":
         if len(bars) < n + 1:
             return None

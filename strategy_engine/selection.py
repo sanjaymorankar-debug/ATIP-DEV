@@ -27,6 +27,7 @@ mapping take part.
 
     priority  the strategy with the lowest priority number that has an opinion
               (anything but WAIT) decides
+    (EXIT counts as SELL when strategies are combined.)
     weighted  net = sum(weight x confidence x (+1 BUY, -1 SELL)) / sum(weight);
               BUY when net >= threshold, SELL when net <= -threshold, else HOLD
               when any member holds, else WAIT (threshold default 0.3)
@@ -152,6 +153,7 @@ def combine(votes: list, mode: str = "vote", no_trade_regime: bool = False, thre
     """
     if mode not in MODES:
         raise SelectionError(f"mode must be one of {MODES}")
+    votes = [{**v, "decision": "SELL" if v["decision"] == "EXIT" else v["decision"]} for v in votes]
     opinions = [v for v in votes if v["decision"] != "WAIT"]
     veto = any(v["decision"] == "NO_TRADE" for v in votes)
     tag = ", ".join(f"{v['strategy_id']}:{v['decision']}" for v in votes)

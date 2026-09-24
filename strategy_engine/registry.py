@@ -54,6 +54,19 @@ def create_strategy(conn, defn: dict, actor: str = "owner", source: str = "user"
     return get_strategy(conn, d["strategy_id"])
 
 
+def _index_features(conn, d):
+    """strategy_feature rows for a version: the features its definition uses and
+    the data each needs. Idempotent (also back-fills versions stored before W4)."""
+    from strategy_engine.features import inputs_of
+    for f in d.get("features_used") or []:
+        try:
+            ins = ",".join(inputs_of(f))
+        except Exception:
+            ins = None
+        conn.execute("INSERT OR IGNORE INTO strategy_feature (strategy_id,version,feature,inputs) VALUES (?,?,?,?)",
+                     (d["strategy_id"], d["version"], f, ins))
+
+
 def _insert_version(conn, d, notes, actor="owner"):
     """Store an immutable version, index its parameters, and log it."""
     h = definition_hash(d)
@@ -65,6 +78,7 @@ def _insert_version(conn, d, notes, actor="owner"):
                      (d["strategy_id"], d["version"], p["name"], p["type"], json.dumps(p.get("default")),
                       p.get("min"), p.get("max"), json.dumps(p.get("allowed")) if p.get("allowed") is not None else None,
                       int(bool(p.get("required"))), p.get("description", "")))
+    _index_features(conn, d)
     lifecycle.log_event(conn, d["strategy_id"], "VERSION", notes or "version stored", d["version"],
                         {"definition_hash": h}, actor=actor, commit=False)
 
@@ -203,6 +217,12 @@ def sync_library(conn) -> dict:
             conflicts.append(f"{sid} {ver}: {e}")
     if conflicts:
         log.warning(f"  strategy library: {conflicts}")
+    for (dj,) in conn.execute("SELECT definition_json FROM strategy_version").fetchall():
+        try:
+            _index_features(conn, json.loads(dj))
+        except Exception as e:
+            log.warning(f"  strategy_feature index: {e}")
+    conn.commit()
     from strategy_engine.selection import seed_default_mapping
     seeded = seed_default_mapping(conn)
     return {"added": added, "unchanged": skipped, "conflicts": conflicts, "regime_mapping_seeded": seeded}

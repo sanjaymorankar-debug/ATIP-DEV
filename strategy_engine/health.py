@@ -107,7 +107,7 @@ def compute_health(conn, strategy_id: str, version: str | None = None, as_of: da
     last = runs[-1] if runs else None
     last_ok = next((r for r in reversed(runs) if r["status"] != "FAILED"), None)
     sig = conn.execute("SELECT as_of, symbol, decision FROM strategy_decision WHERE strategy_id=? AND version=? "
-                       "AND decision IN ('BUY','SELL') AND as_of<=? ORDER BY as_of DESC, timestamp DESC LIMIT 1",
+                       "AND decision IN ('BUY','SELL','EXIT') AND as_of<=? ORDER BY as_of DESC, timestamp DESC LIMIT 1",
                        (strategy_id, ver, str(as_of))).fetchone()
     n_err_events = conn.execute("SELECT COUNT(*) FROM strategy_engine_event WHERE strategy_id=? AND "
                                 "event_type='ERROR' AND at>=?", (strategy_id, datetime.combine(since, datetime.min.time()))

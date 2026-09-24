@@ -82,8 +82,10 @@ def get_connection():
     _migrate_news_classifier_column(conn)
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
-    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES}.items():
+    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
+    for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
+        _add_missing_columns(conn, table, cols)
     return conn
 
 def _create_table_if_missing(conn, name, ddls):
@@ -243,6 +245,7 @@ W3_TABLES = {
             action TEXT NOT NULL, confidence REAL, score REAL, regime TEXT, reasons_json TEXT,
             parameters_json TEXT, risk_requirement TEXT, target_position_pct REAL, stop_price REAL,
             target_price REAL, max_hold_sessions INTEGER, blocked_reason TEXT, features_json TEXT,
+            reason_codes_json TEXT, signal_source TEXT,
             UNIQUE (strategy_id, version, as_of, symbol))""",
         "CREATE INDEX IF NOT EXISTS idx_strategy_decision_date ON strategy_decision(as_of, decision)",
     ),
@@ -253,8 +256,16 @@ W3_TABLES = {
             side TEXT NOT NULL, action TEXT, target_position_pct REAL, quantity INTEGER, stop_price REAL,
             target_price REAL, max_hold_sessions INTEGER, confidence REAL, reason TEXT,
             risk_requirement TEXT, authorization_status TEXT NOT NULL DEFAULT 'NOT_AUTHORIZED',
-            created_at TIMESTAMP)""",
+            created_at TIMESTAMP, entry_reference REAL, book TEXT, risk_decision_id TEXT,
+            authorized_at TIMESTAMP)""",
         "CREATE INDEX IF NOT EXISTS idx_strategy_intent ON strategy_position_intent(as_of, strategy_id)",
+    ),
+    # the features each version needs (derived from its definition), so
+    # "which strategies use rsi_14?" is a query, not a JSON scan
+    "strategy_feature": (
+        """CREATE TABLE IF NOT EXISTS strategy_feature (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, feature TEXT NOT NULL, inputs TEXT,
+            PRIMARY KEY (strategy_id, version, feature))""",
     ),
     "strategy_health": (
         """CREATE TABLE IF NOT EXISTS strategy_health (
@@ -262,6 +273,78 @@ W3_TABLES = {
             metrics_json TEXT, issues_json TEXT, created_at TIMESTAMP,
             PRIMARY KEY (strategy_id, version, as_of))""",
     ),
+}
+
+# ── Tables added in W4 (risk engine and execution) ──────────────────────────
+# execution/. The chain an audit walks, each row naming the one before it:
+#   strategy_decision -> strategy_position_intent -> risk_decision -> oms_order
+#   -> oms_order_event / oms_execution -> oms_fill -> paper_position
+# The table names are prefixed oms_ because order_rules / order_log / paper_order
+# already exist (the W1-era order rules, order log and paper broker) and stay
+# as they are: the paper broker still keeps its own paper_order / paper_position.
+W4_TABLES = {
+    # risk limit overrides set through the API; code defaults and config.json
+    # "w4_risk_limits" sit underneath (execution/config.py)
+    "risk_limit": (
+        """CREATE TABLE IF NOT EXISTS risk_limit (
+            key TEXT PRIMARY KEY, value_json TEXT, note TEXT, updated_by TEXT, updated_at TIMESTAMP)""",
+    ),
+    "risk_limit_history": (
+        """CREATE TABLE IF NOT EXISTS risk_limit_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, old_json TEXT, new_json TEXT,
+            actor TEXT, at TIMESTAMP)""",
+    ),
+    "risk_decision": (
+        """CREATE TABLE IF NOT EXISTS risk_decision (
+            risk_decision_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, decision_id TEXT,
+            strategy_id TEXT, strategy_version TEXT, symbol TEXT NOT NULL, side TEXT, action TEXT,
+            book TEXT, mode TEXT, requested_quantity INTEGER, approved_quantity INTEGER,
+            reference_price REAL, est_value REAL, equity REAL, risk_status TEXT NOT NULL,
+            rejection_reason TEXT, risk_checks_json TEXT, limits_json TEXT, engine_version TEXT,
+            reviewed_by TEXT, reviewed_at TIMESTAMP, created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_risk_decision_intent ON risk_decision(intent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_risk_decision_created ON risk_decision(created_at, risk_status)",
+    ),
+    "oms_order": (
+        """CREATE TABLE IF NOT EXISTS oms_order (
+            order_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL UNIQUE, risk_decision_id TEXT NOT NULL UNIQUE,
+            decision_id TEXT, strategy_id TEXT, strategy_version TEXT, symbol TEXT NOT NULL,
+            side TEXT NOT NULL, quantity INTEGER NOT NULL, order_type TEXT NOT NULL, limit_price REAL,
+            product_type TEXT, mode TEXT NOT NULL, adapter TEXT, status TEXT NOT NULL,
+            broker_order_id TEXT, filled_quantity INTEGER NOT NULL DEFAULT 0, avg_fill_price REAL,
+            fees REAL NOT NULL DEFAULT 0, reference_price REAL, reason TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_oms_order_status ON oms_order(status, created_at)",
+    ),
+    "oms_order_event": (
+        """CREATE TABLE IF NOT EXISTS oms_order_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT NOT NULL, from_status TEXT,
+            to_status TEXT NOT NULL, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_oms_order_event ON oms_order_event(order_id, id)",
+    ),
+    "oms_execution": (
+        """CREATE TABLE IF NOT EXISTS oms_execution (
+            execution_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, adapter TEXT, action TEXT,
+            request_json TEXT, response_json TEXT, status TEXT, broker_order_id TEXT, error TEXT,
+            at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_oms_execution_order ON oms_execution(order_id)",
+    ),
+    "oms_fill": (
+        """CREATE TABLE IF NOT EXISTS oms_fill (
+            fill_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, execution_id TEXT, strategy_id TEXT,
+            strategy_version TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL, quantity INTEGER NOT NULL,
+            price REAL NOT NULL, fees REAL NOT NULL DEFAULT 0, price_source TEXT, mode TEXT,
+            filled_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_oms_fill_strategy ON oms_fill(strategy_id, symbol)",
+    ),
+}
+
+# Columns added after a table first shipped (applied by get_connection with
+# _add_missing_columns; fresh installs get them from the CREATE above).
+W3_W4_COLUMNS = {
+    "strategy_decision": {"reason_codes_json": "TEXT", "signal_source": "TEXT"},
+    "strategy_position_intent": {"entry_reference": "REAL", "book": "TEXT", "risk_decision_id": "TEXT",
+                                 "authorized_at": "TIMESTAMP"},
 }
 
 # Every alert ATIP raises, whether or not Telegram delivered it: the dashboard
