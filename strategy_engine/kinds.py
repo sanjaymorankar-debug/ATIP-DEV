@@ -98,9 +98,10 @@ class EvalEnv:
     Everything it returns is dated on or before the as_of it is asked about.
     """
 
-    def __init__(self, history, universe, scores=None, regime=None, benchmark=None):
+    def __init__(self, history, universe, scores=None, regime=None, benchmark=None, ml=None):
         self.history, self.universe = history, tuple(universe)
         self.scores, self.regime = scores, regime
+        self.ml = ml                  # ml/strategy_features.MLPredictionHistory or None
         self.benchmark = benchmark or {}
         self._ctx = {}
 
@@ -119,7 +120,8 @@ class EvalEnv:
         rows = self.scores.on(as_of) if self.scores else {}
         bench = {d: c for d, c in self.benchmark.items() if d <= as_of}
         ctx = FeatureContext(symbol, as_of, bars, rows.get(symbol, {}), self.market(as_of), bench,
-                             previous=(lambda: self.context(symbol, prev_date)) if prev_date else None)
+                             previous=(lambda: self.context(symbol, prev_date)) if prev_date else None,
+                             ml=self.ml.on(as_of, symbol) if self.ml else None)
         self._ctx[key] = ctx
         return ctx
 

@@ -101,5 +101,18 @@
     "portfolio_drawdown_limit_pct": 15.0,
     "strategy_drawdown_limit_pct":  10.0
   },
-  "_w4_risk_limits_note": "Percentages of equity unless stated; null disables a limit. PUT /api/risk/limits overrides these (stored in the risk_limit table). The W1 risk_limits above still apply on top."
+  "_w4_risk_limits_note": "Percentages of equity unless stated; null disables a limit. PUT /api/risk/limits overrides these (stored in the risk_limit table). The W1 risk_limits above still apply on top.",
+
+  "_SECTION_12": "=== AI / ML (ml/config.py, W5) — off by default; ML never places orders ===",
+  "ml": {
+    "enabled":            false,
+    "default_model":      null,
+    "feature_set":        "atip_core",
+    "prediction_horizon": 5,
+    "model_path":         "atip_data/ml",
+    "regime_source":      "deterministic",
+    "regime_model":       null,
+    "training":           {"validation_fraction": 0.2, "embargo_sessions": null, "min_rows": 200}
+  },
+  "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model)."
 }

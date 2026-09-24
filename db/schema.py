@@ -82,7 +82,7 @@ def get_connection():
     _migrate_news_classifier_column(conn)
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
-    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES}.items():
+    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -336,6 +336,85 @@ W4_TABLES = {
             price REAL NOT NULL, fees REAL NOT NULL DEFAULT 0, price_source TEXT, mode TEXT,
             filled_at TIMESTAMP)""",
         "CREATE INDEX IF NOT EXISTS idx_oms_fill_strategy ON oms_fill(strategy_id, symbol)",
+    ),
+}
+
+# ── Tables added in W5 (AI/ML) ──────────────────────────────────────────────
+# ml/. Traceability chain: ml_prediction -> (model_id, model_version) ->
+# ml_model_version (artifact hash, feature set hash, dataset spec + snapshot
+# hash, training config hash) -> ml_dataset -> ml_feature_set -> ml_feature.
+# The older "predictions" table (scores/predictions.py, the signal engine's
+# own forecasts) is unrelated and unchanged.
+W5_TABLES = {
+    "ml_feature": (
+        """CREATE TABLE IF NOT EXISTS ml_feature (
+            feature_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, category TEXT, data_type TEXT,
+            calculation_method TEXT, version TEXT NOT NULL, dependencies_json TEXT, availability TEXT,
+            lookback INTEGER, created_at TIMESTAMP)""",
+    ),
+    "ml_feature_set": (
+        """CREATE TABLE IF NOT EXISTS ml_feature_set (
+            name TEXT NOT NULL, version TEXT NOT NULL, features_json TEXT NOT NULL,
+            feature_versions_json TEXT NOT NULL, description TEXT, content_hash TEXT NOT NULL,
+            created_at TIMESTAMP, PRIMARY KEY (name, version))""",
+    ),
+    "ml_dataset": (
+        """CREATE TABLE IF NOT EXISTS ml_dataset (
+            dataset_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, spec_json TEXT NOT NULL,
+            spec_hash TEXT NOT NULL, feature_set TEXT NOT NULL, label_json TEXT NOT NULL, start_date DATE,
+            end_date DATE, universe_json TEXT, frequency TEXT, sampling_json TEXT, source TEXT, status TEXT,
+            summary_json TEXT, snapshot_path TEXT, snapshot_hash TEXT, created_at TIMESTAMP, built_at TIMESTAMP)""",
+    ),
+    "ml_model": (
+        """CREATE TABLE IF NOT EXISTS ml_model (
+            model_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, model_type TEXT NOT NULL,
+            task TEXT NOT NULL, label_kind TEXT NOT NULL, feature_set TEXT NOT NULL, purpose TEXT NOT NULL,
+            status TEXT NOT NULL, active_version TEXT, owner TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "ml_model_version": (
+        """CREATE TABLE IF NOT EXISTS ml_model_version (
+            model_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, feature_set TEXT,
+            feature_set_hash TEXT, dataset_id TEXT, dataset_spec_hash TEXT, dataset_snapshot_hash TEXT,
+            training_config_json TEXT, training_config_hash TEXT, train_start DATE, train_end DATE,
+            artifact_path TEXT, artifact_hash TEXT, metrics_json TEXT, error TEXT, created_at TIMESTAMP,
+            trained_at TIMESTAMP, activated_at TIMESTAMP, PRIMARY KEY (model_id, version))""",
+    ),
+    "ml_model_event": (
+        """CREATE TABLE IF NOT EXISTS ml_model_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT, event_type TEXT NOT NULL,
+            from_state TEXT, to_state TEXT, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP)""",
+    ),
+    "ml_training_run": (
+        """CREATE TABLE IF NOT EXISTS ml_training_run (
+            run_id TEXT PRIMARY KEY, model_id TEXT NOT NULL, version TEXT, dataset_id TEXT, status TEXT NOT NULL,
+            config_json TEXT, metrics_json TEXT, rows INTEGER, error TEXT, traceback TEXT, actor TEXT,
+            started_at TIMESTAMP, finished_at TIMESTAMP)""",
+    ),
+    "ml_prediction": (
+        """CREATE TABLE IF NOT EXISTS ml_prediction (
+            prediction_id TEXT PRIMARY KEY, model_id TEXT NOT NULL, model_version TEXT NOT NULL,
+            version_status TEXT, symbol TEXT NOT NULL, as_of DATE NOT NULL, prediction TEXT,
+            prediction_value REAL, probabilities_json TEXT, confidence REAL, prob_up REAL, ml_score REAL,
+            interval_low REAL, interval_high REAL, feature_set TEXT, feature_set_hash TEXT, artifact_hash TEXT,
+            explanation_json TEXT, features_json TEXT, created_at TIMESTAMP,
+            UNIQUE (model_id, model_version, symbol, as_of))""",
+        "CREATE INDEX IF NOT EXISTS idx_ml_prediction_date ON ml_prediction(as_of, model_id)",
+    ),
+    "ml_model_metrics": (
+        """CREATE TABLE IF NOT EXISTS ml_model_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            period_start DATE, period_end DATE, metrics_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "ml_model_explanation": (
+        """CREATE TABLE IF NOT EXISTS ml_model_explanation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            explanation_version TEXT, payload_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "ml_model_monitoring": (
+        """CREATE TABLE IF NOT EXISTS ml_model_monitoring (
+            model_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, version_status TEXT,
+            prediction_dist_json TEXT, feature_drift_json TEXT, data_quality_json TEXT, n_shifted INTEGER,
+            created_at TIMESTAMP, PRIMARY KEY (model_id, version, as_of))""",
     ),
 }
 

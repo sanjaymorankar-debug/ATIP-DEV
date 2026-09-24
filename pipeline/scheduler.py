@@ -756,6 +756,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # on this session's scores, then a health snapshot for every strategy.
     # Decisions are position intents (NOT_AUTHORIZED) -- nothing is ordered.
     if not backfill:
+        # W5: ML predictions first, so strategies deciding next can read today's
+        # ml_* features. SKIPPED unless config ml.enabled and a model is ACTIVE.
+        try:
+            from ml.predict import run_scheduled_predictions
+            run_job("ml_predictions", run_scheduled_predictions, td)
+        except Exception as e:
+            log.warning(f"  ML predictions: {e}")
         try:
             from strategy_engine.engine import run_scheduled_decisions
             from strategy_engine.health import run_health_all

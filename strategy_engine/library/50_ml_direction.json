@@ -1,0 +1,85 @@
+{
+  "strategy_id": "ml_direction",
+  "name": "ML direction model (rule)",
+  "version": "1.0.0",
+  "description": "Enter when the configured ML model (ml.default_model, ACTIVE version) scores the stock bullish with enough confidence and the trend agrees; exit when the ML score turns neutral/bearish. Produces nothing until a model is ACTIVE and ml.default_model is set.",
+  "kind": "rule",
+  "universe": {
+    "type": "tracked_current"
+  },
+  "timeframe": "1d",
+  "parameters": [
+    {
+      "name": "min_score",
+      "type": "float",
+      "default": 65,
+      "min": 50,
+      "max": 100,
+      "description": "Enter when ml_score is at least"
+    },
+    {
+      "name": "min_conf",
+      "type": "float",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "description": "Minimum model confidence"
+    },
+    {
+      "name": "exit_score",
+      "type": "float",
+      "default": 45,
+      "min": 0,
+      "max": 60,
+      "description": "Exit when ml_score is below"
+    }
+  ],
+  "entry": {
+    "all": [
+      {
+        "feature": "ml_score",
+        "op": ">=",
+        "value": {
+          "param": "min_score"
+        }
+      },
+      {
+        "feature": "ml_confidence",
+        "op": ">=",
+        "value": {
+          "param": "min_conf"
+        }
+      }
+    ]
+  },
+  "confirmation": {
+    "feature": "close",
+    "op": ">",
+    "value": {
+      "feature": "sma_50"
+    }
+  },
+  "exit": {
+    "feature": "ml_score",
+    "op": "<",
+    "value": {
+      "param": "exit_score"
+    }
+  },
+  "rank_by": "ml_score",
+  "position": {
+    "target_position_pct": 5,
+    "max_positions": 10,
+    "max_new_per_day": 3,
+    "stop_pct": 5,
+    "target_pct": 10,
+    "max_hold_sessions": 10
+  },
+  "risk": {
+    "requirement": "STANDARD",
+    "blocked_regimes": [
+      "HIGH_RISK"
+    ],
+    "max_cri": 70
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "strategy_id": "atip_ml_blend",
+  "name": "ATIP scores + ML score blend (multi-factor)",
+  "version": "1.0.0",
+  "description": "Multi-factor composite of deterministic ATIP scores and the ML score: ML is one weighted factor among several, never the sole driver. Rows without an ML score fail the coverage rule when the ML weight is material.",
+  "kind": "multi_factor",
+  "universe": {
+    "type": "tracked_current"
+  },
+  "timeframe": "1d",
+  "parameters": [
+    {
+      "name": "ml_weight",
+      "type": "float",
+      "default": 0.3,
+      "min": 0,
+      "max": 1,
+      "description": "Weight of ml_score in the composite"
+    },
+    {
+      "name": "entry",
+      "type": "float",
+      "default": 65,
+      "min": 40,
+      "max": 95,
+      "description": "Composite entry threshold"
+    },
+    {
+      "name": "exit",
+      "type": "float",
+      "default": 45,
+      "min": 10,
+      "max": 70,
+      "description": "Composite exit threshold"
+    }
+  ],
+  "factors": [
+    {
+      "feature": "zpi",
+      "weight": 0.25,
+      "min": 0,
+      "max": 100,
+      "threshold": 55
+    },
+    {
+      "feature": "vpi",
+      "weight": 0.25,
+      "min": 0,
+      "max": 100,
+      "threshold": 55
+    },
+    {
+      "feature": "ml_score",
+      "weight": {
+        "param": "ml_weight"
+      },
+      "min": 0,
+      "max": 100,
+      "threshold": 60
+    },
+    {
+      "feature": "cri",
+      "weight": 0.2,
+      "direction": "lower",
+      "min": 0,
+      "max": 100,
+      "threshold": 50
+    }
+  ],
+  "entry_threshold": {
+    "param": "entry"
+  },
+  "exit_threshold": {
+    "param": "exit"
+  },
+  "min_confirmations": 3,
+  "min_factor_coverage": 0.8,
+  "top_n": 5,
+  "position": {
+    "target_position_pct": 5,
+    "max_positions": 10,
+    "max_new_per_day": 3,
+    "stop_pct": 5,
+    "target_pct": 10,
+    "max_hold_sessions": 15
+  },
+  "risk": {
+    "requirement": "STANDARD",
+    "blocked_regimes": [
+      "HIGH_RISK"
+    ],
+    "max_cri": 70
+  }
+}

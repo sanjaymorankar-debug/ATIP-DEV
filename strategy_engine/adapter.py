@@ -50,7 +50,7 @@ class DefinitionStrategy(Strategy):
     def _inputs(self) -> set:
         ins = set(self.defn.get("inputs") or [])
         if self.defn["kind"] in ("composite", "python"):
-            ins |= {"scores", "regime", "benchmark"}    # members / code may use any
+            ins |= {"scores", "regime", "benchmark", "ml"}    # members / code may use any
         return ins
 
     def _lazy(self):
@@ -58,7 +58,7 @@ class DefinitionStrategy(Strategy):
             return
         from db.schema import get_connection
         from strategy_engine import registry
-        from strategy_engine.regime import MarketHealthRegime
+        from strategy_engine.regime import get_provider
         conn = get_connection()
         try:
             load = self._loader or registry.loader(conn)
@@ -71,7 +71,11 @@ class DefinitionStrategy(Strategy):
                 load = cached
             self._ev = make_evaluator(self.defn, self.params, load)
             ins = self._inputs()
-            self._regime = MarketHealthRegime(conn) if "regime" in ins else None
+            self._regime = get_provider(conn) if "regime" in ins else None
+            self._ml = None
+            if "ml" in ins:           # W5: only predictions made out of sample (after the model's training end)
+                from ml.strategy_features import MLPredictionHistory
+                self._ml = MLPredictionHistory(conn)
             self._bench = {}
             if "benchmark" in ins:
                 for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50'"):
@@ -82,7 +86,7 @@ class DefinitionStrategy(Strategy):
     def on_bar(self, ctx) -> list:
         self._lazy()
         hist = ctx.data._h                              # PriceHistory behind the point-in-time view
-        env = EvalEnv(hist, ctx.universe, ctx.scores, self._regime, self._bench)
+        env = EvalEnv(hist, ctx.universe, ctx.scores, self._regime, self._bench, getattr(self, "_ml", None))
         held = {s: {"qty": p.qty, "entry_price": p.entry_price, "held_sessions": p.held_sessions}
                 for s, p in ctx.positions.items()}
         out = []

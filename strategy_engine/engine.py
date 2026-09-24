@@ -36,7 +36,7 @@ from strategy_engine.decisions import A_ADD, A_BUY, NOT_AUTHORIZED, intent_for
 from strategy_engine.definition import specs
 from strategy_engine.kinds import EvalEnv, make_evaluator, session_ordinal
 from strategy_engine.params import resolve
-from strategy_engine.regime import MarketHealthRegime
+from strategy_engine.regime import get_provider
 
 log = logging.getLogger("atip.strategy_engine")
 
@@ -62,16 +62,23 @@ def _held(conn, book: str, as_of: date) -> dict:
             for p in positions(conn, book, as_of)}
 
 
-def build_env(conn, symbols, as_of: date) -> EvalEnv:
+def build_env(conn, symbols, as_of: date, inputs=None) -> EvalEnv:
     from backtest.data import PriceHistory, ScoresHistory
     history = PriceHistory.load(conn, symbols, as_of, as_of, warmup_days=WARMUP_DAYS)
     scores = ScoresHistory(conn, as_of - timedelta(days=10), as_of)
-    regime = MarketHealthRegime(conn, as_of - timedelta(days=10), as_of)
+    regime = get_provider(conn, as_of - timedelta(days=10), as_of)
+    ml = None
+    if inputs is None or "ml" in inputs:           # W5: stored ML predictions, point in time
+        try:
+            from ml.strategy_features import MLPredictionHistory
+            ml = MLPredictionHistory(conn, as_of - timedelta(days=10), as_of)
+        except Exception as e:
+            log.warning(f"  ML predictions unavailable to strategies: {e}")
     bench = {}
     for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date>=? AND date<=?",
                              (str(as_of - timedelta(days=WARMUP_DAYS)), str(as_of))):
         bench[d if isinstance(d, date) else date.fromisoformat(str(d)[:10])] = c
-    return EvalEnv(history, symbols, scores, regime, bench)
+    return EvalEnv(history, symbols, scores, regime, bench, ml)
 
 
 def _capital(conn, book: str, as_of: date):

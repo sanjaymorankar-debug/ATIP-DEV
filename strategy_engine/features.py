@@ -14,12 +14,16 @@ split/bonus adjusted (prices_daily).
   Bars         close open high low volume prev_close change_pct gap_pct
   Parametric   sma_N ema_N rsi_N atr_pct_N ret_N vol_ratio_N zscore_N
                range_pos_N prior_high_N prior_low_N volatility_N rel_strength_N
-               adx_N vwap_N
+               adx_N vwap_N bb_pctb_N bb_width_N nifty_ret_N
   Derived      macd macd_signal macd_hist (12/26/9)
+  ML (W5)      ml_score ml_prediction ml_confidence ml_prob_up -- the stored
+               prediction of the configured ML model for that symbol and date
+               (ml/strategy_features.py); None when there is none
   ATIP scores  vpi spi rri mri cri msi zpi acs atip_score score_signal
                (score_signal = the signal engine's BUY / SELL / HOLD / WAIT)
   Market       regime (Market Health label) mh_score vix vol_regime (LOW/NORMAL/HIGH)
                market_trend (bullish / sideways / bearish / uncertain / unknown)
+               breadth_pct (% advancing) adv_decline fii_net_cr dii_net_cr
 
 Formulas (N = the number in the name, bars ending at the decision date):
   sma_N        mean of the last N closes
@@ -42,6 +46,10 @@ Formulas (N = the number in the name, bars ending at the decision date):
                bars, typical price = (high + low + close) / 3. A daily-bar
                ROLLING VWAP: ATIP has no intraday trade prints for a true
                session VWAP
+  bb_pctb_N    Bollinger %B: (close - (sma_N - 2 sd)) / (4 sd), sd = population
+               stdev of the last N closes (0 = lower band, 1 = upper band)
+  bb_width_N   (4 sd) / sma_N x 100
+  nifty_ret_N  ret_N of NIFTY50 ending on the decision date (index return)
   macd         EMA_12(close) - EMA_26(close)
   macd_signal  EMA_9 of the macd series
   macd_hist    macd - macd_signal
@@ -59,9 +67,11 @@ import math
 import re
 
 _PARAMETRIC = re.compile(r"^(sma|ema|rsi|atr_pct|ret|vol_ratio|zscore|range_pos|prior_high|prior_low|"
-                         r"volatility|rel_strength|adx|vwap)_(\d+)$")
+                         r"volatility|rel_strength|adx|vwap|bb_pctb|bb_width|nifty_ret)_(\d+)$")
 SCORE_FEATURES = ("vpi", "spi", "rri", "mri", "cri", "msi", "zpi", "acs", "atip_score", "score_signal")
-MARKET_FEATURES = ("regime", "mh_score", "vix", "vol_regime", "market_trend")
+MARKET_FEATURES = ("regime", "mh_score", "vix", "vol_regime", "market_trend", "breadth_pct", "adv_decline",
+                   "fii_net_cr", "dii_net_cr")
+ML_FEATURES = ("ml_score", "ml_prediction", "ml_confidence", "ml_prob_up")
 BAR_FEATURES = ("close", "open", "high", "low", "volume", "prev_close", "change_pct", "gap_pct",
                 "macd", "macd_signal", "macd_hist")
 
@@ -78,9 +88,10 @@ class FeatureContext:
     benchmark  NIFTY50 closes as {date: close} up to as_of
     """
 
-    def __init__(self, symbol, as_of, bars, scores=None, market=None, benchmark=None, previous=None):
+    def __init__(self, symbol, as_of, bars, scores=None, market=None, benchmark=None, previous=None, ml=None):
         self.symbol, self.as_of, self.bars = symbol, as_of, bars
         self.scores, self.market, self.benchmark = scores or {}, market or {}, benchmark or {}
+        self.ml = ml or {}                 # {"ml_score", ...} for this symbol and date, or {}
         self._previous = previous          # callable -> FeatureContext for the prior session
         self._cache = {}
 
@@ -102,7 +113,7 @@ def register_feature(name: str, fn, inputs=("bars",)):
 
 
 def known(name: str) -> bool:
-    return (name in BAR_FEATURES or name in SCORE_FEATURES or name in MARKET_FEATURES
+    return (name in BAR_FEATURES or name in SCORE_FEATURES or name in MARKET_FEATURES or name in ML_FEATURES
             or name in _CUSTOM or bool(_PARAMETRIC.match(name)))
 
 
@@ -112,19 +123,22 @@ def inputs_of(name: str) -> tuple:
         return ("scores",)
     if name in MARKET_FEATURES:
         return ("regime",)
+    if name in ML_FEATURES:
+        return ("ml",)
     if name in _CUSTOM:
         return _CUSTOM[name][1]
     m = _PARAMETRIC.match(name)
-    if m and m.group(1) == "rel_strength":
+    if m and m.group(1) in ("rel_strength", "nifty_ret"):
         return ("bars", "benchmark")
     return ("bars",)
 
 
 def catalogue() -> dict:
     return {"bars": list(BAR_FEATURES), "scores": list(SCORE_FEATURES), "market": list(MARKET_FEATURES),
+            "ml": list(ML_FEATURES),
             "parametric": sorted({"sma_N", "ema_N", "rsi_N", "atr_pct_N", "ret_N", "vol_ratio_N", "zscore_N",
                                   "range_pos_N", "prior_high_N", "prior_low_N", "volatility_N", "rel_strength_N",
-                                  "adx_N", "vwap_N"}),
+                                  "adx_N", "vwap_N", "bb_pctb_N", "bb_width_N", "nifty_ret_N"}),
             "custom": sorted(_CUSTOM)}
 
 
@@ -232,6 +246,8 @@ def compute(name, ctx):
         return ctx.scores.get(key)
     if name in MARKET_FEATURES:
         return ctx.market.get(name)
+    if name in ML_FEATURES:
+        return ctx.ml.get(name)
     bars = ctx.bars
     if not bars:
         return None
@@ -296,6 +312,21 @@ def compute(name, ctx):
         return sd * math.sqrt(252) * 100 if sd is not None else None
     if kind == "adx":
         return _adx(bars, n)
+    if kind in ("bb_pctb", "bb_width"):
+        if len(closes) < n:
+            return None
+        w = closes[-n:]
+        m = sum(w) / n
+        sd = math.sqrt(sum((x - m) ** 2 for x in w) / n)
+        if not sd or not m:
+            return None
+        return (closes[-1] - (m - 2 * sd)) / (4 * sd) if kind == "bb_pctb" else 4 * sd / m * 100
+    if kind == "nifty_ret":
+        ds = sorted(d for d in ctx.benchmark if d <= ctx.as_of)
+        if len(ds) < n + 1:
+            return None
+        b0, b1 = ctx.benchmark[ds[-1 - n]], ctx.benchmark[ds[-1]]
+        return (b1 / b0 - 1) * 100 if b0 else None
     if kind == "vwap":
         if len(bars) < n:
             return None
