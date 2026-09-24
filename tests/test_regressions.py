@@ -501,6 +501,16 @@ def _nse_closes(monkeypatch, closes, asked=None):
     monkeypatch.setattr(bhavcopy.time, "sleep", lambda s: None)
 
 
+from data.dhan import INDEX_SERIES_SYMBOLS  # noqa: E402
+
+
+def _all_series_closes(**given):
+    """An NSE index-close file carrying every daily index series ATIP keeps."""
+    closes = {key: (100.0, 0.1) for key in INDEX_SERIES_SYMBOLS}
+    closes.update(given)
+    return closes
+
+
 def _session_bar(conn, d, sym="ACME"):
     """A session ATIP has bars for -- sync_nse_index_closes ignores any other."""
     conn.execute("INSERT OR REPLACE INTO prices_daily (symbol,date,close,source) "
@@ -682,11 +692,12 @@ def test_a_session_whose_index_close_nse_published_late_is_filled(temp_db, monke
     for d in ("2026-09-21", "2026-09-22", "2026-09-23"):
         _session_bar(conn, d)
         conn.execute("INSERT INTO index_levels (date,time,nifty50) VALUES (?,'15:44:52',1)", (d,))
-    conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
-                 "VALUES ('NIFTY50','2026-09-21',1,1,1,1,0,'nse_index')")   # 09-21 already has one
+    for sym in INDEX_SERIES_SYMBOLS.values():                             # 09-21 already has every series
+        conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                     "VALUES (?,'2026-09-21',1,1,1,1,0,'nse_index')", (sym,))
     conn.commit(); conn.close()
     asked = []
-    _nse_closes(monkeypatch, {"nifty50": (23446.8, 0.14)}, asked=asked)
+    _nse_closes(monkeypatch, _all_series_closes(nifty50=(23446.8, 0.14)), asked=asked)
 
     res = sync_nse_index_closes(dt.date(2026, 9, 23), lookback=5)
 
@@ -700,3 +711,103 @@ def test_a_session_whose_index_close_nse_published_late_is_filled(temp_db, monke
         conn.close()
     assert res["status"] == "SUCCESS" and res["benchmark"] == 23446.8
     assert sync_nse_index_closes(dt.date(2026, 9, 23), lookback=5)["reason"] == "already stored"
+
+
+# ── DP-09: India VIX ─────────────────────────────────────────────────────────
+
+def test_session_vix_close_is_stored_as_a_daily_series(temp_db, monkeypatch):
+    """NSE's index-close file carries India VIX; it is kept as INDIAVIX next to
+    the NIFTY50 benchmark, and a session missing only its VIX row is retried."""
+    from db.schema import init_db, get_connection
+    from data.bhavcopy import sync_nse_index_closes
+    init_db()
+    conn = get_connection()
+    _session_bar(conn, "2026-09-21")
+    conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                 "VALUES ('NIFTY50','2026-09-21',1,1,1,1,0,'nse_index')")   # benchmark only
+    conn.execute("INSERT INTO index_levels (date,time,nifty50) VALUES ('2026-09-21','15:44:52',1)")
+    conn.commit(); conn.close()
+    asked = []
+    _nse_closes(monkeypatch, _all_series_closes(india_vix=(11.25, -1.229)), asked=asked)
+    sync_nse_index_closes(dt.date(2026, 9, 21), lookback=1)
+    assert asked == ["2026-09-21"], "a session without its VIX close still needs the file"
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT close, source FROM prices_daily "
+                           "WHERE symbol='INDIAVIX' AND date='2026-09-21'").fetchone()
+        assert tuple(row) == (11.25, "nse_index")
+    finally:
+        conn.close()
+    assert sync_nse_index_closes(dt.date(2026, 9, 21), lookback=1)["reason"] == "already stored"
+
+
+def test_get_vix_prefers_the_session_feed_then_the_daily_series(temp_db):
+    from db.schema import init_db, get_connection
+    from scores.engine import get_vix
+    init_db()
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO prices_daily (symbol,date,close,source) VALUES "
+                     "('INDIAVIX','2026-09-21',11.25,'nse_index'),"
+                     "('INDIAVIX','2025-03-03',14.9,'dhan_index')")
+        conn.execute("INSERT INTO index_levels (date,time,india_vix) VALUES "
+                     "('2026-09-21','15:44:52',11.3),('2026-09-21','15:45:10',NULL)")
+        assert get_vix("2026-09-21", conn) == 11.3, "the feed's last real value, not a NULL row"
+        assert get_vix("2025-03-03", conn) == 14.9, "before the feed existed: the daily series"
+        assert get_vix("2025-03-04", conn) is None, "never another session's value"
+    finally:
+        conn.close()
+
+
+def test_missing_vix_is_left_out_not_scored_as_15(temp_db):
+    """compute_mh used `or 15`: a session with no index row scored VIX as a
+    calm 15 (vix_score 74.07). It is now absent, and stored as NULL."""
+    from db.schema import init_db, get_connection
+    from scores.engine import compute_mh, compute_msi, compute_cri
+    init_db()
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO index_levels (date,time,nifty50_chg) VALUES ('2025-03-04','15:30:00',0.0)")
+        weights = {"VIX": 0.10, "NiftyTrend": 0.20}
+        mh = compute_mh("2025-03-04", conn, weights, breadth={})
+        assert mh["vix_level"] is None
+        assert mh["mh_score"] == 50.0, "NiftyTrend alone (0% change) -- no phantom VIX of 74.07"
+        row = conn.execute("SELECT vix_level, vix_score FROM market_health "
+                           "WHERE date='2025-03-04'").fetchone()
+        assert tuple(row) == (None, None)
+        assert compute_msi("2025-03-04", conn, {"VIX": 1.0}) == 50.0   # nothing present
+        # CRI: no VIX means no VIX-driven market weakness, not "VIX 15, calm"
+        assert compute_cri({}, {}, 50, {"mh_score": 55, "vix_level": None},
+                           {"MarketWeakness": 1.0}) == 0.0
+        assert compute_cri({}, {}, 50, {"mh_score": 55, "vix_level": 26},
+                           {"MarketWeakness": 1.0}) == 50.0
+    finally:
+        conn.close()
+
+
+def test_history_sync_stores_each_index_under_its_own_symbol(temp_db, monkeypatch):
+    """Every index_key used to be stored as NIFTY50: syncing VIX history would
+    have overwritten the beta benchmark with VIX levels."""
+    from db.schema import init_db, get_connection
+    from data import dhan
+    init_db()
+    monkeypatch.setattr(dhan, "HAS_DHAN", True)
+
+    class FakeDhan:
+        def historical_daily_data(self, **kw):
+            assert kw["security_id"] == "21"
+            return {"status": "success",
+                    "data": {"timestamp": [1789929000], "close": [11.25]}}   # 2026-09-21 IST
+
+    res = dhan.sync_index_benchmark_history(days=5, end_date=dt.date(2026, 9, 22),
+                                            index_key="india_vix", dhan=FakeDhan())
+    assert res == {"status": "SUCCESS", "rows": 1}
+    conn = get_connection()
+    try:
+        assert [tuple(r) for r in conn.execute(
+            "SELECT symbol, date, close, source FROM prices_daily")] == [
+            ("INDIAVIX", dt.date(2026, 9, 21), 11.25, "dhan_index")]
+    finally:
+        conn.close()
+    # an index with no series of its own is refused before anything is fetched
+    assert dhan.sync_index_benchmark_history(index_key="nifty_it")["status"] == "FAILED"

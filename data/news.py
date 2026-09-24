@@ -112,7 +112,10 @@ def classify_rule_based(art):
     pos=sum(1 for w in ["profit","growth","surge","rise","order","win","record","rally","beat"] if w in h)
     neg=sum(1 for w in ["loss","decline","fall","weak","cut","crash","risk","miss","fraud"] if w in h)
     s=min(0.3+pos*0.15,1.0) if pos>neg else max(-0.3-neg*0.15,-1.0) if neg>pos else 0.0
-    art.update({"sentiment":round(s,2),"importance":"MEDIUM","confidence":0.5,"category":"GENERAL","ai_summary":art["headline"][:80]})
+    # confidence 0.5 is a placeholder, not a measurement: classifier='rule'
+    # keeps it out of ACS's NewsConfidence (scores/engine.get_news_confidence)
+    art.update({"sentiment":round(s,2),"importance":"MEDIUM","confidence":0.5,"category":"GENERAL","ai_summary":art["headline"][:80],
+                "classifier":"rule"})
     return art
 
 def classify_with_claude(articles, batch_size=10):
@@ -132,7 +135,7 @@ def classify_with_claude(articles, batch_size=10):
                 data=json.loads(text)
                 art.update({"sentiment":float(data.get("sentiment",0)),"importance":data.get("importance","MEDIUM"),
                             "confidence":float(data.get("confidence",0.7)),"category":data.get("category","GENERAL"),
-                            "ai_summary":data.get("ai_summary",art["headline"][:80])})
+                            "ai_summary":data.get("ai_summary",art["headline"][:80]),"classifier":"claude"})
             except Exception as ex:
                 log.warning(f"  Claude sentiment call failed for '{art['headline'][:50]}...': {ex}")
                 art=classify_rule_based(art)
@@ -151,10 +154,10 @@ def store_articles(articles, conn):
             pub=art.get("published",now); recency=(now-pub).total_seconds()/3600
             syms=detect_symbols(art["headline"]+" "+art.get("summary",""))
             ns=compute_news_score(art.get("sentiment",0),art.get("importance","MEDIUM"),art.get("confidence",0.5),recency)
-            conn.execute("INSERT OR IGNORE INTO news_articles (fetched_at,headline,source,url,category,symbols_mentioned,sentiment,importance,confidence,news_score,ai_summary,processed) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)",
+            conn.execute("INSERT OR IGNORE INTO news_articles (fetched_at,headline,source,url,category,symbols_mentioned,sentiment,importance,confidence,news_score,ai_summary,processed,classifier) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?)",
                 (pub.strftime("%Y-%m-%d %H:%M:%S"),art["headline"],art.get("source",""),art.get("url",""),
                  art.get("category","GENERAL"),json.dumps(syms),art.get("sentiment",0),art.get("importance","MEDIUM"),
-                 art.get("confidence",0.5),ns,art.get("ai_summary",art["headline"][:80])))
+                 art.get("confidence",0.5),ns,art.get("ai_summary",art["headline"][:80]),art.get("classifier")))
             count+=1
         except Exception as e: log.warning(f"  Article store: {e}")
     return count

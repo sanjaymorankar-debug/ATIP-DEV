@@ -60,7 +60,55 @@ def get_connection():
     _migrate_corporate_actions_table(conn)
     _migrate_ai_scores_beta_column(conn)
     _migrate_technical_macd_pct_column(conn)
+    _migrate_market_health_breadth_columns(conn)
+    _migrate_news_classifier_column(conn)
     return conn
+
+# market_health columns added for market breadth (DP-17) and for recording
+# which Market Health inputs were actually present (SC-09). breadth holds the %
+# of the tracked universe above its 200-DMA, adv_decline the advance/decline
+# ratio -- both declared from the start and never written until now.
+MARKET_HEALTH_ADDED_COLUMNS = {
+    "advances": "INTEGER", "declines": "INTEGER", "pct_advancing": "REAL",
+    "new_highs": "INTEGER", "new_lows": "INTEGER", "breadth_universe": "INTEGER",
+    "mh_coverage": "REAL", "mh_inputs": "TEXT", "backfilled": "INTEGER DEFAULT 0",
+}
+
+def _add_missing_columns(conn, table, columns) -> list:
+    """ALTER TABLE ADD COLUMN for each of `columns` the table lacks; never
+    drops or rewrites rows. [] when the table does not exist yet (init_db()
+    creates it with the columns) or nothing was missing."""
+    try:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    except sqlite3.OperationalError:
+        return []
+    added = []
+    for col, typ in columns.items():
+        if existing and col not in existing:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+                added.append(col)
+            except sqlite3.OperationalError as e:
+                log.warning(f"  {table} migration skipped {col}: {e}")
+    if added:
+        conn.commit()
+        log.info(f"  ✓ {table} migrated — added columns: {', '.join(added)}")
+    return added
+
+def _migrate_market_health_breadth_columns(conn):
+    _add_missing_columns(conn, "market_health", MARKET_HEALTH_ADDED_COLUMNS)
+
+def _migrate_news_classifier_column(conn):
+    """news_articles.classifier: 'claude' or 'rule'. The rule-based fallback
+    writes a fixed confidence of 0.5 (data/news.py classify_rule_based), which
+    ACS's NewsConfidence read as if it were a measurement. Rows stored before
+    the column existed are marked 'rule' when they carry exactly what that
+    fallback writes -- category GENERAL, confidence 0.5; every row in the
+    2026-09 database does, the Anthropic key never having been set."""
+    if _add_missing_columns(conn, "news_articles", {"classifier": "TEXT"}):
+        conn.execute("UPDATE news_articles SET classifier='rule' WHERE classifier IS NULL "
+                     "AND category='GENERAL' AND confidence=0.5")
+        conn.commit()
 
 # NSE's corporate-action calendar and how each event was reconciled with
 # prices_daily (data/corporate_actions.py). factor: from NSE's terms;
@@ -241,7 +289,7 @@ def init_db():
         headline TEXT NOT NULL, source TEXT, url TEXT, category TEXT,
         symbols_mentioned TEXT, sentiment REAL, importance TEXT,
         confidence REAL, news_score REAL, ai_summary TEXT, processed INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, classifier TEXT)""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_news_date ON news_articles(fetched_at)")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_scores (
         id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
@@ -259,7 +307,10 @@ def init_db():
         mh_score REAL, regime TEXT, nifty_trend REAL, banknifty REAL, breadth REAL,
         vix_score REAL, fii_score REAL, dii_score REAL, global_score REAL,
         sector_score REAL, adv_decline REAL, nifty_close REAL, vix_level REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        advances INTEGER, declines INTEGER, pct_advancing REAL, new_highs INTEGER,
+        new_lows INTEGER, breadth_universe INTEGER, mh_coverage REAL, mh_inputs TEXT,
+        backfilled INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS index_levels (
         id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, time TEXT NOT NULL,
         nifty50 REAL, nifty50_chg REAL, banknifty REAL, banknifty_chg REAL,
