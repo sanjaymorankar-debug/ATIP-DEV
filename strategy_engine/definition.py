@@ -49,7 +49,7 @@ COMMON_KEYS = {"strategy_id", "name", "version", "description", "kind", "categor
 DEFAULT_CATEGORY = {"rule": "technical", "multi_factor": "multi_factor", "quant_rank": "quant",
                     "composite": "combination", "python": "code"}
 KIND_KEYS = {
-    "rule": {"entry", "exit", "rank_by"},
+    "rule": {"entry", "exit", "confirmation", "filter", "rank_by"},
     "multi_factor": {"factors", "entry_threshold", "exit_threshold", "reduce_threshold", "add_threshold",
                      "min_confirmations", "top_n", "filter", "min_factor_coverage"},
     "quant_rank": {"score", "filter", "top_n", "exit_rank", "rebalance_every"},
@@ -125,8 +125,9 @@ def validate(defn: dict) -> dict:
         k = d["kind"]
         if k == "rule":
             used |= R.validate(d.get("entry"), declared, "entry")
-            if d.get("exit") is not None:
-                used |= R.validate(d["exit"], declared, "exit")
+            for key in ("exit", "confirmation", "filter"):      # optional rule types
+                if d.get(key) is not None:
+                    used |= R.validate(d[key], declared, key)
             if d.get("rank_by"):
                 _feature(d["rank_by"]); used.add(d["rank_by"])
         elif k == "multi_factor":

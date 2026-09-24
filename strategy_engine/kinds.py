@@ -9,10 +9,18 @@ EXIT / SELL / NO_ACTION / BLOCKED_BY_RISK -- the engine's BUY / SELL / HOLD /
 WAIT / NO_TRADE decision is derived from the action. `held` is {symbol: {"qty", "entry_price", "held_sessions"}}.
 
 rule (SE-03)
-  entry: condition; exit: condition (optional); rank_by: feature (optional).
+  Four rule types, each a condition tree (rules.py):
+    entry         required; when a new position is wanted
+    exit          optional; when a held position is closed
+    confirmation  optional; must ALSO hold for an entry to become a BUY --
+                  entry met but not confirmed -> NO_ACTION "awaiting confirmation"
+    filter        optional; symbols failing it are not considered for entry
+                  (held positions are still managed, so exits are never filtered)
+  rank_by: feature (optional).
   held:     exit met, or held_sessions >= max_hold_sessions -> EXIT; else HOLD
-  not held: entry met -> BUY candidate; confidence = leaf conditions met /
-            leaf conditions in the entry tree
+  not held: filter passes AND entry met AND confirmation met -> BUY candidate;
+            confidence = leaf conditions met / leaf conditions in the entry
+            (+ confirmation) trees
   candidates ranked by rank_by (desc) else confidence, then symbol; the first
   max_new_per_day that fit under max_positions are BUY, the rest NO_ACTION.
 
@@ -204,11 +212,22 @@ class RuleEvaluator(Evaluator):
                         continue
                 out.append(self.intent(sym, as_of, HOLD, None, "held; exit conditions not met", ctx))
                 continue
+            if self.defn.get("filter") is not None and not R.evaluate(self.defn["filter"], ctx, self.params)[0]:
+                continue                               # filtered out of the entry universe
             met, t, n, tr = R.evaluate(self.defn["entry"], ctx, self.params)
             if not met:
                 continue                               # NO_ACTION, not reported per symbol
+            why = "entry: " + "; ".join(tr)
+            if self.defn.get("confirmation") is not None:
+                cmet, ct, cn, ctr = R.evaluate(self.defn["confirmation"], ctx, self.params)
+                t, n = t + ct, n + cn
+                why += " | confirmation: " + "; ".join(ctr)
+                if not cmet:
+                    out.append(self.intent(sym, as_of, NO_ACTION, t / n if n else None,
+                                           why + " | entry met, awaiting confirmation", ctx))
+                    continue
             conf = t / n if n else 1.0
-            it = self.intent(sym, as_of, BUY, conf, "entry: " + "; ".join(tr), ctx, entry=True)
+            it = self.intent(sym, as_of, BUY, conf, why, ctx, entry=True)
             rb = self.defn.get("rank_by")
             rv = ctx.get(rb) if rb else None
             key = (-(rv if rv is not None else float("-inf")) if rb else -conf)

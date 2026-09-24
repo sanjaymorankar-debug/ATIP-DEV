@@ -35,7 +35,7 @@ pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;bord
 <div class="wrap">
 <p class="muted">Strategies produce decisions and position intents, not orders: every intent here is <b>NOT_AUTHORIZED</b> (the risk and execution path is W4).</p>
 <h2>Strategies</h2>
-<div class="scroll"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Latest signals (score)</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
 <h2>Regime mapping <span class="muted">(Market Health regime → strategies in play; edit via PUT /api/strategies/regime-mapping/{regime})</span></h2>
 <div id="regimes"></div>
 <div id="detail"></div>
@@ -51,8 +51,11 @@ async function load(){
   document.getElementById('list').innerHTML=s.map(x=>{const b=x.latest_backtest||{},m=b.metrics||{},h=x.health;
    return `<tr class="click" onclick="show('${x.strategy_id}')"><td><b>${esc(x.strategy_id)}</b><br><span class="muted">${esc(x.name)}</span></td><td>${x.kind}</td><td>${x.current_version}</td><td>${x.status}</td>
    <td>${b.run_id?esc(b.run_id)+' <span class="muted">'+esc(b.period_label||'')+' '+b.status+'</span>':'—'}</td><td class="${(m.total_return||0)>=0?'pos':'neg'}">${pct(m.total_return)}</td><td>${num(m.sharpe)}</td><td class="neg">${pct(m.max_drawdown)}</td>
-   <td>${h?`<span class="pill ${h.status}">${h.status}</span>`:'—'}</td></tr>`}).join('');
+   <td>${sig(x.latest_run)}</td><td>${h?`<span class="pill ${h.status}">${h.status}</span>`:'—'}</td></tr>`}).join('');
 }
+function sig(r){if(!r)return '<span class="muted">no run</span>';if(r.status==='FAILED')return `<span class="neg">${r.as_of} FAILED</span>`;
+  const c=Object.entries(r.counts||{}).map(([k,v])=>k+' '+v).join(', ');
+  return `<span class="muted">${r.as_of}</span> ${esc(c)}`+(r.top||[]).map(t=>`<br>${t.decision} ${esc(t.symbol)} <span class="muted">(${num(t.score,1)})</span>`).join('')}
 async function loadRegimes(){
   const r=await j('/api/strategies/regime-mapping'), m=r.mapping;
   document.getElementById('regimes').innerHTML=`<table><thead><tr><th>Regime</th><th>Strategies (priority · weight)</th></tr></thead><tbody>${Object.keys(m).map(k=>`<tr><td>${k}</td><td>${m[k].no_trade?'<b class="neg">NO_TRADE</b>':(m[k].strategies.map(x=>`${esc(x.strategy_id)} <span class="muted">(${x.priority} · ${x.weight}${x.enabled?'':' · disabled'})</span>`).join(', ')||'<span class="muted">—</span>')}</td></tr>`).join('')}</tbody></table>`;

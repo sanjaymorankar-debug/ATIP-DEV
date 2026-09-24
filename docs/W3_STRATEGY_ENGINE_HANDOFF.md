@@ -35,6 +35,33 @@ Existing strategies were kept:
 - **Library wrappers:** the `dip` and `atip_signal` library definitions wrap them as `python`-kind versions.
 - **Aggressive exit:** `strategy/` and its tables `strategy_position` / `strategy_event` are untouched.
 
+### Completion by feature
+
+| Status | Features |
+|---|---|
+| **Completed** (code; functional validation pending) | SE-01, SE-02, SE-03 (entry / exit / confirmation / filter rules; operators `< <= > >= == != between in not_in crosses_above crosses_below`; AND / OR / NOT / min-of), SE-06, SE-09, StrategyDecision, PositionIntent (NOT_AUTHORIZED), W2 backtest integration, feature interface (`register_feature`), API, minimum UI |
+| **Partially completed** | SE-04: framework and the `quant_rank` kind are in place, with one shipped quant strategy (`momentum_rank`); no factor research. SE-07: combination is computed on request (priority / weighted / vote, conflict handling); combined decisions are not stored and are not executed. SE-08: the mapping and selection are done; BEAR is mapped to NO_TRADE because no defensive strategy exists yet. SE-11: health is computed daily and on request; there are no alerts on health changes and no rolling live performance, because W3 has no executions. |
+| **Not implemented** (out of W3 scope) | Risk authorisation, order execution, sizing confirmation and reconciliation (W4). ML models and AI-driven strategies SE-05 (W5). No-code builder SE-10 (Phase 9). Fundamental, news and alternative-data features: the interface exists, but no such features are registered. Strategy performance panel DB-16. |
+
+### UI changes
+
+- **Top bar:** a new "Strategies" link on the main dashboard (`dashboard/server.py`). No other dashboard section was changed.
+- **New page `/strategies`, strategy list:**
+  - id, name, kind, version, lifecycle status;
+  - latest backtest (return, Sharpe, max drawdown);
+  - **latest signals**: the last run's counts by action, plus the top BUY/SELL decisions with their scores;
+  - health status.
+- **Regime mapping table:** regime → strategies (priority · weight · enabled), or NO_TRADE.
+- **Strategy detail:**
+  - lifecycle transition buttons;
+  - "Generate decisions (PAPER book)";
+  - "Submit backtest";
+  - parameters table and definition JSON;
+  - health metrics and issues;
+  - decisions (decision, action, confidence, score, regime, stop/target, reasons);
+  - position intents (side, action, target %, indicative quantity, authorization status);
+  - backtests, versions and lifecycle history.
+
 ## 2. Files Added
 
 | File | Purpose |
@@ -142,7 +169,12 @@ Modified: `POST /api/backtests` now also accepts `strategy_version`. Without it 
 - A leaf is `{feature, op, value}`, where `value` is a literal, `{"param"}` or `{"feature"}`.
 - Leaves combine with all / any / not / `{"min": k, "of": [...]}`.
 - A missing feature value is "not met".
-- Confidence = met leaves / total leaves of the entry tree.
+- Rule types for `rule` strategies:
+  - **entry:** required.
+  - **exit:** optional; closes a held position.
+  - **confirmation:** optional; it must also hold before an entry becomes a BUY. If the entry is met but the confirmation is not, the decision is WAIT, with the reason "entry met, awaiting confirmation".
+  - **filter:** optional; symbols that fail it are not considered for entry. Held positions are still managed, so exits are never filtered.
+- Confidence = met leaves / total leaves of the entry and confirmation trees.
 - Every evaluation keeps a readable trace, which becomes the decision's reasons.
 
 **Multi-factor engine.**
@@ -301,6 +333,8 @@ The functional test scenarios below are **for ChatGPT and were not run** by Clau
 | W3-T27 | UI | /strategies list, regime mapping, detail, health, decisions, intents | Renders |
 | W3-T28 | PIT | Decision for a past date | Uses only data dated ≤ as_of |
 | W3-T29 | Regression | W1/W2 test suite | Still passes |
+| W3-T30 | SE-03 | Rule strategy with `confirmation`: entry met, confirmation not met | WAIT, reason "awaiting confirmation"; no intent |
+| W3-T31 | SE-03 | Rule strategy with `filter` failing for a held symbol whose exit is met | EXIT still produced (filter applies to entries only) |
 
 ## 10. Git Information
 
@@ -309,7 +343,8 @@ The functional test scenarios below are **for ChatGPT and were not run** by Clau
 | W2 base commit | `ba4028f` (W2 research & backtesting) |
 | Branch | `w3-strategy-engine` (worktree `D:\Projects\ATIP-dev`) |
 | W3 commit | `5e54cc2` feat(atip): implement W3 strategy engine |
-| Handoff git-record commits | `c813f2b` and the path fix after it (docs only) |
+| Handoff git-record commits | `c813f2b` and the path fixes after it (docs only) |
+| Brief-alignment commit | `fix(atip): align W3 with the revised brief`. Adds confirmation and filter rule types, latest signals/scores in the strategy list, the KNOWN_DEFECTS Feature ID and Impact columns, and the completion and UI sections. It is the commit after `4480ba7` (see `git log`). |
 | Merge | `git merge --ff-only w3-strategy-engine` into `master` in `D:\Projects\ATIP`. A fast-forward, so **no merge commit**; W1/W2 history is preserved unchanged |
 | Final main HEAD | `master` = the docs commit above (`git log --oneline -1` in `D:\Projects\ATIP`) |
 | Backups before the merge | DB: `D:\Projects\ATIP\atip_data\atip.db.bak-before-w3-20260924-2341` (online backup, `PRAGMA integrity_check` = ok); repo: branch `backup/pre-w3-master` at `ba4028f`. Earlier backups kept |

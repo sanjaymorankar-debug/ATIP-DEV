@@ -1,47 +1,49 @@
 # ATIP known defects
 
-Open defects carried forward for a later defect-resolution phase. None of them
-was fixed in W3: the W3 brief says W1/W2 defects are fixed only if they stop W3
-from compiling, importing or running, and none did. **W3 made no W1/W2
-compatibility fixes.**
+This is the register of open defects carried forward to a later
+defect-resolution phase. W3 fixed none of them:
+- The W3 brief allows a W1/W2 defect to be fixed only if it stops W3 from compiling, starting or operating. None did.
+- **W3 made no W1/W2 compatibility fixes.**
+- Defects are never removed or closed silently. A defect is closed only with the fix commit recorded against it.
 
-Last updated: 2026-09-24 (W3 merge).
+Last updated: 2026-09-25 (W3).
 
 ## 1. Defects reported by ChatGPT (W1/W2 independent testing)
 
-ChatGPT's independent testing of W1 and W2 found defects, but the list itself
-has not been given to Claude. They are **not recorded individually here**. Add
-each one to the table below (Detected By = ChatGPT, Status = OPEN) when the list
-arrives, so the defect-resolution phase works from one register.
+ChatGPT's independent testing of W1 and W2 found defects. Claude has not been given that list, so the defects are **not recorded individually here**.
 
-| Defect ID | Description | Detected By | Wave | Severity | Current Status | Workaround | Planned Fix Wave |
-|---|---|---|---|---|---|---|---|
-| CG-TBD | ChatGPT's W1/W2 defect list (not yet provided to Claude) | ChatGPT | W1/W2 | TBD | OPEN | — | Defect-resolution phase |
+When the list arrives, add each defect as a row below:
+- Detected By = ChatGPT
+- Status = OPEN
 
-## 2. Defects and limitations observed during development (not fixed)
+This keeps every defect for the defect-resolution phase in one register.
 
-These came from runtime logs and code review while W1–W3 were being built.
-They are recorded so they are not lost. They are not ChatGPT's findings.
+| Defect ID | Wave | Feature ID | Description | Severity | Detected By | Status | Impact | Workaround | Planned Fix Wave |
+|---|---|---|---|---|---|---|---|---|---|
+| CG-TBD | W1/W2 | TBD | ChatGPT's W1/W2 defect list (not yet provided to Claude) | TBD | ChatGPT | OPEN | TBD | — | Defect-resolution phase |
 
-| Defect ID | Description | Detected By | Wave | Severity | Current Status | Workaround | Planned Fix Wave |
-|---|---|---|---|---|---|---|---|
-| KD-001 | The Anthropic API key in `.env` returns HTTP 401, so AI commentary calls fail | Claude (runtime log) | Baseline | Medium | OPEN | The owner renews the key and puts it in `.env` (Claude does not handle credentials) | Defect-resolution phase |
-| KD-002 | The Business Standard, Business Standard Companies and Financial Express RSS feeds return invalid XML; MoneyControl returns 0 items | Claude (runtime log) | W1 | Low | OPEN | The other feeds still deliver news | Defect-resolution phase |
-| KD-003 | Stored news rows written before the timezone fix are still in UTC; the repair tool has not been run | Claude | W1 | Low | OPEN | Recent rows are correct | Defect-resolution phase |
-| KD-004 | The pre-market run dies around 07:00, so news can stall. This was mitigated (news runs first, plus a catch-up) but the root cause was not found | Claude (runtime log) | Baseline/W1 | Medium | OPEN (mitigated) | News-first ordering + catch-up job | Defect-resolution phase |
-| KD-005 | Daily loss limits fail closed when there is no `pnl_daily` history: sizing/limits refuse until P&L rows exist | Claude (code review) | W1 | Low | OPEN (by design, to be confirmed) | Let the daily P&L job populate history | Defect-resolution phase |
-| KD-006 | The W2 walk-forward stitched out-of-sample equity curve starts at the first test window's close, not its open | Claude (code review) | W2 | Low | OPEN | Read OOS metrics per window | Defect-resolution phase |
+## 2. Defects observed during development (not fixed)
+
+These came from runtime logs and code review while W1–W3 were being built. They are not ChatGPT's findings; they are recorded here so they are not lost.
+
+| Defect ID | Wave | Feature ID | Description | Severity | Detected By | Status | Impact | Workaround | Planned Fix Wave |
+|---|---|---|---|---|---|---|---|---|---|
+| KD-001 | Baseline | NS-04 | The Anthropic API key in `.env` returns HTTP 401 | Medium | Claude (runtime log) | OPEN | AI commentary and news classification fall back to rule-based output | The owner renews the key in `.env`; Claude does not handle credentials | Defect-resolution phase |
+| KD-002 | W1 | NS-01 | The Business Standard, Business Standard Companies and Financial Express RSS feeds return invalid XML; MoneyControl returns 0 items | Low | Claude (runtime log) | OPEN | Less news coverage | The other feeds still deliver news | Defect-resolution phase |
+| KD-003 | W1 | NS-01 | News rows stored before the timezone fix are still in UTC; the repair tool has not been run | Low | Claude | OPEN | Older headlines show times off by 5h30 | Recent rows are correct | Defect-resolution phase |
+| KD-004 | Baseline/W1 | MON-01 | The pre-market run dies around 07:00. News-first ordering and a catch-up job mitigate this, but the root cause is unknown | Medium | Claude (runtime log) | OPEN (mitigated) | Pre-market steps after the stall can be late | The news-first ordering and catch-up job | Defect-resolution phase |
+| KD-005 | W1 | RK-07 / RK-08 | The daily loss and drawdown limits fail closed when there is no `pnl_daily` history | Low | Claude (code review) | OPEN (by design, to confirm) | BUY orders are refused until P&L history exists | Let the daily P&L job populate the history | Defect-resolution phase |
+| KD-006 | W2 | BT-06 | The stitched walk-forward out-of-sample equity curve starts at the first test window's close, not its open | Low | Claude (code review) | OPEN | The first OOS session's return is missing from the stitched curve | Read the OOS metrics per window | Defect-resolution phase |
 
 ## 3. W3 limitations (known, by design for this wave)
 
-These are scope boundaries, not defects. They are listed so testers do not
-report them as W3 failures.
+These are scope boundaries, not defects. They are listed so that testers do not report them as W3 failures.
 
-| ID | Limitation | Why | Planned wave |
-|---|---|---|---|
-| W3-L1 | Position intents are never authorised or executed (`authorization_status = NOT_AUTHORIZED`) | Execution belongs to W4 | W4 |
-| W3-L2 | An intent's `quantity` is indicative: the W1 sizer on PAPER equity for the PAPER book; `None` for the LIVE book (the broker is not asked) | Sizing confirmation belongs to the W4 risk engine | W4 |
-| W3-L3 | `max_hold_sessions` is not applied to live/paper decisions (holding dates are not known from the books); it is applied in backtests | Needs W4 position tracking | W4 |
-| W3-L4 | W2 backtests trade whole positions, so `ADD` / `REDUCE` decisions are not simulated (each run's warnings say so) | W2 engine design; no W2 redesign in W3 | Later |
-| W3-L5 | Combined (cross-strategy) decisions are computed on request from stored per-strategy decisions and are not stored | Foundation only | W4 |
-| W3-L6 | The table named `strategy_event` in the brief already exists (the aggressive-exit position ledger), so the Strategy Engine's event log is `strategy_engine_event` | Avoids breaking `strategy/` | — |
+| ID | Feature ID | Limitation | Why | Planned wave |
+|---|---|---|---|---|
+| W3-L1 | — | Position intents are never authorised or executed (`authorization_status = NOT_AUTHORIZED`) | Execution belongs to W4 | W4 |
+| W3-L2 | — | An intent's `quantity` is indicative only:<br>• PAPER book: the W1 sizer applied to PAPER equity.<br>• LIVE book: `None`, because the broker is not asked. | Confirming sizing belongs to the W4 risk engine | W4 |
+| W3-L3 | SE-09 | `max_hold_sessions` is applied in backtests but not to live or paper decisions | The books do not record holding dates | W4 |
+| W3-L4 | SE-01 | W2 backtests trade whole positions, so `ADD` / `REDUCE` decisions are not simulated. Each run's warnings say so | W2 engine design; W3 does not redesign W2 | Later |
+| W3-L5 | SE-07 | Combined (cross-strategy) decisions are computed on request and not stored | This wave builds the foundation only | W4 |
+| W3-L6 | — | The brief's `strategy_event` table already exists as the aggressive-exit ledger, so the engine's event log is named `strategy_engine_event` | Avoids breaking `strategy/` | — |

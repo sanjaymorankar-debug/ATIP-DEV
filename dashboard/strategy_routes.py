@@ -89,6 +89,20 @@ def register(app, guard, Req, get_connection, json_safe):
         d["status_reason"] = json.loads(d.pop("metrics_json") or "{}").get("status_reason")
         return d
 
+    def _latest_run(conn, sid, ver):
+        """The latest decision run of the current version: date, status, counts by
+        action, and the top-scoring BUY decisions of that date."""
+        r = conn.execute("SELECT as_of, status, error, counts_json FROM strategy_decision_run WHERE strategy_id=? "
+                         "AND version=? ORDER BY as_of DESC, created_at DESC LIMIT 1", (sid, ver)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["counts"] = json.loads(d.pop("counts_json") or "{}")
+        d["top"] = [dict(x) for x in conn.execute(
+            "SELECT symbol, decision, score FROM strategy_decision WHERE strategy_id=? AND version=? AND as_of=? "
+            "AND decision IN ('BUY','SELL') ORDER BY score DESC, symbol LIMIT 5", (sid, ver, str(d["as_of"])))]
+        return d
+
     # -- collection routes (registered before /{sid}) ------------------------
 
     @app.get("/api/strategies")
@@ -99,6 +113,7 @@ def register(app, guard, Req, get_connection, json_safe):
             for s in REG.list_strategies(conn):
                 s["latest_backtest"] = _latest_bt(conn, s["strategy_id"], s["current_version"])
                 s["health"] = _latest_health(conn, s["strategy_id"])
+                s["latest_run"] = _latest_run(conn, s["strategy_id"], s["current_version"])
                 out.append(s)
             return JSONResponse(json_safe(out))
         finally:
