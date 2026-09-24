@@ -51,6 +51,25 @@ def get_idx(td,conn):
     r=conn.execute("SELECT * FROM index_levels WHERE date=? ORDER BY time DESC LIMIT 1",(str(td),)).fetchone()
     return dict(r) if r else {}
 
+def get_vix(td,conn):
+    """
+    India VIX for session td, or None when ATIP has no VIX for that session.
+
+    The session's own latest index_levels value (the live feed, or NSE's close
+    snapshot) and otherwise the INDIAVIX daily close in prices_daily (NSE's
+    index file / Dhan history). Never another session's value, and never a
+    stand-in: compute_mh/compute_msi/compute_cri used to read `or 15`, so a
+    session with no index row was scored as if VIX were a calm 15. A missing
+    VIX now leaves its component out, and weighted_score renormalises.
+    """
+    r=conn.execute("SELECT india_vix FROM index_levels WHERE date=? AND india_vix>0 "
+                   "ORDER BY time DESC LIMIT 1",(str(td),)).fetchone()
+    if r: return float(r[0])
+    from data.dhan import VIX_SYMBOL
+    r=conn.execute("SELECT close FROM prices_daily WHERE symbol=? AND date=? AND close>0",
+                   (VIX_SYMBOL,str(td))).fetchone()
+    return float(r[0]) if r else None
+
 def get_global(td,conn):
     r=conn.execute("SELECT * FROM global_markets WHERE date<=? ORDER BY date DESC LIMIT 1",(str(td),)).fetchone()
     return dict(r) if r else {}
@@ -67,21 +86,163 @@ def get_bulk(sym,td,conn,days=10):
     return {"net_value_cr":float(r["v"])} if r and r["v"] is not None else {}
 
 def get_news_confidence(sym,td,conn):
-    """Average news-classification confidence (0-1 in news_articles.confidence,
-    set by Claude's classify_with_claude() or the rule-based fallback) for
-    this stock over the trailing 7 days, scaled to 0-100. Falls back to the
-    market-wide 24h average when the stock has no coverage, then to a
-    neutral 50.0 only if there is no news data at all. Replaces ACS's old
-    hardcoded NewsConfidence=50.0."""
+    """
+    Average AI news-classification confidence for this stock over the 7 days
+    to td, scaled 0-100; else the market-wide figure for td and the day
+    before; else None, and ACS's NewsConfidence is left out.
+
+    Only articles classifier='claude' count. The rule-based fallback writes a
+    fixed 0.5 (data/news.py), and with the Anthropic key never set every one
+    of the 1,249 stored articles carried it -- so NewsConfidence was a
+    constant 50 wearing the name of a measurement, as was the old last-resort
+    return value. Nothing after td is read: the windows had no upper bound, so
+    re-scoring a past session read news published after it.
+    """
     from datetime import timedelta
-    since=str((datetime.strptime(str(td),"%Y-%m-%d")-timedelta(days=7)).date())
-    r=conn.execute("SELECT AVG(confidence) as c FROM news_articles WHERE symbols_mentioned LIKE ? AND fetched_at>=?",
-                   (f'%\"{sym}\"%',since)).fetchone()
+    day=datetime.strptime(str(td),"%Y-%m-%d")
+    until=str((day+timedelta(days=1)).date())
+    since=str((day-timedelta(days=7)).date())
+    r=conn.execute("SELECT AVG(confidence) as c FROM news_articles WHERE classifier='claude' "
+                   "AND symbols_mentioned LIKE ? AND fetched_at>=? AND fetched_at<?",
+                   (f'%\"{sym}\"%',since,until)).fetchone()
     if r and r["c"] is not None: return round(float(r["c"])*100,2)
-    since24=str((datetime.strptime(str(td),"%Y-%m-%d")-timedelta(hours=24)).date())
-    r2=conn.execute("SELECT AVG(confidence) as c FROM news_articles WHERE fetched_at>=?",(since24,)).fetchone()
+    since24=str((day-timedelta(days=1)).date())
+    r2=conn.execute("SELECT AVG(confidence) as c FROM news_articles WHERE classifier='claude' "
+                    "AND fetched_at>=? AND fetched_at<?",(since24,until)).fetchone()
     if r2 and r2["c"] is not None: return round(float(r2["c"])*100,2)
-    return 50.0
+    return None
+
+# ACS HistoricalAccuracy: the stock's 5-session hit rate over the last 90 days
+# (weight_config: "Past accuracy 90d"), from predictions whose outcome was
+# already known on the day being scored.
+ACS_ACCURACY_WINDOW_DAYS = 90
+ACS_ACCURACY_HORIZON = 5        # accuracy_tracker.correct_5d
+ACS_ACCURACY_MIN_OUTCOMES = 5
+
+def sessions_back(td, n):
+    """The session n NSE sessions before td (td itself need not be one)."""
+    from datetime import timedelta
+    from utils.trading_calendar import is_trading_day
+    d=datetime.strptime(str(td),"%Y-%m-%d").date(); count=0
+    while count<n:
+        d-=timedelta(days=1)
+        if is_trading_day(d): count+=1
+    return d
+
+def get_historical_accuracy(sym,td,conn):
+    """
+    % of the stock's predictions that were right 5 sessions later, over the 90
+    days to td, counting only predictions made at least 5 sessions before td --
+    the ones whose outcome td's close had already decided. None with fewer
+    than ACS_ACCURACY_MIN_OUTCOMES.
+
+    The query this replaces had no date at all: it averaged every outcome ever
+    recorded for the symbol, so a re-score of a past session used outcomes
+    that session could not have known, and 90 days was never applied. It also
+    returned 50.0 for no data -- and for a stock that was never right, 0.0
+    being falsy.
+    """
+    from datetime import timedelta
+    known_by=sessions_back(td,ACS_ACCURACY_HORIZON)
+    since=datetime.strptime(str(td),"%Y-%m-%d").date()-timedelta(days=ACS_ACCURACY_WINDOW_DAYS)
+    r=conn.execute("SELECT AVG(correct_5d)*100 AS acc, COUNT(correct_5d) AS n FROM accuracy_tracker "
+                   "WHERE symbol=? AND pred_date>=? AND pred_date<=? AND correct_5d IS NOT NULL",
+                   (sym,str(since),str(known_by))).fetchone()
+    if not r or r["n"]<ACS_ACCURACY_MIN_OUTCOMES: return None
+    return round(float(r["acc"]),2)
+
+def get_index_change(td,conn,key,idx=None):
+    """
+    % change of index `key` (nifty50, banknifty, midcap150, smallcap250) on
+    session td: the session's index_levels value (live feed or NSE's close),
+    else its daily series in prices_daily (data.dhan.INDEX_SERIES_SYMBOLS),
+    close over the previous session's close. None when neither has it --
+    compute_mh used to read `or 0`, scoring a missing index as a flat day.
+    """
+    if idx is None: idx=get_idx(td,conn)
+    v=idx.get(f"{key}_chg")
+    if v is not None: return float(v)
+    from data.dhan import INDEX_SERIES_SYMBOLS
+    from utils.trading_calendar import last_trading_day
+    from datetime import timedelta
+    sym=INDEX_SERIES_SYMBOLS.get(key)
+    if not sym: return None
+    rows=conn.execute("SELECT date, close FROM prices_daily WHERE symbol=? AND date<=? AND close>0 "
+                      "ORDER BY date DESC LIMIT 2",(sym,str(td))).fetchall()
+    if len(rows)<2 or str(rows[0][0])!=str(td): return None
+    prev=last_trading_day(datetime.strptime(str(td),"%Y-%m-%d").date()-timedelta(days=1))
+    if str(rows[1][0])!=str(prev): return None      # a gap in the series is not a one-day change
+    return round((rows[0][1]/rows[1][1]-1)*100,3)
+
+# ── Market breadth (DP-17) ─────────────────────────────────────────────────
+# Computed from prices_daily over the tracked universe (Nifty 500 + holdings).
+# Before this nothing ever wrote a breadth figure: compute_mh read
+# fii_dii_market.adv_decline, NULL in every row, as 1.0, and scored BOTH its
+# Breadth (0.10) and AdvanceDecline (0.05) components as minmax(1.0, 0.3, 3) =
+# 25.93 every session -- 15% of Market Health pinned to a bearish constant.
+# The universe is today's constituent list, so older sessions carry its
+# survivorship bias (BT-15).
+BREADTH_MIN_COVERAGE = 0.80   # share of the universe a figure must be measured over
+BREADTH_SMA = 200
+BREADTH_52W = 252             # sessions in a 52-week range, the session included
+
+def breadth_series(conn,start,end,universe=None):
+    """
+    {date string: breadth dict} for every session from start to end:
+      advances / declines   closes above / below the previous session's close
+      pct_advancing         advances / (advances + declines) x 100
+      ad_ratio              advances / declines
+      pct_above_200dma      % of stocks with 200 sessions of history closing
+                            above their 200-session simple average
+      new_highs / new_lows  stocks whose high (low) beat every high (low) of
+                            the previous 251 sessions
+      universe              stocks with a bar on the session and the one before
+    A figure is None when fewer than BREADTH_MIN_COVERAGE of the universe
+    could be measured for it; a session missing entirely has no entry.
+    """
+    if universe is None:
+        from data.dhan import get_tracked_symbols
+        universe=get_tracked_symbols(conn)
+    universe=sorted(set(universe))
+    if not universe: return {}
+    from datetime import timedelta
+    lo=datetime.strptime(str(start),"%Y-%m-%d").date()-timedelta(days=int(BREADTH_52W*1.6)+10)
+    df=pd.read_sql(f"SELECT symbol,date,high,low,close FROM prices_daily WHERE date>=? AND date<=? "
+                   f"AND close>0 AND symbol IN ({','.join('?'*len(universe))})",
+                   conn,params=(str(lo),str(end),*universe))
+    if df.empty: return {}
+    df["date"]=df["date"].astype(str).str[:10]
+    close=df.pivot(index="date",columns="symbol",values="close").sort_index()
+    high=df.pivot(index="date",columns="symbol",values="high").reindex_like(close)
+    low=df.pivot(index="date",columns="symbol",values="low").reindex_like(close)
+    chg=close-close.shift(1)
+    adv=(chg>0).sum(axis=1); dec=(chg<0).sum(axis=1); measured=chg.notna().sum(axis=1)
+    sma=close.rolling(BREADTH_SMA,min_periods=BREADTH_SMA).mean()
+    has_sma=sma.notna()&close.notna()
+    above=((close>sma)&has_sma).sum(axis=1); n_sma=has_sma.sum(axis=1)
+    lookback=BREADTH_52W-1
+    prior_hi=high.shift(1).rolling(lookback,min_periods=lookback-10).max()
+    prior_lo=low.shift(1).rolling(lookback,min_periods=lookback-10).min()
+    n52=(prior_hi.notna()&high.notna()).sum(axis=1)
+    nh=((high>prior_hi)&prior_hi.notna()).sum(axis=1); nl=((low<prior_lo)&prior_lo.notna()).sum(axis=1)
+    need=BREADTH_MIN_COVERAGE*len(universe)
+    out={}
+    for d in close.index:
+        if d<str(start) or d>str(end): continue
+        if measured[d]<need:
+            out[d]={"universe":int(measured[d])}; continue      # too few bars to say anything
+        a,b=int(adv[d]),int(dec[d])
+        out[d]={"advances":a,"declines":b,"universe":int(measured[d]),
+                "pct_advancing":round(a/(a+b)*100,2) if a+b else None,
+                "ad_ratio":round(a/b,3) if b else None,
+                "pct_above_200dma":round(above[d]/n_sma[d]*100,2) if n_sma[d]>=need else None,
+                "new_highs":int(nh[d]) if n52[d]>=need else None,
+                "new_lows":int(nl[d]) if n52[d]>=need else None}
+    return out
+
+def compute_breadth(td,conn,universe=None):
+    """breadth_series() for the one session td, or {} when it has no bars."""
+    return breadth_series(conn,td,td,universe).get(str(td),{})
 
 def compute_liquidity(prices):
     """20-day average traded turnover (₹, min-max scaled 0-100 the same way
@@ -286,11 +447,11 @@ def compute_cri(tech,fund,ns,mh,weights):
     if tech.get("death_cross",0): w+=40
     c["WeakTrend"]=min(w,100)
     c["NegativeNews"]=max(0,100-ns)
-    mh_s=mh.get("mh_score",50) or 50; vix=mh.get("vix_level",15) or 15
+    mh_s=mh.get("mh_score",50) or 50; vix=mh.get("vix_level")   # None: no VIX for the session
     mw=0
     if mh_s<40: mw+=50
-    if vix>18: mw+=30
-    if vix>25: mw+=20
+    if vix is not None and vix>18: mw+=30
+    if vix is not None and vix>25: mw+=20
     c["MarketWeakness"]=min(mw,100)
     return round(weighted_score(c,weights),2)
 
@@ -351,25 +512,139 @@ def compute_zpi(tech,inst,ns,sector_val,weights,accumulation=None):
     c["Sector"]=sector_val  # real per-day industry-relative-performance score — see compute_sector_ranks()/sector_score()
     return round(weighted_score(c,weights),2)
 
-def compute_mh(td,conn,weights):
-    fii=get_fii(td,conn); idx=get_idx(td,conn); glb=get_global(td,conn); c={}
-    c["NiftyTrend"]=minmax(idx.get("nifty50_chg",0) or 0,-3,3)
-    c["BankNifty"]=minmax(idx.get("banknifty_chg",0) or 0,-4,4)
-    vix=idx.get("india_vix",15) or 15
-    c["VIX"]=minmax(vix,8,35,invert=True)
-    c["FII"]=minmax(fii.get("fii_net_cr",0) or 0,-3000,3000)
-    c["DII"]=minmax(fii.get("dii_net_cr",0) or 0,-1000,2000)
-    c["Global"]=glb.get("global_score",50) or 50
-    mid=(idx.get("midcap150_chg",0) or 0)+(idx.get("smallcap250_chg",0) or 0)
-    c["Sector"]=minmax(mid/2,-4,4)
-    ad=fii.get("adv_decline",1) or 1
-    c["Breadth"]=minmax(ad,0.3,3); c["AdvanceDecline"]=c["Breadth"]
-    mh_score=weighted_score(c,weights)
-    regime=("STRONG_BULL" if mh_score>=80 else "BULL" if mh_score>=60 else "NEUTRAL" if mh_score>=40 else "BEAR" if mh_score>=20 else "HIGH_RISK")
-    conn.execute("INSERT OR REPLACE INTO market_health (date,mh_score,regime,nifty_trend,banknifty,vix_score,fii_score,dii_score,global_score,sector_score,vix_level) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                 (str(td),mh_score,regime,c.get("NiftyTrend"),c.get("BankNifty"),c.get("VIX"),c.get("FII"),c.get("DII"),c.get("Global"),c.get("Sector"),vix))
-    log.info(f"  ✓ MH: {mh_score:.1f} ({regime})")
-    return {"mh_score":mh_score,"regime":regime,"vix_level":vix}
+# Below this share of the MH weight present, no MH score or regime is stored:
+# a "market health" from one or two inputs is not the index the weights define.
+MH_MIN_COVERAGE = 0.50
+GLOBAL_MAX_AGE_DAYS = 4       # a global_markets snapshot older than this is not "today's"
+
+def get_session_fii(td,conn):
+    """fii_dii_market for td, or for the session before it -- NSE publishes the
+    session's flows in the evening, so the 16:45 score uses the previous
+    session's and the evening re-score replaces them (pipeline/scheduler.py).
+    Anything older is not this session's and returns {}; get_fii() would carry
+    the latest row forward indefinitely."""
+    from utils.trading_calendar import last_trading_day
+    from datetime import timedelta
+    d=datetime.strptime(str(td),"%Y-%m-%d").date()
+    prev=last_trading_day(d-timedelta(days=1))
+    r=conn.execute("SELECT * FROM fii_dii_market WHERE date IN (?,?) ORDER BY date DESC LIMIT 1",
+                   (str(d),str(prev))).fetchone()
+    return dict(r) if r else {}
+
+def get_recent_global(td,conn):
+    """The latest global_markets snapshot at most GLOBAL_MAX_AGE_DAYS before td, or {}."""
+    from datetime import timedelta
+    since=datetime.strptime(str(td),"%Y-%m-%d").date()-timedelta(days=GLOBAL_MAX_AGE_DAYS)
+    r=conn.execute("SELECT * FROM global_markets WHERE date<=? AND date>=? ORDER BY date DESC, time DESC LIMIT 1",
+                   (str(td),str(since))).fetchone()
+    return dict(r) if r else {}
+
+def mh_regime(mh_score):
+    if mh_score is None: return None
+    return ("STRONG_BULL" if mh_score>=80 else "BULL" if mh_score>=60 else "NEUTRAL" if mh_score>=40
+            else "BEAR" if mh_score>=20 else "HIGH_RISK")
+
+MH_STORED_COLUMNS = ("mh_score","regime","nifty_trend","banknifty","breadth","vix_score","fii_score",
+                     "dii_score","global_score","sector_score","adv_decline","nifty_close","vix_level",
+                     "advances","declines","pct_advancing","new_highs","new_lows","breadth_universe",
+                     "mh_coverage","mh_inputs","backfilled")
+
+def compute_mh(td,conn,weights,breadth=None,backfilled=False,quiet=False):
+    """
+    Market Health for session td, stored in market_health and returned.
+
+    Every input is the session's own figure or is left out -- weighted_score
+    renormalises over what is present, and mh_coverage/mh_inputs record what
+    that was. The inputs used to default silently: a missing index change
+    scored as a flat day (`or 0`), missing FII/DII as zero flows, a missing
+    global snapshot as 50, VIX as 15, and breadth as the constant 25.93.
+
+      NiftyTrend, BankNifty, Sector  index_levels, else the daily index series
+      VIX                            get_vix()
+      FII, DII                       the session's flows, or the previous session's
+      Global                         a snapshot at most 4 days old
+      Breadth                        % of the universe above its 200-DMA
+      AdvanceDecline                 advances / (advances + declines) x 100 --
+                                     50 on a balanced day; the old A/D-ratio
+                                     scale put a balanced day at 25.93
+
+    breadth: a precomputed breadth_series() entry (the backfill passes one per
+    session); None computes it here.
+    """
+    idx=get_idx(td,conn); fii=get_session_fii(td,conn); glb=get_recent_global(td,conn); c={}
+    nifty=get_index_change(td,conn,"nifty50",idx)
+    if nifty is not None: c["NiftyTrend"]=minmax(nifty,-3,3)
+    bank=get_index_change(td,conn,"banknifty",idx)
+    if bank is not None: c["BankNifty"]=minmax(bank,-4,4)
+    vix=get_vix(td,conn)
+    if vix is not None: c["VIX"]=minmax(vix,8,35,invert=True)
+    elif not quiet: log.warning(f"  India VIX missing for {td} — MH scored without its VIX component")
+    if fii.get("fii_net_cr") is not None: c["FII"]=minmax(fii["fii_net_cr"],-3000,3000)
+    if fii.get("dii_net_cr") is not None: c["DII"]=minmax(fii["dii_net_cr"],-1000,2000)
+    if glb.get("global_score") is not None: c["Global"]=glb["global_score"]
+    mid=get_index_change(td,conn,"midcap150",idx); small=get_index_change(td,conn,"smallcap250",idx)
+    if mid is not None and small is not None: c["Sector"]=minmax((mid+small)/2,-4,4)
+    br=compute_breadth(td,conn) if breadth is None else breadth
+    if br.get("pct_above_200dma") is not None: c["Breadth"]=br["pct_above_200dma"]
+    if br.get("pct_advancing") is not None: c["AdvanceDecline"]=br["pct_advancing"]
+    total=sum(weights.values()) or 1
+    coverage=round(sum(w for k,w in weights.items() if c.get(k) is not None)/total,3)
+    mh_score=weighted_score(c,weights) if coverage>=MH_MIN_COVERAGE else None
+    regime=mh_regime(mh_score)
+    nclose=conn.execute("SELECT close FROM prices_daily WHERE symbol='NIFTY50' AND date=?",(str(td),)).fetchone()
+    row={"mh_score":mh_score,"regime":regime,"nifty_trend":c.get("NiftyTrend"),"banknifty":c.get("BankNifty"),
+         "breadth":br.get("pct_above_200dma"),"vix_score":c.get("VIX"),"fii_score":c.get("FII"),
+         "dii_score":c.get("DII"),"global_score":c.get("Global"),"sector_score":c.get("Sector"),
+         "adv_decline":br.get("ad_ratio"),"nifty_close":nclose[0] if nclose else idx.get("nifty50"),
+         "vix_level":vix,"advances":br.get("advances"),"declines":br.get("declines"),
+         "pct_advancing":br.get("pct_advancing"),"new_highs":br.get("new_highs"),"new_lows":br.get("new_lows"),
+         "breadth_universe":br.get("universe"),"mh_coverage":coverage,
+         "mh_inputs":",".join(sorted(k for k in weights if c.get(k) is not None)),"backfilled":int(backfilled)}
+    # An upsert, not INSERT OR REPLACE: REPLACE deletes the row first, which
+    # threw away the portfolio_health that scores/portfolio_health.py stores in it.
+    conn.execute(f"INSERT INTO market_health (date,{','.join(MH_STORED_COLUMNS)}) "
+                 f"VALUES (?,{','.join('?'*len(MH_STORED_COLUMNS))}) ON CONFLICT(date) DO UPDATE SET "
+                 + ",".join(f"{k}=excluded.{k}" for k in MH_STORED_COLUMNS),
+                 (str(td),*[row[k] for k in MH_STORED_COLUMNS]))
+    if mh_score is None:
+        log.warning(f"  MH for {td}: only {coverage:.0%} of its weight has data — no score stored")
+    elif not quiet:
+        log.info(f"  ✓ MH: {mh_score:.1f} ({regime}) — {coverage:.0%} of inputs present"
+                 + (f"; breadth {br['pct_above_200dma']:.0f}% above 200-DMA, A/D {br.get('advances')}/{br.get('declines')}"
+                    if br.get("pct_above_200dma") is not None else ""))
+    return {"mh_score":mh_score,"regime":regime,"vix_level":vix,"coverage":coverage}
+
+def backfill_market_health(start=None,end=None,overwrite=False):
+    """
+    Market Health for every past session (a date with a NIFTY50 benchmark
+    close) that has none, marked backfilled=1. Sessions already scored live
+    are left alone unless overwrite=True: their ai_scores rows were produced
+    from the stored MH and regime, and rewriting one without the other would
+    make the two disagree. FII/DII history exists only from 2026-07 and
+    global snapshots only from 2026-07-24, so older sessions are scored on
+    the inputs that have history -- mh_coverage records the share.
+    """
+    conn=get_connection()
+    try:
+        weights=load_weights(conn,"MH")
+        sessions=[str(r[0]) for r in conn.execute(
+            "SELECT date FROM prices_daily WHERE symbol='NIFTY50' AND date>=? AND date<=? ORDER BY date",
+            (str(start or "0000-01-01"),str(end or "9999-12-31")))]
+        have={str(r[0]) for r in conn.execute("SELECT date FROM market_health WHERE mh_score IS NOT NULL")}
+        todo=[d for d in sessions if overwrite or d not in have]
+        if not todo:
+            return {"status":"SKIPPED","rows":0,"reason":"every session already has a market-health row"}
+        br=breadth_series(conn,todo[0],todo[-1])
+        scored=0; regimes={}
+        for d in todo:
+            mh=compute_mh(d,conn,weights,breadth=br.get(d,{}),backfilled=d not in have,quiet=True)
+            if mh["mh_score"] is not None:
+                scored+=1; regimes[mh["regime"]]=regimes.get(mh["regime"],0)+1
+        conn.commit()
+        log.info(f"  ✓ Market health backfilled for {scored}/{len(todo)} sessions {todo[0]} → {todo[-1]}: {regimes}")
+        return {"status":"SUCCESS","rows":scored,"sessions":len(todo),"regimes":regimes}
+    finally:
+        conn.close()
 
 def compute_msi(td,conn,weights):
     fii=get_fii(td,conn); idx=get_idx(td,conn); glb=get_global(td,conn); c={}
@@ -383,23 +658,28 @@ def compute_msi(td,conn,weights):
     c["Sector"]=sum(1 for x in chgs if x>0)/len(chgs)*100 if chgs else 50
     c["Options"]=minmax(fii.get("pcr",1.0) or 1.0,0.5,1.8,invert=True)
     c["Global"]=glb.get("global_score",50) or 50
-    vix=idx.get("india_vix",15) or 15; c["VIX"]=minmax(vix,8,35,invert=True)
+    vix=get_vix(td,conn)
+    if vix is not None: c["VIX"]=minmax(vix,8,35,invert=True)
     return round(weighted_score(c,weights),2)
 
 def compute_acs(sym,td,all_scores,mh,conn,weights,liquidity=None,news_conf=None):
+    """
+    AI Confidence Score. Every component is measured or left out -- the
+    stand-ins it used to take (HistoricalAccuracy 50, MarketRegime 50,
+    NewsConfidence 50, Liquidity 60) are gone, and weighted_score renormalises
+    over what is present. See get_historical_accuracy() / get_news_confidence().
+    """
     c={}
-    r=conn.execute("SELECT AVG(correct_5d)*100 as acc FROM accuracy_tracker WHERE symbol=?",(sym,)).fetchone()
-    c["HistoricalAccuracy"]=float(r["acc"]) if r and r["acc"] else 50.0
+    acc=get_historical_accuracy(sym,td,conn)
+    if acc is not None: c["HistoricalAccuracy"]=acc
     idx_s={k:v for k,v in all_scores.items() if k in ("vpi","mri","rri","zpi","msi") and v}
     if idx_s: c["Agreement"]=sum(1 for v in idx_s.values() if v>60)/len(idx_s)*100
-    c["MarketRegime"]=minmax(mh.get("mh_score",50) or 50,0,100)
+    if mh.get("mh_score") is not None: c["MarketRegime"]=minmax(mh["mh_score"],0,100)
     avail=sum(1 for v in all_scores.values() if v is not None)
     c["DataQuality"]=avail/max(len(all_scores),1)*100
-    # Real, per-stock figures when available (see get_news_confidence() /
-    # compute_liquidity()) — the old hardcoded 50.0/60.0 constants now only
-    # apply as a last-resort fallback when there's genuinely no data yet.
-    c["NewsConfidence"]=news_conf if news_conf is not None else get_news_confidence(sym,td,conn)
-    c["Liquidity"]=liquidity if liquidity is not None else 60.0
+    nc=news_conf if news_conf is not None else get_news_confidence(sym,td,conn)
+    if nc is not None: c["NewsConfidence"]=nc
+    if liquidity is not None: c["Liquidity"]=liquidity
     return round(weighted_score(c,weights),2)
 
 # ── Decision Engine thresholds ─────────────────────────────────────────────
@@ -588,6 +868,11 @@ def run_scoring_pipeline(trade_date=None):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     ap=argparse.ArgumentParser(); ap.add_argument("--date")
+    ap.add_argument("--backfill-mh",action="store_true",
+                    help="store market health for past sessions that have none (live rows untouched)")
     args=ap.parse_args()
-    td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else date.today()
-    run_scoring_pipeline(td)
+    if args.backfill_mh:
+        print(backfill_market_health())
+    else:
+        td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else date.today()
+        run_scoring_pipeline(td)

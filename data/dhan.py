@@ -572,6 +572,22 @@ BETA_BENCHMARK_SYMBOL = "NIFTY50"  # synthetic symbol stored in prices_daily as 
 # Its rows carry source 'dhan_index' (this module) or 'nse_index' (NSE's daily
 # index-close file, data/bhavcopy.py); scores/backtest.py excludes both.
 
+VIX_SYMBOL = "INDIAVIX"  # India VIX's daily close, stored the same way as NIFTY50
+# index_levels holds VIX only for sessions the live feed (or NSE's close
+# snapshot) covered -- from 2026-07-27 on -- so this series is what gives
+# market-health history, and any VIX research, a value for every session.
+
+# Index -> the synthetic prices_daily symbol its daily close is stored under.
+# Anything not listed here is refused: the history sync used to store every
+# index_key under NIFTY50, so any other key would have overwritten the benchmark.
+# Bank Nifty, Midcap 150 and Smallcap 250 are Market Health inputs (BankNifty,
+# Sector); their series let MH be computed for sessions index_levels never
+# covered. Names checked against Dhan's security list: "BANKNIFTY" is a real
+# trading symbol there, these are not.
+INDEX_SERIES_SYMBOLS = {"nifty50": BETA_BENCHMARK_SYMBOL, "india_vix": VIX_SYMBOL,
+                        "banknifty": "NIFTYBANK", "midcap150": "NIFTYMIDCAP150",
+                        "smallcap250": "NIFTYSMLCAP250"}
+
 def _store_benchmark_rows(conn, symbol, dates, closes, source="dhan_index") -> int:
     """
     Upsert a close-only benchmark series: open, high and low are set to close,
@@ -616,7 +632,13 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
     exclusive, and even asked past it, Dhan had no 2026-09-21 bar at 01:14 the
     next morning. That session's close comes from NSE instead
     (data.bhavcopy.sync_nse_index_closes); this call back-fills and confirms.
+
+    index_key="india_vix" does the same for India VIX, stored as VIX_SYMBOL.
     """
+    store_symbol = INDEX_SERIES_SYMBOLS.get(index_key)
+    sec_id = NSE_INDEX_SECURITY_IDS.get(index_key)
+    if not sec_id or not store_symbol:
+        return {"status": "FAILED", "error": f"unknown index_key {index_key}"}
     if not HAS_DHAN:
         return {"status": "FAILED", "error": "pip install dhanhq"}
     try:
@@ -624,10 +646,6 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
             dhan, _ = get_dhan_client()
     except RuntimeError as e:
         log.error(str(e)); return {"status": "FAILED", "error": str(e)}
-
-    sec_id = NSE_INDEX_SECURITY_IDS.get(index_key)
-    if not sec_id:
-        return {"status": "FAILED", "error": f"unknown index_key {index_key}"}
 
     end_dt   = end_date or date.today()
     start_dt = end_dt - timedelta(days=days)
@@ -649,9 +667,9 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
         dates = _ist_dates(data.get("timestamp", []))
         closes = data.get("close", [])
         conn = get_connection()
-        count = _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, dates, closes)
+        count = _store_benchmark_rows(conn, store_symbol, dates, closes)
         conn.commit(); conn.close()
-        log.info(f"  ✓ Benchmark ({index_key}) history: {count} days stored as {BETA_BENCHMARK_SYMBOL}")
+        log.info(f"  ✓ Benchmark ({index_key}) history: {count} days stored as {store_symbol}")
         return {"status": "SUCCESS", "rows": count}
     except Exception as e:
         log.warning(f"  Benchmark ({index_key}) history: {e}")

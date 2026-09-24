@@ -555,6 +555,14 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     try:
         from data.dhan import sync_index_benchmark_history
         run_job("benchmark_history", sync_index_benchmark_history, days=5, end_date=td)
+        # The other daily index series (India VIX, Bank Nifty, Midcap 150,
+        # Smallcap 250): what Market Health reads for a session index_levels
+        # does not cover. NSE's file below supplies the session itself.
+        from data.dhan import INDEX_SERIES_SYMBOLS
+        for key in INDEX_SERIES_SYMBOLS:
+            if key != "nifty50":
+                run_job(f"{key}_history", sync_index_benchmark_history, days=5, end_date=td,
+                        index_key=key)
     except Exception as e:
         log.warning(f"  Benchmark history: {e}")
 

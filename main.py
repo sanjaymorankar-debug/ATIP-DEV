@@ -243,11 +243,14 @@ def main():
     # ── DHAN HISTORY ──────────────────────────────────────────────────────────
     if args.dhan_history:
         log.info("Downloading 600 days of historical data from Dhan...")
-        from data.dhan import run_historical_pipeline, sync_index_benchmark_history
+        from data.dhan import (run_historical_pipeline, sync_index_benchmark_history,
+                               INDEX_SERIES_SYMBOLS)
         r = run_historical_pipeline(days=600)
-        rb = sync_index_benchmark_history(days=600)  # Nifty 50 history for beta_1y calc
         print(f"\n{'✅' if r['status']=='SUCCESS' else '❌'}  {r}")
-        print(f"{'✅' if rb['status']=='SUCCESS' else '❌'}  benchmark: {rb}")
+        # Nifty 50 (the beta benchmark), India VIX and the Market Health indexes
+        for key in INDEX_SERIES_SYMBOLS:
+            ri = sync_index_benchmark_history(days=600, index_key=key)
+            print(f"{'✅' if ri['status']=='SUCCESS' else '❌'}  {key}: {ri}")
         return
 
     # ── DATABASE PURGE ────────────────────────────────────────────────────────

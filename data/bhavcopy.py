@@ -302,26 +302,31 @@ def store_index_close_snapshot(conn, trade_date, closes) -> bool:
     return True
 
 def _index_closes_needed(conn, trade_date) -> bool:
-    """True while a session that has prices is missing its NIFTY50 benchmark
-    close, or the live feed never recorded its index close."""
-    from data.dhan import BETA_BENCHMARK_SYMBOL
+    """True while a session that has prices is missing the close of any daily
+    index series (NIFTY50 benchmark, India VIX, the Market Health indexes --
+    data.dhan.INDEX_SERIES_SYMBOLS), or the live feed never recorded its index
+    close."""
+    from data.dhan import INDEX_SERIES_SYMBOLS
     from data.dhan_ws import FEED_CLOSE
     d = str(trade_date)
     if not conn.execute("SELECT 1 FROM prices_daily WHERE date=? AND source IN ('dhan','bhavcopy') "
                         "LIMIT 1", (d,)).fetchone():
         return False          # a session ATIP has no bars for needs no benchmark
-    bench = conn.execute("SELECT 1 FROM prices_daily WHERE symbol=? AND date=?",
-                         (BETA_BENCHMARK_SYMBOL, d)).fetchone()
+    symbols = list(INDEX_SERIES_SYMBOLS.values())
+    series = conn.execute(f"SELECT COUNT(*) FROM prices_daily WHERE date=? AND symbol IN "
+                          f"({','.join('?' * len(symbols))})", (d, *symbols)).fetchone()[0]
     close = conn.execute("SELECT 1 FROM index_levels WHERE date=? AND time BETWEEN ? AND ?",
                          (d, INDEX_CLOSE_SNAPSHOT_TIME, FEED_CLOSE.strftime("%H:%M:%S"))).fetchone()
-    return not bench or not close
+    return series < len(symbols) or not close
 
 
 def sync_nse_index_closes(trade_date=None, lookback=5) -> dict:
     """
     The official NSE index closes ATIP needs: the NIFTY50 benchmark row (beta
-    and relative strength) and, when the live feed did not record a session's
-    close, a closing index_levels snapshot.
+    and relative strength), the other daily index series (India VIX, Bank
+    Nifty, Midcap 150, Smallcap 250 -- the Market Health inputs that
+    scores.engine falls back to) and, when the live feed did not record a
+    session's close, a closing index_levels snapshot.
 
     Dhan's index history cannot supply the session being scored (see
     data.dhan.sync_index_benchmark_history), so without this the benchmark
@@ -333,7 +338,7 @@ def sync_nse_index_closes(trade_date=None, lookback=5) -> dict:
     `lookback` sessions that still needs it is therefore retried, and the
     evening watch (pipeline/scheduler.py) calls this again once NSE publishes.
     """
-    from data.dhan import _store_benchmark_rows, BETA_BENCHMARK_SYMBOL
+    from data.dhan import _store_benchmark_rows, INDEX_SERIES_SYMBOLS
     td = postmarket_target_date() if trade_date is None else trade_date
     if isinstance(td, str):
         td = date.fromisoformat(td)
@@ -352,8 +357,12 @@ def sync_nse_index_closes(trade_date=None, lookback=5) -> dict:
                 waiting.append(str(d)); continue
             if not closes or "nifty50" not in closes:
                 waiting.append(str(d)); continue
-            rows += _store_benchmark_rows(conn, BETA_BENCHMARK_SYMBOL, [d],
-                                          [closes["nifty50"][0]], source="nse_index")
+            for key, symbol in INDEX_SERIES_SYMBOLS.items():
+                if key in closes:
+                    rows += _store_benchmark_rows(conn, symbol, [d], [closes[key][0]],
+                                                  source="nse_index")
+                else:
+                    log.warning(f"  NSE index closes for {d} carry no {NSE_INDEX_NAMES[key]} row")
             snap = store_index_close_snapshot(conn, d, closes)
             conn.commit()
             rows += int(snap)
