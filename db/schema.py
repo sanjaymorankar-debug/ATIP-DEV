@@ -82,7 +82,7 @@ def get_connection():
     _migrate_news_classifier_column(conn)
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
-    for name, ddls in {**W1_TABLES, **W2_TABLES}.items():
+    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     return conn
 
@@ -186,6 +186,81 @@ W2_TABLES = {
             mc_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, method TEXT NOT NULL, n_sims INTEGER,
             seed INTEGER, params_json TEXT, results_json TEXT, created_at TIMESTAMP)""",
         "CREATE INDEX IF NOT EXISTS idx_backtest_mc_run ON backtest_montecarlo(run_id)",
+    ),
+}
+
+# ── Tables added in W3 (strategy engine) ──────────────────────────────────
+# strategy_engine/. The definition JSON in strategy_version is the source of
+# truth for a version (rules, factors, weights, parameters, position and risk
+# rules); strategy_parameter indexes its parameters so they can be queried per
+# version. The audit table is strategy_engine_event, NOT strategy_event: that
+# name already belongs to the aggressive-exit module's live position ledger
+# (strategy/positions.py), which W3 leaves untouched.
+W3_TABLES = {
+    "strategy": (
+        """CREATE TABLE IF NOT EXISTS strategy (
+            strategy_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, kind TEXT NOT NULL,
+            category TEXT, status TEXT NOT NULL DEFAULT 'DRAFT', current_version TEXT,
+            source TEXT DEFAULT 'user', owner TEXT DEFAULT 'owner', priority INTEGER DEFAULT 100,
+            weight REAL DEFAULT 1.0, created_at TIMESTAMP, updated_at TIMESTAMP, activated_at TIMESTAMP)""",
+    ),
+    "strategy_version": (
+        """CREATE TABLE IF NOT EXISTS strategy_version (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, definition_json TEXT NOT NULL,
+            definition_hash TEXT NOT NULL, notes TEXT, created_at TIMESTAMP, first_activated_at TIMESTAMP,
+            PRIMARY KEY (strategy_id, version))""",
+    ),
+    "strategy_parameter": (
+        """CREATE TABLE IF NOT EXISTS strategy_parameter (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL,
+            default_json TEXT, min REAL, max REAL, allowed_json TEXT, required INTEGER NOT NULL DEFAULT 0,
+            description TEXT, PRIMARY KEY (strategy_id, version, name))""",
+    ),
+    "strategy_regime_mapping": (
+        """CREATE TABLE IF NOT EXISTS strategy_regime_mapping (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, regime TEXT NOT NULL, strategy_id TEXT,
+            no_trade INTEGER NOT NULL DEFAULT 0, priority INTEGER NOT NULL DEFAULT 100,
+            weight REAL NOT NULL DEFAULT 1.0, enabled INTEGER NOT NULL DEFAULT 1, notes TEXT,
+            updated_at TIMESTAMP, UNIQUE (regime, strategy_id))""",
+    ),
+    "strategy_engine_event": (
+        """CREATE TABLE IF NOT EXISTS strategy_engine_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id TEXT, version TEXT, event_type TEXT NOT NULL,
+            from_state TEXT, to_state TEXT, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_strategy_engine_event ON strategy_engine_event(strategy_id, at)",
+    ),
+    "strategy_decision_run": (
+        """CREATE TABLE IF NOT EXISTS strategy_decision_run (
+            run_id TEXT PRIMARY KEY, strategy_id TEXT NOT NULL, version TEXT, as_of DATE, book TEXT,
+            status TEXT NOT NULL DEFAULT 'SUCCESS', error TEXT, params_json TEXT, n_universe INTEGER,
+            n_evaluated INTEGER, counts_json TEXT, created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_strategy_decision_run ON strategy_decision_run(strategy_id, as_of)",
+    ),
+    "strategy_decision": (
+        """CREATE TABLE IF NOT EXISTS strategy_decision (
+            decision_id TEXT PRIMARY KEY, run_id TEXT, strategy_id TEXT NOT NULL, version TEXT NOT NULL,
+            as_of DATE NOT NULL, timestamp TIMESTAMP, symbol TEXT NOT NULL, decision TEXT NOT NULL,
+            action TEXT NOT NULL, confidence REAL, score REAL, regime TEXT, reasons_json TEXT,
+            parameters_json TEXT, risk_requirement TEXT, target_position_pct REAL, stop_price REAL,
+            target_price REAL, max_hold_sessions INTEGER, blocked_reason TEXT, features_json TEXT,
+            UNIQUE (strategy_id, version, as_of, symbol))""",
+        "CREATE INDEX IF NOT EXISTS idx_strategy_decision_date ON strategy_decision(as_of, decision)",
+    ),
+    "strategy_position_intent": (
+        """CREATE TABLE IF NOT EXISTS strategy_position_intent (
+            intent_id TEXT PRIMARY KEY, decision_id TEXT NOT NULL UNIQUE, strategy_id TEXT NOT NULL,
+            version TEXT NOT NULL, as_of DATE NOT NULL, timestamp TIMESTAMP, symbol TEXT NOT NULL,
+            side TEXT NOT NULL, action TEXT, target_position_pct REAL, quantity INTEGER, stop_price REAL,
+            target_price REAL, max_hold_sessions INTEGER, confidence REAL, reason TEXT,
+            risk_requirement TEXT, authorization_status TEXT NOT NULL DEFAULT 'NOT_AUTHORIZED',
+            created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_strategy_intent ON strategy_position_intent(as_of, strategy_id)",
+    ),
+    "strategy_health": (
+        """CREATE TABLE IF NOT EXISTS strategy_health (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, status TEXT NOT NULL,
+            metrics_json TEXT, issues_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (strategy_id, version, as_of))""",
     ),
 }
 

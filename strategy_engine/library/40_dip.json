@@ -1,0 +1,21 @@
+{
+  "strategy_id": "dip",
+  "name": "Dip mean reversion (W2 code strategy)",
+  "version": "1.0.0",
+  "description": "The W2 reference strategy backtest.strategies.DipMeanReversion registered as a versioned strategy: enter when the close sits in the bottom zone of its recent range. Its logic is code; its parameters are declared here.",
+  "kind": "python",
+  "python_class": "dip",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "range_lookback", "type": "int", "default": 20, "min": 5, "max": 120, "description": "Bars defining the recent range"},
+    {"name": "dip_zone_pct", "type": "float", "default": 25, "min": 1, "max": 50, "description": "Bottom % of the range that qualifies"},
+    {"name": "min_avg_turnover", "type": "float", "default": 50000000, "min": 0, "description": "Rs/day average turnover floor"},
+    {"name": "stop_pct", "type": "float", "default": 3, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "target_pct", "type": "float", "default": 6, "min": 0.5, "max": 50, "description": "Profit target, %"},
+    {"name": "max_hold_sessions", "type": "int", "default": 10, "min": 1, "max": 120, "description": "Maximum holding sessions"},
+    {"name": "max_new_per_day", "type": "int", "default": 5, "min": 1, "max": 50, "description": "New entries per session"}
+  ],
+  "position": {"target_position_pct": 10, "max_positions": 10},
+  "risk": {"requirement": "STANDARD"}
+}

@@ -1,0 +1,28 @@
+{
+  "strategy_id": "rsi_mean_reversion",
+  "name": "RSI mean reversion in an uptrend",
+  "version": "1.0.0",
+  "description": "Buy short-term oversold pullbacks (RSI-14 below a threshold) in stocks still above their 200-day average; exit when RSI recovers or the close regains its 20-day average plus.",
+  "kind": "rule",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "rsi_entry", "type": "float", "default": 30, "min": 5, "max": 50, "description": "Enter when RSI-14 is below"},
+    {"name": "rsi_exit", "type": "float", "default": 55, "min": 30, "max": 90, "description": "Exit when RSI-14 is above"},
+    {"name": "min_turnover_ratio", "type": "float", "default": 0.5, "min": 0, "max": 10, "description": "Volume today vs its 20-day mean must be at least this"},
+    {"name": "stop_pct", "type": "float", "default": 5, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "max_hold", "type": "int", "default": 10, "min": 1, "max": 60, "description": "Maximum holding sessions"}
+  ],
+  "entry": {"all": [
+    {"feature": "rsi_14", "op": "<", "value": {"param": "rsi_entry"}},
+    {"feature": "close", "op": ">", "value": {"feature": "sma_200"}},
+    {"feature": "vol_ratio_20", "op": ">=", "value": {"param": "min_turnover_ratio"}}
+  ]},
+  "exit": {"any": [
+    {"feature": "rsi_14", "op": ">", "value": {"param": "rsi_exit"}}
+  ]},
+  "rank_by": "zscore_20",
+  "position": {"target_position_pct": 8, "max_positions": 8, "max_new_per_day": 3,
+               "stop_pct": {"param": "stop_pct"}, "max_hold_sessions": {"param": "max_hold"}},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["HIGH_RISK"]}
+}

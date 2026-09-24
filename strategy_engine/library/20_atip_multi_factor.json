@@ -1,0 +1,34 @@
+{
+  "strategy_id": "atip_multi_factor",
+  "name": "ATIP multi-factor composite",
+  "version": "1.0.0",
+  "description": "Weighted composite of ATIP's own scores plus price momentum: VPI (value/profit), ZPI (buy zone), MRI (momentum reversal), 20-session relative strength vs NIFTY50, and CRI inverted (lower crash risk scores higher). Weights are parameters, not a fixed model. Enter the highest composites above a threshold with at least three confirming factors; exit when the composite falls away.",
+  "kind": "multi_factor",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "w_vpi", "type": "float", "default": 0.30, "min": 0, "max": 1, "description": "Weight of VPI"},
+    {"name": "w_zpi", "type": "float", "default": 0.25, "min": 0, "max": 1, "description": "Weight of ZPI"},
+    {"name": "w_mri", "type": "float", "default": 0.15, "min": 0, "max": 1, "description": "Weight of MRI"},
+    {"name": "w_rs", "type": "float", "default": 0.15, "min": 0, "max": 1, "description": "Weight of relative strength"},
+    {"name": "w_cri", "type": "float", "default": 0.15, "min": 0, "max": 1, "description": "Weight of (inverted) CRI"},
+    {"name": "entry", "type": "float", "default": 65, "min": 0, "max": 100, "description": "Composite needed to enter"},
+    {"name": "exit", "type": "float", "default": 45, "min": 0, "max": 100, "description": "Exit when the composite falls below"},
+    {"name": "min_confirmations", "type": "int", "default": 3, "min": 1, "max": 5, "description": "Factors that must each score >= their threshold"},
+    {"name": "top_n", "type": "int", "default": 5, "min": 1, "max": 50, "description": "At most this many new entries per session"}
+  ],
+  "factors": [
+    {"feature": "vpi", "weight": {"param": "w_vpi"}, "direction": "higher", "threshold": 60},
+    {"feature": "zpi", "weight": {"param": "w_zpi"}, "direction": "higher", "threshold": 60},
+    {"feature": "mri", "weight": {"param": "w_mri"}, "direction": "higher", "threshold": 50},
+    {"feature": "rel_strength_20", "weight": {"param": "w_rs"}, "direction": "higher", "min": -15, "max": 15, "threshold": 55},
+    {"feature": "cri", "weight": {"param": "w_cri"}, "direction": "lower", "threshold": 60}
+  ],
+  "entry_threshold": {"param": "entry"},
+  "exit_threshold": {"param": "exit"},
+  "min_confirmations": {"param": "min_confirmations"},
+  "top_n": {"param": "top_n"},
+  "min_factor_coverage": 0.6,
+  "position": {"target_position_pct": 10, "max_positions": 10, "max_new_per_day": 5, "stop_pct": 5, "max_hold_sessions": 20},
+  "risk": {"requirement": "STANDARD", "max_cri": 70, "blocked_regimes": ["HIGH_RISK"]}
+}

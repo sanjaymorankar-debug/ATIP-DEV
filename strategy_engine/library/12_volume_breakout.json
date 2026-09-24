@@ -1,0 +1,24 @@
+{
+  "strategy_id": "volume_breakout",
+  "name": "20-day breakout on volume",
+  "version": "1.0.0",
+  "description": "Trend following: the close breaks above the prior 20-session high on volume at least 1.5x its 20-day mean, with the close above its 50-day average. Exit on a close below the prior 10-session low.",
+  "kind": "rule",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "volume_mult", "type": "float", "default": 1.5, "min": 1, "max": 10, "description": "Volume vs its 20-day mean"},
+    {"name": "stop_pct", "type": "float", "default": 6, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "max_hold", "type": "int", "default": 30, "min": 1, "max": 120, "description": "Maximum holding sessions"}
+  ],
+  "entry": {"all": [
+    {"feature": "close", "op": ">", "value": {"feature": "prior_high_20"}},
+    {"feature": "vol_ratio_20", "op": ">=", "value": {"param": "volume_mult"}},
+    {"feature": "close", "op": ">", "value": {"feature": "sma_50"}}
+  ]},
+  "exit": {"feature": "close", "op": "<", "value": {"feature": "prior_low_10"}},
+  "rank_by": "vol_ratio_20",
+  "position": {"target_position_pct": 8, "max_positions": 10, "max_new_per_day": 3,
+               "stop_pct": {"param": "stop_pct"}, "max_hold_sessions": {"param": "max_hold"}},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["BEAR", "HIGH_RISK"]}
+}

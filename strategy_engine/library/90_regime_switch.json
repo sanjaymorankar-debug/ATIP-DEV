@@ -1,0 +1,25 @@
+{
+  "strategy_id": "regime_switch",
+  "name": "Regime-aware selection",
+  "version": "1.0.0",
+  "description": "Selects a strategy by Market Health trend: buy-zone momentum in bullish markets, the multi-factor composite in sideways markets, and no new entries in bearish or uncertain markets (holdings are kept and exit by their own stops unless exit_on_unmapped_regime is set).",
+  "kind": "composite",
+  "mode": "regime_select",
+  "regime_key": "market_trend",
+  "members": [
+    {"strategy_id": "atip_zpi_momentum", "version": "1.0.0", "weight": 1},
+    {"strategy_id": "atip_multi_factor", "version": "1.0.0", "weight": 1}
+  ],
+  "regime_map": {
+    "bullish": ["atip_zpi_momentum"],
+    "sideways": ["atip_multi_factor"]
+  },
+  "parameters": [
+    {"name": "exit_on_unmapped", "type": "bool", "default": false, "description": "Exit holdings when no member is mapped to the regime"}
+  ],
+  "exit_on_unmapped_regime": {"param": "exit_on_unmapped"},
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "position": {"target_position_pct": 10, "max_positions": 10, "max_new_per_day": 3, "stop_pct": 5, "max_hold_sessions": 20},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["HIGH_RISK"]}
+}

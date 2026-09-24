@@ -133,7 +133,24 @@ class BuyAndHold(Strategy):
 REGISTRY = {c.strategy_id: c for c in (DipMeanReversion, AtipSignal, BuyAndHold)}
 
 
-def make_strategy(strategy_id: str, params: dict | None = None) -> Strategy:
-    if strategy_id not in REGISTRY:
-        raise ValueError(f"unknown strategy {strategy_id!r}; one of {sorted(REGISTRY)}")
-    return REGISTRY[strategy_id](**(params or {}))
+def make_strategy(strategy_id: str, params: dict | None = None, version: str | None = None) -> Strategy:
+    """
+    A code strategy from REGISTRY (no version given), or a stored strategy
+    version from the W3 strategy registry (strategy_engine) -- the current
+    version when only the id is known to the registry.
+    """
+    if version is None and strategy_id in REGISTRY:
+        return REGISTRY[strategy_id](**(params or {}))
+    from db.schema import get_connection
+    from strategy_engine import registry
+    from strategy_engine.adapter import DefinitionStrategy
+    conn = get_connection()
+    try:
+        v = registry.get_version(conn, strategy_id, version)
+        if not v:
+            known = sorted(set(REGISTRY) | {s["strategy_id"] for s in registry.list_strategies(conn)})
+            raise ValueError(f"unknown strategy {strategy_id!r}" + (f" version {version}" if version else "")
+                             + f"; known: {known}")
+        return DefinitionStrategy(v["definition"], params, registry.loader(conn))
+    finally:
+        conn.close()

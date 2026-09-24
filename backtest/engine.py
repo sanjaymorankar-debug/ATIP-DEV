@@ -100,10 +100,15 @@ def run(snapshot: dict, conn) -> dict:
     resolve_config). Deterministic: the same snapshot over the same data gives
     the same result. Raises BacktestError for a configuration that cannot run.
     """
-    strat = make_strategy(snapshot["strategy_id"], snapshot.get("params"))
+    stored = bool(snapshot.get("strategy_definition_hash"))      # a W3 strategy version
+    strat = make_strategy(snapshot["strategy_id"], snapshot.get("params"),
+                          snapshot.get("strategy_version") if stored else None)
     if snapshot.get("strategy_version") and snapshot["strategy_version"] != strat.version:
         raise BacktestError(f"strategy {strat.strategy_id} is now version {strat.version}, the run was "
                             f"configured for {snapshot['strategy_version']} — results would not reproduce")
+    if stored and getattr(strat, "definition_hash", None) != snapshot["strategy_definition_hash"]:
+        raise BacktestError(f"{strat.strategy_id} {strat.version}: stored definition hash changed since the run "
+                            f"was configured — results would not reproduce")
     start, end = _d(snapshot["start"]), _d(snapshot["end"])
     if start > end:
         raise BacktestError(f"start {start} is after end {end}")
@@ -308,6 +313,8 @@ def run(snapshot: dict, conn) -> dict:
         "stale_marks": st.stale_marks,
         "price_basis": "prices_daily closes, split/bonus adjusted; dividends not included (price return)",
         "warnings": ([ScoresHistory.CAVEAT] if strat.uses_scores else [])
+                    + (["REDUCE / ADD decisions are not simulated: the backtest trades whole positions"]
+                       if getattr(strat, "defn", None) else [])
                     + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else []),
     }
     return {"strategy": strat.describe(), "sessions": len(sessions), "trades": st.trades,

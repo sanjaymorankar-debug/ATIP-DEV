@@ -1,0 +1,19 @@
+{
+  "strategy_id": "atip_signal",
+  "name": "ATIP signal engine (W2 code strategy)",
+  "version": "1.0.0",
+  "description": "Follows the signal engine directly: BUY rows of ai_scores (scores/engine.py determine_signal), best ATIP score first; a SELL signal on a held symbol exits. Note: ai_scores history is today's formulas re-applied to the past, so backtests of this strategy carry that caveat.",
+  "kind": "python",
+  "python_class": "atip_signal",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "stop_pct", "type": "float", "default": 3, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "target_pct", "type": "float", "default": 6, "min": 0.5, "max": 50, "description": "Profit target, %"},
+    {"name": "max_hold_sessions", "type": "int", "default": 10, "min": 1, "max": 120, "description": "Maximum holding sessions"},
+    {"name": "max_new_per_day", "type": "int", "default": 5, "min": 1, "max": 50, "description": "New entries per session"},
+    {"name": "exit_on_sell_signal", "type": "bool", "default": true, "description": "Exit a holding on a SELL signal"}
+  ],
+  "position": {"target_position_pct": 10, "max_positions": 10},
+  "risk": {"requirement": "STANDARD", "max_cri": 75}
+}

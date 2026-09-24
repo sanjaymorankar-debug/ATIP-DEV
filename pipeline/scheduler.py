@@ -752,6 +752,18 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         except Exception as e:
             log.warning(f"  Daily P&L: {e}")
 
+    # Strategy Engine (W3): decisions for every PAPER / READY / ACTIVE strategy
+    # on this session's scores, then a health snapshot for every strategy.
+    # Decisions are position intents (NOT_AUTHORIZED) -- nothing is ordered.
+    if not backfill:
+        try:
+            from strategy_engine.engine import run_scheduled_decisions
+            from strategy_engine.health import run_health_all
+            run_job("strategy_decisions", run_scheduled_decisions, td)
+            run_job("strategy_health", run_health_all, td)
+        except Exception as e:
+            log.warning(f"  Strategy engine: {e}")
+
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and
     # predictions, a re-run never overwrites what was previously said.

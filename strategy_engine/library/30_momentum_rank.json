@@ -1,0 +1,25 @@
+{
+  "strategy_id": "momentum_rank",
+  "name": "Cross-sectional momentum rank",
+  "version": "1.0.0",
+  "description": "Quant framework example: rank the liquid universe on 60-session return minus the last 5 sessions (skipping the most recent week, a common short-term reversal adjustment), hold the top N, rebalance every 10 sessions, exit a holding that falls beyond rank 2N.",
+  "kind": "quant_rank",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "top_n", "type": "int", "default": 10, "min": 1, "max": 50, "description": "Hold the top N"},
+    {"name": "exit_rank", "type": "int", "default": 20, "min": 1, "max": 200, "description": "Exit a holding ranked worse than this"},
+    {"name": "rebalance_every", "type": "int", "default": 10, "min": 1, "max": 60, "description": "Sessions between rebalances"},
+    {"name": "min_vol_ratio", "type": "float", "default": 0.3, "min": 0, "max": 5, "description": "Liquidity filter: volume vs 20-day mean"}
+  ],
+  "score": {"terms": [{"feature": "ret_60", "weight": 1.0}, {"feature": "ret_5", "weight": -1.0}], "direction": "desc"},
+  "filter": {"all": [
+    {"feature": "vol_ratio_20", "op": ">=", "value": {"param": "min_vol_ratio"}},
+    {"feature": "close", "op": ">", "value": {"feature": "sma_200"}}
+  ]},
+  "top_n": {"param": "top_n"},
+  "exit_rank": {"param": "exit_rank"},
+  "rebalance_every": {"param": "rebalance_every"},
+  "position": {"target_position_pct": 10, "max_positions": 10, "stop_pct": 12},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["HIGH_RISK"]}
+}

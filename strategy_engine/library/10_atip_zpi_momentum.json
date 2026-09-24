@@ -1,0 +1,35 @@
+{
+  "strategy_id": "atip_zpi_momentum",
+  "name": "ATIP buy-zone momentum",
+  "version": "1.0.0",
+  "description": "Enter when ATIP's buy-zone (ZPI) and value/profit (VPI) scores are strong, crash risk (CRI) is low, the stock is above its 50-day average and the market is not in a bear or high-risk regime. Exit when price loses its 20-day average or crash risk rises.",
+  "kind": "rule",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "zpi_min", "type": "float", "default": 60, "min": 0, "max": 100, "description": "Minimum ZPI to enter"},
+    {"name": "vpi_min", "type": "float", "default": 55, "min": 0, "max": 100, "description": "Minimum VPI to enter"},
+    {"name": "cri_max", "type": "float", "default": 40, "min": 0, "max": 100, "description": "Maximum CRI to enter"},
+    {"name": "cri_exit", "type": "float", "default": 65, "min": 0, "max": 100, "description": "Exit when CRI rises above"},
+    {"name": "position_pct", "type": "float", "default": 10, "min": 1, "max": 25, "description": "Target position, % of equity"},
+    {"name": "stop_pct", "type": "float", "default": 4, "min": 0.5, "max": 20, "description": "Protective stop below entry, %"},
+    {"name": "target_pct", "type": "float", "default": 8, "min": 1, "max": 50, "description": "Profit target above entry, %"},
+    {"name": "max_hold", "type": "int", "default": 15, "min": 1, "max": 120, "description": "Maximum holding sessions"}
+  ],
+  "entry": {"all": [
+    {"feature": "zpi", "op": ">=", "value": {"param": "zpi_min"}},
+    {"feature": "vpi", "op": ">=", "value": {"param": "vpi_min"}},
+    {"feature": "cri", "op": "<=", "value": {"param": "cri_max"}},
+    {"feature": "close", "op": ">", "value": {"feature": "sma_50"}},
+    {"feature": "regime", "op": "not_in", "value": ["BEAR", "HIGH_RISK"]}
+  ]},
+  "exit": {"any": [
+    {"feature": "close", "op": "<", "value": {"feature": "sma_20"}},
+    {"feature": "cri", "op": ">", "value": {"param": "cri_exit"}}
+  ]},
+  "rank_by": "zpi",
+  "position": {"target_position_pct": {"param": "position_pct"}, "max_positions": 10, "max_new_per_day": 3,
+               "stop_pct": {"param": "stop_pct"}, "target_pct": {"param": "target_pct"},
+               "max_hold_sessions": {"param": "max_hold"}},
+  "risk": {"requirement": "STANDARD", "max_cri": 75, "blocked_regimes": ["HIGH_RISK"]}
+}

@@ -33,9 +33,25 @@ from db.schema import get_connection
 
 log = logging.getLogger("atip.backtest")
 
-REQUEST_KEYS = {"strategy_id", "params", "start", "end", "periods", "period_label", "allow_test",
+REQUEST_KEYS = {"strategy_id", "strategy_version", "params", "start", "end", "periods", "period_label", "allow_test",
                 "initial_capital", "universe", "universe_survivorship_bias", "cost_model", "cost_overrides",
                 "slippage", "liquidity", "sizing", "risk_free_rate_pct", "close_out_at_end", "notes"}
+
+
+def _sizing(sizing: dict, strat, requested: dict) -> dict:
+    """A W3 strategy's own position rules are its sizing defaults: max_positions,
+    target_position_pct (as max_position_pct) and stop_pct (as the default stop).
+    Anything the request sets explicitly wins; config.json fills the rest."""
+    defn = getattr(strat, "defn", None)
+    if not defn:
+        return sizing
+    from strategy_engine.params import value as pval
+    pos = {k: pval(v, strat.params) for k, v in (defn.get("position") or {}).items()}
+    for src, dst in (("max_positions", "max_positions"), ("target_position_pct", "max_position_pct"),
+                     ("stop_pct", "default_stop_pct")):
+        if pos.get(src) is not None and dst not in requested:
+            sizing[dst] = pos[src]
+    return sizing
 
 
 def resolve_config(request: dict) -> dict:
@@ -46,7 +62,7 @@ def resolve_config(request: dict) -> dict:
     if not request.get("strategy_id"):
         raise ValueError("strategy_id is required")
     cfg = backtest_config()
-    strat = make_strategy(request["strategy_id"], request.get("params"))
+    strat = make_strategy(request["strategy_id"], request.get("params"), request.get("strategy_version"))
 
     label = request.get("period_label") or "full"
     if label not in LABELS:
@@ -77,6 +93,9 @@ def resolve_config(request: dict) -> dict:
 
     snap = {
         "strategy_id": strat.strategy_id, "strategy_version": strat.version, "params": strat.params,
+        # W3: a stored strategy version pins its definition by hash
+        "strategy_definition_hash": getattr(strat, "definition_hash", None),
+        "strategy_kind": (getattr(strat, "defn", None) or {}).get("kind", "code"),
         "start": str(start), "end": str(end), "period_label": label,
         "periods": periods.as_dict() if periods else None,
         "data_source": "prices_daily", "timeframe": "1d", "entry_timing": "next_open",
@@ -85,7 +104,8 @@ def resolve_config(request: dict) -> dict:
         "universe_survivorship_bias": request.get("universe_survivorship_bias"),
         "cost_model": request.get("cost_model") or cfg["cost_model"],
         "cost_overrides": {**(cfg.get("cost_overrides") or {}), **(request.get("cost_overrides") or {})},
-        "slippage": merged("slippage"), "liquidity": merged("liquidity"), "sizing": merged("sizing"),
+        "slippage": merged("slippage"), "liquidity": merged("liquidity"), "sizing": _sizing(merged("sizing"), strat,
+                                                                                           request.get("sizing") or {}),
         "risk_free_rate_pct": float(merged("risk_free_rate_pct") or 0),
         "close_out_at_end": bool(request.get("close_out_at_end", True)),
         "notes": request.get("notes") or "",

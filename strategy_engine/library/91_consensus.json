@@ -1,0 +1,23 @@
+{
+  "strategy_id": "consensus_vote",
+  "name": "Consensus of three strategies",
+  "version": "1.0.0",
+  "description": "Strategy combination: enter only when at least two of buy-zone momentum, the multi-factor composite and the momentum rank agree on a BUY; exit when any member says EXIT.",
+  "kind": "composite",
+  "mode": "vote",
+  "members": [
+    {"strategy_id": "atip_zpi_momentum", "version": "1.0.0", "weight": 1},
+    {"strategy_id": "atip_multi_factor", "version": "1.0.0", "weight": 1},
+    {"strategy_id": "momentum_rank", "version": "1.0.0", "weight": 1}
+  ],
+  "parameters": [
+    {"name": "min_agree", "type": "int", "default": 2, "min": 1, "max": 3, "description": "Members that must agree on BUY"},
+    {"name": "min_agree_exit", "type": "int", "default": 1, "min": 1, "max": 3, "description": "Members that must say EXIT"}
+  ],
+  "min_agree": {"param": "min_agree"},
+  "min_agree_exit": {"param": "min_agree_exit"},
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "position": {"target_position_pct": 10, "max_positions": 10, "max_new_per_day": 3, "stop_pct": 5, "max_hold_sessions": 20},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["HIGH_RISK"]}
+}

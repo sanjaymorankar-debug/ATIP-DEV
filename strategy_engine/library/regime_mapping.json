@@ -1,0 +1,13 @@
+{
+  "_note": "Default regime -> strategy mapping, loaded once when strategy_regime_mapping is empty. Edit it through the API (PUT /api/strategies/regime-mapping/{regime}) rather than here. BEAR is NO_TRADE because ATIP has no defensive strategy yet.",
+  "mapping": {
+    "STRONG_BULL": [{"strategy_id": "momentum_rank", "priority": 1, "weight": 1.0},
+                    {"strategy_id": "atip_zpi_momentum", "priority": 2, "weight": 1.0}],
+    "BULL":        [{"strategy_id": "atip_zpi_momentum", "priority": 1, "weight": 1.0},
+                    {"strategy_id": "volume_breakout", "priority": 2, "weight": 0.8}],
+    "NEUTRAL":     [{"strategy_id": "rsi_mean_reversion", "priority": 1, "weight": 1.0},
+                    {"strategy_id": "atip_multi_factor", "priority": 2, "weight": 1.0}],
+    "BEAR":        "NO_TRADE",
+    "HIGH_RISK":   "NO_TRADE"
+  }
+}
