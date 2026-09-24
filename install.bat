@@ -22,9 +22,8 @@ if %ERRORLEVEL% NEQ 0 echo WARNING: yfinance install failed
 
 echo.
 echo [4/8] Technical indicators...
-pip install pandas-ta --no-deps
 pip install ta
-echo NOTE: pandas-ta --no-deps skips numba, works on Python 3.14
+echo NOTE: `ta` is the indicator library ATIP uses; pandas-ta cannot install on Python 3.14 / numpy 2
 
 echo.
 echo [5/8] Scheduler...

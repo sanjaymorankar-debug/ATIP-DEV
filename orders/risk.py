@@ -25,10 +25,30 @@ when it is set, so an install that sets none behaves exactly as before:
       "max_symbol_exposure_value": 50000    # held + this order, per symbol
     }
 
-A daily-loss limit is deliberately absent: ATIP stores no daily profit-and-loss
-series to measure one against (paper_position.realized_pnl is cumulative, and
-unrealised P&L is only ever a live quote), and a limit computed from the wrong
-number is worse than a missing one.
+      "max_daily_loss_value":     5000,     # rupees lost today (RK-07)
+      "max_drawdown_pct":         10        # % below the equity peak (RK-08)
+
+The two loss limits are measured by portfolio/pnl.py (risk_state): today's P&L
+against the last pnl_daily row, the drawdown against the highest stored
+equity, both marked to the latest prices. They block new BUYs only -- a SELL
+reduces exposure, and refusing it in a drawdown would lock the loss in; the
+kill switch is the tool that stops everything. A loss limit that is set but
+cannot be measured (no P&L history yet, LIVE funds unreachable) blocks the
+BUY: an unmeasured loss limit is not a limit.
+
+POSITION SIZING (RK-13). size_position() is the one sizing rule, a pure
+function any caller can use (strategy engine, order rules, predictions):
+risk risk_per_trade_pct of capital on the distance to the stop, capped at
+max_position_pct of capital. Defaults, overridable in config.json:
+
+    "position_sizing": {
+      "capital":             null,   # rupees; null = the account's equity
+      "risk_per_trade_pct":  1.0,
+      "max_position_pct":    10.0
+    }
+
+An order rule with quantity_type "RISK" is sized this way at execution, from
+its own stoploss (orders/rules.py).
 
     python -m orders.risk --status
     python -m orders.risk --halt "reason"
@@ -48,7 +68,11 @@ log = logging.getLogger("atip.orders")
 
 HALT_FLAG = Path("atip_data") / "TRADING_HALTED"
 LIMIT_KEYS = ("max_order_value", "max_orders_per_day", "max_open_positions",
-              "max_symbol_exposure_value")
+              "max_symbol_exposure_value", "max_daily_loss_value", "max_drawdown_pct")
+
+# RK-13 defaults -- the same figures scores/predictions.py has used for its
+# position_size_pct since the trade planner was written.
+SIZING_DEFAULTS = {"capital": None, "risk_per_trade_pct": 1.0, "max_position_pct": 10.0}
 
 
 def _config() -> dict:
@@ -59,6 +83,16 @@ def _config() -> dict:
     except Exception as e:
         log.warning(f"  config.json unreadable ({e}) — no configured halt or limits can be read")
         return {}
+
+
+def risk_alert(title: str, body: str, key: str | None = None, severity: str = "error") -> None:
+    """Raise a risk alert (dashboard + Telegram, alerts.telegram.notify). Never
+    raises: an alerting fault must not change what happens to an order."""
+    try:
+        from alerts.telegram import notify, fmt, _html
+        notify(fmt("⛔", title, _html(body)), category="risk", severity=severity, key=key)
+    except Exception as e:
+        log.warning(f"  risk alert not recorded ({title}): {e}")
 
 
 def halted() -> tuple[bool, str]:
@@ -78,6 +112,8 @@ def halt(reason: str = "") -> str:
     HALT_FLAG.parent.mkdir(parents=True, exist_ok=True)
     HALT_FLAG.write_text(reason or f"halted {date.today()}", encoding="utf-8")
     log.warning(f"  ⛔ Trading halted: {reason or HALT_FLAG}")
+    risk_alert("Trading Halted", f"Kill switch on: {reason or HALT_FLAG}. No order will be placed "
+               f"until  python -m orders.risk --resume")
     return str(HALT_FLAG)
 
 
@@ -85,6 +121,8 @@ def resume() -> bool:
     existed = HALT_FLAG.exists()
     HALT_FLAG.unlink(missing_ok=True)
     log.warning("  ▶ Trading resumed" if existed else "  Trading was not halted")
+    if existed:
+        risk_alert("Trading Resumed", "Kill switch off — orders can be placed again.", severity="warning")
     return existed
 
 
@@ -174,11 +212,132 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
         check("max_symbol_exposure_value", held.get(symbol, 0.0) + (est_value or 0.0),
               lim.get("max_symbol_exposure_value"), " Rs")
     check("max_orders_per_day", _orders_today(conn) + 1, lim.get("max_orders_per_day"))
+    if transaction_type == "BUY" and (lim.get("max_daily_loss_value") or lim.get("max_drawdown_pct")):
+        _loss_checks(conn, env, lim, checks, check)
+        if blocked is None:
+            unmeasured = [c for c in checks if c.get("unmeasured")]
+            if unmeasured:
+                blocked = (unmeasured[0]["limit"], unmeasured[0]["reason"])
 
     if blocked:
         return {"ok": False, "blocked_by": blocked[0], "message": blocked[1], "checks": checks}
     return {"ok": True, "blocked_by": None,
             "message": f"{len(checks)} limit(s) checked, none breached", "checks": checks}
+
+
+def _pnl_env(env) -> str:
+    """portfolio/pnl.py keeps PAPER and LIVE books; SANDBOX orders are
+    simulated, so they are measured against the paper book, as _positions does."""
+    return LIVE if env == LIVE else PAPER
+
+
+def _loss_checks(conn, env, lim, checks, check):
+    """RK-07 / RK-08 against portfolio.pnl.risk_state(). A limit that cannot
+    be measured is recorded as unmeasured -- pretrade_check then blocks."""
+    try:
+        from portfolio.pnl import risk_state
+        st = risk_state(conn, _pnl_env(env), ask_broker=(env == LIVE))
+    except Exception as e:
+        st = {"day_pnl": None, "drawdown_pct": None, "error": str(e)}
+    cap = lim.get("max_daily_loss_value")
+    if cap is not None:
+        if st.get("day_pnl") is None:
+            checks.append({"limit": "max_daily_loss_value", "value": None, "cap": cap, "breached": False,
+                           "unmeasured": True,
+                           "reason": "max_daily_loss_value is set but today's P&L cannot be measured "
+                                     "(no pnl_daily row before today, or no prices/funds) - BUY refused"})
+        else:
+            check("max_daily_loss_value", max(0.0, -st["day_pnl"]), cap, " Rs lost today")
+    cap = lim.get("max_drawdown_pct")
+    if cap is not None:
+        if st.get("drawdown_pct") is None:
+            checks.append({"limit": "max_drawdown_pct", "value": None, "cap": cap, "breached": False,
+                           "unmeasured": True,
+                           "reason": "max_drawdown_pct is set but the drawdown cannot be measured "
+                                     "(equity unknown) - BUY refused"})
+        else:
+            check("max_drawdown_pct", st["drawdown_pct"], cap, "% drawdown")
+
+
+# -- Position sizing (RK-13) ------------------------------------------------
+
+def sizing_config() -> dict:
+    """SIZING_DEFAULTS overlaid with config.json's "position_sizing"; bad
+    values are reported and ignored."""
+    out = dict(SIZING_DEFAULTS)
+    raw = _config().get("position_sizing") or {}
+    for k, v in raw.items():
+        if k not in SIZING_DEFAULTS:
+            log.warning(f"  position_sizing.{k} is not a sizing setting ATIP knows - ignored")
+        elif v is None or (isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0):
+            out[k] = v
+        else:
+            log.warning(f"  position_sizing.{k}={v!r} is not a positive number - default kept")
+    return out
+
+
+def size_position(entry_price: float, stop_price: float | None = None, *, capital: float,
+                  risk_per_trade_pct: float | None = None, max_position_pct: float | None = None,
+                  stop_pct: float | None = None) -> dict:
+    """
+    Shares to buy so that a stop-out loses risk_per_trade_pct of capital,
+    capped at max_position_pct of capital. Pure: no I/O, so a strategy,
+    backtest or order rule can call it with its own numbers.
+
+    Give the stop as a price (stop_price) or as a % below entry (stop_pct).
+    Returns {quantity, position_value, risk_amount, stop_distance_pct,
+    capped_by, reason}; quantity 0 with a reason when no position can be
+    sized (no stop, stop not below entry, capital too small for one share).
+    """
+    risk_pct = risk_per_trade_pct if risk_per_trade_pct is not None else SIZING_DEFAULTS["risk_per_trade_pct"]
+    max_pct = max_position_pct if max_position_pct is not None else SIZING_DEFAULTS["max_position_pct"]
+
+    def none(why):
+        return {"quantity": 0, "position_value": 0.0, "risk_amount": 0.0,
+                "stop_distance_pct": None, "capped_by": None, "reason": why}
+
+    if not entry_price or entry_price <= 0:
+        return none("no entry price")
+    if not capital or capital <= 0:
+        return none("no capital to size against")
+    if stop_price is not None:
+        dist = entry_price - stop_price
+    elif stop_pct is not None:
+        dist = entry_price * stop_pct / 100
+    else:
+        return none("no stop - risk-based sizing needs one")
+    if dist <= 0:
+        return none(f"stop {stop_price} is not below entry {entry_price}")
+    by_risk = int((capital * risk_pct / 100) // dist)
+    by_cap = int((capital * max_pct / 100) // entry_price)
+    qty, capped = (by_cap, "max_position_pct") if by_cap < by_risk else (by_risk, "risk_per_trade_pct")
+    if qty < 1:
+        return none(f"capital {capital:,.0f} is too small for one share at {entry_price} within the limits")
+    return {"quantity": qty, "position_value": round(qty * entry_price, 2),
+            "risk_amount": round(qty * dist, 2), "stop_distance_pct": round(dist / entry_price * 100, 3),
+            "capped_by": capped, "reason": None}
+
+
+def size_for_account(conn, entry_price: float, stop_price: float | None = None, env: str | None = None,
+                     stop_pct: float | None = None, risk_per_trade_pct: float | None = None) -> dict:
+    """size_position() with capital and percentages from config.json's
+    position_sizing, capital defaulting to the account's equity
+    (portfolio/pnl.py). Adds "capital" and "capital_source" to the result."""
+    cfg = sizing_config()
+    env = env or broker_env()
+    capital, source = cfg["capital"], "config position_sizing.capital"
+    if not capital:
+        try:
+            from portfolio.pnl import portfolio_summary
+            capital = portfolio_summary(conn, _pnl_env(env), ask_broker=(env == LIVE))["equity"]
+            source = f"{_pnl_env(env)} equity"
+        except Exception as e:
+            capital, source = None, f"equity unavailable: {e}"
+    out = size_position(entry_price, stop_price, capital=capital or 0, stop_pct=stop_pct,
+                        risk_per_trade_pct=risk_per_trade_pct or cfg["risk_per_trade_pct"],
+                        max_position_pct=cfg["max_position_pct"])
+    out.update({"capital": capital, "capital_source": source})
+    return out
 
 
 def describe_state(conn=None) -> str:
@@ -194,7 +353,15 @@ def describe_state(conn=None) -> str:
                  f"trading         : {'HALTED — ' + why if is_halted else 'allowed'}",
                  f"limits          : {lim or 'none configured (nothing enforced)'}",
                  f"orders placed today: {_orders_today(conn)}",
-                 f"open positions  : {len(_positions(conn, env))}"]
+                 f"open positions  : {len(_positions(conn, env))}",
+                 f"position sizing : {sizing_config()}"]
+        try:
+            from portfolio.pnl import risk_state
+            st = risk_state(conn, _pnl_env(env))
+            lines.append(f"today's P&L     : {st['day_pnl']}  drawdown: {st['drawdown_pct']}%  "
+                         f"(equity {st['equity']}, peak {st['peak_equity']})")
+        except Exception as e:
+            lines.append(f"today's P&L     : unavailable ({e})")
         return "\n".join(lines)
     finally:
         if own:

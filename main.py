@@ -45,14 +45,49 @@ DATA_DIR = ROOT / "atip_data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # ── Logging ───────────────────────────────────────────────────────────────
+import logging.handlers  # noqa: E402
 LOG_FILE = DATA_DIR / "atip.log"
+LOG_MAX_BYTES = 20 * 1024 * 1024     # atip.log reached 35 MB by 2026-09-24 with no limit
+LOG_BACKUPS = 10                     # atip.log.1 … atip.log.10: ~200 MB of history
+LOG_ROTATE_RETRY_S = 600
+
+
+class SafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """
+    Size-based rotation that survives Windows refusing the rename.
+
+    `python main.py --run …` writes to the same atip.log as the running
+    scheduler, and Windows will not rename a file another process has open:
+    a plain RotatingFileHandler then fails on every record, printing a
+    traceback each time. Here a refused rollover just keeps appending to the
+    current file and tries again LOG_ROTATE_RETRY_S later.
+    """
+    _retry_after = 0.0
+
+    def shouldRollover(self, record):
+        import time as _t
+        if _t.time() < self._retry_after:
+            return False
+        return super().shouldRollover(record)
+
+    def doRollover(self):
+        import time as _t
+        try:
+            super().doRollover()
+        except OSError:
+            self._retry_after = _t.time() + LOG_ROTATE_RETRY_S
+            if self.stream is None:
+                self.stream = self._open()
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(str(LOG_FILE), encoding="utf-8"),
+        SafeRotatingFileHandler(str(LOG_FILE), maxBytes=LOG_MAX_BYTES,
+                                backupCount=LOG_BACKUPS, encoding="utf-8"),
     ],
 )
 log = logging.getLogger(__name__)

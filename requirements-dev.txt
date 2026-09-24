@@ -1,0 +1,6 @@
+# ATIP development and test environment
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
+# FastAPI's TestClient (tests/test_risk_controls.py) runs on httpx
+httpx>=0.27

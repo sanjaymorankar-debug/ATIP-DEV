@@ -301,26 +301,66 @@ def _debounce(job_name: str) -> bool:
     _last_run[job_name] = now
     return True
 
+def _job_run_date(args, kwargs):
+    """The session a job is for: the first date among its arguments, else today."""
+    for v in (*args, *kwargs.values()):
+        if isinstance(v, date):
+            return v.date() if isinstance(v, datetime) else v
+        if isinstance(v, str) and len(v) == 10 and v[4] == "-" and v[7] == "-":
+            try:
+                return date.fromisoformat(v)
+            except ValueError:
+                pass
+    return date.today()
+
+def _alert_failure(name, error):
+    try:
+        from alerts.telegram import send_failure_alert
+        send_failure_alert(name, str(error))
+    except Exception:
+        pass
+
 def run_job(name, fn, *args, **kwargs):
-    """Run a pipeline job with error handling, logging, and Telegram alert on failure."""
+    """
+    Run a pipeline job with error handling and logging, record the run in
+    pipeline_log (kind='run': start, end, duration, rows, status, error), and
+    alert on failure.
+
+    Status recorded:
+      FAILED   it raised, or returned status FAILED -- the second used to log a
+               green tick and alert nobody (dhan_historical, portfolio_sync)
+      EMPTY    it reported SUCCESS having processed 0 rows (93 such SUCCESS
+               rows were in pipeline_log by 2026-09-21)
+      anything else the job returned (SUCCESS, SKIPPED, HELD, ...)
+    rows is NULL when the job does not report a count.
+    """
+    from db.schema import log_job
     start = datetime.now()
+    run_date = _job_run_date(args, kwargs)
     log.info(f"▶  [{now_ist()}]  {name}")
     try:
-        result  = fn(*args, **kwargs)
-        elapsed = (datetime.now() - start).seconds
-        rows    = result.get("rows", 0) if isinstance(result, dict) else 0
-        status  = result.get("status", "SUCCESS") if isinstance(result, dict) else "SUCCESS"
-        log.info(f"✅  [{now_ist()}]  {name}  ({rows} rows, {elapsed}s, {status})")
-        return result
+        result = fn(*args, **kwargs)
     except Exception as e:
-        elapsed = (datetime.now() - start).seconds
-        log.error(f"❌  [{now_ist()}]  FAILED: {name}  ({elapsed}s)\n{traceback.format_exc()}")
-        try:
-            from alerts.telegram import send_failure_alert
-            send_failure_alert(name, str(e))
-        except Exception:
-            pass
+        end = datetime.now()
+        log.error(f"❌  [{now_ist()}]  FAILED: {name}  ({(end - start).seconds}s)\n{traceback.format_exc()}")
+        log_job(name, "FAILED", None, error=f"{type(e).__name__}: {e}", run_date=run_date,
+                start_time=start, end_time=end, kind="run")
+        _alert_failure(name, e)
         return {"status": "FAILED", "error": str(e)}
+    end = datetime.now()
+    elapsed = (end - start).seconds
+    rows = result.get("rows") if isinstance(result, dict) else None
+    status = str(result.get("status") or "SUCCESS") if isinstance(result, dict) else "SUCCESS"
+    error = (result.get("error") or result.get("reason")) if isinstance(result, dict) else None
+    if status == "SUCCESS" and rows == 0:
+        status = "EMPTY"
+    log_job(name, status, rows, error=error, run_date=run_date, start_time=start, end_time=end, kind="run")
+    if status == "FAILED":
+        log.error(f"❌  [{now_ist()}]  FAILED: {name}  ({elapsed}s) — {error or 'returned FAILED'}")
+        _alert_failure(name, error or "returned FAILED")
+    else:
+        log.info(f"✅  [{now_ist()}]  {name}  ({rows if rows is not None else '?'} rows, {elapsed}s, {status})")
+    return result
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -341,18 +381,21 @@ def run_premarket(force=False):
         run_job("dhan_security_list",
                 lambda: __import__("data.dhan", fromlist=["download_security_list"]).download_security_list())
 
-    # 7:15 AM — Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
-    from data.markets import fetch_global_markets
-    run_job("global_premarket", fetch_global_markets, td, "premarket")
-
-    # 7:30 AM — Dhan live quotes snapshot (pre-market)
-    _run_dhan_quotes(td, label="premarket")
-
-    # 7:45 AM — News digest (last 14 hours)
+    # News first (last 14 hours): it takes seconds, and from 2026-08-04 this
+    # run kept ending right after the quotes step (the process was gone by
+    # ~07:03 with no error logged), so the news step placed after it never ran.
+    # run_morning_catchup() also fetches it if it is still missing.
     from data.news import run_news_pipeline
     run_job("news_premarket", run_news_pipeline, 14)
 
-    # 8:00 AM — Portfolio sync (Dhan + Zerodha)
+    # Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
+    from data.markets import fetch_global_markets
+    run_job("global_premarket", fetch_global_markets, td, "premarket")
+
+    # Dhan live quotes snapshot (pre-market)
+    _run_dhan_quotes(td, label="premarket")
+
+    # Portfolio sync (Dhan, else Zerodha when connected)
     _run_portfolio_sync(td)
 
     # 9:05 AM — Final pre-open index snapshot
@@ -375,6 +418,44 @@ def _run_dhan_quotes(td, label=""):
         run_job(f"dhan_quotes_{label}", run_live_quote_refresh)
     except Exception as e:
         log.warning(f"  Dhan quotes ({label}): {e} — skipping")
+
+
+def _ran_ok_today(conn, jobs, ok=("SUCCESS", "NO_NEW", "EMPTY")):
+    """Did any of `jobs` record a run today with one of the `ok` statuses?"""
+    q = (f"SELECT 1 FROM pipeline_log WHERE kind='run' AND job_name IN ({','.join('?' * len(jobs))}) "
+         f"AND status IN ({','.join('?' * len(ok))}) AND start_time>=? LIMIT 1")
+    return bool(conn.execute(q, (*jobs, *ok, datetime.combine(date.today(), datetime.min.time()))).fetchone())
+
+
+def run_morning_catchup():
+    """
+    Run the pre-market steps a trading day still lacks: the news fetch and the
+    portfolio sync. `schedule` never re-runs a missed slot, and the 07:00
+    pre-market run has been ending early (see run_premarket), so news had not
+    been fetched on schedule since 2026-08-03 and the LIVE book could stay a
+    day old. Called at start-up and at 08:20 and 12:20; a no-op once both
+    have worked today.
+    """
+    if not is_market_day():
+        return
+    now = datetime.now()
+    if now.hour < 7:
+        return
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        need_news = not _ran_ok_today(conn, ("news_premarket", "news_midday", "news_catchup"))
+        need_book = now.hour >= 8 and not conn.execute(
+            "SELECT 1 FROM portfolio_sync WHERE status='SUCCESS' AND date=?", (str(date.today()),)).fetchone()
+    finally:
+        conn.close()
+    if need_news:
+        log.info("  ↻ Catch-up: no news fetched yet today")
+        from data.news import run_news_pipeline
+        run_job("news_catchup", run_news_pipeline, 18)
+    if need_book:
+        log.info("  ↻ Catch-up: portfolio not synced yet today")
+        _run_portfolio_sync(date.today())
 
 
 def _run_portfolio_sync(td):
@@ -575,6 +656,16 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     except Exception as e:
         log.warning(f"  NSE index closes: {e}")
 
+    # Data quality (DP-19): record what is wrong with the session's stored data
+    # -- missing, invalid, stale, gapped, abnormal -- before anything scores it.
+    # It reports and alerts; the coverage and freshness guards below still
+    # decide whether the session may be scored.
+    try:
+        from data.quality import run_data_quality
+        run_job("data_quality", run_data_quality, td)
+    except Exception as e:
+        log.warning(f"  Data quality: {e}")
+
     # ── Never score a day without that day's closing prices ──────────────
     # Scoring on older bars and labelling the result `td` is what silently broke
     # signals from 2026-09-10: indicators and scores for each day were really
@@ -650,6 +741,16 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         run_job("portfolio_health", store_phs, td)
     except Exception as e:
         log.warning(f"  Portfolio health: {e}")
+
+    # Daily P&L (PF-13): the session's equity, day P&L and drawdown for the
+    # paper and live books -- what the daily-loss and drawdown limits
+    # (orders/risk.py) measure against. After the sync, so it values today's book.
+    if not backfill:
+        try:
+            from portfolio.pnl import record_daily_pnl
+            run_job("daily_pnl", record_daily_pnl, td)
+        except Exception as e:
+            log.warning(f"  Daily P&L: {e}")
 
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and
@@ -839,6 +940,27 @@ def run_morning_digest():
         log.warning(f"  Morning brief: {e}")
 
 
+def run_health_check():
+    """Compare what ran with what should have (pipeline/health.py) and alert on
+    each problem -- once a day per problem, on the dashboard and Telegram."""
+    try:
+        from db.schema import get_connection
+        from pipeline.health import check_job_health, format_problems
+        from alerts.telegram import send_job_health_alerts
+        conn = get_connection()
+        try:
+            problems = check_job_health(conn)
+        finally:
+            conn.close()
+        if problems:
+            log.warning("  🩺 Job health:\n" + format_problems(problems))
+            send_job_health_alerts(problems)
+        return problems
+    except Exception as e:
+        log.warning(f"  Job health check: {e}")
+        return []
+
+
 def run_eod_late():
     """
     Data NSE publishes after the post-market run: delivery, from the full
@@ -963,7 +1085,10 @@ def print_status():
     for t, label in tables:
         try:
             n = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            today_n = conn.execute(f"SELECT COUNT(*) FROM {t} WHERE date=? OR DATE(created_at)=?",
+            # created_at is SQLite's CURRENT_TIMESTAMP -- UTC -- so it is shifted
+            # to IST before comparing with today's IST date (db/schema.py)
+            today_n = conn.execute(f"SELECT COUNT(*) FROM {t} WHERE date=? OR "
+                                   f"DATE(created_at,'+5 hours','+30 minutes')=?",
                                    (today, today)).fetchone()[0]
             icon = "✅" if n > 0 else "⚠️"
             print(f"  {icon} {label:<22} {n:>8,} total  {today_n:>6,} today")
@@ -1073,12 +1198,25 @@ def start_scheduler():
     # ── Weekly ──────────────────────────────────────────────────────────
     schedule.every().saturday.at("08:00").do(run_weekly)
 
+    # ── Job health — every 30 min, off the other jobs' minutes ─────────
+    for hh in range(7, 24):
+        for mm in (10, 40):
+            schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_health_check)
+
+    # ── Morning catch-up — news and portfolio if the pre-market missed them
+    for t in ("08:20", "12:20"):
+        schedule.every().day.at(t).do(run_morning_catchup)
+
     # A missed post-market (machine off or asleep at run time, or started late)
     # is recovered here rather than silently skipped until tomorrow.
     try:
         run_postmarket_if_missing()
     except Exception as e:
         log.warning(f"  Post-market catch-up failed: {e}")
+    try:
+        run_morning_catchup()
+    except Exception as e:
+        log.warning(f"  Morning catch-up failed: {e}")
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 

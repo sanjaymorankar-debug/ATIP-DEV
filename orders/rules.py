@@ -214,6 +214,15 @@ def create_rule(payload: dict) -> dict:
         stoploss_price = _resolve_stoploss_price(
             stoploss.get("type"), stoploss.get("value"), trigger_price
         )
+        if payload.get("quantity_type") == QTY_RISK:
+            # Sized at execution from this rule's own stop (orders.risk.size_position);
+            # quantity_value is the % of capital to risk on it.
+            if payload["side"] != "BUY":
+                raise ValueError("quantity_type RISK sizes an entry — use SHARES or AMOUNT for a SELL")
+            if stoploss_price is None or stoploss_price >= trigger_price:
+                raise ValueError("quantity_type RISK needs a stoploss below the buy trigger to size against")
+            if not payload.get("quantity_value") or float(payload["quantity_value"]) <= 0:
+                raise ValueError("quantity_type RISK: quantity_value is the % of capital to risk, e.g. 1.0")
 
         now = datetime.now().isoformat()
         rule_id = str(uuid.uuid4())
@@ -777,10 +786,28 @@ def check_triggers() -> list[dict]:
 #  security_id lookup, and dry-run semantics as every other order path)
 # ═════════════════════════════════════════════════════════════════════════
 
+# quantity_type: SHARES (a count), AMOUNT (rupees), RISK (% of capital risked
+# on the rule's stop -- RK-13; sized by orders.risk.size_for_account when the
+# rule executes, so the size follows the account and the price at that moment).
+QTY_RISK = "RISK"
+
 def _resolve_quantity(rule: dict, price: float) -> int:
     if rule["quantity_type"] == "AMOUNT":
         return max(1, math.floor(rule["quantity_value"] / price))
+    if rule["quantity_type"] == QTY_RISK:
+        return _risk_sized(rule, price)["quantity"]
     return int(rule["quantity_value"])
+
+
+def _risk_sized(rule: dict, price: float) -> dict:
+    """orders.risk.size_for_account for a RISK rule at execution price."""
+    from orders.risk import size_for_account
+    conn = get_connection()
+    try:
+        return size_for_account(conn, price, stop_price=rule.get("resolved_stoploss_price"),
+                                risk_per_trade_pct=float(rule["quantity_value"]))
+    finally:
+        conn.close()
 
 
 def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dict:
@@ -795,7 +822,25 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
         return {"status": "FAILED", "error": "rule not found"}
 
     exec_price = price or rule.get("trigger_hit_price") or rule["resolved_trigger_price"]
-    quantity = _resolve_quantity(rule, exec_price)
+    if rule["quantity_type"] == QTY_RISK:
+        sizing = _risk_sized(rule, exec_price)
+        quantity = sizing["quantity"]
+        if quantity < 1:
+            err = f"risk sizing gave no position: {sizing['reason']} (capital: {sizing.get('capital_source')})"
+            log.error(f"  {rule['symbol']}: {err}")
+            if confirm:
+                conn = get_connection()
+                try:
+                    conn.execute("UPDATE order_rules SET status=?, execution_error=?, updated_at=? WHERE id=?",
+                                 (FAILED, err, datetime.now().isoformat(), rule_id))
+                    conn.commit()
+                finally:
+                    conn.close()
+            return {"status": "FAILED", "error": err, "sizing": sizing}
+        log.info(f"  {rule['symbol']}: risk-sized {quantity} sh — risking Rs.{sizing['risk_amount']:,.0f} "
+                 f"of {sizing['capital']:,.0f} ({sizing['capital_source']}), capped by {sizing['capped_by']}")
+    else:
+        quantity = _resolve_quantity(rule, exec_price)
 
     placer = place_buy_order if rule["side"] == "BUY" else place_sell_order
     result = placer(

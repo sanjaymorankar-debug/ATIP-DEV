@@ -17,6 +17,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import db.schema as schema  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _isolated(tmp_path, monkeypatch):
+    """Every test, even one that does not ask for temp_db: its own database,
+    and no Telegram call. Alerts are now recorded in alert_log on every send,
+    so a test that halts trading or fails a job would otherwise write to the
+    real atip.db -- or message a configured bot."""
+    monkeypatch.setattr(schema, "DB_PATH", tmp_path / "isolated.db")
+    import alerts.telegram as tg
+    monkeypatch.setattr(tg, "_real_deliver_telegram", tg._deliver_telegram, raising=False)
+    monkeypatch.setattr(tg, "_deliver_telegram", lambda message, parse_mode="HTML": (False, "test"))
+
+
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
     """A throwaway SQLite database for one test."""

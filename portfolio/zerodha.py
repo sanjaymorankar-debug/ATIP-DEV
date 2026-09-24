@@ -41,9 +41,18 @@ def login():
     TOKEN_PATH.write_text(json.dumps({"access_token":data["access_token"],"at":str(datetime.now())}))
     print(f"✅ Logged in. Token saved.")
 
+def zerodha_connected() -> bool:
+    """A Kite session exists (python main.py --login-zerodha has been run)."""
+    return HAS_KITE and TOKEN_PATH.exists()
+
 def run_portfolio_sync(trade_date=None):
     if trade_date is None: trade_date=date.today()
-    if not HAS_KITE: log.error("kiteconnect not installed"); return {"status":"FAILED"}
+    # Not set up is not a failure: without a Kite login this fallback used to
+    # log FAILED ("No access token") on every evening Dhan's sync did not work.
+    if not zerodha_connected():
+        return {"status":"SKIPPED","rows":0,
+                "reason":"Zerodha not connected (kiteconnect missing or no login: python main.py --login-zerodha)"}
+    from data.dhan import record_portfolio_sync
     log.info(f"📈 Portfolio sync {trade_date}")
     conn=get_connection(); result={"status":"SUCCESS"}
     try:
@@ -55,25 +64,33 @@ def run_portfolio_sync(trade_date=None):
             rows.append({"symbol":h["tradingsymbol"],"qty":h["quantity"],"avg_price":avg,"cmp":cmp,
                          "current_val":h["quantity"]*cmp,"pnl":h.get("pnl",0),
                          "pnl_pct":round((cmp-avg)/avg*100,2) if avg else 0})
-        if not rows: log.info("  No holdings"); return result
+        if not rows:
+            log.info("  No holdings"); record_portfolio_sync(trade_date,"zerodha","SUCCESS",n_holdings=0)
+            result["rows"]=0; return result
         df=pd.DataFrame(rows); total=df["current_val"].sum()
         df["weight_pct"]=(df["current_val"]/total*100).round(2) if total else 0
         count=0
         for _,row in df.iterrows():
             sc=conn.execute("SELECT atip_score,vpi,cri,zpi,signal FROM ai_scores WHERE symbol=? AND date=?",(row["symbol"],str(trade_date))).fetchone()
             conn.execute("""INSERT INTO portfolio_holdings (date,symbol,qty,avg_price,cmp,current_val,pnl,pnl_pct,weight_pct,atip_score,vpi,cri,zpi,signal)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol,date) DO UPDATE SET cmp=excluded.cmp,pnl=excluded.pnl,pnl_pct=excluded.pnl_pct""",
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol,date) DO UPDATE SET qty=excluded.qty,avg_price=excluded.avg_price,
+                cmp=excluded.cmp,current_val=excluded.current_val,pnl=excluded.pnl,pnl_pct=excluded.pnl_pct,weight_pct=excluded.weight_pct""",
                 (str(trade_date),row["symbol"],row["qty"],row["avg_price"],row["cmp"],row["current_val"],
                  row["pnl"],row["pnl_pct"],row["weight_pct"],
                  sc["atip_score"] if sc else None,sc["vpi"] if sc else None,
                  sc["cri"] if sc else None,sc["zpi"] if sc else None,
                  sc["signal"] if sc else "NO DATA"))
             count+=1
+        held=list(df["symbol"])
+        conn.execute(f"DELETE FROM portfolio_holdings WHERE date=? AND symbol NOT IN ({','.join('?'*len(held))})",
+                     (str(trade_date),*held))                       # sold since an earlier sync today
         conn.commit(); result["rows"]=count
+        record_portfolio_sync(trade_date,"zerodha","SUCCESS",n_holdings=count)
         log.info(f"  ✓ {count} holdings synced  Total: ₹{total:,.0f}")
         log_job("portfolio_sync","SUCCESS",count,run_date=trade_date)
     except Exception as e:
-        conn.rollback(); result["status"]="FAILED"; log.error(f"  ✗ {e}")
+        conn.rollback(); result["status"]="FAILED"; result["error"]=str(e); log.error(f"  ✗ {e}")
+        record_portfolio_sync(trade_date,"zerodha","FAILED",error=str(e))
         log_job("portfolio_sync","FAILED",0,error=e,run_date=trade_date)
     finally: conn.close()
     return result

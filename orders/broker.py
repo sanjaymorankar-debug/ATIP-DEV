@@ -54,7 +54,7 @@ from datetime import datetime
 from db.schema import get_connection, log_job
 from data.dhan import get_dhan_client, get_security_id, fetch_live_quotes
 from orders.environment import broker_env, get_execution_client, describe, PAPER, LIVE
-from orders.risk import halted, pretrade_check
+from orders.risk import halted, pretrade_check, risk_alert
 
 log = logging.getLogger(__name__)
 
@@ -189,6 +189,9 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
                    price, None, None, mode, "BLOCKED_HALTED", error=halt_reason)
         conn.close()
+        risk_alert("Order Refused — Trading Halted",
+                   f"{transaction_type} {quantity} x {symbol} ({mode}) not sent: {halt_reason}",
+                   key=f"blocked_halted:{symbol}:{transaction_type}")
         return {"status": "BLOCKED_HALTED", "reason": halt_reason}
 
     sec = get_security_id(symbol)
@@ -213,6 +216,9 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
                    price, est_value, funds["available"], mode, "BLOCKED_RISK_LIMIT",
                    error=risk["message"])
         conn.close()
+        risk_alert("Order Refused — Risk Limit",
+                   f"{transaction_type} {quantity} x {symbol} ({mode}) not sent: {risk['message']}",
+                   key=f"blocked_limit:{symbol}:{transaction_type}:{risk['blocked_by']}")
         return {"status": "BLOCKED_RISK_LIMIT", **risk}
 
     log.info(f"  [{describe()}]")

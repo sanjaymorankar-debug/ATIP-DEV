@@ -149,7 +149,6 @@ def test_rescoring_market_health_keeps_portfolio_health(temp_db):
     init_db()
     conn = get_connection()
     try:
-        conn.execute("ALTER TABLE market_health ADD COLUMN portfolio_health REAL")
         conn.execute("INSERT INTO market_health (date,portfolio_health) VALUES ('2026-09-23',71.5)")
         conn.execute("INSERT INTO index_levels (date,time,nifty50_chg,banknifty_chg,india_vix) "
                      "VALUES ('2026-09-23','15:30:00',0.5,0.5,12)")

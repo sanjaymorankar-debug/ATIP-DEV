@@ -40,5 +40,23 @@
   "_note": "ATIP uses Dhan as primary data source. NSE Bhavcopy as backup for EOD. yfinance for global markets.",
   "primary_data_source":      "dhan",
   "eod_data_source":          "bhavcopy",
-  "global_data_source":       "yfinance"
+  "global_data_source":       "yfinance",
+
+  "_SECTION_9": "=== RISK (orders/risk.py) — each limit is enforced only when set ===",
+  "risk_limits": {
+    "max_order_value":           null,
+    "max_orders_per_day":        null,
+    "max_open_positions":        null,
+    "max_symbol_exposure_value": null,
+    "max_daily_loss_value":      null,
+    "max_drawdown_pct":          null
+  },
+  "_risk_limits_note": "Rupees except max_drawdown_pct (%). max_daily_loss_value and max_drawdown_pct block new BUYs, measured on pnl_daily (portfolio/pnl.py); a loss limit that is set but cannot be measured also blocks.",
+
+  "position_sizing": {
+    "capital":            null,
+    "risk_per_trade_pct": 1.0,
+    "max_position_pct":   10.0
+  },
+  "_position_sizing_note": "capital null = the account's equity. Used by order rules with quantity_type RISK and by orders.risk.size_position()."
 }

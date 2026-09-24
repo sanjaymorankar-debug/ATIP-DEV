@@ -359,6 +359,65 @@ def get_top25(td):
         return {"vpi":t25("vpi"),"rri":t25("rri"),"mri":t25("mri"),"zpi":t25("zpi","AND s.signal='BUY'"),"cri":t25("cri","AND s.cri>60")}
     finally: conn.close()
 
+def get_alerts(hours=24, limit=12):
+    """Alerts raised in the last `hours` (alert_log), newest first."""
+    conn=get_connection()
+    try:
+        since=datetime.now()-timedelta(hours=hours)
+        return q(conn,"SELECT created_at,category,severity,title,telegram_sent,telegram_error FROM alert_log "
+                      "WHERE created_at>=? ORDER BY id DESC LIMIT ?",since,limit)
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+def get_job_health():
+    """Current job-health problems (pipeline/health.py) as dicts."""
+    try:
+        from pipeline.health import check_job_health
+        conn=get_connection()
+        try:
+            return [{"label":p.label,"kind":p.kind,"detail":p.detail} for p in check_job_health(conn)]
+        finally:
+            conn.close()
+    except Exception as e:
+        return [{"label":"Job health check","kind":"ERROR","detail":str(e)}]
+
+def alerts_panel_html():
+    """
+    The pipeline's state and the last day's alerts, at the top of the page.
+    Every alert is recorded here whether or not Telegram delivered it; with no
+    bot configured this is the only place most of them can be read.
+    """
+    import html as _h
+    problems=get_job_health(); alerts=get_alerts()
+    try:
+        from alerts.telegram import telegram_configured
+        tg=telegram_configured()
+    except Exception:
+        tg=False
+    if problems:
+        rows="".join(f'<div>• <b>{_h.escape(p["kind"])}</b> {_h.escape(p["label"])} — {_h.escape(p["detail"])}</div>'
+                     for p in problems)
+        head=(f'<div style="background:#7f1d1d;color:#fee2e2;padding:6px 18px;font-size:12px;line-height:1.6">'
+              f'<b>🩺 Pipeline problems ({len(problems)})</b>{rows}</div>')
+    else:
+        head=('<div style="background:#0f2e24;color:#a7f3d0;padding:4px 18px;font-size:11.5px">'
+              '🩺 Pipeline: every monitored job has run</div>')
+    sev_col={"error":"#f87171","warning":"#fbbf24"}
+    items="".join(
+        f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#64748b;width:44px">{str(a["created_at"])[11:16]}</span>'
+        f'<span style="color:{sev_col.get(a["severity"],"#94a3b8")};width:72px">{_h.escape(a["category"])}</span>'
+        f'<span style="flex:1">{_h.escape(a["title"] or "")}</span>'
+        f'<span style="color:#64748b">{"📨 sent" if a["telegram_sent"] else "dashboard only"}</span></div>'
+        for a in alerts)
+    tg_note=("" if tg else ' · <span style="color:#fbbf24">Telegram not configured — alerts appear only here '
+             '(<code>python -m alerts.telegram --test</code> explains the setup)</span>')
+    body=(f'<details style="background:#1e293b;padding:5px 18px;font-size:11.5px;border-bottom:1px solid #334155">'
+          f'<summary style="cursor:pointer;color:#94a3b8">🔔 Alerts, last 24h: {len(alerts)}{tg_note}</summary>'
+          f'<div style="margin-top:4px">{items or "<i>none</i>"}</div></details>')
+    return head+body
+
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
     state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history(),"orders_book":get_order_book()}
@@ -438,8 +497,12 @@ def _check_js(html):
 def build_html(state):
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
     scores=state.get("scores",[]); news=state.get("news",[]); port=state.get("portfolio",[]); top25=state.get("top25",{})
-    mh_s=mh.get("mh_score",0) or 0; regime=mh.get("regime","—")
-    mh_col="#059669" if mh_s>=60 else "#f59e0b" if mh_s>=40 else "#dc2626"
+    # A session whose inputs covered under half the MH weight has no score
+    # (scores/engine.py MH_MIN_COVERAGE): show a dash, not a red 0.
+    mh_known=mh.get("mh_score") is not None
+    mh_s=mh.get("mh_score") or 0; regime=mh.get("regime") or "—"
+    mh_txt=f"{mh_s:.0f}" if mh_known else "—"
+    mh_col=("#059669" if mh_s>=60 else "#f59e0b" if mh_s>=40 else "#dc2626") if mh_known else "#64748b"
     gen=state.get("generated_at","")[:16]
     def chg(v): c="#059669" if (v or 0)>0 else "#dc2626"; return f'<span style="color:{c};font-weight:600">{(v or 0):+.2f}%</span>'
     names=load_company_names()
@@ -580,7 +643,9 @@ def build_html(state):
             trig = r.get("resolved_trigger_price")
             trig_s = f'{dirsym} ₹{trig:,.2f}' if trig is not None else "—"
         qty = r.get("quantity_value")
-        qty_s = (f'{qty:g} sh' if r.get("quantity_type") == "SHARES" else f'₹{qty:,.0f}') if qty is not None else "—"
+        qt_ = r.get("quantity_type")
+        qty_s = (f'{qty:g} sh' if qt_ == "SHARES" else f'{qty:g}% risk' if qt_ == "RISK"
+                 else f'₹{qty:,.0f}') if qty is not None else "—"
         exec_price = r.get("execution_price")
         # order_log only records the ESTIMATED price at order time, not the
         # actual average fill -- that lives in paper_order for PAPER mode, and
@@ -771,6 +836,7 @@ def build_html(state):
     else:
         stale_banner = (f'<div style="background:#065f46;color:#d1fae5;padding:5px 18px;font-size:11.5px">'
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
+    health_panel = alerts_panel_html()
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
     # Served with the page so the dashboard keeps working; see dashboard/security.py.
     from dashboard.security import token as _dash_token
@@ -807,10 +873,11 @@ def build_html(state):
 <body>
 <div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {stale_banner}
+{health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
 <div id="pendBox" class="pend" style="margin:10px 18px 0"><b style="color:#dc2626">⚠️ Awaiting confirmation</b><div id="pendList"></div></div>
 <div class="kpi-row">
-  <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_s:.0f}</div><div style="font-size:11px;color:#64748b">{regime}</div></div>
+  <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_txt}</div><div style="font-size:11px;color:#64748b">{regime}</div></div>
   <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('nifty50'):,.2f}" if idx.get('nifty50') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">India VIX</div><div class="kpi-v" style="color:{'#dc2626' if (idx.get('india_vix') or 0)>20 else '#94a3b8'}">{idx.get('india_vix','—')}</div></div>
@@ -912,7 +979,7 @@ def build_html(state):
   <div class="cmpwarn" id="mCmpWarn">⚠ No reference price available for this stock — enter an absolute target price (% move needs a reference).</div>
   <div class="mrow"><label>Side</label><div class="seg" id="mSide"><button type="button" class="on" data-v="BUY" onclick="setSide('BUY')">Buy</button><button type="button" data-v="SELL" onclick="setSide('SELL')">Sell</button></div></div>
   <div class="mrow"><label>Target</label><select id="mTT" onchange="mPrev()"><option value="PRICE">At price ₹</option><option value="PERCENT">% move</option></select><input type="number" step="0.01" id="mTV" placeholder="e.g. 2500" oninput="mPrev()"></div>
-  <div class="mrow"><label>Qty</label><select id="mQT" onchange="mPrev()"><option value="SHARES">Shares</option><option value="AMOUNT">₹ Amount</option></select><input type="number" step="0.01" id="mQV" placeholder="e.g. 10" oninput="mPrev()"></div>
+  <div class="mrow"><label>Qty</label><select id="mQT" onchange="mPrev()"><option value="SHARES">Shares</option><option value="AMOUNT">₹ Amount</option><option value="RISK">% capital at risk (BUY + stoploss)</option></select><input type="number" step="0.01" id="mQV" placeholder="e.g. 10" oninput="mPrev()"></div>
   <div class="mrow"><label>Product</label><select id="mProd"><option value="CNC">Delivery</option><option value="INTRADAY">Intraday</option></select><select id="mOT" onchange="mPrev()"><option value="MARKET">Market</option><option value="LIMIT">Limit</option></select><input type="number" step="0.01" id="mLimit" class="hide" placeholder="Limit ₹"></div>
   <div class="brk">
     <div style="font-size:11.5px;color:#38bdf8;font-weight:600;margin-bottom:7px">🎯 Bracket — auto-exit after this order fills</div>
@@ -1082,7 +1149,7 @@ function brkVals(){{
            trailV:isNaN(tv)?null:tv, trailJ:isNaN(tj)?0:tj}};
 }}
 function mPrev(){{
-  var qv=document.getElementById('mQV').value||'?', qt=document.getElementById('mQT').value==='SHARES'?'shares':'₹ worth';
+  var qv=document.getElementById('mQV').value||'?', qtv=document.getElementById('mQT').value, qt=qtv==='SHARES'?'shares':qtv==='RISK'?'% of capital at risk, sized at execution from the stoploss':'₹ worth';
   var tp=mResolvedTrigger();
   var entryTxt=(mSideVal==='BUY'?'Buy ':'Sell ')+qv+' '+qt+' of '+mSymbol+' at/'+(mSideVal==='BUY'?'below':'above')+' ₹'+(tp!==null?tp.toFixed(2):'—');
   var confTxt=document.getElementById('mConfirm').checked?'asks you to confirm':'⚡ places automatically';
@@ -1143,7 +1210,7 @@ async function loadMiniRules(){{
     var li=document.createElement('li');
     var role=r.role&&r.role!=='ENTRY'?' <b style="color:'+(r.role==='STOP'?'#dc2626':'#059669')+'">['+r.role+']</b>':'';
     var dir=r.trigger_direction==='BELOW'?'≤':'≥';
-    li.innerHTML='<span>'+r.side+role+' '+r.quantity_value+(r.quantity_type==='SHARES'?' sh':' ₹')+' '+dir+' ₹'+r.resolved_trigger_price.toFixed(2)+(r.require_confirmation?'':' ⚡')+'</span><button onclick="deleteRule(\\''+r.id+'\\')" style="background:none;border:none;color:#dc2626;cursor:pointer">✕</button>';
+    li.innerHTML='<span>'+r.side+role+' '+r.quantity_value+(r.quantity_type==='SHARES'?' sh':r.quantity_type==='RISK'?'% risk':' ₹')+' '+dir+' ₹'+r.resolved_trigger_price.toFixed(2)+(r.require_confirmation?'':' ⚡')+'</span><button onclick="deleteRule(\\''+r.id+'\\')" style="background:none;border:none;color:#dc2626;cursor:pointer">✕</button>';
     ul.appendChild(li);
   }});
 }}
@@ -1265,6 +1332,37 @@ if HAS_FASTAPI:
     async def api_mh(): return JSONResponse(json_safe(get_mh(latest_scored_date())))
     @app.get("/api/tod")
     async def api_tod(): return JSONResponse(json_safe(get_tod(latest_scored_date())))
+    @app.get("/api/alerts")
+    async def api_alerts(): return JSONResponse(json_safe({"job_health":get_job_health(),"alerts":get_alerts(hours=72,limit=100)}))
+    @app.get("/api/pnl")
+    async def api_pnl():
+        """PF-02 / PF-13: both books valued now (no broker call), today's risk
+        state, and the last 60 pnl_daily rows."""
+        from portfolio.pnl import portfolio_summary, risk_state, ENVS
+        conn=get_connection()
+        try:
+            out={"books":{e:portfolio_summary(conn,e) for e in ENVS},
+                 "risk":{e:risk_state(conn,e) for e in ENVS},
+                 "daily":q(conn,"SELECT * FROM pnl_daily ORDER BY date DESC, env LIMIT 60"),
+                 "last_sync":q(conn,"SELECT date,source,status,n_holdings,error,synced_at FROM portfolio_sync "
+                                    "ORDER BY id DESC LIMIT 5")}
+        finally:
+            conn.close()
+        return JSONResponse(json_safe(out))
+    @app.get("/api/data-quality")
+    async def api_data_quality():
+        """DP-19: the latest session's checks and DQS, plus the DQS history."""
+        conn=get_connection()
+        try:
+            last=q1(conn,"SELECT MAX(date) d FROM data_quality") or {}
+            out={"date":last.get("d"),
+                 "checks":q(conn,"SELECT check_name,severity,failed,checked,score,detail FROM data_quality "
+                                 "WHERE date=? ORDER BY check_name",last.get("d")) if last.get("d") else [],
+                 "dqs_history":q(conn,"SELECT date,severity,score FROM data_quality WHERE check_name='DQS' "
+                                      "ORDER BY date DESC LIMIT 30")}
+        finally:
+            conn.close()
+        return JSONResponse(json_safe(out))
     @app.get("/api/news")
     async def api_news(): return JSONResponse(json_safe(get_news()))
     @app.get("/api/portfolio")

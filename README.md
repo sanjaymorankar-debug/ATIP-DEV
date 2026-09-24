@@ -258,7 +258,7 @@ Open **http://localhost:8000** after starting ATIP.
 | `ModuleNotFoundError: No module named 'atip'` | Run from `D:\Projects\atip\` not from inside `atip\` |
 | `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data\config.json` |
 | `security_id not found` | Run `python main.py --dhan-securities` first |
-| `pandas-ta` fails on Python 3.14 | Use `pip install pandas-ta --no-deps` then `pip install ta` |
+| `pandas-ta` fails on Python 3.14 | Not needed — ATIP uses `ta` (`pip install ta`); see docs/DEV_SETUP.md |
 | Dashboard empty | Run `python main.py --run postmarket` first to populate data |
 | NSE Bhavcopy 403 error | NSE blocks cloud — must run on local machine (not VPS/cloud) |
 | Live feed disconnects | Normal — Dhan WS reconnects automatically |

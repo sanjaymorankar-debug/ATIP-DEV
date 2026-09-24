@@ -20,6 +20,13 @@ RSS_FEEDS=[
     {"name":"Business Standard","url":"https://www.business-standard.com/rss/markets-106.rss","weight":0.9},
     {"name":"LiveMint","url":"https://www.livemint.com/rss/markets","weight":0.9},
     {"name":"Google News India Markets","url":"https://news.google.com/rss/search?q=NSE+OR+BSE+OR+Nifty+stock+market+when:1d&hl=en-IN&gl=IN&ceid=IN:en","weight":0.8},
+    # Added 2026-09-24 (NS-01) so one dead feed cannot stop news. Not yet
+    # confirmed from this machine: news_source_status records whether each
+    # answers, and a feed that keeps failing shows there with its error.
+    {"name":"Economic Times Stocks","url":"https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms","weight":1.0},
+    {"name":"Business Standard Companies","url":"https://www.business-standard.com/rss/companies-101.rss","weight":0.9},
+    {"name":"Hindu BusinessLine Markets","url":"https://www.thehindubusinessline.com/markets/feeder/default.rss","weight":0.8},
+    {"name":"Financial Express Market","url":"https://www.financialexpress.com/market/feed/","weight":0.8},
 ]
 SYMBOLS={"RELIANCE":["Reliance","RIL"],"TCS":["TCS","Tata Consultancy"],"INFY":["Infosys"],
          "HDFCBANK":["HDFC Bank"],"ICICIBANK":["ICICI Bank"],"TATAMOTORS":["Tata Motors"],
@@ -32,23 +39,68 @@ SENTIMENT_PROMPT="""Analyse this Indian financial news headline. Return ONLY JSO
 {{"sentiment":<float -1 to 1>,"importance":<"LOW"|"MEDIUM"|"HIGH">,"confidence":<float 0-1>,"category":<"EARNINGS"|"ORDERS"|"M&A"|"RBI"|"GOVT"|"GLOBAL"|"GEOPOLITICS"|"SECTOR"|"GENERAL">,"ai_summary":<max 80 chars>}}
 Headline: {headline}"""
 
+def _local_time(utc_struct):
+    """A feedparser UTC time.struct_time as a naive local (IST) datetime."""
+    import calendar
+    return datetime.fromtimestamp(calendar.timegm(utc_struct))
+
 def fetch_feeds(hours_back=12):
     if not HAS_FP: return []
-    cutoff=datetime.utcnow()-timedelta(hours=hours_back); articles=[]; seen=set()
+    # Times are IST local, like every other time ATIP stores. feedparser's
+    # published_parsed is UTC; it used to be stored as it came, so
+    # news_articles.fetched_at was UTC while the recency in compute_news_score
+    # was measured from the local clock -- every article read 5.5 hours older
+    # than it was -- and the day windows scoring reads cut at UTC midnight.
+    cutoff=datetime.now()-timedelta(hours=hours_back); articles=[]; seen=set()
+    status={}
     for feed in RSS_FEEDS:
+        n=0; err=None
         try:
             f=feedparser.parse(feed["url"])
+            if getattr(f,"bozo",0) and not f.entries:
+                err=f"unreadable feed: {getattr(f,'bozo_exception','')}"[:300]
+            elif getattr(f,"status",200)>=400:
+                err=f"HTTP {f.status}"
             for e in f.entries:
-                pub=datetime(*e.published_parsed[:6]) if hasattr(e,"published_parsed") and e.published_parsed else datetime.utcnow()
+                pub=_local_time(e.published_parsed) if getattr(e,"published_parsed",None) else datetime.now()
                 if pub<cutoff: continue
                 headline=e.get("title","").strip()
                 if not headline: continue
-                key=re.sub(r"\W+","",headline.lower())[:40]
+                key=headline_key(headline)
                 if key in seen: continue
-                seen.add(key)
+                seen.add(key); n+=1
                 articles.append({"headline":headline,"url":e.get("link",""),"source":feed["name"],"published":pub,"summary":e.get("summary","")[:300]})
-        except Exception as ex: log.warning(f"  Feed {feed['name']}: {ex}")
-    log.info(f"  ✓ {len(articles)} articles fetched"); return articles
+        except Exception as ex:
+            err=str(ex)[:300]; log.warning(f"  Feed {feed['name']}: {ex}")
+        status[feed["name"]]={"url":feed["url"],"items":n,"error":err}
+    _record_feed_status(status)
+    dead=[k for k,v in status.items() if v["error"]]
+    log.info(f"  ✓ {len(articles)} articles fetched from {len(status)-len(dead)}/{len(status)} feeds"
+             + (f" — failing: {', '.join(dead)}" if dead else ""))
+    return articles
+
+def headline_key(headline):
+    """What makes two headlines the same story: letters and digits, lower case,
+    first 40 -- the key fetch_feeds de-duplicated on within one fetch."""
+    return re.sub(r"\W+","",headline.lower())[:40]
+
+def _record_feed_status(status):
+    """news_source_status: per feed, when it last answered and how many items it
+    gave, so a feed that goes dead is visible instead of silently empty."""
+    try:
+        conn=get_connection(); now=datetime.now()
+        try:
+            for name,v in status.items():
+                ok=v["error"] is None
+                conn.execute("""INSERT INTO news_source_status (source,url,last_attempt,last_ok,last_items,consecutive_failures,last_error)
+                    VALUES (?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET url=excluded.url,last_attempt=excluded.last_attempt,
+                    last_ok=COALESCE(excluded.last_ok,news_source_status.last_ok),last_items=excluded.last_items,
+                    consecutive_failures=CASE WHEN excluded.last_error IS NULL THEN 0 ELSE news_source_status.consecutive_failures+1 END,
+                    last_error=excluded.last_error""",
+                    (name,v["url"],now,now if ok else None,v["items"],0 if ok else 1,v["error"]))
+            conn.commit()
+        finally: conn.close()
+    except Exception as e: log.warning(f"  news_source_status not recorded: {e}")
 
 _SYMBOL_ALIASES=None
 
@@ -148,9 +200,20 @@ def compute_news_score(sentiment, importance, confidence, recency_hours):
     return round(0.50*((sentiment+1)/2*100)+0.20*(iw*100)+0.20*max(0,100-recency_hours*(100/24))+0.10*(confidence*100),2)
 
 def store_articles(articles, conn):
+    """Store articles not already stored. INSERT OR IGNORE had no unique key to
+    ignore on, so the overlapping pre-market (14h) and midday (12h) windows
+    stored the same story twice: 142 of 1,249 stored headlines were repeats.
+    An article is skipped when its URL, or its headline key, was stored in the
+    last 3 days."""
     count=0; now=datetime.now()
+    since=now-timedelta(days=3)
+    known_urls={r[0] for r in conn.execute("SELECT url FROM news_articles WHERE fetched_at>=? AND url<>''",(since,))}
+    known_keys={headline_key(r[0]) for r in conn.execute("SELECT headline FROM news_articles WHERE fetched_at>=?",(since,))}
     for art in articles:
         try:
+            if (art.get("url") and art["url"] in known_urls) or headline_key(art["headline"]) in known_keys:
+                continue
+            known_urls.add(art.get("url")); known_keys.add(headline_key(art["headline"]))
             pub=art.get("published",now); recency=(now-pub).total_seconds()/3600
             syms=detect_symbols(art["headline"]+" "+art.get("summary",""))
             ns=compute_news_score(art.get("sentiment",0),art.get("importance","MEDIUM"),art.get("confidence",0.5),recency)
@@ -169,7 +232,11 @@ def run_news_pipeline(hours_back=12):
         articles=fetch_feeds(hours_back)
         articles=classify_with_claude(articles)
         rows=store_articles(articles,conn); conn.commit(); result["rows"]=rows
-        log.info(f"  ✓ {rows} articles stored"); log_job("news","SUCCESS",rows)
+        result["fetched"]=len(articles)
+        # Fetched but all already stored is a working feed, not an empty job
+        if rows==0 and articles: result["status"]="NO_NEW"
+        log.info(f"  ✓ {rows} new articles stored ({len(articles)-rows} already had)")
+        log_job("news","SUCCESS",rows)
     except Exception as e:
         conn.rollback(); result["status"]="FAILED"; log.error(f"  ✗ {e}"); log_job("news","FAILED",0,error=e)
     finally: conn.close()

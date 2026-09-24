@@ -1,4 +1,22 @@
-"""ATIP — Database Schema"""
+"""ATIP — Database Schema
+
+Time convention (DBS-06): every time ATIP writes itself is IST local, naive
+(the machine runs in IST and datetime.now() is what is written):
+  market data  prices_daily.date, index_levels (date, time), live_quotes.timestamp
+  signals      ai_scores.date, signal_log.signal_date / logged_at, predictions.pred_date
+  orders       order_log.timestamp, order_rules.created_at/updated_at,
+               paper_order.created_at            -- ISO text, 'YYYY-MM-DDTHH:MM:SS.ffffff'
+  positions    paper_position.updated_at, strategy_position / strategy_event.created_at (ISO text)
+  portfolio    portfolio_holdings.date, portfolio_sync.synced_at, pnl_daily.date / recorded_at
+  backtests    bar dates from prices_daily
+  logs, jobs   pipeline_log start_time/end_time, alert_log.created_at, data_quality.run_at,
+               news_articles.fetched_at (publication time, converted from the feed's UTC)
+The only exception is the `created_at ... DEFAULT CURRENT_TIMESTAMP` audit
+columns: SQLite's CURRENT_TIMESTAMP is UTC. Compare one with an IST date only
+after DATE(created_at,'+5 hours','+30 minutes'). Text timestamps in ISO form
+('T' separator) and SQLite form (space) both sort correctly within one column;
+take [:19] and replace 'T' with ' ' before comparing across the two.
+"""
 import sqlite3, logging
 from pathlib import Path
 from datetime import datetime, date
@@ -62,7 +80,94 @@ def get_connection():
     _migrate_technical_macd_pct_column(conn)
     _migrate_market_health_breadth_columns(conn)
     _migrate_news_classifier_column(conn)
+    _migrate_pipeline_log_columns(conn)
+    _migrate_alert_log_table(conn)
+    for name, ddls in W1_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
     return conn
+
+def _create_table_if_missing(conn, name, ddls):
+    """Additive migration: create a table (and its indexes) an existing
+    database does not have yet. Never alters or drops anything."""
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone():
+            for ddl in ddls:
+                conn.execute(ddl)
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        log.warning(f"  {name} migration skipped: {e}")
+
+# ── Tables added in W1 (foundation) ───────────────────────────────────────
+W1_TABLES = {
+    # One row per (date, env) -- PAPER or LIVE -- written by portfolio/pnl.py
+    # at the end of each session (PF-13). The daily-loss and drawdown limits in
+    # orders/risk.py read it: day P&L against the previous row, drawdown
+    # against the highest peak_equity. equity is NULL when cash was unknown
+    # (LIVE with the broker unreachable).
+    "pnl_daily": (
+        """CREATE TABLE IF NOT EXISTS pnl_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, env TEXT NOT NULL,
+            n_positions INTEGER, positions_value REAL, cost REAL, unrealised REAL,
+            realised_cum REAL, cash REAL, equity REAL, day_pnl REAL,
+            peak_equity REAL, drawdown_pct REAL, recorded_at TIMESTAMP,
+            UNIQUE(date, env))""",
+    ),
+    # One row per (date, check) from data/quality.py (DP-19): what was checked,
+    # how many rows failed, a sample, and the session's DataQualityScore row
+    # (check='DQS').
+    "data_quality": (
+        """CREATE TABLE IF NOT EXISTS data_quality (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, check_name TEXT NOT NULL,
+            severity TEXT NOT NULL, failed INTEGER, checked INTEGER, score REAL,
+            detail TEXT, run_at TIMESTAMP, UNIQUE(date, check_name))""",
+    ),
+    # One row per portfolio sync attempt (PF-01/BR-04). The LIVE book is the
+    # holdings of the latest SUCCESS here -- so an account that sold
+    # everything reads as empty, not as its last day with holdings -- and a
+    # FAILED row says why (DH-901 = the Dhan token expired).
+    "portfolio_sync": (
+        """CREATE TABLE IF NOT EXISTS portfolio_sync (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, source TEXT NOT NULL,
+            status TEXT NOT NULL, n_holdings INTEGER, error TEXT, synced_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_portfolio_sync_date ON portfolio_sync(date, status)",
+    ),
+    # Per-feed outcome of the last news fetch (NS-01): a feed that stops
+    # answering shows up here instead of silently contributing nothing.
+    "news_source_status": (
+        """CREATE TABLE IF NOT EXISTS news_source_status (
+            source TEXT PRIMARY KEY, url TEXT, last_attempt TIMESTAMP, last_ok TIMESTAMP,
+            last_items INTEGER, consecutive_failures INTEGER DEFAULT 0, last_error TEXT)""",
+    ),
+}
+
+# Every alert ATIP raises, whether or not Telegram delivered it: the dashboard
+# shows this table, so an unconfigured bot no longer means an alert went nowhere
+# (every alert before 2026-09-24 did). key de-duplicates within a day.
+ALERT_LOG_DDL = (
+    """CREATE TABLE IF NOT EXISTS alert_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP NOT NULL,
+        category TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info',
+        title TEXT, message TEXT NOT NULL, dedupe_key TEXT,
+        telegram_sent INTEGER NOT NULL DEFAULT 0, telegram_error TEXT)""",
+    "CREATE INDEX IF NOT EXISTS idx_alert_log_created ON alert_log(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_alert_log_key ON alert_log(dedupe_key, created_at)",
+)
+
+def _migrate_alert_log_table(conn):
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='alert_log'").fetchone():
+            for ddl in ALERT_LOG_DDL:
+                conn.execute(ddl)
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        log.warning(f"  alert_log migration skipped: {e}")
+
+def _migrate_pipeline_log_columns(conn):
+    """pipeline_log.kind ('run' / 'step') and duration_s, plus an index for the
+    per-job lookups job-health monitoring makes (MON-01/02)."""
+    if _add_missing_columns(conn, "pipeline_log", {"kind": "TEXT", "duration_s": "REAL"}):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_log_job ON pipeline_log(job_name, start_time)")
+        conn.commit()
 
 # market_health columns added for market breadth (DP-17) and for recording
 # which Market Health inputs were actually present (SC-09). breadth holds the %
@@ -72,6 +177,10 @@ MARKET_HEALTH_ADDED_COLUMNS = {
     "advances": "INTEGER", "declines": "INTEGER", "pct_advancing": "REAL",
     "new_highs": "INTEGER", "new_lows": "INTEGER", "breadth_universe": "INTEGER",
     "mh_coverage": "REAL", "mh_inputs": "TEXT", "backfilled": "INTEGER DEFAULT 0",
+    # written by scores/portfolio_health.py, read by the morning brief; it
+    # was added only by that module's own migration, so a fresh install's
+    # brief failed on it
+    "portfolio_health": "REAL",
 }
 
 def _add_missing_columns(conn, table, columns) -> list:
@@ -310,7 +419,7 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         advances INTEGER, declines INTEGER, pct_advancing REAL, new_highs INTEGER,
         new_lows INTEGER, breadth_universe INTEGER, mh_coverage REAL, mh_inputs TEXT,
-        backfilled INTEGER DEFAULT 0)""")
+        backfilled INTEGER DEFAULT 0, portfolio_health REAL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS index_levels (
         id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, time TEXT NOT NULL,
         nifty50 REAL, nifty50_chg REAL, banknifty REAL, banknifty_chg REAL,
@@ -359,7 +468,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, run_date DATE, job_name TEXT NOT NULL,
         start_time TIMESTAMP, end_time TIMESTAMP, status TEXT,
         rows_processed INTEGER DEFAULT 0, error_msg TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, kind TEXT, duration_s REAL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_log_job ON pipeline_log(job_name, start_time)")
     c.execute("""CREATE TABLE IF NOT EXISTS weight_config (
         id INTEGER PRIMARY KEY AUTOINCREMENT, index_name TEXT NOT NULL,
         variable TEXT NOT NULL, weight REAL NOT NULL, description TEXT,
@@ -490,15 +600,30 @@ def seed_weights():
     conn.commit(); conn.close()
     log.info(f"✅ Seeded {len(weights)} weight configurations")
 
-def log_job(job_name, status, rows=0, error=None, run_date=None):
+def log_job(job_name, status, rows=0, error=None, run_date=None, start_time=None,
+            end_time=None, kind="step"):
+    """
+    One pipeline_log row. kind='run' is a whole scheduled job, written by
+    pipeline.scheduler.run_job with its real start and end; kind='step' is a
+    job function reporting its own outcome from inside (start_time is then
+    when it reported, the only moment it knows).
+
+    A failure to write is logged, not swallowed: this used to `except: pass`,
+    so a locked or broken database made the pipeline's own record go silent.
+    """
+    end_time = end_time or datetime.now()
+    start_time = start_time or end_time
     try:
         conn = get_connection()
         conn.execute(
-            "INSERT INTO pipeline_log(run_date,job_name,start_time,status,rows_processed,error_msg) VALUES(?,?,?,?,?,?)",
-            (str(run_date or __import__('datetime').date.today()), job_name,
-             datetime.now(), status, rows, str(error) if error else None))
+            "INSERT INTO pipeline_log(run_date,job_name,start_time,end_time,status,rows_processed,"
+            "error_msg,kind,duration_s) VALUES(?,?,?,?,?,?,?,?,?)",
+            (str(run_date or __import__('datetime').date.today()), job_name, start_time, end_time,
+             status, rows, str(error)[:2000] if error else None, kind,
+             round((end_time - start_time).total_seconds(), 1)))
         conn.commit(); conn.close()
-    except Exception: pass
+    except Exception as e:
+        log.warning(f"  pipeline_log: could not record {job_name} {status}: {e}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

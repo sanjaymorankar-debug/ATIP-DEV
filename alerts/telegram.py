@@ -26,18 +26,73 @@ def _is_placeholder(v):
     s = str(v or "").strip()
     return (not s) or s.upper().startswith("YOUR") or s.upper() in ("XXX", "TODO", "CHANGEME")
 
-def send_telegram(message, parse_mode="HTML"):
-    cfg=load_config(); token=cfg.get("telegram_token"); chat=cfg.get("telegram_chat_id")
+def telegram_configured():
+    cfg=load_config()
+    return not (_is_placeholder(cfg.get("telegram_token")) or _is_placeholder(cfg.get("telegram_chat_id")))
+
+def _title_of(message):
+    """'ATIP — <title>' from fmt()'s first line, for the dashboard list."""
+    import re
+    first=re.sub(r"<[^>]+>","",message.split("\n",1)[0])
+    return first.split("ATIP — ",1)[-1].strip()[:120]
+
+def notify(message, category="alert", severity="info", key=None, parse_mode="HTML"):
+    """
+    Record an alert in alert_log (the dashboard's alert panel) and deliver it
+    to Telegram when a bot is configured. Returns {"recorded", "sent",
+    "duplicate"}.
+
+    key: an alert with the same key already recorded today is not repeated --
+    a job that stays broken is reported once a day, not every half hour.
+
+    Before this, an alert existed only as a Telegram message; with no bot
+    configured every one of them -- failures, CRI danger, the morning brief --
+    went nowhere but a WARNING line in atip.log.
+    """
+    out={"recorded":False,"sent":False,"duplicate":False}
+    now=datetime.now()
+    conn=None
+    try:
+        conn=get_connection()
+        if key and conn.execute("SELECT 1 FROM alert_log WHERE dedupe_key=? AND created_at>=?",
+                                (key,datetime.combine(now.date(),datetime.min.time()))).fetchone():
+            out["duplicate"]=True
+            return out
+        cur=conn.execute("INSERT INTO alert_log (created_at,category,severity,title,message,dedupe_key) "
+                         "VALUES (?,?,?,?,?,?)",(now,category,severity,_title_of(message),message,key))
+        conn.commit(); out["recorded"]=True; alert_id=cur.lastrowid
+    except Exception as e:
+        log.warning(f"  alert_log: could not record alert: {e}"); alert_id=None
+    try:
+        sent,err=_deliver_telegram(message,parse_mode)
+        out["sent"]=sent
+        if conn is not None and alert_id is not None:
+            conn.execute("UPDATE alert_log SET telegram_sent=?, telegram_error=? WHERE id=?",
+                         (int(sent),err,alert_id)); conn.commit()
+    finally:
+        if conn is not None: conn.close()
+    return out
+
+def _deliver_telegram(message, parse_mode="HTML"):
+    """(sent, error). The error text never carries the token: requests puts the
+    full URL -- /bot<token>/sendMessage -- into its exception messages, which
+    were logged as they were."""
+    cfg=load_config(); token=str(cfg.get("telegram_token") or ""); chat=cfg.get("telegram_chat_id")
     if _is_placeholder(token) or _is_placeholder(chat):
         log.warning("[TELEGRAM NOT CONFIGURED — set telegram_token + telegram_chat_id in "
-                    f"atip_data/config.json] {message[:80]}")
-        return False
+                    f"atip_data/config.json; shown on the dashboard instead] {_title_of(message)[:80]}")
+        return False,"not configured"
     try:
         r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                         json={"chat_id":chat,"text":message,"parse_mode":parse_mode},timeout=10)
-        r.raise_for_status(); log.info("  ✓ Telegram sent"); return True
+        r.raise_for_status(); log.info("  ✓ Telegram sent"); return True,None
     except Exception as e:
-        log.error(f"  Telegram failed: {e}"); return False
+        err=str(e).replace(token,"<token>") if token else str(e)
+        log.error(f"  Telegram failed: {err}"); return False,err[:300]
+
+def send_telegram(message, parse_mode="HTML", category="alert", severity="info", key=None):
+    """Record + deliver (see notify); True when Telegram delivered it."""
+    return notify(message,category=category,severity=severity,key=key,parse_mode=parse_mode)["sent"]
 
 def fmt(emoji, title, body, footer=""):
     ts=datetime.now().strftime("%d %b %Y %H:%M IST")
@@ -142,7 +197,21 @@ def check_fii_alert(trade_date=None):
     return False
 
 def send_failure_alert(job_name, error):
-    send_telegram(fmt("❌","Pipeline Failure",f"<b>Job:</b> {job_name}\n<b>Error:</b> {str(error)[:300]}"))
+    send_telegram(fmt("❌","Pipeline Failure",f"<b>Job:</b> {job_name}\n<b>Error:</b> {_html(str(error)[:300])}"),
+                  category="job",severity="error",key=f"job_failed:{job_name}")
+
+def _html(s):
+    return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+def send_job_health_alerts(problems):
+    """One alert per job-health problem (pipeline/health.py), once a day each."""
+    sent=0
+    for p in problems:
+        sev="error" if p.kind in ("FAILING","MISSED") else "warning"
+        r=notify(fmt("🩺",f"Job {p.kind.title()}: {p.label}",_html(p.detail)),
+                 category="job_health",severity=sev,key=f"health:{p.key}")
+        sent+=int(r["recorded"])
+    return sent
 
 def run_all_alert_checks(trade_date=None):
     if trade_date is None: trade_date=date.today()
@@ -250,16 +319,47 @@ def send_morning_digest(trade_date=None):
     except Exception as e:
         log.debug(f"  freshness check unavailable: {e}")
 
-    return send_telegram(fmt("☀️","Morning Brief — What should I do today?","\n".join(body),
-                             f"Scores from {td}"
-                             + (f" — {stale_n} session(s) STALE" if stale_n else " (current)")
-                             + ". Verify against live prices before acting — model output, not advice."))
+    # Whether the pipeline behind these numbers is healthy (pipeline/health.py)
+    try:
+        from pipeline.health import check_job_health
+        c2=get_connection()
+        try: problems=check_job_health(c2)
+        finally: c2.close()
+        if problems:
+            body.append(f"\n🩺 <b>Pipeline problems ({len(problems)})</b>")
+            body.extend(f"  {p.kind}: {_html(p.label)} — {_html(p.detail)}" for p in problems[:8])
+        else:
+            body.append("\n🩺 Pipeline: all monitored jobs ran")
+    except Exception as e:
+        log.debug(f"  job health unavailable for the brief: {e}")
+
+    # Recorded for the dashboard even when no bot is configured: returns True
+    # once the brief exists somewhere the owner can read it.
+    out=notify(fmt("☀️","Morning Brief — What should I do today?","\n".join(body),
+                   f"Scores from {td}"
+                   + (f" — {stale_n} session(s) STALE" if stale_n else " (current)")
+                   + ". Verify against live prices before acting — model output, not advice."),
+               category="digest",key=f"digest:{date.today()}")
+    return out["recorded"] or out["sent"]
 
 if __name__=="__main__":
     import argparse; logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")
     ap=argparse.ArgumentParser()
     ap.add_argument("--test",action="store_true"); ap.add_argument("--check-all",action="store_true"); ap.add_argument("--tod",action="store_true")
     args=ap.parse_args()
-    if args.test: send_telegram(fmt("✅","ATIP Test","Telegram alerts working! ATIP is live."))
+    if args.test:
+        # Setup check: says what is missing instead of failing quietly
+        if not telegram_configured():
+            print("Telegram is NOT configured. To set it up:\n"
+                  "  1. In Telegram, message @BotFather, send /newbot, copy the token it gives you.\n"
+                  "  2. Send any message to your new bot, then open\n"
+                  "     https://api.telegram.org/bot<token>/getUpdates and copy chat.id.\n"
+                  "  3. Put both in atip_data/config.json:\n"
+                  '       "telegram_token": "<token>", "telegram_chat_id": "<chat id>"\n'
+                  "  4. Run  python -m alerts.telegram --test  again.\n"
+                  "Until then every alert is still shown on the dashboard's Alerts panel.")
+        else:
+            ok,err=_deliver_telegram(fmt("✅","ATIP Test","Telegram alerts working! ATIP is live."))
+            print("✅ Test message delivered." if ok else f"❌ Telegram refused it: {err}")
     elif getattr(args,"check_all",False): run_all_alert_checks()
     elif args.tod: send_tod_alert()
