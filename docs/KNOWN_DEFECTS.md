@@ -41,7 +41,7 @@ These are scope boundaries, not defects. They are listed so that testers do not 
 
 | ID | Feature ID | Limitation | Why | Planned wave |
 |---|---|---|---|---|
-| W3-L1 | — | Position intents are never authorised or executed (`authorization_status = NOT_AUTHORIZED`) | Execution belongs to W4 | W4 |
+| W3-L1 | — | In W3, position intents were never authorised or executed (`authorization_status = NOT_AUTHORIZED`). **Superseded by W4:** the risk engine now sets AUTHORIZED / REJECTED / BLOCKED / REVIEW_REQUIRED, and only AUTHORIZED intents can become PAPER orders | Execution belonged to W4 | W4 (done) |
 | W3-L2 | — | An intent's `quantity` is indicative only:<br>• PAPER book: the W1 sizer applied to PAPER equity.<br>• LIVE book: `None`, because the broker is not asked. | Confirming sizing belongs to the W4 risk engine | W4 |
 | W3-L3 | SE-09 | `max_hold_sessions` is applied in backtests but not to live or paper decisions | The books do not record holding dates | W4 |
 | W3-L4 | SE-01 | W2 backtests trade whole positions, so `ADD` / `REDUCE` decisions are not simulated. Each run's warnings say so | W2 engine design; W3 does not redesign W2 | Later |

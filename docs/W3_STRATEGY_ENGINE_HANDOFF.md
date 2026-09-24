@@ -2,6 +2,16 @@
 
 **Independent functional validation: PENDING — ChatGPT**
 
+> **W3 completion additions (2026-09-25, branch `w4-risk-execution`, commit "feat: complete wave 3 strategy engine"):**
+> - **Decision `EXIT`** is now a decision of its own; it was folded into SELL before. Decisions are now BUY / SELL / HOLD / WAIT / EXIT / NO_TRADE. Combining strategies treats EXIT as SELL.
+> - **`reason_codes`** on every StrategyDecision: ENTRY_RULES_MET, EXIT_RULES_MET, MAX_HOLD, POSITION_LIMIT, AWAITING_CONFIRMATION, RISK_BLOCKED, …
+> - **`signal_source`** (`kind:strategy_id@version`). Both new fields are stored in `strategy_decision` (`reason_codes_json`, `signal_source`).
+> - **New features:** `macd`, `macd_signal`, `macd_hist`, `adx_N`, `vwap_N`. VWAP is a daily-bar rolling approximation, because ATIP has no intraday prints.
+> - **`strategy_feature` table:** the features each version needs, back-filled on library sync.
+> - **PositionIntent `entry_reference`** (the decision close) and `book`. `stop_loss` / `take_profit` are `stop_price` / `target_price`.
+> - **Audit guard:** re-running decisions for a date whose intents the W4 risk engine has already evaluated is refused, so the audit trail is kept.
+> - **W4 wiring:** the intent's `authorization_status` is changed only by the W4 risk engine (`docs/W4_RISK_EXECUTION_HANDOFF.md`).
+
 - **Built:** 2026-09-24 in `D:\Projects\ATIP-dev` on branch `w3-strategy-engine`, on top of W1+W2 (`ba4028f`).
 - **Merged:** into `master` in `D:\Projects\ATIP` (see section 10).
 - **Not done:** no deployment, no restart of the live ATIP, no orders of any kind.
