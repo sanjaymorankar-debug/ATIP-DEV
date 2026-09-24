@@ -6,7 +6,7 @@ This is the running list of items deliberately deferred during W3/W4 development
 - **Testing:** nothing here has been functionally tested. ChatGPT performs the independent testing.
 - **What was fixed during W3/W4:** no earlier defect was fixed, because none met the fix-now criteria (blocks startup, blocks W3/W4 structurally, risks data corruption, or could allow unintended live trading).
 
-Last updated: 2026-09-25.
+Last updated: 2026-09-25 (W5).
 
 ## Deferred defects
 
@@ -35,6 +35,20 @@ Last updated: 2026-09-25.
 | W4-R9 | The post-market cycle runs after the close. With `paper_fill_price` "live", an auto-executed order fills at the Dhan LTP at that time (the day's last price), not the next open | execution/pipeline.py | Low | OPEN (by design) | Scheduling decision for the owner |
 | W3-L1..L6 | W3 limitations (see KNOWN_DEFECTS.md section 3). L1 (intents never authorised) is now superseded by the W4 risk engine | strategy_engine/ | — | See KNOWN_DEFECTS.md | — |
 
+## W5 items not built / known limits
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W5-R1 | No model has been trained, validated or activated. Everything ML is framework only, so strategies `ml_direction` and `atip_ml_blend` get no ML values | ml/ | — (by design) | NOT DONE | Owner + ChatGPT validation |
+| W5-R2 | The scikit-learn / XGBoost / LightGBM adapters need packages that are not installed (nothing was installed). The numpy logistic and ridge models work without them | ml/models.py | Low | OPEN | Owner decision |
+| W5-R3 | ATIP score history starts 2026-07-27 and FII/DII flows 2026-07-28, so `atip_core` datasets are short. `atip_technical` covers the full price history | ml/feature_registry.py | Medium | OPEN (data) | W1 backfill / later |
+| W5-R4 | Dataset building is pure Python over EvalEnv and slow at full scale (all symbols × all sessions). Use `sampling` | ml/dataset.py | Low | OPEN | W6 (vectorised features) |
+| W5-R5 | Tree models get global importances only; there is no SHAP-style per-row attribution | ml/explain.py | Low | NOT BUILT | W6 |
+| W5-R6 | Monitoring persists drift and realised metrics but raises no alerts and has no dashboard charts. Realised metrics for `market_regime` models are not computed | ml/monitoring.py | Low | NOT BUILT | W6 / W8 |
+| W5-R7 | The assistant is templated (no LLM). An LLM layer needs a working Anthropic key (KD-001) | ml/assistant.py | Low | PARTIAL | Later |
+| W5-R8 | The universe for ML datasets is today's constituents (survivorship bias, as in W2) | ml/dataset.py | Medium | OPEN | W6 |
+| W5-R9 | Sector-return features are not built | strategy_engine/features.py | Low | NOT BUILT | W6 |
+
 ## Deferred testing items (for ChatGPT)
 
-All W3 and W4 functionality. The test scenarios are listed in `W3_STRATEGY_ENGINE_HANDOFF.md` section 9 and `W4_RISK_EXECUTION_HANDOFF.md` section 11.
+All W3, W4 and W5 functionality. The test scenarios are listed in `W3_STRATEGY_ENGINE_HANDOFF.md` section 9, `W4_RISK_EXECUTION_HANDOFF.md` section 11 and `W5_AI_ML_HANDOFF.md` section 9.
