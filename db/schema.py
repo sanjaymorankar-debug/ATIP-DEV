@@ -82,7 +82,7 @@ def get_connection():
     _migrate_news_classifier_column(conn)
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
-    for name, ddls in W1_TABLES.items():
+    for name, ddls in {**W1_TABLES, **W2_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     return conn
 
@@ -137,6 +137,55 @@ W1_TABLES = {
         """CREATE TABLE IF NOT EXISTS news_source_status (
             source TEXT PRIMARY KEY, url TEXT, last_attempt TIMESTAMP, last_ok TIMESTAMP,
             last_items INTEGER, consecutive_failures INTEGER DEFAULT 0, last_error TEXT)""",
+    ),
+}
+
+# ── Tables added in W2 (research & backtesting) ───────────────────────────
+# backtest/store.py. One backtest_run row per run -- its full configuration
+# snapshot (strategy, version, parameters, period, capital, costs, slippage,
+# liquidity, sizing) and hash, the code version and data fingerprint it ran
+# on, its bias report and metrics -- with the trades, dated equity curve and
+# drawdown episodes in child tables. Execution assumptions live in the
+# snapshot rather than in a table of their own: they are part of what makes a
+# run reproducible, and stored together they cannot drift apart.
+W2_TABLES = {
+    "backtest_run": (
+        """CREATE TABLE IF NOT EXISTS backtest_run (
+            run_id TEXT PRIMARY KEY, parent_run_id TEXT, kind TEXT NOT NULL DEFAULT 'single',
+            window_index INTEGER, strategy_id TEXT NOT NULL, strategy_version TEXT,
+            period_label TEXT, start_date DATE, end_date DATE, data_source TEXT, timeframe TEXT,
+            initial_capital REAL, params_json TEXT, config_json TEXT NOT NULL, config_hash TEXT,
+            code_version TEXT, data_fingerprint_json TEXT, bias_report_json TEXT, metrics_json TEXT,
+            summary_json TEXT, status TEXT NOT NULL DEFAULT 'CREATED', error TEXT,
+            created_at TIMESTAMP, started_at TIMESTAMP, finished_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_backtest_run_strategy ON backtest_run(strategy_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_backtest_run_parent ON backtest_run(parent_run_id)",
+    ),
+    "backtest_trade": (
+        """CREATE TABLE IF NOT EXISTS backtest_trade (
+            run_id TEXT NOT NULL, seq INTEGER NOT NULL, symbol TEXT NOT NULL,
+            entry_date DATE, entry_price REAL, entry_ref_price REAL, qty INTEGER,
+            exit_date DATE, exit_price REAL, exit_ref_price REAL, exit_reason TEXT,
+            gross_pnl REAL, costs REAL, net_pnl REAL, return_pct REAL, holding_sessions INTEGER,
+            entry_reason TEXT, PRIMARY KEY (run_id, seq))""",
+    ),
+    "backtest_equity": (
+        """CREATE TABLE IF NOT EXISTS backtest_equity (
+            run_id TEXT NOT NULL, date DATE NOT NULL, cash REAL, positions_value REAL, equity REAL,
+            exposure_pct REAL, n_positions INTEGER, realized_cum REAL, unrealized REAL,
+            daily_return REAL, peak_equity REAL, drawdown_pct REAL, PRIMARY KEY (run_id, date))""",
+    ),
+    "backtest_drawdown": (
+        """CREATE TABLE IF NOT EXISTS backtest_drawdown (
+            run_id TEXT NOT NULL, seq INTEGER NOT NULL, peak_date DATE, trough_date DATE,
+            recovery_date DATE, peak_equity REAL, trough_equity REAL, depth_pct REAL,
+            duration_sessions INTEGER, recovery_sessions INTEGER, PRIMARY KEY (run_id, seq))""",
+    ),
+    "backtest_montecarlo": (
+        """CREATE TABLE IF NOT EXISTS backtest_montecarlo (
+            mc_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, method TEXT NOT NULL, n_sims INTEGER,
+            seed INTEGER, params_json TEXT, results_json TEXT, created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_backtest_mc_run ON backtest_montecarlo(run_id)",
     ),
 }
 

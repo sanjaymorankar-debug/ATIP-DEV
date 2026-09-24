@@ -58,5 +58,17 @@
     "risk_per_trade_pct": 1.0,
     "max_position_pct":   10.0
   },
-  "_position_sizing_note": "capital null = the account's equity. Used by order rules with quantity_type RISK and by orders.risk.size_position()."
+  "_position_sizing_note": "capital null = the account's equity. Used by order rules with quantity_type RISK and by orders.risk.size_position().",
+
+  "_SECTION_10": "=== BACKTESTING (backtest/config.py) — defaults for every backtest; a run stores its own snapshot ===",
+  "backtest": {
+    "initial_capital":    1000000,
+    "cost_model":         "nse_delivery",
+    "cost_overrides":     {},
+    "slippage":           {"kind": "pct", "value": 5.0},
+    "liquidity":          {"max_participation_pct": 10.0, "min_avg_turnover": null, "on_breach": "cap", "adv_lookback": 20},
+    "sizing":             {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0, "max_positions": 10, "default_stop_pct": 5.0},
+    "risk_free_rate_pct": 0.0
+  },
+  "_backtest_note": "cost_model: nse_delivery | nse_intraday | flat | zero (rates in backtest/costs.py - verify against a contract note). slippage kind: none | fixed (Rs/share) | pct (basis points)."
 }

@@ -871,7 +871,7 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
@@ -1373,6 +1373,124 @@ if HAS_FASTAPI:
         from pipeline.scheduler import run_postmarket
         threading.Thread(target=run_postmarket,daemon=True).start()
         return JSONResponse({"status":"pipeline started"})
+
+    # ── Backtests (W2) ──────────────────────────────────────────────────
+    # Create/run validate the request synchronously (a bad request is a 400,
+    # not a FAILED run), then execute in a background thread; poll the run.
+    from backtest import service as bt_service, store as bt_store
+
+    def _bt_rows(kind, run_id):
+        conn=get_connection()
+        try:
+            if not bt_store.get_run(conn, run_id):
+                return None
+            return bt_store.get_rows(conn, kind, run_id)
+        finally:
+            conn.close()
+
+    @app.get("/api/backtests")
+    async def api_backtests(limit: int = 50, strategy_id: str = None):
+        conn=get_connection()
+        try: return JSONResponse(json_safe(bt_store.list_runs(conn, limit, strategy_id)))
+        finally: conn.close()
+
+    @app.get("/api/backtests/strategies")
+    async def api_backtest_strategies():
+        from backtest.strategies import REGISTRY
+        from backtest.config import backtest_config
+        return JSONResponse(json_safe({"strategies":{k:c().describe() for k,c in REGISTRY.items()},
+                                       "defaults":backtest_config()}))
+
+    @app.post("/api/backtests", dependencies=_guard)
+    async def api_backtest_create(request: _Req):
+        """Body: a backtest request (backtest/service.py). Returns run_id; runs in the background."""
+        import threading
+        payload = await request.json()
+        try:
+            run_id = bt_service.create(payload)
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        threading.Thread(target=bt_service.execute, args=(run_id,), daemon=True).start()
+        return JSONResponse({"run_id": run_id, "status": "RUNNING"})
+
+    @app.post("/api/backtests/walkforward", dependencies=_guard)
+    async def api_backtest_walkforward(request: _Req):
+        """Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?}."""
+        import threading
+        from backtest.walkforward import run_walk_forward, build_windows, trading_sessions
+        b = await request.json()
+        try:
+            req = b["request"]
+            bt_service.resolve_config(req)
+            build_windows(trading_sessions(req["start"], req["end"]), int(b["train"]), int(b["validation"]),
+                          int(b["test"]), int(b["step"]))
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        threading.Thread(target=run_walk_forward, daemon=True,
+                         args=(req, int(b["train"]), int(b["validation"]), int(b["test"]), int(b["step"]),
+                               b.get("candidates"), b.get("select_by", "sharpe"))).start()
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind walk_forward)"})
+
+    @app.get("/api/backtests/{run_id}")
+    async def api_backtest_get(run_id: str):
+        conn=get_connection()
+        try:
+            run = bt_store.get_run(conn, run_id)
+            if not run:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            if run["kind"] == "walk_forward":
+                run["children"] = bt_store.child_runs(conn, run_id)
+            return JSONResponse(json_safe(run))
+        finally: conn.close()
+
+    @app.get("/api/backtests/{run_id}/trades")
+    async def api_backtest_trades(run_id: str):
+        rows = _bt_rows("backtest_trade", run_id)
+        return JSONResponse(json_safe(rows)) if rows is not None else JSONResponse({"error": "not found"}, status_code=404)
+
+    @app.get("/api/backtests/{run_id}/equity")
+    async def api_backtest_equity(run_id: str):
+        rows = _bt_rows("backtest_equity", run_id)
+        return JSONResponse(json_safe(rows)) if rows is not None else JSONResponse({"error": "not found"}, status_code=404)
+
+    @app.get("/api/backtests/{run_id}/drawdowns")
+    async def api_backtest_drawdowns(run_id: str):
+        rows = _bt_rows("backtest_drawdown", run_id)
+        return JSONResponse(json_safe(rows)) if rows is not None else JSONResponse({"error": "not found"}, status_code=404)
+
+    @app.get("/api/backtests/{run_id}/metrics")
+    async def api_backtest_metrics(run_id: str):
+        conn=get_connection()
+        try:
+            run = bt_store.get_run(conn, run_id)
+            if not run:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            return JSONResponse(json_safe({"run_id": run_id, "status": run["status"], "metrics": run.get("metrics"),
+                                           "bias_report": run.get("bias_report")}))
+        finally: conn.close()
+
+    @app.get("/api/backtests/{run_id}/montecarlo")
+    async def api_backtest_mc_list(run_id: str):
+        conn=get_connection()
+        try: return JSONResponse(json_safe(bt_store.get_montecarlo(conn, run_id)))
+        finally: conn.close()
+
+    @app.post("/api/backtests/{run_id}/montecarlo", dependencies=_guard)
+    async def api_backtest_mc_run(run_id: str, request: _Req):
+        """Body: {method: trade_shuffle|return_bootstrap, n_sims, seed, block_size}."""
+        b = await request.json()
+        try:
+            return JSONResponse(json_safe(bt_service.run_montecarlo(
+                run_id, b.get("method", "trade_shuffle"), int(b.get("n_sims", 1000)), int(b.get("seed", 42)),
+                int(b.get("block_size", 1)))))
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    @app.get("/backtests", response_class=HTMLResponse)
+    async def backtests_page():
+        from dashboard.backtest_page import render
+        from dashboard.security import token as _tok
+        return HTMLResponse(render(_tok()))
 
     # ── Buy/Sell target + stoploss rules ────────────────────────────────
     # See orders/rules.py docstring for why triggering (automatic)
