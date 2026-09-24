@@ -308,7 +308,9 @@ The functional test scenarios below are **for ChatGPT and were not run** by Clau
 |---|---|
 | W2 base commit | `ba4028f` (W2 research & backtesting) |
 | Branch | `w3-strategy-engine` (worktree `D:\Projects\ATIP-dev`) |
-| W3 commit | recorded in the final report and in `git log` (`feat(atip): implement W3 strategy engine`) |
-| Merge | into `master` in `D:\Projects\ATIP` |
-| Final main HEAD | see `git log --oneline -1` in `D:\Projects\ATIP` |
-| Backups before the merge | DB: `atip_data/atip.db.bak-before-w3-<timestamp>`; repo: branch `backup/pre-w3-master` at `ba4028f` |
+| W3 commit | `5e54cc2` feat(atip): implement W3 strategy engine |
+| Handoff git-record commit | the commit after `5e54cc2` that fills in this table (docs only) |
+| Merge | `git merge --ff-only w3-strategy-engine` into `master` in `D:\Projects\ATIP`. A fast-forward, so **no merge commit**; W1/W2 history is preserved unchanged |
+| Final main HEAD | `master` = the docs commit above (`git log --oneline -1` in `D:\Projects\ATIP`) |
+| Backups before the merge | DB: `D:\Projects\ATIPtip_datatip.db.bak-before-w3-20260924-2341` (online backup, `PRAGMA integrity_check` = ok); repo: branch `backup/pre-w3-master` at `ba4028f`. Earlier backups kept |
+| Live process | Not restarted. The running ATIP keeps the W2 code it loaded; the W3 post-market jobs and `/strategies` routes take effect after the owner restarts it with bare `python main.py` |
