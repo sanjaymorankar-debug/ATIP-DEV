@@ -11,6 +11,10 @@ Health checks.
     GET /health/data       per-source freshness (ops/data_health.py) + latest data-quality score
     GET /health/scheduler  heartbeat age, job locks, failed jobs (24 h)
     GET /health/ml         ML layer enabled?, active models, predictions today, drift alerts
+    GET /health/storage    (W9) disk free, backup directory, latest verified backup age
+    GET /health/market_data (W9) live quote / index feed freshness in market hours, last broker
+                           data job, credential presence -- no broker call is made
+    (no queue exists in ATIP, so there is no queue component)
 
 Status values: LIVE, READY, DEGRADED, FAILED. HTTP 200 for LIVE / READY / DEGRADED,
 503 for FAILED (so a load balancer / uptime probe can act on the code alone).
@@ -193,7 +197,93 @@ def ml() -> dict:
             "drift_alerts_7d": drift}
 
 
-COMPONENTS = {"database": database, "broker": broker, "data": data, "scheduler": scheduler, "ml": ml}
+def storage() -> dict:
+    """W9: disk space on the database volume, database / WAL size, backup directory and
+    the latest verified backup (no paths beyond atip_data are returned)."""
+    import shutil
+    from db.schema import DB_PATH
+    free = shutil.disk_usage(str(Path(DB_PATH).resolve().parent)).free
+    st = READY if free >= 5 * 1024 ** 3 else (DEGRADED if free >= 1024 ** 3 else FAILED)
+    out = {"free_gb": round(free / 1024 ** 3, 1)}
+    try:
+        from ops.config import ops as _ops
+        bdir = Path(_ops().get("backup_dir") or "atip_data/backups")
+        out["backup_dir_exists"] = bdir.exists()
+    except Exception:
+        pass
+    c = _conn()
+    try:
+        r = c.execute("SELECT MAX(finished_at) FROM ops_backup WHERE status='VERIFIED'").fetchone()
+        last = r[0] if r else None
+        out["last_verified_backup"] = str(last)[:19] if last else None
+        if last:
+            age_h = (datetime.now() - datetime.fromisoformat(str(last)[:19])).total_seconds() / 3600
+            out["backup_age_hours"] = round(age_h, 1)
+            if age_h > 26:
+                st = worst(st, DEGRADED)
+        else:
+            st = worst(st, DEGRADED)                  # no verified backup yet: say so
+        f = c.execute("SELECT status, error FROM ops_backup WHERE status IN ('VERIFIED','FAILED') ORDER BY "
+                      "started_at DESC LIMIT 1").fetchone()
+        if f and f[0] == "FAILED":
+            out["latest_backup"] = "FAILED"
+            st = worst(st, DEGRADED)
+    finally:
+        c.close()
+    out["status"] = st
+    return out
+
+
+def market_data() -> dict:
+    """W9: market-data connectivity as ATIP can observe it without calling the broker:
+    the live quote / index feed freshness during market hours, the last successful broker
+    data job, and Dhan credential presence (never values). Outside market hours the feed
+    is expected to be idle and is reported as such."""
+    from ops.data_health import _is_session
+    now = datetime.now()
+    in_session = _is_session(now.date()) and (9 * 60 + 15) <= now.hour * 60 + now.minute <= 15 * 60 + 30
+    out = {"market_open": in_session}
+    st = READY
+    c = _conn()
+    try:
+        def age_min(sql):
+            try:
+                v = c.execute(sql).fetchone()[0]
+            except Exception:
+                return None
+            if not v:
+                return None
+            t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v)[:19].replace("T", " "))
+            return round((now - t).total_seconds() / 60, 1)
+        out["live_quotes_age_min"] = age_min("SELECT MAX(timestamp) FROM live_quotes")
+        out["index_levels_age_min"] = age_min("SELECT MAX(date || ' ' || COALESCE(time,'00:00:00')) FROM index_levels")
+        r = c.execute("SELECT job_name, MAX(start_time) FROM pipeline_log WHERE kind='run' AND status='SUCCESS' AND "
+                      "job_name LIKE 'dhan%' GROUP BY job_name ORDER BY 2 DESC LIMIT 1").fetchone()
+        out["last_successful_broker_data_job"] = {"job": r[0], "at": str(r[1])[:19]} if r else None
+    finally:
+        c.close()
+    if in_session:
+        q = out["live_quotes_age_min"]
+        if q is None or q > 30:
+            st = DEGRADED
+            out["feed"] = "STALE during market hours"
+        else:
+            out["feed"] = "LIVE"
+    else:
+        out["feed"] = "IDLE (market closed)"
+    try:
+        from ops.secrets import status as sec_status
+        out["credentials_present"] = sec_status("DHAN_ACCESS_TOKEN")["present"]
+        if not out["credentials_present"]:
+            st = worst(st, DEGRADED)
+    except Exception:
+        pass
+    out["status"] = st
+    return out
+
+
+COMPONENTS = {"database": database, "broker": broker, "data": data, "scheduler": scheduler, "ml": ml,
+              "storage": storage, "market_data": market_data}
 
 
 def component(name) -> dict:

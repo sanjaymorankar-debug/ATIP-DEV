@@ -126,7 +126,7 @@ A new package, `ops/`, holds the operations layer. Existing modules get small ho
 
 **New triggers:** append-only on `enterprise_audit` and `oms_order_event`.
 
-Everything is additive and nothing is dropped. Rollback notes are in `schema_migrations` and `docs/ROLLBACK.md`.
+Everything is additive and nothing is dropped. Rollback notes are in `schema_migrations` and `docs/ROLLBACK_PROCEDURE.md`.
 
 ## 5. Owner actions (not done by development — credentials are the owner's)
 

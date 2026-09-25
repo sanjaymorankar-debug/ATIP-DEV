@@ -17,6 +17,8 @@ python -m ops <command>
     audit-verify           recompute the enterprise_audit hash chain
     monitor                evaluate the monitoring rules once (no notifications)
     scan                   secret / config scan of tracked files (+ pip-audit if installed)
+    backup --kind pre-release   (W9) verified backup labelled for a deployment
+    release preflight|manifest|postcheck|record ...   (W9) see ops/release.py
 Exit code 1 when the command found a problem.
 """
 
@@ -32,10 +34,15 @@ def _p(x):
 
 
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "release":                       # W9 release engineering
+        from ops.release import main as release_main
+        return release_main(argv[1:])
     ap = argparse.ArgumentParser(prog="python -m ops")
     ap.add_argument("cmd")
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--target")
+    ap.add_argument("--kind", default="manual", choices=["manual", "pre-release"])
     a = ap.parse_args(argv)
     from db.schema import get_connection
     if a.cmd == "status":
@@ -70,7 +77,7 @@ def main(argv=None) -> int:
         return 1 if any(r["status"] == "FAILED" for r in res) else 0
     if a.cmd == "backup":
         from ops.backup import backup
-        r = backup("manual")
+        r = backup(a.kind)
         _p(r)
         return 0 if r["status"] == "VERIFIED" else 1
     if a.cmd == "backups":

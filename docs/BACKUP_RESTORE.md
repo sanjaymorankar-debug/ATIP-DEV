@@ -65,7 +65,7 @@ Take one before every merge that changes the schema. This procedure has been use
    ```
 
    Or use the dated manual snapshot `atip_data/atip.db.bak-before-<wave>-<ts>` made with the SQLite backup API and checked with `PRAGMA integrity_check`.
-2. Record the backup id or file name in the release notes (DEPLOYMENT.md).
+2. Record the backup id or file name in the release notes (PRODUCTION_DEPLOYMENT.md).
 
 ## Restore procedure
 

@@ -46,7 +46,7 @@ from enterprise.config import COOKIE, settings
 PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh)$"), ("GET", r"^/login$"),
           ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"),
           # W8: health probes (no sensitive data) and signed inbound webhooks (HMAC-verified)
-          ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml))?$"),
+          ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml|storage|market_data))?$"),
           ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$")]
 SELF = r"^/api/auth/(me|logout|password)$"      # any signed-in principal
 

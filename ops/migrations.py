@@ -16,7 +16,7 @@ change the database with a NEW version.
 Rollback: SQLite cannot drop columns portably, and ATIP's policy is additive only,
 so every migration carries a written rollback note (what to drop / how to restore);
 the supported rollback of a whole release is restoring the pre-release verified
-backup (docs/ROLLBACK.md). Nothing here deletes data.
+backup (docs/ROLLBACK_PROCEDURE.md). Nothing here deletes data.
 """
 
 from __future__ import annotations

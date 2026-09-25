@@ -96,6 +96,34 @@ Last updated: 2026-09-25 (W7).
 | W8-R12 | pip-audit is not installed, so the dependency audit in `python -m ops scan` reports NOT RUN | ops/scan.py | Low | OPEN | Install in a dev environment |
 | W8-R13 | W8 is merged to MAIN but the running ATIP process loads it only after a restart (bare `python main.py`) | — | — | PENDING RESTART | Owner decision |
 
+## W9 release classification (ATIP-W9-RC1)
+
+- **P0** blocks release, or is a serious trading / security / data risk.
+- **P1** is an important production issue.
+- **P2** is non-blocking.
+- **P3** is a future enhancement.
+
+Only P0 blocks the release. **Open P0 items: none.**
+
+| ID | Priority | Issue | Status |
+|---|---|---|---|
+| W9-T1 | P0 | W1 real orders (order rules, aggressive strategy) could reach Dhan with `broker_env: LIVE` + confirm without consulting `LIVE_TRADING_ENABLED` (`execution.live_trading_enabled`); only the owner's config could open it (broker_env is PAPER) | **FIXED in W9**: master switch in `orders/broker._place_order` (needs live_trading_enabled + environment production) |
+| W9-S1 | P1 | W7 workspace upserts (`enterprise/workspace.py` save_watchlist / save_alert / save_report) accepted a client-supplied id and could overwrite another user's or tenant's row | **FIXED in W9** (ownership check). Only reachable with the enterprise layer enabled (it is off in production) |
+| W9-S2 | P1 | Session / refresh cookies had no `Secure` flag | **FIXED in W9**: Secure when `ops.tls_enabled` (plain-HTTP localhost unchanged) |
+| W9-D1 | P1 | `cryptography` (used by ops/crypto.py) was installed but not declared; no dependency lock | **FIXED in W9**: requirements.txt + requirements.lock.txt |
+| W9-Q1 | P1 | W3–W9 have not been independently tested; CI (`.github/workflows/tests.yml`) has not run on W2–W9 because nothing has been pushed since W1 (master 50+ commits ahead of origin) | OPEN: ChatGPT QA pending; pushing is the owner's decision |
+| W9-B1 | P1 | No W8 scheduled backup has run yet (the first is due 19:15 on 2026-09-26; `atip_data/backups` does not exist yet). The deploy script takes its own VERIFIED pre-release backup | OPEN (resolves at the first 19:15 run or the first deploy) |
+| W8-R2 | P1 | Backups are on the same disk as the database; no off-machine copy | OPEN (owner decision) |
+| W8-R4 | P1 | Seven credentials are still plaintext in `atip_data/config.json` (gitignored; never committed; the git history scan found only truncated placeholders) | OPEN (owner action; development never handles credentials) |
+| W9-J1 | P2 | `dhan_portfolio` job FAILED 2026-09-25 10:31 (later runs succeeded; not investigated); `dhan_15min_bars` fails daily (owner: ignore) | OPEN; keeps `/health/scheduler` DEGRADED for 24 h |
+| W9-C1 | P2 | The production instance runs as environment `development` (single-user, enterprise off); `production` would refuse to start without the enterprise layer, the encryption key and rate limiting | OPEN (by design; see PRODUCTION_CONFIGURATION.md) |
+| W9-H1 | P2 | `/health` is DEGRADED, not READY, until the first verified backup exists and no job has failed in the last 24 h (storage / scheduler components) | OPEN (accurate reporting, not a fault) |
+| W9-R1 | P2 | Deploy and rollback scripts are syntax-checked and dry-run only; an authorized deployment and a rollback have **not** been executed | OPEN (needs owner authorization) |
+| W8-R5..R12 | P2 | In-process rate limit / metrics, no off-box metrics, resilience wrappers only on webhooks, no frozen v1 OpenAPI, legacy error bodies, pre-W8 audit rows unhashed, pid reuse on locks, pip-audit not installed | OPEN (see the W8 table) |
+| W9-P1 | P3 | Enterprise-SaaS work (per-tenant books, vault, PostgreSQL tooling, notification channels, billing sandbox, privacy) was started under the earlier W9 prompt, then superseded by the release brief. It is parked unmerged on branch `w9-enterprise-saas` (`3aae821`), incomplete and untested | PARKED |
+| W7-R5/R6/R9 | P3 | No e-mail sender, no payment gateway, no report rendering | OPEN |
+| W9-M1 | P3 | `orders/broker.py` has an unused `PAPER` import (pyflakes); `atip.db.bak-before-w8-*` has `-wal` / `-shm` side files from its verification open | OPEN (cosmetic) |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:
@@ -105,3 +133,4 @@ All W3 to W7 functionality. The test scenarios are listed in:
 - `W6_ADVANCED_QUANT_HANDOFF.md` section 10
 - `W7_ENTERPRISE_HANDOFF.md` section 9
 - `W8_PRODUCTION_HARDENING_HANDOFF.md` section 9
+- `W9_FINAL_RELEASE.md` (the QA handoff checklist)

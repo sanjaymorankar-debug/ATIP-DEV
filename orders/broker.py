@@ -194,6 +194,22 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
                    key=f"blocked_halted:{symbol}:{transaction_type}")
         return {"status": "BLOCKED_HALTED", "reason": halt_reason}
 
+    # W9 master switch: a REAL order (broker_env LIVE + confirm) also needs
+    # LIVE_TRADING_ENABLED (execution.live_trading_enabled true in the production
+    # environment). Without it the order is refused -- never downgraded silently.
+    if mode == "REAL":
+        from ops.trading_safety import live_trading_enabled
+        allowed, why = live_trading_enabled()
+        if not allowed:
+            log.error(f"  ⛔ Real order refused — LIVE_TRADING_ENABLED is false ({why})")
+            _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
+                       price, None, None, mode, "BLOCKED_LIVE_DISABLED", error=why)
+            conn.close()
+            risk_alert("Real Order Refused — Live Trading Disabled",
+                       f"{transaction_type} {quantity} x {symbol}: broker_env is LIVE but {why}",
+                       key=f"blocked_live_disabled:{symbol}:{transaction_type}")
+            return {"status": "BLOCKED_LIVE_DISABLED", "reason": why}
+
     sec = get_security_id(symbol)
     if not sec:
         msg = f"security_id not found for {symbol} — cannot place order (check security_id_list.csv is current)"

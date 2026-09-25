@@ -68,3 +68,52 @@ W1–W7 modules still read `config.json` directly. Overlays and env overrides th
 ```
 
 **LIVE_TRADING_ENABLED = FALSE.** Do not change it without an explicit owner decision. Even when changed, live execution requires `environment: production`, and the W4 Dhan adapter refuses every call; live execution is not built.
+
+## W9 master switch (all order paths)
+
+From W9, **real-money orders on every path** need `execution.live_trading_enabled: true` **and** `environment: production` (`ops/trading_safety.live_trading_enabled()`).
+
+| Path | Additional requirement | Status |
+|---|---|---|
+| W4 execution | `execution.mode: LIVE` | the Dhan adapter still refuses every call |
+| W1 order rules and the aggressive strategy (`orders/broker._place_order`) | `broker_env: LIVE` + `confirm=True` | before W9 these did not consult `live_trading_enabled`; a refused order is logged as `BLOCKED_LIVE_DISABLED` and alerted |
+
+## W9 configuration audit of the production instance (2026-09-26)
+
+Values are never shown. Status is CONFIGURED / MISSING / INVALID / NOT REQUIRED.
+
+| Variable (actual name in ATIP) | Where | Status |
+|---|---|---|
+| Database (`db.schema.DB_PATH`; `ATIP_DB_PATH` / `DATABASE_URL` overrides) | default `atip_data/atip.db` | CONFIGURED (SQLite; no URL needed) |
+| `environment` / `ATIP_ENV` | config.json | NOT SET → development (see the note below) |
+| Dashboard token (the local `SECRET_KEY` equivalent) | `atip_data/dashboard_token.txt` (gitignored) | CONFIGURED |
+| `dhan_client_id`, `dhan_access_token` (broker keys) | config.json (legacy plaintext) | CONFIGURED (move to the secret store: W8-R4) |
+| `kite_api_key`, `kite_api_secret` | config.json | CONFIGURED (optional) |
+| `telegram_token`, `telegram_chat_id` | config.json | CONFIGURED |
+| `ANTHROPIC_API_KEY` (news AI) | `.env` | CONFIGURED |
+| `alpha_vantage_key` | config.json | CONFIGURED (optional) |
+| `ATIP_ENCRYPTION_KEY` | not created | MISSING. Needed only for MFA / field encryption (owner: `python -m ops keygen`) |
+| JWT secret | — | NOT REQUIRED (ATIP uses random opaque session tokens stored as digests, not JWTs) |
+| Redis / queue | — | NOT REQUIRED (single process; `ops.shared_state_url` is not used in W9-RC1) |
+| E-mail (SMTP) | — | NOT REQUIRED (no mail sender; W7-R5) |
+| ML configuration (`ml` section) | defaults | CONFIGURED (defaults; `ml.enabled` false) |
+| Quant configuration (`quant` section) | defaults | CONFIGURED (defaults; `quant.enabled` false) |
+| Logging | `main.py` + `ops/logs.py` | CONFIGURED (atip.log 10 MB rotation, atip.jsonl 20 MB × 5, secret masking) |
+| DEBUG | uvicorn `log_level="warning"`, FastAPI debug off, no reload | CONFIGURED (off) |
+| CORS (`ops.cors_origins`) | default [] | CONFIGURED (same-origin only) |
+| Session cookies | HttpOnly, SameSite=Strict; `Secure` when `ops.tls_enabled` (W9) | CONFIGURED |
+| `execution.live_trading_enabled` | absent → default false | CONFIGURED = **FALSE** |
+| `broker_env` | config.json | PAPER |
+
+**Environment note.** The production instance runs single-user on 127.0.0.1 with the enterprise layer off. Its effective environment is therefore `development`.
+
+Setting `environment: production` would make ATIP **refuse to start** until:
+- the enterprise layer is enabled, with an admin bootstrapped;
+- the encryption key exists;
+- rate limiting is on.
+
+This is by design (W8). Running as development has two effects:
+- live trading is impossible, which is the required state;
+- configuration errors are logged instead of refusing startup.
+
+Recorded as W9-C1 (P2) in KNOWN_ISSUES.md.

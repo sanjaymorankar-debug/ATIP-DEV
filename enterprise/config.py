@@ -43,5 +43,15 @@ def settings() -> dict:
     return out
 
 
+def cookie_secure() -> bool:
+    """W9: session / refresh cookies carry the Secure flag when TLS fronts ATIP
+    (ops.tls_enabled). Plain-HTTP localhost keeps working without it."""
+    try:
+        from ops.config import ops
+        return bool(ops().get("tls_enabled"))
+    except Exception:
+        return False
+
+
 def enabled() -> bool:
     return settings()["enabled"]

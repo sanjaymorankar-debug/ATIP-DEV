@@ -1,4 +1,43 @@
-# Rollback (W8)
+# Rollback procedure (W9)
+
+*The W8 `ROLLBACK.md`, renamed and extended for the W9 release process.*
+
+## Scripted rollback (W9)
+
+Dry run first; it changes nothing:
+
+```bash
+powershell -ExecutionPolicy Bypass -File deployollback_release.ps1 -ToRef backup/pre-w9-master
+```
+
+Code-only rollback (the normal case):
+
+```bash
+powershell -ExecutionPolicy Bypass -File deployollback_release.ps1 -ToRef backup/pre-w9-master -Authorize
+```
+
+To also restore the database and/or the configuration:
+
+```bash
+powershell -ExecutionPolicy Bypass -File deployollback_release.ps1 -ToRef <tag|branch> -RestoreBackup <backup_id> -RestoreConfigFrom <release_id> -Authorize
+```
+
+The script:
+1. takes a VERIFIED safety backup of the current database;
+2. stops ATIP;
+3. `git reset --hard` master to the target. Later commits stay on their branch or tag, and untracked files are not touched;
+4. optionally restores the database: a verified copy goes to a new file, the live file is kept as `atip.db.pre-rollback-<ts>`, and the copy is swapped in;
+5. optionally restores the configuration from `atip_data/releases/<id>/config.json.backup`;
+6. starts `python main.py`;
+7. runs the postcheck (health, logs, scheduler, LIVE_TRADING_ENABLED = FALSE);
+8. records `ROLLED_BACK` in `atip_data/releases/history.jsonl`.
+
+**Limitations:**
+- The database rollback loses everything written after the chosen backup.
+- It is a manual decision (`-RestoreBackup`) and is never automatic.
+- Rollback targets for W9: `backup/pre-w9-master` (= W8 `a7d7187`) and `ATIP-W9-RC1` (the release itself).
+- The scripts have been syntax-checked only. **A rollback has not been executed or tested.**
+
 
 Rollback has two parts, **code** and **database**. Schema changes in ATIP are additive: new tables, columns, indexes and triggers, and nothing dropped. Older code therefore runs against a newer schema, and a code-only rollback is usually enough.
 

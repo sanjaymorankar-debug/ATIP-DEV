@@ -107,11 +107,13 @@ def register(app, guard, Req, get_connection, json_safe):
 
     def _session_response(out):
         resp = JSONResponse(out)
-        resp.set_cookie(COOKIE, out["token"], httponly=True, samesite="strict",
+        from enterprise.config import cookie_secure
+        resp.set_cookie(COOKIE, out["token"], httponly=True, samesite="strict", secure=cookie_secure(),
                         max_age=int(float(settings()["session_hours"]) * 3600))
         # W8: the refresh token rides in its own HttpOnly cookie, sent only to the refresh route
         resp.set_cookie(REFRESH_COOKIE, out["refresh_token"], httponly=True, samesite="strict",
-                        path="/api/auth/refresh", max_age=int(float(settings().get("refresh_days", 14)) * 86400))
+                        secure=cookie_secure(), path="/api/auth/refresh",
+                        max_age=int(float(settings().get("refresh_days", 14)) * 86400))
         return resp
 
     @app.post("/api/auth/refresh")

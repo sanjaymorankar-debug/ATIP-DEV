@@ -21,6 +21,27 @@ import logging
 log = logging.getLogger("atip.ops.trading_safety")
 
 
+def live_trading_enabled() -> tuple:
+    """W9 MASTER SWITCH for real-money orders on EVERY path.
+
+    (allowed, reason): True only when config.json execution.live_trading_enabled is a
+    JSON true AND the ops environment is production. W4 additionally needs
+    execution.mode LIVE (execution/config.live_gate) and its Dhan adapter still refuses;
+    W1 order rules / the aggressive strategy additionally need broker_env LIVE and
+    confirm=True (orders/broker._place_order). Unreadable configuration = not allowed."""
+    try:
+        from execution.config import execution_settings
+        if execution_settings().get("live_trading_enabled") is not True:
+            return False, "execution.live_trading_enabled is false"
+        from ops.config import environment
+        env = environment()
+        if env != "production":
+            return False, f"environment is {env}; real orders require production"
+        return True, "execution.live_trading_enabled true and environment production"
+    except Exception as e:
+        return False, f"live-trading switch unreadable ({type(e).__name__}) -- fail closed"
+
+
 def report() -> dict:
     out = {}
     try:
@@ -52,7 +73,11 @@ def report() -> dict:
         out["environment"] = environment()
     except Exception:
         pass
-    out["LIVE_TRADING_ENABLED"] = bool(allowed)
+    master, master_reason = live_trading_enabled()
+    out["master_switch"] = {"allowed": master, "reason": master_reason}
+    # W1 real orders need broker_env LIVE + confirm AND the master switch (W9)
+    out["w1_real_orders_possible"] = bool(master and out.get("w1_broker_env") == "LIVE")
+    out["LIVE_TRADING_ENABLED"] = bool(allowed or out["w1_real_orders_possible"])
     return out
 
 

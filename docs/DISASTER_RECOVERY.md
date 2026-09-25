@@ -20,7 +20,7 @@ Market data is largely re-derivable. Bhavcopy and Dhan history can be re-fetched
 |---|---|---|
 | ATIP process crashed / stopped | `/health/live` down; scheduler heartbeat rule (if another monitor runs); autostart relaunches at logon | Start with a bare `python main.py`. The single-instance guard prevents duplicates. Missed jobs are caught up at start |
 | Database corruption | `integrity_check` failure in the nightly backup (backup rule, critical); SQLite errors in the log | Restore the newest VERIFIED backup (BACKUP_RESTORE.md); re-run catch-up |
-| Bad release | errors after deploy; health DEGRADED/FAILED | ROLLBACK.md: code rollback via git, database via the pre-release backup |
+| Bad release | errors after deploy; health DEGRADED/FAILED | ROLLBACK_PROCEDURE.md: code rollback via git, database via the pre-release backup |
 | Disk full | `disk_space` rule (< 2 GB) | Free space; prune backups (`python -m ops prune`); old logs rotate automatically |
 | Broker token expired (DH-901) | `/health/broker` DEGRADED, last portfolio sync FAILED, data jobs failing | Owner updates the Dhan token (never development), then restart |
 | Machine loss / disk failure | — | **Not covered yet:** backups are on the same disk (W8-R2). Needs an off-machine copy of `atip_data/backups`, `atip_data/ml`, `atip_data/config.json` and `atip_data/secrets/` (owner decision) |

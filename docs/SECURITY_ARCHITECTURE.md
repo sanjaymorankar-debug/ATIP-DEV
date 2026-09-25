@@ -131,4 +131,4 @@ See `ops/webhooks.py`.
 - configuration and secret findings;
 - `pip-audit` when installed (currently NOT RUN).
 
-Run it before every release (DEPLOYMENT.md).
+Run it before every release (PRODUCTION_DEPLOYMENT.md).

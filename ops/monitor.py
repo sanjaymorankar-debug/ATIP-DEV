@@ -136,9 +136,12 @@ def r_backup(conn):
 
 
 def r_live_trading(conn):
-    from execution.config import live_gate
-    allowed, reason = live_gate()
-    return allowed, "critical", f"LIVE TRADING GATE OPEN: {reason}"
+    from ops.trading_safety import report
+    r = report()
+    return r["LIVE_TRADING_ENABLED"], "critical", (f"LIVE TRADING ENABLED: W4 gate "
+                                                   f"{'open' if r.get('live_gate_open') else 'closed'}, W1 real orders "
+                                                   f"{'possible' if r.get('w1_real_orders_possible') else 'blocked'} "
+                                                   f"({r['master_switch']['reason']})")
 
 
 RULES = {"database": r_database, "data_stale": r_data_stale, "scheduler": r_scheduler,

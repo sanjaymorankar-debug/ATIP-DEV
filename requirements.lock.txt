@@ -1,0 +1,22 @@
+# ATIP dependency lock -- the versions this release was built and smoke-checked against.
+# Python 3.14.7 (Windows). Generated for release ATIP-W9-RC1 from the installed environment.
+# Install exactly: pip install -r requirements.lock.txt   (requirements.txt keeps the minimum versions)
+pandas==3.0.5
+numpy==2.5.2
+requests==2.34.2
+dhanhq==2.2.0
+yfinance==1.7.0
+ta==0.11.0
+schedule==1.2.2
+fastapi==0.141.1
+uvicorn==0.52.4
+starlette==1.6.0
+pydantic==2.13.5
+anthropic==1.4.0
+feedparser==6.0.14
+beautifulsoup4==4.15.0
+kiteconnect==5.2.1
+python-dotenv==1.2.3
+tqdm==4.70.0
+openpyxl==3.1.5
+cryptography==50.0.1
