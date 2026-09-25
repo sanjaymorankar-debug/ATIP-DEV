@@ -182,7 +182,8 @@ def submit_order(conn, order_id: str) -> dict:
     request = {k: o[k] for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
                                  "product_type", "reference_price")}
     try:
-        adapter = get_adapter(conn, o["mode"])
+        from execution.tenant_books import tenant_of_strategy
+        adapter = get_adapter(conn, o["mode"], tenant_of_strategy(conn, o["strategy_id"]))
         r = adapter.submit(o)
     except (LiveTradingDisabled, BrokerError) as e:
         eid = _record_execution(conn, o, "submit", request, error=str(e))
@@ -207,7 +208,8 @@ def cancel_order(conn, order_id: str, reason: str = "cancelled by owner") -> dic
         raise ExecutionError(f"order {order_id} is SUBMITTED with no broker acknowledgement yet; refresh it first")
     o = transition(conn, order_id, CANCEL_PENDING, reason)
     try:
-        r = get_adapter(conn, o["mode"]).cancel(o)
+        from execution.tenant_books import tenant_of_strategy
+        r = get_adapter(conn, o["mode"], tenant_of_strategy(conn, o["strategy_id"])).cancel(o)
     except Exception as e:
         eid = _record_execution(conn, o, "cancel", {"order_id": order_id}, error=str(e))
         return transition(conn, order_id, FAILED, f"cancel failed: {e}", {"execution_id": eid}, reason=str(e))

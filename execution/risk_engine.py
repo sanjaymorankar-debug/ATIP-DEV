@@ -139,6 +139,15 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return finish(REJECTED, f"superseded strategy version {it['version']} (current {s[1]})")
     add("strategy_enabled", PASS, f"{s[0]}, version {s[1]}")
 
+    from execution import tenant_books as TB
+    tenant = TB.tenant_of_strategy(conn, it["strategy_id"])
+    own_book = TB.is_default(tenant)          # W9: the owner's W1 paper book, else the tenant's own book
+    if not own_book and (it["book"] == LIVE or settings["mode"] == LIVE):
+        add("tenant_book", FAIL, f"tenant {tenant}: LIVE execution is owner-only")
+        return finish(BLOCKED, f"tenant {tenant}: only PAPER execution exists for tenants")
+    add("tenant_book", PASS if not own_book else SKIP,
+        f"tenant {tenant} paper book" if not own_book else "owner's paper book")
+
     tp = _tenant_profile(conn, it)
     if tp is not None:
         if not tp.get("trading_enabled", True):
@@ -209,7 +218,7 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     # -- reducing risk ----------------------------------------------------------
     if it["side"] == "SELL":
-        held = P.held_quantity(conn, it["symbol"])
+        held = P.held_quantity(conn, it["symbol"]) if own_book else TB.held_quantity(conn, tenant, it["symbol"])
         if held <= 0:
             add("position_held", FAIL, "nothing held in the paper book", 0)
             return finish(REJECTED, f"no {it['symbol']} position to sell")
@@ -223,7 +232,7 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     # -- adding risk ------------------------------------------------------------
     try:
-        bk = P.book(conn)
+        bk = P.book(conn) if own_book else TB.book(conn, tenant)
     except Exception as e:
         bk = {"equity": None, "cash": None, "positions": [], "error": str(e)}
     equity, cash = bk.get("equity"), bk.get("cash")
@@ -321,15 +330,18 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
             return finish(REJECTED, f"max_open_positions {lim['max_open_positions']} reached")
         add("max_open_positions", PASS, f"{n_pos} open", n_pos + 1, lim["max_open_positions"])
     if lim["max_daily_trades"] is not None:
-        n = _orders_today(conn)
+        n = _orders_today(conn) if own_book else TB.orders_today(conn, tenant)
         if n + 1 > lim["max_daily_trades"]:
             add("max_daily_trades", FAIL, f"{n} orders today", n + 1, lim["max_daily_trades"])
             return finish(REJECTED, f"max_daily_trades {lim['max_daily_trades']} reached")
         add("max_daily_trades", PASS, f"{n} orders today", n + 1, lim["max_daily_trades"])
     if lim["daily_loss_limit_pct"] is not None or lim["portfolio_drawdown_limit_pct"] is not None:
         try:
-            from portfolio.pnl import risk_state
-            st = risk_state(conn, PAPER)
+            if own_book:
+                from portfolio.pnl import risk_state
+                st = risk_state(conn, PAPER)
+            else:
+                st = TB.risk_state(conn, tenant)
         except Exception as e:
             st = {"day_pnl": None, "drawdown_pct": None, "error": str(e)}
         if lim["daily_loss_limit_pct"] is not None:
@@ -362,7 +374,11 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
                                     f"{lim['strategy_drawdown_limit_pct']}%")
         add("strategy_drawdown_limit_pct", PASS, f"strategy P&L {pnl:+,.2f}", dd, lim["strategy_drawdown_limit_pct"])
 
-    # W1 limits (config.json risk_limits), unchanged
+    # W1 limits (config.json risk_limits), unchanged -- they measure the owner's book only
+    if not own_book:
+        add("w1_pretrade", SKIP, f"W1 limits apply to the owner's book; tenant {tenant} uses W4 limits + profile")
+        rd.est_value = round(qty * px, 2)
+        return _review(finish, settings, it, add, qty)
     try:
         from orders.risk import pretrade_check
         w1 = pretrade_check(conn, it["symbol"], "BUY", qty, qty * px, env=PAPER)

@@ -28,10 +28,13 @@ from enterprise import audit
 
 SUB_STATUSES = ("TRIAL", "ACTIVE", "PAST_DUE", "CANCELLED", "EXPIRED")
 PLANS = {
-    "FREE": {"max_users": 2, "max_strategies": 5, "max_models": 2, "max_backtests_per_day": 5, "max_api_keys": 1},
-    "PRO": {"max_users": 10, "max_strategies": 50, "max_models": 20, "max_backtests_per_day": 50, "max_api_keys": 5},
+    "FREE": {"max_users": 2, "max_strategies": 5, "max_models": 2, "max_backtests_per_day": 5, "max_api_keys": 1,
+             "max_api_calls_per_day": 1000, "max_alert_rules": 10, "max_watchlists": 3, "max_reports": 3},
+    "PRO": {"max_users": 10, "max_strategies": 50, "max_models": 20, "max_backtests_per_day": 50, "max_api_keys": 5,
+            "max_api_calls_per_day": 20000, "max_alert_rules": 100, "max_watchlists": 25, "max_reports": 25},
     "ENTERPRISE": {"max_users": None, "max_strategies": None, "max_models": None, "max_backtests_per_day": None,
-                   "max_api_keys": None},
+                   "max_api_keys": None, "max_api_calls_per_day": None, "max_alert_rules": None,
+                   "max_watchlists": None, "max_reports": None},
 }
 FEATURES = {"FREE": ["research", "strategies", "backtests"],
             "PRO": ["research", "strategies", "backtests", "ml", "quant", "paper_execution", "api_keys"],
@@ -44,6 +47,13 @@ def seed(conn):
         conn.execute("INSERT OR IGNORE INTO enterprise_plan (plan_id,name,price_month,currency,limits_json,features_json,"
                      "status) VALUES (?,?,?,?,?,?,?)", (pid, pid.title(), None, "INR", json.dumps(lim),
                                                         json.dumps(FEATURES[pid]), "ACTIVE"))
+        # W9: add limit keys introduced later to seeded plans, never overwriting an owner's edit
+        r = conn.execute("SELECT limits_json FROM enterprise_plan WHERE plan_id=?", (pid,)).fetchone()
+        cur = json.loads(r[0] or "{}") if r else {}
+        missing = {k: v for k, v in lim.items() if k not in cur}
+        if missing:
+            conn.execute("UPDATE enterprise_plan SET limits_json=? WHERE plan_id=?", (json.dumps({**cur, **missing}),
+                                                                                    pid))
     conn.commit()
 
 

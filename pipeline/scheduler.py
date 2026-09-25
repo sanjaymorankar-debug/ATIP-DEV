@@ -1318,8 +1318,21 @@ def start_scheduler():
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
-    from ops.jobs import beat
+    from ops.jobs import beat, leader_lease
+    # W9: leader election -- with several scheduler processes only the lease holder runs jobs
+    while not leader_lease():
+        log.warning("  another scheduler holds the leader lease — standing by (checking every 30 s)")
+        beat("scheduler_standby", detail="waiting for the leader lease")
+        time.sleep(30)
+    last_lease = time.monotonic()
     while True:
+        if time.monotonic() - last_lease >= 60:
+            if not leader_lease():
+                log.warning("  scheduler leader lease lost — standing by")
+                while not leader_lease():
+                    time.sleep(30)
+                log.info("  scheduler leader lease re-acquired")
+            last_lease = time.monotonic()
         schedule.run_pending()
         beat("scheduler", detail=f"{len(schedule.get_jobs())} jobs")   # W8: throttled to one write / 60 s
         nxt = schedule.next_run()

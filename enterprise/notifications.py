@@ -13,6 +13,9 @@ Channels:
                only for users of the default tenant who opt in -- ATIP has one
                bot token, it is not a per-user channel
     email      not implemented (no mail sender is configured; pending)
+    W9: every inbox row is also dispatched to the user's configured channels
+    (enterprise/channels.py: email / telegram / webhook, SANDBOX by default,
+    preferences, quiet hours, digests, unsubscribe).
 
 Categories used today: risk (W4 rejections / blocks / reviews), account, tenant,
 alert (workspace alert rules), billing.
@@ -22,7 +25,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-CATEGORIES = ("risk", "account", "tenant", "alert", "billing", "system")
+CATEGORIES = ("risk", "account", "tenant", "alert", "billing", "system", "report", "privacy")
 
 
 def _recipients(conn, tenant_id, permission):
@@ -48,10 +51,16 @@ def notify(conn, tenant_id, category, title, body="", permission=None, user_ids=
         prefs = (json.loads(r[0] or "{}") if r else {}).get("notifications", {})
         if prefs.get("categories", {}).get(category) is False:
             continue
-        conn.execute("INSERT INTO enterprise_notification (tenant_id,user_id,category,severity,title,body,created_at) "
-                     "VALUES (?,?,?,?,?,?,?)", (tenant_id, uid, category, severity, title[:200], (body or "")[:4000],
-                                                datetime.now()))
+        cur = conn.execute("INSERT INTO enterprise_notification (tenant_id,user_id,category,severity,title,body,"
+                           "created_at) VALUES (?,?,?,?,?,?,?)", (tenant_id, uid, category, severity, title[:200],
+                                                                  (body or "")[:4000], datetime.now()))
         n += 1
+        try:                                           # W9: fan out to the user's other channels
+            from enterprise.channels import dispatch
+            dispatch(conn, cur.lastrowid, tenant_id, uid, category, title[:200], body or "")
+        except Exception as e:
+            import logging
+            logging.getLogger("atip.enterprise").warning(f"  notification channels: {e}")
         tg = tg or (prefs.get("channels", {}).get("telegram") is True and tenant_id == settings()["default_tenant"])
     conn.commit()
     if tg:
