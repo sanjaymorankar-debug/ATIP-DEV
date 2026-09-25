@@ -6,7 +6,7 @@ This is the running list of items deliberately deferred during W3/W4 development
 - **Testing:** nothing here has been functionally tested. ChatGPT performs the independent testing.
 - **What was fixed during W3/W4:** no earlier defect was fixed, because none met the fix-now criteria (blocks startup, blocks W3/W4 structurally, risks data corruption, or could allow unintended live trading).
 
-Last updated: 2026-09-25 (W5).
+Last updated: 2026-09-25 (W6).
 
 ## Deferred defects
 
@@ -51,6 +51,23 @@ Last updated: 2026-09-25 (W5).
 | W5-R10 | Global market history starts 2026-07-25 (25 dates), so `atip_extended` datasets are short. The index series for Bank Nifty / Midcap / Smallcap go back to ~2025-01 | ml/context_features.py | Medium | OPEN (data) | Later |
 | W5-R11 | The industry map comes from the cached Nifty 500 list. If the cache is missing, sector features are None (and the W4 sector limit fails closed, W4-R8) | ml/context_features.py | Low | OPEN | — |
 
+## W6 items not built / known limits
+
+| Issue ID | Description | Module | Severity | Status | Deferred To |
+|---|---|---|---|---|---|
+| W6-R1 | `fundamental_data` is empty, so value, quality and growth factors, and the vqm / vqmg composites, produce no values; `vqm_multi_factor` has no candidates | quant/factors.py | Medium | OPEN (data) | Fundamentals ingestion |
+| W6-R2 | Shares outstanding are not collected, so market cap, size, turnover, FCF yield and price-to-sales are DATA_PENDING | quant/factors.py | Medium | OPEN (data) | Data platform |
+| W6-R3 | No shortable instrument in the PAPER cash book. Pairs short legs and long/short books produce SELL decisions without intents; neutral strategies hold back their longs | strategy_engine/kinds.py | Medium | OPEN (by design) | Futures / SLB integration (W4 follow-up) |
+| W6-R4 | No futures or options data, so derivatives and options analytics are schema plus maths only; implied vs realised volatility is unavailable | quant/derivatives.py | Medium | BLOCKED (data) | Derivatives data source |
+| W6-R5 | No tick, bid/ask or depth data (`live_ticks` is empty), so spread, imbalance and depth features are pending | quant/microstructure.py | Low | BLOCKED (data) | Tick feed |
+| W6-R6 | Corporate-action events are known only at ex_date (announcement dates not stored). Earnings, dividend, macro and index-change events have no source | quant/events.py | Low | OPEN (data) | Event data sources |
+| W6-R7 | Factor computation is pure Python per symbol and date; research over many dates needs a back-fill run | quant/engine.py | Low | OPEN | Performance work |
+| W6-R8 | Portfolio-strategy HOLD does not rebalance held weights (no ADD/REDUCE toward target): the equity-relative current weight is not known inside the evaluator | strategy_engine/kinds.py | Low | OPEN | W6 follow-up |
+
 ## Deferred testing items (for ChatGPT)
 
-All W3, W4 and W5 functionality. The test scenarios are listed in `W3_STRATEGY_ENGINE_HANDOFF.md` section 9, `W4_RISK_EXECUTION_HANDOFF.md` section 11 and `W5_AI_ML_HANDOFF.md` section 9.
+All W3, W4, W5 and W6 functionality. The test scenarios are listed in:
+- `W3_STRATEGY_ENGINE_HANDOFF.md` section 9
+- `W4_RISK_EXECUTION_HANDOFF.md` section 11
+- `W5_AI_ML_HANDOFF.md` section 9
+- `W6_ADVANCED_QUANT_HANDOFF.md` section 10
