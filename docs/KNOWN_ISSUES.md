@@ -6,7 +6,7 @@ This is the running list of items deliberately deferred during W3/W4 development
 - **Testing:** nothing here has been functionally tested. ChatGPT performs the independent testing.
 - **What was fixed during W3/W4:** no earlier defect was fixed, because none met the fix-now criteria (blocks startup, blocks W3/W4 structurally, risks data corruption, or could allow unintended live trading).
 
-Last updated: 2026-09-25 (W6).
+Last updated: 2026-09-25 (W7).
 
 ## Deferred defects
 
@@ -64,10 +64,25 @@ Last updated: 2026-09-25 (W6).
 | W6-R7 | Factor computation is pure Python per symbol and date; research over many dates needs a back-fill run | quant/engine.py | Low | OPEN | Performance work |
 | W6-R8 | Portfolio-strategy HOLD does not rebalance held weights (no ADD/REDUCE toward target): the equity-relative current weight is not known inside the evaluator | strategy_engine/kinds.py | Low | OPEN | W6 follow-up |
 
+## W7 items not built / known limits
+
+| Issue ID | Description | Module | Severity | Status | Deferred To |
+|---|---|---|---|---|---|
+| W7-R1 | Internet exposure (ENT-07) was deliberately not done. The dashboard stays bound to 127.0.0.1; TLS, MFA, rate limiting and a security review are prerequisites | dashboard/security.py | — (by design) | BLOCKED | Owner decision + ENT-14 legal review |
+| W7-R2 | No MFA | enterprise/users.py | Medium | NOT BUILT | Before any exposure |
+| W7-R3 | Single paper book / broker account, so only the default tenant can read or trade execution, orders and portfolio | enterprise/authz.py | Medium | OPEN (by design) | Per-tenant books |
+| W7-R4 | Tenant isolation for W3–W6 data is enforced at the API layer (middleware); module-level SQL is not tenant-scoped, so CLI / scheduled jobs see all tenants | enterprise/authz.py | Medium | OPEN | SQL-level scoping |
+| W7-R5 | No e-mail: no verification, delivery or password-reset mail (admins hand out reset tokens) | enterprise/users.py, notifications.py | Low | NOT BUILT | Mail sender |
+| W7-R6 | No payment gateway: prices NULL until set, invoices DRAFT only | enterprise/billing.py | — (by design) | NOT BUILT | Owner decision |
+| W7-R7 | No per-user broker credential vault (ENT-06) | — | Medium | NOT BUILT | Design with the owner |
+| W7-R8 | The middleware opens a DB connection per request when enabled (get_connection runs migrations); acceptable locally, not at scale | enterprise/authz.py | Low | OPEN | Connection pooling |
+| W7-R9 | Workspace reports are saved definitions only; there is no rendering / export | enterprise/workspace.py | Low | NOT BUILT | Reporting work |
+
 ## Deferred testing items (for ChatGPT)
 
-All W3, W4, W5 and W6 functionality. The test scenarios are listed in:
+All W3 to W7 functionality. The test scenarios are listed in:
 - `W3_STRATEGY_ENGINE_HANDOFF.md` section 9
 - `W4_RISK_EXECUTION_HANDOFF.md` section 11
 - `W5_AI_ML_HANDOFF.md` section 9
 - `W6_ADVANCED_QUANT_HANDOFF.md` section 10
+- `W7_ENTERPRISE_HANDOFF.md` section 9
