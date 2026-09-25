@@ -35,7 +35,7 @@ The script:
 **Limitations:**
 - The database rollback loses everything written after the chosen backup.
 - It is a manual decision (`-RestoreBackup`) and is never automatic.
-- Rollback targets for W9: `backup/pre-w9-master` (= W8 `a7d7187`) and `ATIP-W9-RC1` (the release itself).
+- Rollback targets for W9: `backup/pre-w9-master` (= W8 `a7d7187`) and `ATIP-W9-RC2` (the release itself).
 - The scripts have been syntax-checked only. **A rollback has not been executed or tested.**
 
 

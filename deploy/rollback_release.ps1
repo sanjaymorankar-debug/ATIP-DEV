@@ -26,10 +26,12 @@ param(
     [string]$RestoreConfigFrom = "",
     [switch]$Authorize,
     [int]$Port = 8000,
-    [string]$RepoDir = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoDir = "",
     [string]$Python = "python"
 )
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty inside param() defaults: resolve here
+if (-not $RepoDir) { $RepoDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 Set-Location $RepoDir
 function Step($n, $text) { Write-Host "`n[$n] $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "ROLLBACK STOPPED: $text" -ForegroundColor Red; exit 1 }

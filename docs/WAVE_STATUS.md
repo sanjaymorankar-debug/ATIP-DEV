@@ -1,4 +1,4 @@
-# ATIP wave status (factual, as of release ATIP-W9-RC1, 2026-09-26)
+# ATIP wave status (factual, as of release ATIP-W9-RC2, 2026-09-26)
 
 **Status vocabulary** (W9 brief section 4):
 
@@ -18,7 +18,7 @@ No wave is claimed as functionally tested by development.
 | W6 | Advanced quant | `quant/` (17 modules); QUANT_ARCHITECTURE.md | `79dd809`, `cf1997d` | yes | IMPLEMENTED BUT NOT VERIFIED | QA pending; `quant.enabled` false; derivatives data pending |
 | W7 | Enterprise (users, tenants, RBAC, billing foundation) | `enterprise/` (16 modules); `/login`, `/account`, `/admin` | `90c7807`, `3e52bea` | yes | PARTIALLY COMPLETED (implemented, not verified; ENT-07 exposure BLOCKED; e-mail / payments not built) | QA pending; enterprise layer off in production |
 | W8 | Production hardening | `ops/` (22 modules); health, metrics, backups, migrations, MFA, refresh tokens, audit chain | `1740ab4`, `a7d7187` | yes | IMPLEMENTED BUT NOT VERIFIED; **deployed** (production restarted onto W8 on 2026-09-26 00:42; migrations 0001–0004 applied) | QA pending |
-| W9 | Final release and deployment readiness | release tooling (`ops/release.py`), deploy / rollback scripts (`deploy/`), master live-trading switch, health storage / market data, docs | see `git log ATIP-W9-RC1` | yes (after merge) | IMPLEMENTED BUT NOT VERIFIED; **NOT DEPLOYED** | Production deployment needs owner authorization |
+| W9 | Final release and deployment readiness | release tooling (`ops/release.py`), deploy / rollback scripts (`deploy/`), master live-trading switch, health storage / market data, docs | see `git log ATIP-W9-RC2` | yes (after merge) | IMPLEMENTED BUT NOT VERIFIED; **NOT DEPLOYED** | Production deployment needs owner authorization |
 
 Notes:
 - Delivered-baseline work before W1 (data platform, scores, dashboard) is tracked in `ATIP_MASTER_TRACKER.csv`, not as a wave.

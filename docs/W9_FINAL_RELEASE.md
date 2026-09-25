@@ -1,4 +1,6 @@
-# W9: final release and production readiness (ATIP-W9-RC1)
+# W9: final release and production readiness (ATIP-W9-RC2)
+
+> **RC1 superseded.** `ATIP-W9-RC1` (`8981ef8`) was tagged, then the deploy-script dry run against production failed. Windows PowerShell 5.1 leaves `$PSScriptRoot` empty inside `param()` defaults, so both scripts stopped before doing anything and nothing changed. The fix is in **ATIP-W9-RC2**. RC1 stays as a historical tag (local, never pushed, never deployed).
 
 **Deployment state:** RELEASE READY and DEPLOYMENT READY. **NOT DEPLOYED.**
 **PRODUCTION DEPLOYMENT AUTHORIZATION REQUIRED.**
@@ -104,7 +106,7 @@ There are no database schema changes, so no new migrations.
 | Health checks ready | READY |
 | Deployment package ready | READY (scripts dry-run only) |
 | Documentation ready | READY |
-| Git release ready | READY (tag `ATIP-W9-RC1`; not pushed) |
+| Git release ready | READY (tag `ATIP-W9-RC2`; not pushed) |
 | Production authorization | BLOCKED: **PRODUCTION DEPLOYMENT AUTHORIZATION REQUIRED** |
 | Production deployment | NOT VERIFIED (not deployed) |
 | Post-deployment verification | NOT VERIFIED |
@@ -114,13 +116,13 @@ There are no database schema changes, so no new migrations.
 In `D:\Projects\ATIP`, dry run first:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1
+powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2
 ```
 
 Then the authorized run:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1 -Authorize
+powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2 -Authorize
 ```
 
 Rollback if needed:
@@ -140,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File deploy\rollback_release.ps1 -ToRef back
    - `/health/storage` and `/health/market_data` report DEGRADED / READY / FAILED honestly: no backup, stale feed in market hours, missing credentials.
    - No secrets appear in any payload.
 3. **Release tooling.**
-   - `python -m ops release preflight ATIP-W9-RC1` FAILs a dirty tree, a wrong branch, a missing tag, no recent backup and live trading on.
+   - `python -m ops release preflight ATIP-W9-RC2` FAILs a dirty tree, a wrong branch, a missing tag, no recent backup and live trading on.
    - `manifest` writes the manifest and config copies.
    - `postcheck` against a running instance.
    - `record` appends history.

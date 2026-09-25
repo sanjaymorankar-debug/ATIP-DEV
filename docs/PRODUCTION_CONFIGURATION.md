@@ -94,7 +94,7 @@ Values are never shown. Status is CONFIGURED / MISSING / INVALID / NOT REQUIRED.
 | `alpha_vantage_key` | config.json | CONFIGURED (optional) |
 | `ATIP_ENCRYPTION_KEY` | not created | MISSING. Needed only for MFA / field encryption (owner: `python -m ops keygen`) |
 | JWT secret | — | NOT REQUIRED (ATIP uses random opaque session tokens stored as digests, not JWTs) |
-| Redis / queue | — | NOT REQUIRED (single process; `ops.shared_state_url` is not used in W9-RC1) |
+| Redis / queue | — | NOT REQUIRED (single process; `ops.shared_state_url` is not used in W9-RC2) |
 | E-mail (SMTP) | — | NOT REQUIRED (no mail sender; W7-R5) |
 | ML configuration (`ml` section) | defaults | CONFIGURED (defaults; `ml.enabled` false) |
 | Quant configuration (`quant` section) | defaults | CONFIGURED (defaults; `quant.enabled` false) |

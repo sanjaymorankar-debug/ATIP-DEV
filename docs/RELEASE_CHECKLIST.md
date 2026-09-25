@@ -1,11 +1,11 @@
-# Release checklist (reusable; filled in for ATIP-W9-RC1)
+# Release checklist (reusable; filled in for ATIP-W9-RC2)
 
 Tick each item only with evidence. "Verified" means checked by the named command, not functionally tested.
 
 ## A. Release candidate
 - [x] Every wave commit is in `master` (`git merge-base --is-ancestor`, WAVE_STATUS.md).
 - [x] Release branch `w9-release`, fast-forwarded into master.
-- [x] Annotated tag `ATIP-W9-RC1` on the master HEAD.
+- [x] Annotated tag `ATIP-W9-RC2` on the master HEAD.
 - [x] Recovery branch `backup/pre-w9-master` (= W8 `a7d7187`).
 - [x] Dependency lock `requirements.lock.txt` matches the installed environment (preflight).
 - [ ] Pushed to `origin`. **Owner decision; not done** (master is 50+ commits ahead of origin).
@@ -47,6 +47,6 @@ Tick each item only with evidence. "Verified" means checked by the named command
 - [x] Docs: W9_FINAL_RELEASE, PRODUCTION_DEPLOYMENT, ROLLBACK_PROCEDURE, PRODUCTION_CONFIGURATION, RELEASE_CHECKLIST, WAVE_STATUS, KNOWN_ISSUES.
 
 ## G. Deployment (needs explicit owner authorization)
-- [ ] `deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1 -Authorize`
+- [ ] `deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2 -Authorize`
 - [ ] Postcheck passed; `history.jsonl` records DEPLOYED.
 - [ ] Owner acceptance after independent QA.

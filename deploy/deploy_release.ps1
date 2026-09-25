@@ -3,15 +3,15 @@
 #
 #  Production = this repository's `master` checkout (D:\Projects\ATIP) running
 #  `python main.py` (scheduler + dashboard + index feed) on 127.0.0.1:8000.
-#  A release is a tagged commit on master (e.g. ATIP-W9-RC1). Deploying = stopping
+#  A release is a tagged commit on master (e.g. ATIP-W9-RC2). Deploying = stopping
 #  the running process, taking a verified backup, applying migrations and starting
 #  the tagged code, then verifying health and trading safety.
 #
 #  DRY RUN BY DEFAULT: without -Authorize this only prints the plan and runs the
 #  read-only preflight. Nothing is stopped, backed up, migrated or started.
 #
-#    powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1
-#    powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1 -Authorize
+#    powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2
+#    powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2 -Authorize
 #
 #  It never enables live trading, never pushes, never edits configuration.
 # ============================================================================
@@ -19,10 +19,12 @@ param(
     [Parameter(Mandatory = $true)][string]$ReleaseId,
     [switch]$Authorize,
     [int]$Port = 8000,
-    [string]$RepoDir = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoDir = "",
     [string]$Python = "python"
 )
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty inside param() defaults: resolve here
+if (-not $RepoDir) { $RepoDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 Set-Location $RepoDir
 
 function Step($n, $text) { Write-Host "`n[$n] $text" -ForegroundColor Cyan }

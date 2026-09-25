@@ -23,7 +23,7 @@
 
 ## Release identification
 
-- **Release = an annotated git tag on `master`.** This one is `ATIP-W9-RC1`.
+- **Release = an annotated git tag on `master`.** This one is `ATIP-W9-RC2`.
 - **Recovery points:**
   - one branch per wave, `backup/pre-<wave>-master`;
   - the tag `w5-final-prod-before-w6`;
@@ -49,13 +49,13 @@
 Start with a dry run. It prints the plan and runs the read-only preflight; nothing changes:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1
+powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2
 ```
 
 Then the authorized deployment:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC1 -Authorize
+powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId ATIP-W9-RC2 -Authorize
 ```
 
 | # | Step | How |
@@ -79,18 +79,18 @@ powershell -ExecutionPolicy Bypass -File deploy\deploy_release.ps1 -ReleaseId AT
 **Manual equivalent** (run in `D:\Projects\ATIP`). This is steps 1–5; then stop and start ATIP as in the runbook:
 
 ```bash
-git rev-list -n 1 ATIP-W9-RC1
+git rev-list -n 1 ATIP-W9-RC2
 git status
 python -m ops backup --kind pre-release
-python -m ops release preflight ATIP-W9-RC1
-python -m ops release manifest ATIP-W9-RC1
+python -m ops release preflight ATIP-W9-RC2
+python -m ops release manifest ATIP-W9-RC2
 ```
 
 After the start, verify and record:
 
 ```bash
 python -m ops release postcheck --wait 180
-python -m ops release record ATIP-W9-RC1 DEPLOYED
+python -m ops release record ATIP-W9-RC2 DEPLOYED
 ```
 
 ## Previous waves (history)

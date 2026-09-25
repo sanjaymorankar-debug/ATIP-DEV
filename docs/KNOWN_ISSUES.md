@@ -96,7 +96,7 @@ Last updated: 2026-09-25 (W7).
 | W8-R12 | pip-audit is not installed, so the dependency audit in `python -m ops scan` reports NOT RUN | ops/scan.py | Low | OPEN | Install in a dev environment |
 | W8-R13 | W8 is merged to MAIN but the running ATIP process loads it only after a restart (bare `python main.py`) | — | — | PENDING RESTART | Owner decision |
 
-## W9 release classification (ATIP-W9-RC1)
+## W9 release classification (ATIP-W9-RC2)
 
 - **P0** blocks release, or is a serious trading / security / data risk.
 - **P1** is an important production issue.

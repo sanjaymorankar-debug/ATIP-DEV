@@ -1,5 +1,5 @@
 # ATIP dependency lock -- the versions this release was built and smoke-checked against.
-# Python 3.14.7 (Windows). Generated for release ATIP-W9-RC1 from the installed environment.
+# Python 3.14.7 (Windows). Generated for release ATIP-W9-RC2 from the installed environment.
 # Install exactly: pip install -r requirements.lock.txt   (requirements.txt keeps the minimum versions)
 pandas==3.0.5
 numpy==2.5.2
