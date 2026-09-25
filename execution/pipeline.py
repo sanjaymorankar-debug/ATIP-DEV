@@ -61,6 +61,13 @@ def run_execution_cycle(trade_date=None, execute: bool | None = None, as_of=None
                 errors.append(f"{iid}: {type(e).__name__}: {e}"); log.exception(f"  risk evaluation {iid} failed")
                 continue
             counts[rd.risk_status] = counts.get(rd.risk_status, 0) + 1
+            try:                                    # W7: tell the strategy's tenant (enterprise enabled only)
+                from enterprise.config import enabled
+                if enabled():
+                    from enterprise.notifications import on_risk_decision
+                    on_risk_decision(conn, rd)
+            except Exception as e:
+                log.warning(f"  risk notification for {rd.risk_decision_id}: {e}")
             if do_exec and rd.risk_status == APPROVED and s["mode"] == PAPER:
                 try:
                     o = execute_approved(conn, rd.risk_decision_id)

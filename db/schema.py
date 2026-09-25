@@ -83,7 +83,7 @@ def get_connection():
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
-                       **W6_TABLES}.items():
+                       **W6_TABLES, **W7_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -530,12 +530,127 @@ W6_TABLES = {
     ),
 }
 
+# ── Tables added in W7 (enterprise layer) ──────────────────────────────────
+# enterprise/. Only digests of session tokens, API keys and reset tokens are
+# stored; passwords are PBKDF2 hashes. Tenant-owned W3-W6 tables gain a
+# tenant_id column (W3_W4_COLUMNS below) defaulting to 'default', so every
+# existing row belongs to the owner's tenant.
+W7_TABLES = {
+    "enterprise_tenant": (
+        """CREATE TABLE IF NOT EXISTS enterprise_tenant (
+            tenant_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, settings_json TEXT,
+            limits_json TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "enterprise_user": (
+        """CREATE TABLE IF NOT EXISTS enterprise_user (
+            user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT, display_name TEXT,
+            password_hash TEXT NOT NULL, status TEXT NOT NULL, failed_logins INTEGER NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP, must_change_password INTEGER NOT NULL DEFAULT 0, preferences_json TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP, last_login_at TIMESTAMP, created_by TEXT)""",
+    ),
+    "enterprise_role": (
+        """CREATE TABLE IF NOT EXISTS enterprise_role (
+            role TEXT PRIMARY KEY, description TEXT, builtin INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMP)""",
+    ),
+    "enterprise_permission": (
+        """CREATE TABLE IF NOT EXISTS enterprise_permission (permission TEXT PRIMARY KEY, description TEXT)""",
+    ),
+    "enterprise_role_permission": (
+        """CREATE TABLE IF NOT EXISTS enterprise_role_permission (
+            role TEXT NOT NULL, permission TEXT NOT NULL, PRIMARY KEY (role, permission))""",
+    ),
+    "enterprise_user_role": (
+        """CREATE TABLE IF NOT EXISTS enterprise_user_role (
+            tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, granted_by TEXT,
+            granted_at TIMESTAMP, PRIMARY KEY (tenant_id, user_id, role))""",
+    ),
+    "enterprise_session": (
+        """CREATE TABLE IF NOT EXISTS enterprise_session (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, created_at TIMESTAMP,
+            expires_at TIMESTAMP, last_seen_at TIMESTAMP, ip TEXT, user_agent TEXT, revoked_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_session_user ON enterprise_session(user_id)",
+    ),
+    "enterprise_password_reset": (
+        """CREATE TABLE IF NOT EXISTS enterprise_password_reset (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TIMESTAMP, created_by TEXT,
+            created_at TIMESTAMP, used_at TIMESTAMP)""",
+    ),
+    "enterprise_api_key": (
+        """CREATE TABLE IF NOT EXISTS enterprise_api_key (
+            key_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, name TEXT,
+            key_hash TEXT NOT NULL UNIQUE, scopes_json TEXT, created_at TIMESTAMP, expires_at TIMESTAMP,
+            last_used_at TIMESTAMP, revoked_at TIMESTAMP)""",
+    ),
+    "enterprise_risk_profile": (
+        """CREATE TABLE IF NOT EXISTS enterprise_risk_profile (
+            scope TEXT NOT NULL, scope_id TEXT NOT NULL, profile_json TEXT, updated_at TIMESTAMP,
+            updated_by TEXT, PRIMARY KEY (scope, scope_id))""",
+    ),
+    "enterprise_notification": (
+        """CREATE TABLE IF NOT EXISTS enterprise_notification (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, user_id TEXT NOT NULL, category TEXT,
+            severity TEXT, title TEXT, body TEXT, created_at TIMESTAMP, read_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_notif_user ON enterprise_notification(user_id, read_at)",
+    ),
+    "enterprise_audit": (
+        """CREATE TABLE IF NOT EXISTS enterprise_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at TIMESTAMP, tenant_id TEXT, user_id TEXT, actor TEXT,
+            action TEXT NOT NULL, resource TEXT, method TEXT, path TEXT, status_code INTEGER, ip TEXT,
+            details_json TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_audit_tenant ON enterprise_audit(tenant_id, id)",
+    ),
+    "enterprise_plan": (
+        """CREATE TABLE IF NOT EXISTS enterprise_plan (
+            plan_id TEXT PRIMARY KEY, name TEXT, price_month REAL, currency TEXT, limits_json TEXT,
+            features_json TEXT, status TEXT)""",
+    ),
+    "enterprise_subscription": (
+        """CREATE TABLE IF NOT EXISTS enterprise_subscription (
+            tenant_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, status TEXT NOT NULL, started_at TIMESTAMP,
+            current_period_end TIMESTAMP, cancel_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "enterprise_usage": (
+        """CREATE TABLE IF NOT EXISTS enterprise_usage (
+            tenant_id TEXT NOT NULL, date DATE NOT NULL, metric TEXT NOT NULL, value REAL,
+            PRIMARY KEY (tenant_id, date, metric))""",
+    ),
+    "enterprise_invoice": (
+        """CREATE TABLE IF NOT EXISTS enterprise_invoice (
+            invoice_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, period_start DATE, period_end DATE,
+            plan_id TEXT, amount REAL, currency TEXT, status TEXT NOT NULL, lines_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "enterprise_watchlist": (
+        """CREATE TABLE IF NOT EXISTS enterprise_watchlist (
+            watchlist_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT,
+            symbols_json TEXT, shared INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "enterprise_alert_rule": (
+        """CREATE TABLE IF NOT EXISTS enterprise_alert_rule (
+            rule_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT, symbol TEXT,
+            feature TEXT, op TEXT, value REAL, status TEXT, last_value REAL, last_triggered_at TIMESTAMP,
+            created_at TIMESTAMP)""",
+    ),
+    "enterprise_report": (
+        """CREATE TABLE IF NOT EXISTS enterprise_report (
+            report_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT, kind TEXT,
+            params_json TEXT, shared INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP)""",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
     "strategy_decision": {"reason_codes_json": "TEXT", "signal_source": "TEXT"},
     "strategy_position_intent": {"entry_reference": "REAL", "book": "TEXT", "risk_decision_id": "TEXT",
-                                 "authorized_at": "TIMESTAMP"},
+                                 "authorized_at": "TIMESTAMP", "tenant_id": "TEXT DEFAULT 'default'"},
+    # W7: tenant ownership of tenant-owned W3-W6 rows (existing rows -> 'default')
+    "strategy": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "risk_decision": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "oms_order": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "ml_model": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "quant_pair": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "quant_experiment": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "quant_portfolio": {"tenant_id": "TEXT DEFAULT 'default'"},
 }
 
 # Every alert ATIP raises, whether or not Telegram delivered it: the dashboard

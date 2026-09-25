@@ -785,6 +785,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("execution_cycle", run_execution_cycle, td)
         except Exception as e:
             log.warning(f"  Execution cycle: {e}")
+        # W7: workspace alert rules + tenant usage metering. SKIPPED unless
+        # config enterprise.enabled.
+        try:
+            from enterprise.service import run_scheduled as run_enterprise
+            run_job("enterprise_jobs", run_enterprise, td)
+        except Exception as e:
+            log.warning(f"  Enterprise jobs: {e}")
 
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and

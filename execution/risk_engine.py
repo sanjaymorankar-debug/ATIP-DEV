@@ -16,6 +16,10 @@ value and limit, so a decision can be read back without re-deriving it.
                          model, and that model version must STILL be ACTIVE -- a
                          paused / retired model's signals are BLOCKED. Recorded with
                          model, version, score and confidence (ML provenance)
+    tenant_profile       (W7) the strategy's tenant trading profile (enterprise/profiles.py):
+                         trading disabled or the strategy not in allowed_strategies ->
+                         BLOCKED; max_order_value caps a BUY's quantity. Profiles only
+                         ever tighten W4 -- they cannot loosen a limit or open live
     live_gate            a LIVE-book intent needs execution.mode LIVE and
                          live_trading_enabled; both default off
   VALIDITY (-> REJECTED)
@@ -133,6 +137,19 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return finish(REJECTED, f"superseded strategy version {it['version']} (current {s[1]})")
     add("strategy_enabled", PASS, f"{s[0]}, version {s[1]}")
 
+    tp = _tenant_profile(conn, it)
+    if tp is not None:
+        if not tp.get("trading_enabled", True):
+            add("tenant_profile", FAIL, f"trading disabled for tenant {tp['_tenant']}")
+            return finish(BLOCKED, f"tenant {tp['_tenant']} trading disabled")
+        allowed = tp.get("allowed_strategies")
+        if allowed is not None and it["strategy_id"] not in allowed:
+            add("tenant_profile", FAIL, f"strategy not in tenant {tp['_tenant']} allowed_strategies")
+            return finish(BLOCKED, f"strategy {it['strategy_id']} not allowed for tenant {tp['_tenant']}")
+        add("tenant_profile", PASS, f"tenant {tp['_tenant']} profile allows trading")
+    else:
+        add("tenant_profile", SKIP, "no tenant profile stored")
+
     ml = _ml_provenance(conn, it)
     if ml is not None:
         if not ml["ok"]:
@@ -237,6 +254,9 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         caps[name] = (q, f"{what} (limit {limit})")
 
     cap("max_order_quantity", lim["max_order_quantity"], qty=lim["max_order_quantity"], what="shares per order")
+    if tp is not None and tp.get("max_order_value"):
+        cap("tenant_max_order_value", tp["max_order_value"], tp["max_order_value"],
+            what=f"tenant {tp['_tenant']} max order value Rs")
     if lim["max_order_value_pct"] is not None:
         cap("max_order_value_pct", lim["max_order_value_pct"], equity * lim["max_order_value_pct"] / 100,
             what="order value % of equity")
@@ -344,6 +364,22 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     rd.est_value = round(qty * px, 2)
     return _review(finish, settings, it, add, qty)
+
+
+def _tenant_profile(conn, it) -> dict | None:
+    """The owning tenant's stored trading profile, or None (no enterprise tables /
+    no stored profile -> W4 behaves exactly as before)."""
+    try:
+        r = conn.execute("SELECT COALESCE(tenant_id,'default') FROM strategy WHERE strategy_id=?",
+                         (it["strategy_id"],)).fetchone()
+        tenant = r[0] if r else "default"
+        if not conn.execute("SELECT 1 FROM enterprise_risk_profile WHERE scope='TENANT' AND scope_id=?",
+                            (tenant,)).fetchone():
+            return None
+        from enterprise.profiles import tenant_constraints
+        return {**tenant_constraints(conn, tenant), "_tenant": tenant}
+    except Exception:
+        return None
 
 
 def _ml_provenance(conn, it) -> dict | None:

@@ -114,6 +114,18 @@
     "regime_model":       null,
     "training":           {"validation_fraction": 0.2, "embargo_sessions": null, "min_rows": 200}
   },
+  "_SECTION_14": "=== ENTERPRISE: users, tenants, RBAC (enterprise/config.py, W7) — off by default; does not change the 127.0.0.1 binding ===",
+  "enterprise": {
+    "enabled":                 false,
+    "session_hours":           12,
+    "allow_self_registration": false,
+    "accept_legacy_token":     false,
+    "password_min_length":     12,
+    "max_failed_logins":       5,
+    "lockout_minutes":         15,
+    "default_tenant":          "default"
+  },
+  "_enterprise_note": "Before enabling: python -m enterprise bootstrap --username <you> (prompts for a password) creates the default tenant and its SUPER_ADMIN. Enabled = every page/API needs a signed-in user (session cookie, Bearer token or API key); permissions per route in enterprise/authz.py. Exposure beyond localhost remains a separate, gated decision (dashboard_host).",
   "_SECTION_13": "=== ADVANCED QUANT (quant/config.py, W6) — off by default; quant output reaches trading only via strategies + W4 risk ===",
   "quant": {
     "enabled":       false,
