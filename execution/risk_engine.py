@@ -11,6 +11,11 @@ value and limit, so a decision can be read back without re-deriving it.
     kill_switch          orders/risk.py halted() (W1)
     strategy_enabled     the strategy is PAPER / READY / ACTIVE, and the intent is
                          for its current version (else REJECTED: superseded)
+    ml_model_active      (W5) when the decision used ML features (ml_score ...): the
+                         prediction behind it must exist, come from the configured
+                         model, and that model version must STILL be ACTIVE -- a
+                         paused / retired model's signals are BLOCKED. Recorded with
+                         model, version, score and confidence (ML provenance)
     live_gate            a LIVE-book intent needs execution.mode LIVE and
                          live_trading_enabled; both default off
   VALIDITY (-> REJECTED)
@@ -127,6 +132,15 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         add("strategy_enabled", FAIL, f"intent is for version {it['version']}, current is {s[1]}")
         return finish(REJECTED, f"superseded strategy version {it['version']} (current {s[1]})")
     add("strategy_enabled", PASS, f"{s[0]}, version {s[1]}")
+
+    ml = _ml_provenance(conn, it)
+    if ml is not None:
+        if not ml["ok"]:
+            add("ml_model_active", FAIL, ml["message"])
+            return finish(BLOCKED, f"ML: {ml['message']}")
+        add("ml_model_active", PASS, ml["message"], ml.get("score"))
+    else:
+        add("ml_model_active", SKIP, "decision used no ML features")
 
     if it["book"] == LIVE or settings["mode"] == LIVE:
         ok, why = live_gate()
@@ -330,6 +344,36 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     rd.est_value = round(qty * px, 2)
     return _review(finish, settings, it, add, qty)
+
+
+def _ml_provenance(conn, it) -> dict | None:
+    """None when the decision used no ml_* feature; else {"ok", "message", ...}.
+    ML stays subordinate: a signal whose model is no longer ACTIVE is not traded."""
+    r = conn.execute("SELECT features_json FROM strategy_decision WHERE decision_id=?", (it["decision_id"],)).fetchone()
+    feats = json.loads(r[0] or "{}") if r else {}
+    used = {k: v for k, v in feats.items() if k.startswith("ml_") and v is not None}
+    if not used:
+        return None
+    try:
+        from ml.config import settings as ml_settings
+        model_id = ml_settings().get("default_model")
+    except Exception as e:
+        return {"ok": False, "message": f"ML configuration unreadable ({e})"}
+    if not model_id:
+        return {"ok": False, "message": "decision used ML features but no ml.default_model is configured"}
+    p = conn.execute("SELECT model_version, ml_score, confidence FROM ml_prediction WHERE model_id=? AND symbol=? "
+                     "AND as_of=? AND version_status='ACTIVE' ORDER BY created_at DESC LIMIT 1",
+                     (model_id, it["symbol"], str(it["as_of"]))).fetchone()
+    if not p:
+        return {"ok": False, "message": f"no ACTIVE {model_id} prediction for {it['symbol']} {it['as_of']} "
+                                        f"(ML provenance missing)"}
+    st = conn.execute("SELECT status FROM ml_model_version WHERE model_id=? AND version=?",
+                      (model_id, p[0])).fetchone()
+    if not st or st[0] != "ACTIVE":
+        return {"ok": False, "message": f"model {model_id} {p[0]} is now {st[0] if st else 'missing'}, not ACTIVE",
+                "model_id": model_id, "version": p[0]}
+    return {"ok": True, "model_id": model_id, "version": p[0], "score": p[1],
+            "message": f"model {model_id} {p[0]} ACTIVE; ml_score {p[1]}, confidence {p[2]}"}
 
 
 def _review(finish, settings, it, add, qty):

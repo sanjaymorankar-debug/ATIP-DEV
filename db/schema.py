@@ -358,6 +358,13 @@ W5_TABLES = {
             feature_versions_json TEXT NOT NULL, description TEXT, content_hash TEXT NOT NULL,
             created_at TIMESTAMP, PRIMARY KEY (name, version))""",
     ),
+    # reusable, versioned label definitions (a dataset also embeds its own label spec)
+    "ml_label": (
+        """CREATE TABLE IF NOT EXISTS ml_label (
+            label_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            task TEXT NOT NULL, spec_json TEXT NOT NULL, spec_hash TEXT NOT NULL, description TEXT,
+            created_at TIMESTAMP)""",
+    ),
     "ml_dataset": (
         """CREATE TABLE IF NOT EXISTS ml_dataset (
             dataset_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, spec_json TEXT NOT NULL,

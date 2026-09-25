@@ -6,7 +6,8 @@ Nothing here can create an intent, a risk decision or an order.
     GET  /api/ml/status                   config, model families available, counts
     GET  /api/ml/features                 feature registry (metadata)
     GET  /api/ml/feature-sets             POST (token) {name, version, features, description}
-    GET  /api/ml/labels                   label kinds
+    GET  /api/ml/labels                   label kinds + stored label definitions
+    POST /api/ml/labels                   (token) {name, version, spec, description}
     GET  /api/ml/datasets                 POST (token) {spec..., build?: false}
     GET  /api/ml/datasets/{id}
     GET  /api/ml/models                   POST (token) {model_id, name, model_type, label_kind, feature_set, ...}
@@ -45,6 +46,7 @@ def register(app, guard, Req, get_connection, json_safe):
         if not _ready["done"]:
             FR.sync_features(conn)
             FR.ensure_builtin_sets(conn)
+            LB.ensure_builtin_labels(conn)
             _ready["done"] = True
         return conn
 
@@ -119,8 +121,25 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/api/ml/labels")
     async def api_ml_labels():
-        return JSONResponse({"kinds": LB.KINDS, "classes": LB.CLASSES,
-                             "defaults": LB.LabelSpec().as_dict()})
+        conn = conn_ready()
+        try:
+            defs = [LB.get_label(conn, r[0]) for r in conn.execute("SELECT label_id FROM ml_label ORDER BY label_id")]
+            return JSONResponse(json_safe({"kinds": LB.KINDS, "classes": LB.CLASSES,
+                                           "defaults": LB.LabelSpec().as_dict(), "definitions": defs}))
+        finally:
+            conn.close()
+
+    @app.post("/api/ml/labels", dependencies=guard)
+    async def api_ml_label_create(request: Req):
+        b = await body(request)
+        conn = conn_ready()
+        try:
+            return JSONResponse(json_safe(LB.save_label(conn, b.get("name"), str(b.get("version") or "1"),
+                                                        b.get("spec") or {}, b.get("description", ""))))
+        except BAD as e:
+            return err(e)
+        finally:
+            conn.close()
 
     @app.get("/api/ml/datasets")
     async def api_ml_datasets():

@@ -13,7 +13,10 @@ build(conn, spec) -> Dataset
                 dated <= t (W2 PointInTimeView raises LookAheadError otherwise),
                 that date's ATIP scores (W2 ScoresHistory guard), that date's
                 regime, the benchmark up to t
-      label     labels.label_for(bars, i) from bars AFTER t, separately
+      context   ml/context_features: index returns, global inputs (known before the
+                close of t) and cross-sectional sector features from the SAME date's rows
+      label     labels.label_for(bars, i) from bars AFTER t, separately; return_rank
+                is ranked across that date's rows after they are all labelled
       kept only when the label's date (t + h) is <= end  -> no label leaks past
                 the dataset's end, and a model trained on it has seen nothing
                 after `end`
@@ -137,6 +140,18 @@ def encode_row(values: dict, feature_names: list) -> tuple:
     return cols, row
 
 
+def w3_inputs(feats) -> list:
+    """The W3 features to compute per symbol: the set's own (minus ML-only context
+    features) plus what the cross-sectional features are derived from."""
+    from ml import context_features as CF
+    out = [f for f in feats if f not in CF.ALL]
+    for f in feats:
+        for need in CF.NEEDS.get(f, ()):
+            if need not in out:
+                out.append(need)
+    return out
+
+
 def _symbols(conn, universe, max_symbols):
     if universe == "market":
         return ["NIFTY50"]
@@ -182,10 +197,16 @@ def build(conn, spec: DatasetSpec, progress=None) -> Dataset:
     regimes = {d: regime.on(d).get("regime") for d in hist.sessions} if lab.kind == "market_regime" else None
     all_sessions = hist.sessions
 
+    from ml import context_features as CF
+    from ml.labels import CROSS_SECTIONAL_LABELS
+    w3_feats = w3_inputs(feats)
+    market = CF.MarketContext(conn, start, end) if any(f in CF.ALL for f in feats) else None
+    sectors = CF.sector_map() if any(f in CF.CROSS_SECTIONAL for f in feats) else {}
     columns, X, y, dates, ldates, symbols = None, [], [], [], [], []
     present = {f: 0 for f in feats}
     n_seen = 0
     for k, t in enumerate(sampled):
+        day, labels = {}, {}
         for sym in syms:
             bars = hist.bars.get(sym) or []
             i = hist._index.get(sym, {}).get(t)
@@ -197,14 +218,22 @@ def build(conn, spec: DatasetSpec, progress=None) -> Dataset:
             ctx = env.context(sym, t)
             if ctx is None:
                 continue
-            vals = {f: ctx.get(f) for f in feats}
+            day[sym] = {f: ctx.get(f) for f in w3_feats}
+            labels[sym] = (value, ld)
+        CF.enrich(day, feats, t, market, sectors)       # context + cross-sectional (same date only)
+        if lab.kind in CROSS_SECTIONAL_LABELS and len(labels) > 1:
+            order = sorted(labels, key=lambda s: labels[s][0])
+            labels = {s: (round(r / (len(order) - 1) * 100, 4), labels[s][1]) for r, s in enumerate(order)}
+        for sym in sorted(day):
+            vals = day[sym]
             n_seen += 1
             for f in feats:
-                if vals[f] is not None:
+                if vals.get(f) is not None:
                     present[f] += 1
             cols, row = encode_row(vals, feats)
             columns = columns or cols
-            X.append(row); y.append(value); dates.append(t); ldates.append(ld); symbols.append(sym)
+            X.append(row); y.append(labels[sym][0]); dates.append(t); ldates.append(labels[sym][1])
+            symbols.append(sym)
         env._ctx.clear()                               # contexts are per date; free memory
         if progress:
             progress(k + 1, len(sampled))

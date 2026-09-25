@@ -13,6 +13,12 @@ stored in ml_feature (synced from FEATURE_METADATA). FEATURE_VERSION changes
 when a formula changes; a feature set records the version of every member,
 so a model states exactly which definitions produced its inputs.
 
+ML-only context features (ml/context_features.py): index returns (Bank Nifty,
+Midcap 150, Smallcap 250), global market inputs, and cross-sectional sector
+features (sector_ret_20, stock_vs_sector_20, sector_breadth). They are
+registered here like any other feature and computed per date by the same
+code for datasets and predictions.
+
 A FeatureSet is (name, version, [features]) with a content hash over the
 member names and versions; ml_feature_set stores it immutably. Categorical
 features (regime, vol_regime, market_trend, score_signal) are one-hot encoded
@@ -32,6 +38,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ml import context_features as CF
 from strategy_engine import features as F
 
 FEATURE_VERSION = "1"
@@ -81,10 +88,21 @@ CORE_FEATURES = [
 # Technical + market only: usable over the full price history (ATIP scores start 2026-07-27).
 TECH_FEATURES = [f for f in CORE_FEATURES if f not in ("vpi", "spi", "rri", "mri", "cri", "msi", "zpi", "acs",
                                                         "atip_score")]
-BUILTIN_SETS = {"atip_core": CORE_FEATURES, "atip_technical": TECH_FEATURES}
+# Core + market context + global inputs + sector (global data starts 2026-07-25).
+EXTENDED_FEATURES = CORE_FEATURES + ["fii_net_cr", "dii_net_cr", "adv_decline", "nifty_ret_60", "vwap_20",
+                                     "macd", "bb_pctb_50"] + list(CF.ALL)
+BUILTIN_SETS = {"atip_core": CORE_FEATURES, "atip_technical": TECH_FEATURES, "atip_extended": EXTENDED_FEATURES}
 
 
 def describe(name: str) -> dict:
+    if name in CF.META:
+        cat, how, lookback, avail = CF.META[name]
+        return {"feature_id": f"{name}@v{FEATURE_VERSION}", "name": name, "description": how, "category": cat,
+                "data_type": "numeric", "calculation_method": "ml.context_features (per date, point in time)",
+                "version": FEATURE_VERSION,
+                "dependencies": ["cross_section", "bars"] if name in CF.CROSS_SECTIONAL else
+                                (["global_markets"] if cat == "global" else ["index_bars"]),
+                "availability": avail, "lookback": lookback, "categories": None}
     if not F.known(name) or name in F.ML_FEATURES:
         raise ValueError(f"{name!r} is not an ML-usable feature (ml_* outputs cannot be model inputs)")
     m = F._PARAMETRIC.match(name)
@@ -109,7 +127,8 @@ def describe(name: str) -> dict:
 
 def sync_features(conn) -> int:
     """Upsert metadata for every feature in the built-in sets (and any already stored)."""
-    names = set(CORE_FEATURES) | set(FIXED) | {r[0] for r in conn.execute("SELECT name FROM ml_feature")}
+    names = (set(CORE_FEATURES) | set(EXTENDED_FEATURES) | set(FIXED)
+             | {r[0] for r in conn.execute("SELECT name FROM ml_feature")})
     now = datetime.now()
     n = 0
     for name in sorted(names):

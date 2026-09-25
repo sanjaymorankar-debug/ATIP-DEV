@@ -20,8 +20,9 @@ The prediction engine.
      ml_score        0..100 standardised score for strategies:
                      direction      50 x (1 + P(UP) - P(DOWN))
                      binary_return  100 x P(1)
-                     forward_return percentile rank of the prediction among the
-                                    day's predictions x 100
+                     forward_return / return_rank  percentile rank of the prediction
+                                    among the day's predictions x 100
+                     signal_outcome 100 x P(WIN)
                      volatility / market regime labels: NULL (not directional)
      explanation     explain.explain_row (top features, contributions, reason codes)
      features        the input values used (traceability)
@@ -75,11 +76,17 @@ def feature_rows(conn, feature_names, as_of, symbols):
         bench[_d(d)] = c
     env = EvalEnv(hist, symbols, ScoresHistory(conn, as_of - timedelta(days=10), as_of),
                   MarketHealthRegime(conn, as_of - timedelta(days=10), as_of), bench)
+    from ml import context_features as CF
+    from ml.dataset import w3_inputs
+    w3 = w3_inputs(feature_names)
     out = {}
     for s in symbols:
         ctx = env.context(s, as_of)
         if ctx is not None:
-            out[s] = {f: ctx.get(f) for f in feature_names}
+            out[s] = {f: ctx.get(f) for f in w3}
+    if any(f in CF.ALL for f in feature_names):     # same context code as the dataset builder
+        CF.enrich(out, feature_names, as_of, CF.MarketContext(conn, as_of, as_of),
+                  CF.sector_map() if any(f in CF.CROSS_SECTIONAL for f in feature_names) else {})
     return out
 
 
@@ -91,6 +98,8 @@ def _score(label_kind, classes, proba_row, value=None):
         return round(50 * (1 + p.get("UP", 0) - p.get("DOWN", 0)), 2)
     if label_kind == "binary_return":
         return round(100 * p.get("1", 0), 2)
+    if label_kind == "signal_outcome":
+        return round(100 * p.get("WIN", 0), 2)
     return None
 
 
@@ -123,7 +132,7 @@ def predict(conn, model_id: str, as_of=None, version: str | None = None, symbols
     proba = model.predict_proba(X) if model.task == "classification" else None
     interval = model.interval(X) if model.task == "regression" else None
     ranks = None
-    if model.task == "regression" and label["kind"] == "forward_return" and len(preds) > 1:
+    if model.task == "regression" and label["kind"] in ("forward_return", "return_rank") and len(preds) > 1:
         order = np.argsort(np.argsort(preds))
         ranks = (order / (len(preds) - 1) * 100).tolist()
     now = datetime.now()
@@ -132,7 +141,7 @@ def predict(conn, model_id: str, as_of=None, version: str | None = None, symbols
         pr = proba[i].tolist() if proba is not None else None
         probs = dict(zip([str(c) for c in model.classes], [round(float(v), 6) for v in pr])) if pr else None
         conf = round(max(pr), 6) if pr else None
-        prob_up = (probs.get("UP") if probs and "UP" in probs else probs.get("1") if probs and "1" in probs else None)
+        prob_up = next((probs[k] for k in ("UP", "1", "WIN") if probs and k in probs), None)
         score = _score(label["kind"], model.classes, pr) if pr else (round(ranks[i], 2) if ranks else None)
         ex = explain_row(model, X[i])
         rec = {"prediction_id": "PR" + uuid.uuid4().hex[:16].upper(), "model_id": model_id,

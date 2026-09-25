@@ -47,7 +47,9 @@ def main(argv=None):
         if a.cmd == "status":
             out = {"settings": settings(), "families": models.availability(), "models": registry.list_models(conn)}
         elif a.cmd == "sync":
-            out = {"features": FR.sync_features(conn), "feature_sets": FR.ensure_builtin_sets(conn)}
+            from ml import labels
+            out = {"features": FR.sync_features(conn), "feature_sets": FR.ensure_builtin_sets(conn),
+                   "labels": labels.ensure_builtin_labels(conn)}
         elif a.cmd == "create-model":
             out = registry.create_model(conn, a.model_id, a.name or a.model_id, a.type, a.label, a.feature_set,
                                         purpose=a.purpose)
