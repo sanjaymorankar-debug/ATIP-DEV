@@ -6,7 +6,7 @@ The strategy definition (SE-01): one JSON document per strategy VERSION.
       "name": "ATIP buy-zone momentum",
       "version": "1.0.0",
       "description": "...",
-      "kind": "rule" | "multi_factor" | "quant_rank" | "composite" | "python",
+      "kind": "rule" | "multi_factor" | "quant_rank" | "composite" | "python" | "pairs" | "portfolio",
       "universe": {"type": "tracked_current"} | {"type": "symbols", "symbols": [...]},
       "timeframe": "1d",
       "parameters": [ParamSpec, ...],              # see params.py
@@ -37,7 +37,10 @@ from strategy_engine import rules as R
 from strategy_engine.decisions import RISK_REQUIREMENTS
 from strategy_engine.params import ParamError, ParamSpec, referenced, resolve
 
-KINDS = ("rule", "multi_factor", "quant_rank", "composite", "python")
+KINDS = ("rule", "multi_factor", "quant_rank", "composite", "python", "pairs", "portfolio")
+PAIR_KEYS = {"pair_id", "asset_a", "asset_b", "hedge_ratio", "spread_kind", "lookback", "entry_z", "exit_z", "stop_z",
+             "capital_allocation_pct"}
+PORTFOLIO_METHODS = ("equal", "score", "inverse_vol", "risk", "factor")
 TIMEFRAMES = ("1d",)
 COMPOSITE_MODES = ("vote", "weighted", "priority", "regime_select")
 POSITION_KEYS = {"target_position_pct", "max_positions", "max_new_per_day", "stop_pct", "target_pct",
@@ -47,7 +50,7 @@ COMMON_KEYS = {"strategy_id", "name", "version", "description", "kind", "categor
                "parameters", "position", "risk"}
 # category: what the strategy is, for grouping (defaults from its kind)
 DEFAULT_CATEGORY = {"rule": "technical", "multi_factor": "multi_factor", "quant_rank": "quant",
-                    "composite": "combination", "python": "code"}
+                    "composite": "combination", "python": "code", "pairs": "stat_arb", "portfolio": "portfolio"}
 KIND_KEYS = {
     "rule": {"entry", "exit", "confirmation", "filter", "rank_by"},
     "multi_factor": {"factors", "entry_threshold", "exit_threshold", "reduce_threshold", "add_threshold",
@@ -56,6 +59,9 @@ KIND_KEYS = {
     "composite": {"members", "mode", "min_agree", "min_agree_exit", "entry_threshold", "exit_threshold",
                   "regime_map", "regime_key", "exit_on_unmapped_regime"},
     "python": {"python_class"},
+    "pairs": {"pairs", "allow_single_leg"},
+    "portfolio": {"score", "top_n", "bottom_n", "method", "vol_feature", "constraints", "long_short",
+                  "rebalance_every", "filter", "allow_long_only"},
 }
 _SLUG = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
@@ -178,6 +184,39 @@ def validate(defn: dict) -> dict:
                 if d["regime_key"] not in F.MARKET_FEATURES:
                     raise DefinitionError(f"regime_key must be one of {F.MARKET_FEATURES}")
                 used |= {d["regime_key"]}
+        elif k == "pairs":
+            ps = d.get("pairs")
+            if not ps:
+                raise DefinitionError("pairs needs pairs: [{asset_a, asset_b, ...}]")
+            syms = set()
+            for i, pr in enumerate(ps):
+                if set(pr) - PAIR_KEYS:
+                    raise DefinitionError(f"pairs[{i}]: unknown keys {sorted(set(pr) - PAIR_KEYS)}")
+                if not pr.get("asset_a") or not pr.get("asset_b") or pr["asset_a"] == pr["asset_b"]:
+                    raise DefinitionError(f"pairs[{i}]: two different assets are required")
+                pr["asset_a"], pr["asset_b"] = pr["asset_a"].upper(), pr["asset_b"].upper()
+                if pr.get("spread_kind", "log") not in ("log", "ratio"):
+                    raise DefinitionError(f"pairs[{i}].spread_kind must be log or ratio")
+                syms |= {pr["asset_a"], pr["asset_b"]}
+            d["universe"] = {"type": "symbols", "symbols": sorted(syms)}     # a pair trades only its legs
+            used.add("close")
+        elif k == "portfolio":
+            sc = d.get("score") or {}
+            _feature(sc.get("feature")); used.add(sc["feature"])
+            if d.get("top_n") is None:
+                raise DefinitionError("portfolio needs top_n")
+            if d.get("method", "equal") not in PORTFOLIO_METHODS:
+                raise DefinitionError(f"portfolio method must be one of {PORTFOLIO_METHODS}")
+            if d.get("long_short") not in (None, "dollar", "beta", "sector"):
+                raise DefinitionError("long_short must be null, dollar, beta or sector")
+            vf = d.setdefault("vol_feature", "volatility_60")
+            _feature(vf); used.add(vf)
+            if set(d.get("constraints") or {}) - {"max_weight", "sector_cap", "gross"}:
+                raise DefinitionError("constraints: max_weight, sector_cap, gross")
+            if d.get("filter"):
+                used |= R.validate(d["filter"], declared, "filter")
+            if d.get("long_short") == "beta":
+                used.add("rel_strength_20")          # needs the benchmark series for beta
         elif k == "python":
             from backtest.strategies import REGISTRY
             if d.get("python_class") not in REGISTRY:
@@ -196,7 +235,7 @@ def validate(defn: dict) -> dict:
     inputs = set()
     for f in used:
         inputs |= set(F.inputs_of(f))
-    if d["kind"] in ("rule", "multi_factor", "quant_rank"):
+    if d["kind"] in ("rule", "multi_factor", "quant_rank", "pairs", "portfolio"):
         inputs.add("bars")
     d["inputs"] = sorted(inputs)
     return d

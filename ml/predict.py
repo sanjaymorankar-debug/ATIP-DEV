@@ -74,8 +74,12 @@ def feature_rows(conn, feature_names, as_of, symbols):
     for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date>=? AND date<=?",
                              (str(as_of - timedelta(days=420)), str(as_of))):
         bench[_d(d)] = c
+    quant = None
+    if any(f.startswith(("qf_", "qc_", "ev_")) for f in feature_names):
+        from quant.strategy_features import QuantHistory
+        quant = QuantHistory(conn, as_of - timedelta(days=10), as_of)
     env = EvalEnv(hist, symbols, ScoresHistory(conn, as_of - timedelta(days=10), as_of),
-                  MarketHealthRegime(conn, as_of - timedelta(days=10), as_of), bench)
+                  MarketHealthRegime(conn, as_of - timedelta(days=10), as_of), bench, None, quant)
     from ml import context_features as CF
     from ml.dataset import w3_inputs
     w3 = w3_inputs(feature_names)

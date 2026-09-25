@@ -1,0 +1,38 @@
+{
+  "strategy_id": "market_neutral_mlq",
+  "name": "Market-neutral momentum/low-vol portfolio",
+  "version": "1.0.0",
+  "description": "W6 portfolio construction: long the top 15 and short the bottom 15 by qc_mom_lowvol_liq, inverse-volatility weighted, beta-neutral, max 10% per name, 30% per sector. Without a shortable instrument the book cannot be neutral, so new longs are held back (NEUTRALITY_UNAVAILABLE) unless allow_long_only is set.",
+  "kind": "portfolio",
+  "universe": {
+    "type": "tracked_current"
+  },
+  "timeframe": "1d",
+  "parameters": [],
+  "score": {
+    "feature": "qc_mom_lowvol_liq"
+  },
+  "top_n": 15,
+  "bottom_n": 15,
+  "method": "inverse_vol",
+  "vol_feature": "volatility_60",
+  "constraints": {
+    "max_weight": 0.1,
+    "sector_cap": 0.3,
+    "gross": 1.0
+  },
+  "long_short": "beta",
+  "rebalance_every": 10,
+  "allow_long_only": false,
+  "position": {
+    "max_positions": 15,
+    "max_new_per_day": 15,
+    "stop_pct": 10
+  },
+  "risk": {
+    "requirement": "STANDARD",
+    "blocked_regimes": [
+      "HIGH_RISK"
+    ]
+  }
+}

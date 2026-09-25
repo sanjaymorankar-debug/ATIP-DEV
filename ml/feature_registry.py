@@ -105,6 +105,13 @@ def describe(name: str) -> dict:
                 "availability": avail, "lookback": lookback, "categories": None}
     if not F.known(name) or name in F.ML_FEATURES:
         raise ValueError(f"{name!r} is not an ML-usable feature (ml_* outputs cannot be model inputs)")
+    if F.is_quant(name):                               # W6 factor / composite / event features
+        return {"feature_id": f"{name}@v{FEATURE_VERSION}", "name": name,
+                "description": "W6 quant score (0..100, direction-adjusted) or event feature",
+                "category": "quant", "data_type": "numeric",
+                "calculation_method": "quant.engine -> quant_factor_score (point in time)",
+                "version": FEATURE_VERSION, "dependencies": ["quant"], "availability": "when quant.enabled has "
+                "computed scores for the dates", "lookback": 1, "categories": None}
     m = F._PARAMETRIC.match(name)
     if m:
         cat, how = _DESC.get(m.group(1), ("technical", m.group(1)))

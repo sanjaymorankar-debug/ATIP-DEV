@@ -1,0 +1,41 @@
+{
+  "strategy_id": "mom_lowvol_liq",
+  "name": "Momentum + Low Volatility + Liquidity (ranking)",
+  "version": "1.0.0",
+  "description": "W6 cross-sectional ranking on the stored composite qc_mom_lowvol_liq (momentum 12-1 and risk-adjusted, low 60-day and downside volatility, traded value). Top 10, re-ranked every 10 sessions; price data only.",
+  "kind": "quant_rank",
+  "universe": {
+    "type": "tracked_current"
+  },
+  "timeframe": "1d",
+  "parameters": [],
+  "score": {
+    "terms": [
+      {
+        "feature": "qc_mom_lowvol_liq",
+        "weight": 1.0
+      }
+    ],
+    "direction": "desc"
+  },
+  "filter": {
+    "feature": "qf_traded_value_20",
+    "op": ">=",
+    "value": 40
+  },
+  "top_n": 10,
+  "exit_rank": 25,
+  "rebalance_every": 10,
+  "position": {
+    "target_position_pct": 8,
+    "max_positions": 10,
+    "max_new_per_day": 5,
+    "stop_pct": 8
+  },
+  "risk": {
+    "requirement": "STANDARD",
+    "blocked_regimes": [
+      "HIGH_RISK"
+    ]
+  }
+}

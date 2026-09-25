@@ -190,7 +190,11 @@ def build(conn, spec: DatasetSpec, progress=None) -> Dataset:
     bench = {}
     for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date<=?", (str(end),)):
         bench[_d(d)] = c
-    env = EvalEnv(hist, syms, scores, regime, bench)
+    quant = None
+    if any(f.startswith(("qf_", "qc_", "ev_")) for f in feats):       # W6 factor scores as ML inputs
+        from quant.strategy_features import QuantHistory
+        quant = QuantHistory(conn, start - timedelta(days=10), end)
+    env = EvalEnv(hist, syms, scores, regime, bench, None, quant)
     sessions = [s for s in hist.sessions if start <= s <= end]
     step = max(1, int((spec.sampling or {}).get("every_n_sessions") or 1))
     sampled = sessions[::step]

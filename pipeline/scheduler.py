@@ -763,6 +763,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("ml_predictions", run_scheduled_predictions, td)
         except Exception as e:
             log.warning(f"  ML predictions: {e}")
+        # W6: factor scores, composites, events, intraday microstructure -- before the
+        # strategies that read qf_* / qc_* / ev_*. SKIPPED unless config quant.enabled.
+        try:
+            from quant.engine import run_scheduled as run_quant
+            run_job("quant_factors", run_quant, td)
+        except Exception as e:
+            log.warning(f"  Quant factors: {e}")
         try:
             from strategy_engine.engine import run_scheduled_decisions
             from strategy_engine.health import run_health_all

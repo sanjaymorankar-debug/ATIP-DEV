@@ -1,0 +1,48 @@
+{
+  "strategy_id": "pairs_bank",
+  "name": "Pairs: HDFCBANK / ICICIBANK (stat-arb)",
+  "version": "1.0.0",
+  "description": "W6 statistical-arbitrage example: log spread with an OLS hedge ratio over 120 sessions; enter at |z| >= 2, exit at |z| <= 0.5, stop at |z| >= 4. The short leg is not executable in the PAPER cash book, so with allow_single_leg false this strategy records signals but opens no position. Research example only.",
+  "kind": "pairs",
+  "universe": {
+    "type": "symbols",
+    "symbols": [
+      "HDFCBANK",
+      "ICICIBANK"
+    ]
+  },
+  "timeframe": "1d",
+  "parameters": [
+    {
+      "name": "entry_z",
+      "type": "float",
+      "default": 2.0,
+      "min": 0.5,
+      "max": 5,
+      "description": "Entry |z|"
+    }
+  ],
+  "pairs": [
+    {
+      "asset_a": "HDFCBANK",
+      "asset_b": "ICICIBANK",
+      "hedge_ratio": "ols",
+      "spread_kind": "log",
+      "lookback": 120,
+      "entry_z": {
+        "param": "entry_z"
+      },
+      "exit_z": 0.5,
+      "stop_z": 4.0,
+      "capital_allocation_pct": 10
+    }
+  ],
+  "allow_single_leg": false,
+  "position": {
+    "target_position_pct": 5,
+    "max_positions": 2
+  },
+  "risk": {
+    "requirement": "STANDARD"
+  }
+}

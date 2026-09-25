@@ -1,0 +1,96 @@
+{
+  "strategy_id": "vqm_multi_factor",
+  "name": "Value + Quality + Momentum (multi-factor)",
+  "version": "1.0.0",
+  "description": "W6 multi-factor on stored factor scores: value (earnings yield, book-to-market), quality (ROE, low leverage) and momentum (12-1, risk-adjusted). Value/quality need fundamental_data, which is empty today, so this strategy has no candidates until fundamentals are ingested (coverage rule).",
+  "kind": "multi_factor",
+  "universe": {
+    "type": "tracked_current"
+  },
+  "timeframe": "1d",
+  "parameters": [
+    {
+      "name": "entry",
+      "type": "float",
+      "default": 70,
+      "min": 50,
+      "max": 95,
+      "description": "Composite entry threshold"
+    },
+    {
+      "name": "exit",
+      "type": "float",
+      "default": 45,
+      "min": 10,
+      "max": 70,
+      "description": "Composite exit threshold"
+    }
+  ],
+  "factors": [
+    {
+      "feature": "qf_earnings_yield",
+      "weight": 0.15,
+      "min": 0,
+      "max": 100,
+      "threshold": 55
+    },
+    {
+      "feature": "qf_book_to_market",
+      "weight": 0.1,
+      "min": 0,
+      "max": 100,
+      "threshold": 50
+    },
+    {
+      "feature": "qf_roe",
+      "weight": 0.15,
+      "min": 0,
+      "max": 100,
+      "threshold": 55
+    },
+    {
+      "feature": "qf_leverage",
+      "weight": 0.1,
+      "min": 0,
+      "max": 100,
+      "threshold": 50
+    },
+    {
+      "feature": "qf_mom_12_1",
+      "weight": 0.3,
+      "min": 0,
+      "max": 100,
+      "threshold": 60
+    },
+    {
+      "feature": "qf_risk_adj_mom_125",
+      "weight": 0.2,
+      "min": 0,
+      "max": 100,
+      "threshold": 55
+    }
+  ],
+  "entry_threshold": {
+    "param": "entry"
+  },
+  "exit_threshold": {
+    "param": "exit"
+  },
+  "min_confirmations": 4,
+  "min_factor_coverage": 0.8,
+  "top_n": 10,
+  "position": {
+    "target_position_pct": 5,
+    "max_positions": 15,
+    "max_new_per_day": 5,
+    "stop_pct": 8,
+    "max_hold_sessions": 60
+  },
+  "risk": {
+    "requirement": "STANDARD",
+    "blocked_regimes": [
+      "HIGH_RISK"
+    ],
+    "max_cri": 70
+  }
+}

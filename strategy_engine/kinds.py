@@ -98,10 +98,11 @@ class EvalEnv:
     Everything it returns is dated on or before the as_of it is asked about.
     """
 
-    def __init__(self, history, universe, scores=None, regime=None, benchmark=None, ml=None):
+    def __init__(self, history, universe, scores=None, regime=None, benchmark=None, ml=None, quant=None):
         self.history, self.universe = history, tuple(universe)
         self.scores, self.regime = scores, regime
         self.ml = ml                  # ml/strategy_features.MLPredictionHistory or None
+        self.quant = quant            # quant/strategy_features.QuantHistory or None
         self.benchmark = benchmark or {}
         self._ctx = {}
 
@@ -121,7 +122,8 @@ class EvalEnv:
         bench = {d: c for d, c in self.benchmark.items() if d <= as_of}
         ctx = FeatureContext(symbol, as_of, bars, rows.get(symbol, {}), self.market(as_of), bench,
                              previous=(lambda: self.context(symbol, prev_date)) if prev_date else None,
-                             ml=self.ml.on(as_of, symbol) if self.ml else None)
+                             ml=self.ml.on(as_of, symbol) if self.ml else None,
+                             quant=self.quant.on(as_of, symbol) if self.quant else None)
         self._ctx[key] = ctx
         return ctx
 
@@ -473,8 +475,161 @@ class PythonEvaluator(Evaluator):
         return out + self.limit_buys(cands, len(held))
 
 
+
+
+class PairsEvaluator(Evaluator):
+    """
+    Statistical-arbitrage pairs (W6). Per pair, on point-in-time bars:
+      spread = ln A - beta ln B (or A / B), beta fixed or OLS over the lookback;
+      z = (spread - mean) / stdev over the lookback  (quant/statarb.py)
+      flat:  z >= entry_z -> short A / long B;  z <= -entry_z -> long A / short B
+      held:  |z| >= stop_z -> EXIT (PAIR_STOP);  |z| <= exit_z -> EXIT (PAIR_EXIT); else HOLD
+    The short leg is a SELL decision with reason code SHORT_LEG: the PAPER cash book
+    cannot sell what it does not hold, so no intent/order is made for it. Unless
+    allow_single_leg is true, the long leg is then NO_ACTION (SHORT_LEG_UNAVAILABLE)
+    -- a pair is never silently traded as a naked long. Each leg's
+    target_position_pct is capital_allocation_pct / 2.
+    """
+
+    def decide(self, env, as_of, held, session_index=None):
+        from quant.statarb import analyze
+        p, out = self.params, []
+        single = bool(pval(self.defn.get("allow_single_leg", False), p))
+        view = env.history.view(as_of)
+        for pr in self.defn["pairs"]:
+            a, b = pr["asset_a"], pr["asset_b"]
+            ca, cb = env.context(a, as_of), env.context(b, as_of)
+            if ca is None or cb is None:
+                continue
+            look = int(pval(pr.get("lookback", 120), p))
+            hr = pval(pr.get("hedge_ratio", "ols"), p)
+            st = analyze(view.history(a), view.history(b), look, pr.get("spread_kind", "log"),
+                         None if hr == "ols" else float(hr))
+            if not st.get("ok") or st.get("zscore") is None:
+                continue
+            z = st["zscore"]
+            ez, xz, sz = (float(pval(pr.get(k, d), p)) for k, d in (("entry_z", 2.0), ("exit_z", 0.5), ("stop_z", 4.0)))
+            alloc = float(pval(pr.get("capital_allocation_pct", 10), p)) / 2
+            why = (f"pair {a}/{b}: z {z:+.2f} (entry {ez}, exit {xz}, stop {sz}), hedge {st['hedge_ratio']:.3f}, "
+                   f"corr {st['correlation'] if st['correlation'] is None else round(st['correlation'], 2)}, "
+                   f"half-life {st['half_life'] if st['half_life'] is None else round(st['half_life'], 1)}")
+            conf = min(1.0, abs(z) / sz) if sz else None
+            legs = {a: ca, b: cb}
+            if a in held or b in held:
+                for s in (a, b):
+                    if s not in held:
+                        continue
+                    if abs(z) >= sz:
+                        out.append(self._coded(self.intent(s, as_of, EXIT, conf, why + " -> stop", legs[s]), "PAIR_STOP"))
+                    elif abs(z) <= xz:
+                        out.append(self._coded(self.intent(s, as_of, EXIT, conf, why + " -> converged", legs[s]),
+                                               "PAIR_EXIT"))
+                    else:
+                        out.append(self.intent(s, as_of, HOLD, conf, why, legs[s]))
+                continue
+            if abs(z) < ez or abs(z) >= sz:
+                continue
+            long_s, short_s = (b, a) if z > 0 else (a, b)
+            short = self._coded(self.intent(short_s, as_of, SELL, conf, why + " -> short leg (needs a shortable "
+                                            "instrument; not executable in the cash book)", legs[short_s]), "SHORT_LEG")
+            out.append(short)
+            if single:
+                lg = self._coded(self.intent(long_s, as_of, BUY, conf, why + " -> long leg (single-leg allowed)",
+                                             legs[long_s], entry=True), "PAIR_ENTRY")
+                lg.target_position_pct = alloc
+            else:
+                lg = self._coded(self.intent(long_s, as_of, NO_ACTION, conf, why + " -> long leg held back: short "
+                                             "leg unavailable", legs[long_s]), "SHORT_LEG_UNAVAILABLE")
+            out.append(lg)
+        return out
+
+
+class PortfolioEvaluator(Evaluator):
+    """
+    Portfolio construction (W6) on a score feature (e.g. qc_mom_lowvol_liq):
+    on rebalance sessions take the top_n (long) and bottom_n (short) by score,
+    weight them with quant/portfolio.construct (equal / score / inverse_vol /
+    risk / factor; max_weight, sector_cap, gross; long_short None / dollar /
+    beta / sector) and decide:
+      held and still in the long book -> HOLD (target_position_pct = weight)
+      held and no longer in it        -> EXIT (PORTFOLIO_DROP)
+      new long names                  -> BUY (target_position_pct = weight x 100)
+      short names                     -> SELL decision, SHORT_LEG (no intent)
+    A long_short portfolio cannot be neutral without its shorts, so its new longs
+    are NO_ACTION (NEUTRALITY_UNAVAILABLE) unless allow_long_only is true.
+    Off-rebalance sessions: HOLD everything held.
+    """
+
+    def decide(self, env, as_of, held, session_index=None):
+        from quant.factors import FactorContext, _beta
+        from quant.portfolio import construct
+        d, p = self.defn, self.params
+        every = int(pval(d.get("rebalance_every", 5), p))
+        idx = session_index if session_index is not None else session_ordinal(as_of)
+        ctxs = {s: env.context(s, as_of) for s in set(env.universe) | set(held)}
+        ctxs = {s: c for s, c in ctxs.items() if c is not None}
+        if every > 1 and idx % every:
+            return [self.intent(s, as_of, HOLD, None, "not a rebalance session", ctxs[s]) for s in held if s in ctxs]
+        feat = d["score"]["feature"]
+        scores = {}
+        for s, c in ctxs.items():
+            v = c.get(feat)
+            if v is None or isinstance(v, str):
+                continue
+            if d.get("filter") and not R.evaluate(d["filter"], c, p)[0]:
+                continue
+            scores[s] = float(v)
+        order = sorted(scores, key=lambda s: (-scores[s], s))
+        top, bottom = int(pval(d["top_n"], p)), int(pval(d.get("bottom_n", 0), p))
+        longs = {s: scores[s] for s in order[:top]}
+        shorts = {s: scores[s] for s in order[::-1][:bottom] if s not in longs} if bottom else None
+        vf = d.get("vol_feature", "volatility_60")
+        vols = {s: ctxs[s].get(vf) for s in list(longs) + list(shorts or {})}
+        betas = {}
+        if d.get("long_short") == "beta":
+            betas = {s: _beta(FactorContext(s, as_of, ctxs[s].bars, ctxs[s], bench=ctxs[s].benchmark))
+                     for s in list(longs) + list(shorts or {})}
+        try:
+            from ml.context_features import sector_map
+            secs = sector_map()
+        except Exception:
+            secs = {}
+        res = construct(longs, d.get("method", "equal"), vols, betas, secs, longs, d.get("constraints"),
+                        d.get("long_short"), shorts)
+        w = res["weights"]
+        allow_lo = bool(pval(d.get("allow_long_only", False), p))
+        out, cands = [], []
+        for s in held:
+            if s not in ctxs:
+                continue
+            if w.get(s, 0) > 0:
+                it = self.intent(s, as_of, HOLD, None, f"in portfolio, weight {w[s]:.4f}", ctxs[s])
+                it.target_position_pct = round(w[s] * 100, 4)
+                out.append(it)
+            else:
+                out.append(self._coded(self.intent(s, as_of, EXIT, None, "no longer in the target portfolio",
+                                                   ctxs[s]), "PORTFOLIO_DROP"))
+        for s, wt in sorted(w.items(), key=lambda kv: -abs(kv[1])):
+            if s in held:
+                continue
+            if wt < 0:
+                out.append(self._coded(self.intent(s, as_of, SELL, None, f"short weight {wt:.4f} (needs a shortable "
+                                                   f"instrument)", ctxs[s]), "SHORT_LEG"))
+            elif d.get("long_short") and not allow_lo:
+                out.append(self._coded(self.intent(s, as_of, NO_ACTION, None, f"long weight {wt:.4f} held back: "
+                                                   f"{d['long_short']}-neutral book needs its short side", ctxs[s]),
+                                       "NEUTRALITY_UNAVAILABLE"))
+            else:
+                it = self.intent(s, as_of, BUY, min(1.0, scores[s] / 100) if scores.get(s) is not None else None,
+                                 f"portfolio entry, weight {wt:.4f} ({res['method']})", ctxs[s], entry=True)
+                it.target_position_pct = round(wt * 100, 4)
+                cands.append((-wt, s, it))
+        return out + self.limit_buys(cands, len(held))
+
+
 EVALUATORS = {"rule": RuleEvaluator, "multi_factor": MultiFactorEvaluator, "quant_rank": QuantRankEvaluator,
-              "composite": CompositeEvaluator, "python": PythonEvaluator}
+              "composite": CompositeEvaluator, "python": PythonEvaluator,
+              "pairs": PairsEvaluator, "portfolio": PortfolioEvaluator}
 
 
 def make_evaluator(defn: dict, params: dict, loader=None, depth: int = 0) -> Evaluator:

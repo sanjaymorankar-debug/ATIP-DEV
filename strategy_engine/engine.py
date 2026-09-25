@@ -74,11 +74,18 @@ def build_env(conn, symbols, as_of: date, inputs=None) -> EvalEnv:
             ml = MLPredictionHistory(conn, as_of - timedelta(days=10), as_of)
         except Exception as e:
             log.warning(f"  ML predictions unavailable to strategies: {e}")
+    quant = None
+    if inputs is None or "quant" in inputs:        # W6: stored factor / composite scores + events
+        try:
+            from quant.strategy_features import QuantHistory
+            quant = QuantHistory(conn, as_of - timedelta(days=10), as_of)
+        except Exception as e:
+            log.warning(f"  quant scores unavailable to strategies: {e}")
     bench = {}
     for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date>=? AND date<=?",
                              (str(as_of - timedelta(days=WARMUP_DAYS)), str(as_of))):
         bench[d if isinstance(d, date) else date.fromisoformat(str(d)[:10])] = c
-    return EvalEnv(history, symbols, scores, regime, bench, ml)
+    return EvalEnv(history, symbols, scores, regime, bench, ml, quant)
 
 
 def _capital(conn, book: str, as_of: date):

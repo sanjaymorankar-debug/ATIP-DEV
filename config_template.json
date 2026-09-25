@@ -114,5 +114,14 @@
     "regime_model":       null,
     "training":           {"validation_fraction": 0.2, "embargo_sessions": null, "min_rows": 200}
   },
+  "_SECTION_13": "=== ADVANCED QUANT (quant/config.py, W6) — off by default; quant output reaches trading only via strategies + W4 risk ===",
+  "quant": {
+    "enabled":       false,
+    "universe":      "tracked_current",
+    "factor_set":    "atip_factors",
+    "composites":    ["vqm", "mom_lowvol_liq"],
+    "winsorize_pct": 1.0
+  },
+  "_quant_note": "enabled: post-market factor scores (quant_factor_score), composites, market events and intraday microstructure features, computed before strategy decisions so strategies can read qf_<factor> / qc_<composite> / ev_* features.",
   "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model)."
 }

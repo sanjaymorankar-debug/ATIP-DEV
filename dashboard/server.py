@@ -871,7 +871,7 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
@@ -1503,6 +1503,10 @@ if HAS_FASTAPI:
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes
     _register_ml_routes(app, _guard, _Req, get_connection, json_safe)
+
+    # ── Advanced quant (W6) ──────────────────────────────────────────────
+    from dashboard.quant_routes import register as _register_quant_routes
+    _register_quant_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── Buy/Sell target + stoploss rules ────────────────────────────────
     # See orders/rules.py docstring for why triggering (automatic)

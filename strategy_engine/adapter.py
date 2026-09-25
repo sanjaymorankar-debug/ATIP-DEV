@@ -50,7 +50,7 @@ class DefinitionStrategy(Strategy):
     def _inputs(self) -> set:
         ins = set(self.defn.get("inputs") or [])
         if self.defn["kind"] in ("composite", "python"):
-            ins |= {"scores", "regime", "benchmark", "ml"}    # members / code may use any
+            ins |= {"scores", "regime", "benchmark", "ml", "quant"}    # members / code may use any
         return ins
 
     def _lazy(self):
@@ -76,6 +76,10 @@ class DefinitionStrategy(Strategy):
             if "ml" in ins:           # W5: only predictions made out of sample (after the model's training end)
                 from ml.strategy_features import MLPredictionHistory
                 self._ml = MLPredictionHistory(conn)
+            self._quant = None
+            if "quant" in ins:        # W6: factor / composite scores and events stored per date
+                from quant.strategy_features import QuantHistory
+                self._quant = QuantHistory(conn)
             self._bench = {}
             if "benchmark" in ins:
                 for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50'"):
@@ -86,7 +90,8 @@ class DefinitionStrategy(Strategy):
     def on_bar(self, ctx) -> list:
         self._lazy()
         hist = ctx.data._h                              # PriceHistory behind the point-in-time view
-        env = EvalEnv(hist, ctx.universe, ctx.scores, self._regime, self._bench, getattr(self, "_ml", None))
+        env = EvalEnv(hist, ctx.universe, ctx.scores, self._regime, self._bench, getattr(self, "_ml", None),
+                      getattr(self, "_quant", None))
         held = {s: {"qty": p.qty, "entry_price": p.entry_price, "held_sessions": p.held_sessions}
                 for s, p in ctx.positions.items()}
         out = []

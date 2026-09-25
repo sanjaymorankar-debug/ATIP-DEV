@@ -16,6 +16,10 @@ split/bonus adjusted (prices_daily).
                range_pos_N prior_high_N prior_low_N volatility_N rel_strength_N
                adx_N vwap_N bb_pctb_N bb_width_N nifty_ret_N
   Derived      macd macd_signal macd_hist (12/26/9)
+  Quant (W6)   qf_<factor_id> (e.g. qf_mom_12_1) and qc_<composite> (e.g. qc_vqm):
+               the stored direction-adjusted 0..100 score for that date
+               (quant/strategy_features.py); ev_days_since_split / _bonus /
+               _rights / _demerger / _bulk_deal and ev_bulk_net_5d (quant/events.py)
   ML (W5)      ml_score ml_prediction ml_confidence ml_prob_up -- the stored
                prediction of the configured ML model for that symbol and date
                (ml/strategy_features.py); None when there is none
@@ -72,6 +76,24 @@ SCORE_FEATURES = ("vpi", "spi", "rri", "mri", "cri", "msi", "zpi", "acs", "atip_
 MARKET_FEATURES = ("regime", "mh_score", "vix", "vol_regime", "market_trend", "breadth_pct", "adv_decline",
                    "fii_net_cr", "dii_net_cr")
 ML_FEATURES = ("ml_score", "ml_prediction", "ml_confidence", "ml_prob_up")
+_QUANT = re.compile(r"^(qf|qc)_[a-z][a-z0-9_]*$")
+EVENT_FEATURES = ("ev_days_since_split", "ev_days_since_bonus", "ev_days_since_rights", "ev_days_since_demerger",
+                  "ev_days_since_bulk_deal", "ev_bulk_net_5d")
+
+
+def is_quant(name: str) -> bool:
+    """qf_<registered factor>, qc_<composite name>, or an event feature."""
+    if name in EVENT_FEATURES:
+        return True
+    if not _QUANT.match(name or ""):
+        return False
+    if name.startswith("qf_"):
+        try:
+            from quant.factors import REGISTRY
+            return name[3:] in REGISTRY
+        except Exception:
+            return False
+    return True                    # composites live in the database; an unknown one is simply None
 BAR_FEATURES = ("close", "open", "high", "low", "volume", "prev_close", "change_pct", "gap_pct",
                 "macd", "macd_signal", "macd_hist")
 
@@ -88,10 +110,12 @@ class FeatureContext:
     benchmark  NIFTY50 closes as {date: close} up to as_of
     """
 
-    def __init__(self, symbol, as_of, bars, scores=None, market=None, benchmark=None, previous=None, ml=None):
+    def __init__(self, symbol, as_of, bars, scores=None, market=None, benchmark=None, previous=None, ml=None,
+                 quant=None):
         self.symbol, self.as_of, self.bars = symbol, as_of, bars
         self.scores, self.market, self.benchmark = scores or {}, market or {}, benchmark or {}
         self.ml = ml or {}                 # {"ml_score", ...} for this symbol and date, or {}
+        self.quant = quant or {}           # {"qf_...", "qc_...", "ev_..."} for this symbol and date, or {}
         self._previous = previous          # callable -> FeatureContext for the prior session
         self._cache = {}
 
@@ -114,7 +138,7 @@ def register_feature(name: str, fn, inputs=("bars",)):
 
 def known(name: str) -> bool:
     return (name in BAR_FEATURES or name in SCORE_FEATURES or name in MARKET_FEATURES or name in ML_FEATURES
-            or name in _CUSTOM or bool(_PARAMETRIC.match(name)))
+            or name in _CUSTOM or bool(_PARAMETRIC.match(name)) or is_quant(name))
 
 
 def inputs_of(name: str) -> tuple:
@@ -125,6 +149,8 @@ def inputs_of(name: str) -> tuple:
         return ("regime",)
     if name in ML_FEATURES:
         return ("ml",)
+    if is_quant(name):
+        return ("quant",)
     if name in _CUSTOM:
         return _CUSTOM[name][1]
     m = _PARAMETRIC.match(name)
@@ -135,7 +161,7 @@ def inputs_of(name: str) -> tuple:
 
 def catalogue() -> dict:
     return {"bars": list(BAR_FEATURES), "scores": list(SCORE_FEATURES), "market": list(MARKET_FEATURES),
-            "ml": list(ML_FEATURES),
+            "ml": list(ML_FEATURES), "quant": ["qf_<factor_id>", "qc_<composite>"] + list(EVENT_FEATURES),
             "parametric": sorted({"sma_N", "ema_N", "rsi_N", "atr_pct_N", "ret_N", "vol_ratio_N", "zscore_N",
                                   "range_pos_N", "prior_high_N", "prior_low_N", "volatility_N", "rel_strength_N",
                                   "adx_N", "vwap_N", "bb_pctb_N", "bb_width_N", "nifty_ret_N"}),
@@ -248,6 +274,8 @@ def compute(name, ctx):
         return ctx.market.get(name)
     if name in ML_FEATURES:
         return ctx.ml.get(name)
+    if name in EVENT_FEATURES or _QUANT.match(name):
+        return ctx.quant.get(name)
     bars = ctx.bars
     if not bars:
         return None

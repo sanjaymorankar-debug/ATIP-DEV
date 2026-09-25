@@ -82,7 +82,8 @@ def get_connection():
     _migrate_news_classifier_column(conn)
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
-    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES}.items():
+    for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
+                       **W6_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -422,6 +423,110 @@ W5_TABLES = {
             model_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, version_status TEXT,
             prediction_dist_json TEXT, feature_drift_json TEXT, data_quality_json TEXT, n_shifted INTEGER,
             created_at TIMESTAMP, PRIMARY KEY (model_id, version, as_of))""",
+    ),
+}
+
+# ── Tables added in W6 (advanced quant) ─────────────────────────────────────
+# quant/. Factor metadata is versioned (quant_factor PK factor_id+version);
+# per-date scores for factors AND composites share quant_factor_score (kind
+# factor | composite) -- rankings are its rank / sector_rank columns, so there is
+# no separate rankings table. market_event normalises corporate_actions and
+# bulk_deals (it references them by source + source_id; they stay unchanged).
+# The derivatives tables are schema only: no futures / options source exists yet.
+W6_TABLES = {
+    "quant_factor": (
+        """CREATE TABLE IF NOT EXISTS quant_factor (
+            factor_id TEXT NOT NULL, version TEXT NOT NULL, name TEXT, category TEXT, description TEXT,
+            inputs_json TEXT, formula TEXT, lookback INTEGER, frequency TEXT, normalization_json TEXT,
+            direction INTEGER, data_dependency TEXT, status TEXT, content_hash TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (factor_id, version))""",
+    ),
+    "quant_factor_set": (
+        """CREATE TABLE IF NOT EXISTS quant_factor_set (
+            name TEXT NOT NULL, version TEXT NOT NULL, factors_json TEXT NOT NULL, content_hash TEXT NOT NULL,
+            description TEXT, created_at TIMESTAMP, PRIMARY KEY (name, version))""",
+    ),
+    "quant_composite": (
+        """CREATE TABLE IF NOT EXISTS quant_composite (
+            name TEXT NOT NULL, version TEXT NOT NULL, components_json TEXT NOT NULL, min_coverage REAL,
+            normalization_json TEXT, description TEXT, content_hash TEXT NOT NULL, status TEXT,
+            created_at TIMESTAMP, PRIMARY KEY (name, version))""",
+    ),
+    "quant_factor_score": (
+        """CREATE TABLE IF NOT EXISTS quant_factor_score (
+            as_of DATE NOT NULL, symbol TEXT NOT NULL, factor_key TEXT NOT NULL, kind TEXT NOT NULL,
+            raw REAL, norm REAL, pct REAL, score REAL, rank INTEGER, sector TEXT, sector_rank INTEGER,
+            universe_size INTEGER, created_at TIMESTAMP, PRIMARY KEY (as_of, symbol, factor_key))""",
+        "CREATE INDEX IF NOT EXISTS idx_qfs_key_date ON quant_factor_score(factor_key, as_of)",
+    ),
+    "quant_factor_research": (
+        """CREATE TABLE IF NOT EXISTS quant_factor_research (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, factor_key TEXT NOT NULL, kind TEXT NOT NULL,
+            start_date DATE, end_date DATE, result_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "quant_experiment": (
+        """CREATE TABLE IF NOT EXISTS quant_experiment (
+            experiment_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT, hypothesis TEXT, config_json TEXT,
+            config_hash TEXT, status TEXT NOT NULL, backtest_run_ids_json TEXT, error TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "quant_pair": (
+        """CREATE TABLE IF NOT EXISTS quant_pair (
+            pair_id TEXT NOT NULL, version TEXT NOT NULL, asset_a TEXT NOT NULL, asset_b TEXT NOT NULL,
+            hedge_ratio TEXT, spread_kind TEXT, lookback INTEGER, entry_z REAL, exit_z REAL, stop_z REAL,
+            capital_allocation_pct REAL, status TEXT, notes TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (pair_id, version))""",
+    ),
+    "quant_spread": (
+        """CREATE TABLE IF NOT EXISTS quant_spread (
+            pair_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, hedge_ratio REAL, spread REAL,
+            zscore REAL, correlation REAL, adf_t REAL, cointegrated_5pct INTEGER, half_life REAL,
+            sessions INTEGER, created_at TIMESTAMP, PRIMARY KEY (pair_id, version, as_of))""",
+    ),
+    "quant_portfolio": (
+        """CREATE TABLE IF NOT EXISTS quant_portfolio (
+            portfolio_id TEXT PRIMARY KEY, name TEXT, as_of DATE, spec_json TEXT, method TEXT, long_short TEXT,
+            cash REAL, created_at TIMESTAMP)""",
+    ),
+    "quant_portfolio_position": (
+        """CREATE TABLE IF NOT EXISTS quant_portfolio_position (
+            portfolio_id TEXT NOT NULL, symbol TEXT NOT NULL, weight REAL, side TEXT, sector TEXT,
+            PRIMARY KEY (portfolio_id, symbol))""",
+    ),
+    "quant_exposure": (
+        """CREATE TABLE IF NOT EXISTS quant_exposure (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, portfolio_id TEXT, as_of DATE, exposure_json TEXT,
+            created_at TIMESTAMP)""",
+    ),
+    "market_event": (
+        """CREATE TABLE IF NOT EXISTS market_event (
+            event_id TEXT PRIMARY KEY, source TEXT NOT NULL, source_id TEXT, symbol TEXT, event_type TEXT NOT NULL,
+            category TEXT, event_date DATE, known_at DATE NOT NULL, direction TEXT, value REAL, payload_json TEXT,
+            created_at TIMESTAMP, UNIQUE (source, source_id))""",
+        "CREATE INDEX IF NOT EXISTS idx_market_event_sym ON market_event(symbol, known_at)",
+    ),
+    "microstructure_feature": (
+        """CREATE TABLE IF NOT EXISTS microstructure_feature (
+            symbol TEXT NOT NULL, date DATE NOT NULL, feature TEXT NOT NULL, value REAL, source TEXT,
+            created_at TIMESTAMP, PRIMARY KEY (symbol, date, feature))""",
+    ),
+    "derivatives_instrument": (
+        """CREATE TABLE IF NOT EXISTS derivatives_instrument (
+            instrument_id TEXT PRIMARY KEY, underlying TEXT NOT NULL, instrument_type TEXT NOT NULL,
+            expiry DATE, strike REAL, option_type TEXT, lot_size INTEGER, exchange TEXT, source TEXT,
+            created_at TIMESTAMP)""",
+    ),
+    "derivatives_quote": (
+        """CREATE TABLE IF NOT EXISTS derivatives_quote (
+            instrument_id TEXT NOT NULL, date DATE NOT NULL, open REAL, high REAL, low REAL, close REAL,
+            settle REAL, volume INTEGER, open_interest INTEGER, oi_change INTEGER, underlying_close REAL,
+            source TEXT, created_at TIMESTAMP, PRIMARY KEY (instrument_id, date))""",
+    ),
+    "options_analytics": (
+        """CREATE TABLE IF NOT EXISTS options_analytics (
+            instrument_id TEXT NOT NULL, date DATE NOT NULL, iv REAL, delta REAL, gamma REAL, theta REAL,
+            vega REAL, rho REAL, iv_rank REAL, iv_rv_spread REAL, model TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (instrument_id, date))""",
     ),
 }
 
