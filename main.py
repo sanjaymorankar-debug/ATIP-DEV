@@ -372,6 +372,20 @@ def main():
     # the single-instance guard applies here and nowhere earlier.
     _acquire_single_instance_lock()
 
+    # W8: structured logs + secret masking, config / secrets validation, trading
+    # safety report, versioned migrations. Only a production configuration error
+    # stops startup; anything else is logged and ATIP starts as before.
+    try:
+        from ops.startup import run as _ops_startup, StartupRefused
+        _ops_startup()
+    except ImportError as e:
+        log.warning(f"  ops startup unavailable: {e}")
+    except Exception as e:
+        if type(e).__name__ == "StartupRefused":
+            log.critical(f"STARTUP REFUSED: {e}")
+            sys.exit(2)
+        log.warning(f"  ops startup checks failed (continuing): {e}")
+
     # ── DASHBOARD ONLY ────────────────────────────────────────────────────
     if args.dashboard:
         log.info(f"Starting dashboard → http://localhost:{args.port}")

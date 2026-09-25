@@ -1516,6 +1516,14 @@ if HAS_FASTAPI:
     from dashboard.enterprise_routes import register as _register_enterprise_routes
     _register_enterprise_routes(app, _guard, _Req, get_connection, json_safe)
 
+    # ── Operations (W8): health, metrics, backups, monitoring, webhooks ─
+    from dashboard.ops_routes import register as _register_ops_routes
+    _register_ops_routes(app, _guard, _Req, get_connection, json_safe)
+    # outermost middleware (request ids, /api/v1, size limits, JSON validation, rate
+    # limit, idempotency, security headers, metrics) + the standard error envelope
+    from ops.http import install as _install_ops_http
+    _install_ops_http(app)
+
     # ── Buy/Sell target + stoploss rules ────────────────────────────────
     # See orders/rules.py docstring for why triggering (automatic)
     # and execution (confirmation-gated by default) are kept separate.

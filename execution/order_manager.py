@@ -32,7 +32,16 @@ from execution.errors import BrokerError, DuplicateOrderError, ExecutionError, I
 from execution.models import (ACKNOWLEDGED, APPROVED, CANCEL_PENDING, CANCELLED, CREATED, FAILED, FILLED,
                               O_REJECTED, PARTIALLY_FILLED, SUBMITTED, TERMINAL, VALIDATED, check_transition)
 
+from ops.resilience import non_idempotent
+
 log = logging.getLogger("atip.execution")
+
+
+def _in_market_session(now=None) -> bool:
+    """NSE cash session: a trading day, 09:15-15:30 IST (the machine runs in IST)."""
+    from utils.trading_calendar import is_trading_day
+    now = now or datetime.now()
+    return is_trading_day(now.date()) and (9 * 60 + 15) <= now.hour * 60 + now.minute <= 15 * 60 + 30
 
 
 def _now():
@@ -107,6 +116,8 @@ def validate_order(conn, order_id: str) -> dict:
         ok, why = live_gate()
         if not ok:
             problems.append(f"live trading disabled ({why})")
+        elif not _in_market_session():
+            problems.append("outside the NSE market session (09:15-15:30 IST on a trading day)")
     if int(o["quantity"]) <= 0:
         problems.append("quantity must be > 0")
     if o["side"] not in ("BUY", "SELL"):
@@ -158,6 +169,7 @@ def _apply(conn, o, eid, r):
     return transition(conn, o["order_id"], target, r.message or r.status, {"execution_id": eid}, **fields)
 
 
+@non_idempotent
 def submit_order(conn, order_id: str) -> dict:
     o = get_order(conn, order_id)
     if o["status"] == CREATED:
@@ -184,6 +196,7 @@ def submit_order(conn, order_id: str) -> dict:
     return _apply(conn, get_order(conn, order_id), eid, r)
 
 
+@non_idempotent
 def cancel_order(conn, order_id: str, reason: str = "cancelled by owner") -> dict:
     o = get_order(conn, order_id)
     if o["status"] in TERMINAL:

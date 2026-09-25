@@ -35,7 +35,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 def register(app, guard, Req, get_connection, json_safe):
     from enterprise import apikeys, audit, billing, notifications, profiles, rbac, service, tenants, users, workspace
-    from enterprise.config import COOKIE, enabled, settings
+    from enterprise.config import COOKIE, REFRESH_COOKIE, enabled, settings
     from enterprise.users import AuthError
 
     BAD = (ValueError, KeyError, TypeError)
@@ -97,15 +97,41 @@ def register(app, guard, Req, get_connection, json_safe):
         c = conn_ready()
         try:
             out = users.login(c, b.get("username"), b.get("password"), b.get("tenant_id"),
-                              request.client.host if request.client else None, request.headers.get("user-agent"))
+                              request.client.host if request.client else None, request.headers.get("user-agent"),
+                              otp=b.get("otp"))
         except AuthError as e:
             return err(e, 401)
         finally:
             c.close()
+        return _session_response(out)
+
+    def _session_response(out):
         resp = JSONResponse(out)
         resp.set_cookie(COOKIE, out["token"], httponly=True, samesite="strict",
                         max_age=int(float(settings()["session_hours"]) * 3600))
+        # W8: the refresh token rides in its own HttpOnly cookie, sent only to the refresh route
+        resp.set_cookie(REFRESH_COOKIE, out["refresh_token"], httponly=True, samesite="strict",
+                        path="/api/auth/refresh", max_age=int(float(settings().get("refresh_days", 14)) * 86400))
         return resp
+
+    @app.post("/api/auth/refresh")
+    async def ent_refresh(request: Req):
+        """W8: exchange a refresh token (body refresh_token or the atip_refresh cookie) for a
+        new session + a new refresh token. Reuse of a used token revokes everything."""
+        if not enabled():
+            return off()
+        b = await body(request)
+        c = conn_ready()
+        try:
+            out = users.refresh(c, b.get("refresh_token") or request.cookies.get(REFRESH_COOKIE),
+                                request.client.host if request.client else None, request.headers.get("user-agent"))
+        except AuthError as e:
+            resp = err(e, 401)
+            resp.delete_cookie(REFRESH_COOKIE, path="/api/auth/refresh")
+            return resp
+        finally:
+            c.close()
+        return _session_response(out)
 
     @app.post("/api/auth/register")
     async def ent_register(request: Req):
@@ -159,12 +185,47 @@ def register(app, guard, Req, get_connection, json_safe):
         try:
             tok = request.cookies.get(COOKIE) or (request.headers.get("authorization") or "")[7:].strip()
             if tok:
+                p = users.session_principal(c, tok)
                 users.logout(c, tok)
+                if p:                                  # W8: sign-out also ends the refresh-token families
+                    c.execute("UPDATE enterprise_refresh_token SET revoked_at=CURRENT_TIMESTAMP WHERE user_id=? AND "
+                              "tenant_id=? AND revoked_at IS NULL", (p["user_id"], p["tenant_id"]))
+                    c.commit()
         finally:
             c.close()
         resp = JSONResponse({"status": "signed out"})
         resp.delete_cookie(COOKIE)
+        resp.delete_cookie(REFRESH_COOKIE, path="/api/auth/refresh")
         return resp
+
+    # -- W8 MFA (TOTP) ------------------------------------------------------------------
+    @app.get("/api/account/mfa")
+    async def acc_mfa_status(request: Req):
+        async def f(req, c):
+            from enterprise import mfa
+            return {"mfa_enabled": mfa.enabled(c, me(req)["user_id"])}
+        return await run(f)(request)
+
+    @app.post("/api/account/mfa/enroll")
+    async def acc_mfa_enroll(request: Req):
+        async def f(req, c):
+            from enterprise import mfa
+            return mfa.enroll(c, me(req)["user_id"])
+        return await run(f)(request)
+
+    @app.post("/api/account/mfa/confirm")
+    async def acc_mfa_confirm(request: Req):
+        async def f(req, c):
+            from enterprise import mfa
+            return mfa.confirm(c, me(req)["user_id"], (await body(req)).get("code"))
+        return await run(f)(request)
+
+    @app.post("/api/account/mfa/disable")
+    async def acc_mfa_disable(request: Req):
+        async def f(req, c):
+            from enterprise import mfa
+            return mfa.disable(c, me(req)["user_id"], (await body(req)).get("code"))
+        return await run(f)(request)
 
     @app.post("/api/auth/password")
     async def ent_password(request: Req):
@@ -275,6 +336,14 @@ def register(app, guard, Req, get_connection, json_safe):
             t = b.get("tenant_id") or p["tenant_id"]
             scope_tenant(p, t)
             return users.set_roles(c, uid, t, b.get("roles") or [], actor=p.get("username"))
+        return await run(f)(request)
+
+    @app.post("/api/admin/users/{uid}/mfa-reset")
+    async def adm_user_mfa_reset(uid: str, request: Req):
+        async def f(req, c):
+            from enterprise import mfa
+            _member_check(c, me(req), uid)
+            return mfa.admin_reset(c, uid, me(req).get("username"))
         return await run(f)(request)
 
     @app.post("/api/admin/users/{uid}/password-reset")

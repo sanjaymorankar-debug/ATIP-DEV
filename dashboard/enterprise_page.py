@@ -41,11 +41,12 @@ def render_login():
 <input id="u" placeholder="username" autocomplete="username" style="width:100%"><br>
 <input id="p" type="password" placeholder="password" autocomplete="current-password" style="width:100%"><br>
 <input id="t" placeholder="tenant (optional)" style="width:100%"><br>
+<input id="o" placeholder="MFA code (if enabled)" autocomplete="one-time-code" inputmode="numeric" style="width:100%"><br>
 <button onclick="go()">Sign in</button> <span id="msg" class="note"></span></div>"""
             + _JS + r"""<script>
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
 async function go(){const m=document.getElementById('msg');m.textContent='';
- try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null});
+ try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null,otp:o.value||null});
   const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.startsWith('/')?next:'/')}catch(e){m.textContent=e.message}}
 </script></body></html>""")
 

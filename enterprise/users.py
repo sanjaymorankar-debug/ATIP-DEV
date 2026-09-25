@@ -17,6 +17,16 @@ tenant, expiry, IP and user agent; logout / password change / disable revoke the
 
 Password reset: an admin issues a one-time reset token (digest stored, 30-minute
 expiry) and hands it to the user out of band; ATIP sends no e-mail.
+
+W8 refresh tokens: login also returns a refresh token (atf_..., digest stored in
+enterprise_refresh_token, enterprise.refresh_days = 14). refresh() exchanges it ONCE
+for a new session + a new refresh token of the same family (rotation). Presenting an
+already-used refresh token is treated as theft: the whole family and every session of
+the user are revoked. Logout / password change / disable revoke refresh tokens too.
+
+W8 MFA: when enterprise_user.mfa_enabled, login requires a TOTP code (`otp`);
+enterprise/mfa.py. A missing code -> AuthError "mfa_required"; a wrong one counts as
+a failed login (lockout applies).
 """
 
 from __future__ import annotations
@@ -88,6 +98,8 @@ def get(conn, user_id) -> dict | None:
         return None
     d = dict(r)
     d.pop("password_hash", None)
+    d.pop("mfa_secret_enc", None)
+    d.pop("mfa_pending_enc", None)
     d["preferences"] = json.loads(d.pop("preferences_json") or "{}")
     d["memberships"] = memberships(conn, user_id)
     return d
@@ -160,7 +172,7 @@ def update_profile(conn, user_id, email=None, display_name=None, preferences=Non
 
 # -- authentication -------------------------------------------------------------------
 
-def login(conn, username, password, tenant_id=None, ip=None, user_agent=None) -> dict:
+def login(conn, username, password, tenant_id=None, ip=None, user_agent=None, otp=None) -> dict:
     s = settings()
     row = conn.execute("SELECT * FROM enterprise_user WHERE username=?", ((username or "").lower(),)).fetchone()
     generic = AuthError("invalid username or password")
@@ -185,6 +197,20 @@ def login(conn, username, password, tenant_id=None, ip=None, user_agent=None) ->
         audit.record(conn, "auth.login_failed", user_id=u["user_id"], ip=ip, details={"failed_logins": fails,
                                                                                        "locked": lock})
         raise generic
+    from enterprise import mfa
+    if u.get("mfa_enabled"):
+        if not otp:
+            audit.record(conn, "auth.mfa_required", user_id=u["user_id"], ip=ip)
+            raise AuthError("mfa_required")
+        if not mfa.verify(conn, u["user_id"], otp):
+            fails = (u["failed_logins"] or 0) + 1
+            lock = fails >= int(s["max_failed_logins"])
+            conn.execute("UPDATE enterprise_user SET failed_logins=?, status=?, locked_until=? WHERE user_id=?",
+                         (fails, "LOCKED" if lock else "ACTIVE",
+                          _now() + timedelta(minutes=int(s["lockout_minutes"])) if lock else None, u["user_id"]))
+            audit.record(conn, "auth.mfa_failed", user_id=u["user_id"], ip=ip, details={"failed_logins": fails,
+                                                                                         "locked": lock})
+            raise AuthError("invalid MFA code")
     mem = memberships(conn, u["user_id"])
     if not mem:
         raise AuthError("user belongs to no tenant")
@@ -194,16 +220,65 @@ def login(conn, username, password, tenant_id=None, ip=None, user_agent=None) ->
     t = conn.execute("SELECT status FROM enterprise_tenant WHERE tenant_id=?", (tid,)).fetchone()
     if not t or t[0] in ("DISABLED", "ARCHIVED"):
         raise AuthError(f"tenant {tid} is {t[0] if t else 'missing'}")
-    token = S.new_secret("ats_")
-    exp = _now() + timedelta(hours=float(s["session_hours"]))
-    conn.execute("INSERT INTO enterprise_session (token_hash,user_id,tenant_id,created_at,expires_at,last_seen_at,ip,"
-                 "user_agent) VALUES (?,?,?,?,?,?,?,?)", (S.digest(token), u["user_id"], tid, _now(), exp, _now(), ip,
-                                                          (user_agent or "")[:200]))
+    token, exp = _new_session(conn, u["user_id"], tid, ip, user_agent)
+    refresh_token, rexp = _new_refresh(conn, u["user_id"], tid, uuid.uuid4().hex, ip)
     conn.execute("UPDATE enterprise_user SET failed_logins=0, last_login_at=? WHERE user_id=?", (_now(), u["user_id"]))
-    audit.record(conn, "auth.login", tenant_id=tid, user_id=u["user_id"], actor=u["username"], ip=ip, commit=False)
+    audit.record(conn, "auth.login", tenant_id=tid, user_id=u["user_id"], actor=u["username"], ip=ip,
+                 details={"mfa": bool(u.get("mfa_enabled"))}, commit=False)
     conn.commit()
     return {"token": token, "expires_at": exp.isoformat(), "tenant_id": tid, "user_id": u["user_id"],
-            "must_change_password": bool(u["must_change_password"])}
+            "must_change_password": bool(u["must_change_password"]), "refresh_token": refresh_token,
+            "refresh_expires_at": rexp.isoformat()}
+
+
+def _new_session(conn, user_id, tid, ip, user_agent):
+    token = S.new_secret("ats_")
+    exp = _now() + timedelta(hours=float(settings()["session_hours"]))
+    conn.execute("INSERT INTO enterprise_session (token_hash,user_id,tenant_id,created_at,expires_at,last_seen_at,ip,"
+                 "user_agent) VALUES (?,?,?,?,?,?,?,?)", (S.digest(token), user_id, tid, _now(), exp, _now(), ip,
+                                                          (user_agent or "")[:200]))
+    return token, exp
+
+
+def _new_refresh(conn, user_id, tid, family, ip):
+    token = S.new_secret("atf_")
+    exp = _now() + timedelta(days=float(settings().get("refresh_days", 14)))
+    conn.execute("INSERT INTO enterprise_refresh_token (token_hash,family_id,user_id,tenant_id,created_at,expires_at,ip)"
+                 " VALUES (?,?,?,?,?,?,?)", (S.digest(token), family, user_id, tid, _now(), exp, ip))
+    return token, exp
+
+
+def refresh(conn, refresh_token, ip=None, user_agent=None) -> dict:
+    """Rotate: one use per refresh token; reuse revokes the family and the user's sessions."""
+    if not refresh_token:
+        raise AuthError("refresh token required")
+    r = conn.execute("SELECT * FROM enterprise_refresh_token WHERE token_hash=?", (S.digest(refresh_token),)).fetchone()
+    if not r:
+        raise AuthError("invalid refresh token")
+    r = dict(r)
+    if r["used_at"] or r["revoked_at"]:
+        conn.execute("UPDATE enterprise_refresh_token SET revoked_at=COALESCE(revoked_at, ?) WHERE family_id=?",
+                     (_now(), r["family_id"]))
+        revoke_sessions(conn, r["user_id"])
+        audit.record(conn, "auth.refresh_reuse", tenant_id=r["tenant_id"], user_id=r["user_id"], ip=ip,
+                     details={"family": r["family_id"]}, commit=False)
+        conn.commit()
+        raise AuthError("refresh token reuse detected; all sessions revoked -- sign in again")
+    if str(r["expires_at"]) < str(_now()):
+        raise AuthError("refresh token expired")
+    u = conn.execute("SELECT status FROM enterprise_user WHERE user_id=?", (r["user_id"],)).fetchone()
+    if not u or u[0] != "ACTIVE":
+        raise AuthError("account is not active")
+    if r["tenant_id"] not in memberships(conn, r["user_id"]):
+        raise AuthError("membership removed")
+    token, exp = _new_session(conn, r["user_id"], r["tenant_id"], ip, user_agent)
+    new_rt, rexp = _new_refresh(conn, r["user_id"], r["tenant_id"], r["family_id"], ip)
+    conn.execute("UPDATE enterprise_refresh_token SET used_at=?, replaced_by=? WHERE token_hash=?",
+                 (_now(), S.digest(new_rt), r["token_hash"]))
+    audit.record(conn, "auth.refresh", tenant_id=r["tenant_id"], user_id=r["user_id"], ip=ip, commit=False)
+    conn.commit()
+    return {"token": token, "expires_at": exp.isoformat(), "tenant_id": r["tenant_id"], "user_id": r["user_id"],
+            "refresh_token": new_rt, "refresh_expires_at": rexp.isoformat()}
 
 
 def session_principal(conn, token) -> dict | None:
@@ -223,6 +298,11 @@ def logout(conn, token) -> None:
 
 def revoke_sessions(conn, user_id) -> None:
     conn.execute("UPDATE enterprise_session SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (_now(), user_id))
+    try:
+        conn.execute("UPDATE enterprise_refresh_token SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                     (_now(), user_id))
+    except Exception:
+        pass
 
 
 def change_password(conn, user_id, old, new) -> None:

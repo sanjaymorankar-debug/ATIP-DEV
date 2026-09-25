@@ -17,11 +17,12 @@ after DATE(created_at,'+5 hours','+30 minutes'). Text timestamps in ISO form
 ('T' separator) and SQLite form (space) both sort correctly within one column;
 take [:19] and replace 'T' with ' ' before comparing across the two.
 """
-import sqlite3, logging
+import os, sqlite3, logging, threading
 from pathlib import Path
 from datetime import datetime, date
 
-DB_PATH = Path("atip_data/atip.db")
+# W8: ATIP_DB_PATH points a process (tests, a restore drill, staging) at another file.
+DB_PATH = Path(os.environ.get("ATIP_DB_PATH", "atip_data/atip.db"))
 log = logging.getLogger(__name__)
 
 
@@ -73,6 +74,43 @@ def get_connection():
     # died with the same error on 2026-09-20. Wait instead of failing.
     conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys=ON")
+    _ensure_migrated(conn)
+    return conn
+
+
+# W8 (W7-R8): the additive migrations below used to run on EVERY connection --
+# dozens of sqlite_master / PRAGMA table_info probes per get_connection(). They
+# are idempotent, so running them once per process per database file is enough.
+# ATIP_MIGRATE_EVERY_CONNECTION=1 (or ops.migrate_every_connection) restores the
+# old behaviour. Versioned migrations on top of these live in ops/migrations.py.
+_MIGRATED: set = set()
+_MIGRATE_LOCK = threading.Lock()
+
+
+def _every_connection() -> bool:
+    if os.environ.get("ATIP_MIGRATE_EVERY_CONNECTION", "").lower() in ("1", "true", "yes"):
+        return True
+    try:
+        import json
+        cfg = json.loads((Path("atip_data") / "config.json").read_text(encoding="utf-8"))
+        return bool((cfg.get("ops") or {}).get("migrate_every_connection", False))
+    except Exception:
+        return False
+
+
+def _ensure_migrated(conn, force=False):
+    key = str(Path(DB_PATH).resolve())
+    if key in _MIGRATED and not force:
+        return
+    with _MIGRATE_LOCK:
+        if key in _MIGRATED and not force:
+            return
+        _run_additive_migrations(conn)
+        if not _every_connection():
+            _MIGRATED.add(key)
+
+
+def _run_additive_migrations(conn):
     _migrate_index_levels_chg_columns(conn)
     _migrate_index_levels_unique(conn)
     _migrate_corporate_actions_table(conn)
@@ -83,11 +121,10 @@ def get_connection():
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
-                       **W6_TABLES, **W7_TABLES}.items():
+                       **W6_TABLES, **W7_TABLES, **W8_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
-    return conn
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing
@@ -637,6 +674,85 @@ W7_TABLES = {
     ),
 }
 
+# ── Tables added in W8 (production hardening, ops/) ────────────────────────
+# Secret VALUES are never stored: ops_secret_access holds the name, the source
+# it resolved from and the caller; ops_secret_meta the rotation dates.
+W8_TABLES = {
+    "schema_migrations": (
+        """CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TIMESTAMP,
+            duration_ms REAL, status TEXT NOT NULL, rollback_note TEXT, error TEXT)""",
+    ),
+    "ops_config_version": (
+        """CREATE TABLE IF NOT EXISTS ops_config_version (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL, environment TEXT,
+            config_json TEXT, changes_json TEXT, recorded_at TIMESTAMP)""",
+    ),
+    "ops_secret_access": (
+        """CREATE TABLE IF NOT EXISTS ops_secret_access (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, source TEXT, found INTEGER,
+            caller TEXT, at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ops_secret_access ON ops_secret_access(name, at)",
+    ),
+    "ops_secret_meta": (
+        """CREATE TABLE IF NOT EXISTS ops_secret_meta (
+            name TEXT PRIMARY KEY, rotated_at TIMESTAMP, rotated_by TEXT, note TEXT)""",
+    ),
+    "ops_backup": (
+        """CREATE TABLE IF NOT EXISTS ops_backup (
+            backup_id TEXT PRIMARY KEY, kind TEXT NOT NULL, path TEXT, started_at TIMESTAMP,
+            finished_at TIMESTAMP, size_bytes INTEGER, sha256 TEXT, integrity TEXT, tables_json TEXT,
+            status TEXT NOT NULL, error TEXT, pruned_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ops_backup_status ON ops_backup(status, finished_at)",
+    ),
+    "ops_job_lock": (
+        """CREATE TABLE IF NOT EXISTS ops_job_lock (
+            job TEXT PRIMARY KEY, owner TEXT NOT NULL, pid INTEGER, acquired_at TIMESTAMP,
+            heartbeat_at TIMESTAMP, expires_at TIMESTAMP)""",
+    ),
+    "ops_heartbeat": (
+        """CREATE TABLE IF NOT EXISTS ops_heartbeat (
+            component TEXT PRIMARY KEY, beat_at TIMESTAMP, pid INTEGER, detail TEXT)""",
+    ),
+    "ops_alert": (
+        """CREATE TABLE IF NOT EXISTS ops_alert (
+            rule TEXT PRIMARY KEY, status TEXT NOT NULL, severity TEXT, message TEXT, first_at TIMESTAMP,
+            last_at TIMESTAMP, resolved_at TIMESTAMP, notified_at TIMESTAMP, count INTEGER NOT NULL DEFAULT 0)""",
+    ),
+    "ops_idempotency": (
+        """CREATE TABLE IF NOT EXISTS ops_idempotency (
+            idem_key TEXT NOT NULL, caller TEXT NOT NULL, request_hash TEXT NOT NULL, status TEXT NOT NULL,
+            response_status INTEGER, response_body BLOB, content_type TEXT, created_at TIMESTAMP,
+            expires_at TIMESTAMP, PRIMARY KEY (idem_key, caller))""",
+        "CREATE INDEX IF NOT EXISTS idx_ops_idem_expiry ON ops_idempotency(expires_at)",
+    ),
+    "ops_webhook_event": (
+        """CREATE TABLE IF NOT EXISTS ops_webhook_event (
+            source TEXT NOT NULL, event_id TEXT NOT NULL, received_at TIMESTAMP, signature_ok INTEGER,
+            status TEXT, payload_sha256 TEXT, event_type TEXT, error TEXT, PRIMARY KEY (source, event_id))""",
+    ),
+    "ops_webhook_endpoint": (
+        """CREATE TABLE IF NOT EXISTS ops_webhook_endpoint (
+            endpoint_id TEXT PRIMARY KEY, tenant_id TEXT, url TEXT NOT NULL, events_json TEXT,
+            secret_name TEXT, status TEXT NOT NULL, created_at TIMESTAMP, created_by TEXT)""",
+    ),
+    "ops_webhook_delivery": (
+        """CREATE TABLE IF NOT EXISTS ops_webhook_delivery (
+            delivery_id TEXT PRIMARY KEY, endpoint_id TEXT NOT NULL, event_type TEXT, event_id TEXT,
+            payload_json TEXT, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TIMESTAMP, last_status_code INTEGER, last_error TEXT, created_at TIMESTAMP,
+            delivered_at TIMESTAMP, UNIQUE(endpoint_id, event_id))""",
+        "CREATE INDEX IF NOT EXISTS idx_ops_wh_delivery ON ops_webhook_delivery(status, next_attempt_at)",
+    ),
+    "enterprise_refresh_token": (
+        """CREATE TABLE IF NOT EXISTS enterprise_refresh_token (
+            token_hash TEXT PRIMARY KEY, family_id TEXT NOT NULL, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+            created_at TIMESTAMP, expires_at TIMESTAMP, used_at TIMESTAMP, revoked_at TIMESTAMP,
+            replaced_by TEXT, ip TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_refresh_family ON enterprise_refresh_token(family_id)",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
@@ -651,6 +767,10 @@ W3_W4_COLUMNS = {
     "quant_pair": {"tenant_id": "TEXT DEFAULT 'default'"},
     "quant_experiment": {"tenant_id": "TEXT DEFAULT 'default'"},
     "quant_portfolio": {"tenant_id": "TEXT DEFAULT 'default'"},
+    # W8: MFA (TOTP secret encrypted with ops/crypto.py) and the audit hash chain
+    "enterprise_user": {"mfa_enabled": "INTEGER NOT NULL DEFAULT 0", "mfa_secret_enc": "TEXT",
+                        "mfa_pending_enc": "TEXT"},
+    "enterprise_audit": {"prev_hash": "TEXT", "row_hash": "TEXT"},
 }
 
 # Every alert ATIP raises, whether or not Telegram delivered it: the dashboard
@@ -1024,6 +1144,7 @@ def init_db():
     for ddl in CORPORATE_ACTIONS_DDL:
         c.execute(ddl)
     conn.commit()
+    _ensure_migrated(conn, force=True)   # W8: base tables now exist -- re-run the additive layer
     _migrate_index_levels_unique(conn)
     conn.close()
     log.info(f"✅ Database ready: {DB_PATH.resolve()}")

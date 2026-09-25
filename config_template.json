@@ -123,7 +123,8 @@
     "password_min_length":     12,
     "max_failed_logins":       5,
     "lockout_minutes":         15,
-    "default_tenant":          "default"
+    "default_tenant":          "default",
+    "refresh_days":            14
   },
   "_enterprise_note": "Before enabling: python -m enterprise bootstrap --username <you> (prompts for a password) creates the default tenant and its SUPER_ADMIN. Enabled = every page/API needs a signed-in user (session cookie, Bearer token or API key); permissions per route in enterprise/authz.py. Exposure beyond localhost remains a separate, gated decision (dashboard_host).",
   "_SECTION_13": "=== ADVANCED QUANT (quant/config.py, W6) — off by default; quant output reaches trading only via strategies + W4 risk ===",
@@ -135,5 +136,29 @@
     "winsorize_pct": 1.0
   },
   "_quant_note": "enabled: post-market factor scores (quant_factor_score), composites, market events and intraday microstructure features, computed before strategy decisions so strategies can read qf_<factor> / qc_<composite> / ev_* features.",
+  "_SECTION_15": "=== PRODUCTION HARDENING / OPERATIONS (ops/config.py, W8) — see docs/PRODUCTION_CONFIGURATION.md ===",
+  "environment": "development",
+  "ops": {
+    "tls_enabled":                    false,
+    "hsts_seconds":                   31536000,
+    "cors_origins":                   [],
+    "csp":                            null,
+    "max_request_bytes":              2000000,
+    "rate_limit_enabled":             false,
+    "rate_limit_per_minute":          300,
+    "require_idempotency_for_orders": false,
+    "idempotency_ttl_hours":          24,
+    "backup_enabled":                 true,
+    "backup_time":                    "19:15",
+    "backup_keep_daily":              7,
+    "backup_keep_weekly":             4,
+    "backup_dir":                     "atip_data/backups",
+    "monitor_enabled":                true,
+    "monitor_minutes":                15,
+    "json_logs":                      true,
+    "migrate_every_connection":       false,
+    "features":                       {}
+  },
+  "_ops_note": "environment: development | test | staging | production (ATIP_ENV overrides; config.<env>.json overlays; ATIP__SECTION__KEY env vars override single keys). Production refuses to start on a configuration error (enterprise on, no legacy token, backups on, encryption key present). Live execution additionally requires environment production. Secrets belong in the environment, .env or atip_data/secrets/<NAME>, not in this file.",
   "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model)."
 }

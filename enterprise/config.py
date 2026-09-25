@@ -12,8 +12,9 @@ Enterprise configuration: atip_data/config.json section "enterprise" (optional).
         "password_min_length": 12,
         "max_failed_logins": 5,
         "lockout_minutes": 15,
-        "default_tenant": "default"       the owner's tenant; the only one that may read
+        "default_tenant": "default",      the owner's tenant; the only one that may read
                                           or trade the (single) paper book
+        "refresh_days": 14                W8: refresh-token lifetime (rotated on every use)
     }
 """
 
@@ -24,8 +25,10 @@ from pathlib import Path
 
 CONFIG_PATH = Path("atip_data") / "config.json"
 DEFAULTS = {"enabled": False, "session_hours": 12, "allow_self_registration": False, "accept_legacy_token": False,
-            "password_min_length": 12, "max_failed_logins": 5, "lockout_minutes": 15, "default_tenant": "default"}
+            "password_min_length": 12, "max_failed_logins": 5, "lockout_minutes": 15, "default_tenant": "default",
+            "refresh_days": 14}
 COOKIE = "atip_session"
+REFRESH_COOKIE = "atip_refresh"
 
 
 def settings() -> dict:

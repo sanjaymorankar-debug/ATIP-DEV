@@ -335,8 +335,29 @@ def run_job(name, fn, *args, **kwargs):
     rows is NULL when the job does not report a count.
     """
     from db.schema import log_job
+    from ops import context as _ctx, metrics as _metrics
+    from ops.jobs import job_lock
     start = datetime.now()
     run_date = _job_run_date(args, kwargs)
+    # W8: one runner per job name at a time (a second ATIP process, a CLI run, or
+    # an overlapping catch-up SKIPS instead of running the job twice)
+    with job_lock(name) as held:
+        if not held:
+            log.warning(f"⏭  [{now_ist()}]  {name} is already running elsewhere — skipped")
+            log_job(name, "SKIPPED", None, error="locked: another runner holds this job", run_date=run_date,
+                    start_time=start, end_time=datetime.now(), kind="run")
+            _metrics.inc("atip_job_runs_total", {"job": name, "status": "SKIPPED"})
+            return {"status": "SKIPPED", "reason": "locked"}
+        tok = _ctx.job_name.set(name)
+        try:
+            return _run_job_locked(name, fn, start, run_date, log_job, args, kwargs)
+        finally:
+            _ctx.job_name.reset(tok)
+            _metrics.observe("atip_job_duration_seconds", (datetime.now() - start).total_seconds(), {"job": name})
+
+
+def _run_job_locked(name, fn, start, run_date, log_job, args, kwargs):
+    from ops import metrics as _metrics
     log.info(f"▶  [{now_ist()}]  {name}")
     try:
         result = fn(*args, **kwargs)
@@ -345,6 +366,7 @@ def run_job(name, fn, *args, **kwargs):
         log.error(f"❌  [{now_ist()}]  FAILED: {name}  ({(end - start).seconds}s)\n{traceback.format_exc()}")
         log_job(name, "FAILED", None, error=f"{type(e).__name__}: {e}", run_date=run_date,
                 start_time=start, end_time=end, kind="run")
+        _metrics.inc("atip_job_runs_total", {"job": name, "status": "FAILED"})
         _alert_failure(name, e)
         return {"status": "FAILED", "error": str(e)}
     end = datetime.now()
@@ -355,6 +377,7 @@ def run_job(name, fn, *args, **kwargs):
     if status == "SUCCESS" and rows == 0:
         status = "EMPTY"
     log_job(name, status, rows, error=error, run_date=run_date, start_time=start, end_time=end, kind="run")
+    _metrics.inc("atip_job_runs_total", {"job": name, "status": status})
     if status == "FAILED":
         log.error(f"❌  [{now_ist()}]  FAILED: {name}  ({elapsed}s) — {error or 'returned FAILED'}")
         _alert_failure(name, error or "returned FAILED")
@@ -1164,6 +1187,37 @@ def print_status():
 #  MASTER SCHEDULER  (registers all jobs and runs forever)
 # ═════════════════════════════════════════════════════════════════════════
 
+def _schedule_ops_jobs():
+    """W8 jobs (ops/): the monitor every ops.monitor_minutes, the verified backup
+    daily at ops.backup_time, outbound webhook delivery every 5 minutes. Each is
+    switchable in config.json "ops" (monitor_enabled, backup_enabled)."""
+    from ops.config import OPS_DEFAULTS
+    try:
+        from ops.config import ops as _ops
+        cfg = _ops()
+    except Exception as e:
+        log.warning(f"  ops config unreadable ({e}) — ops jobs use defaults")
+        cfg = dict(OPS_DEFAULTS)
+    if cfg.get("monitor_enabled", True):
+        from ops.monitor import run_monitor
+        schedule.every(max(1, int(cfg.get("monitor_minutes") or 15))).minutes.do(run_job, "ops_monitor", run_monitor)
+    if cfg.get("backup_enabled", True):
+        from ops.backup import run_scheduled_backup
+        schedule.every().day.at(str(cfg.get("backup_time") or "19:15")).do(run_job, "ops_backup",
+                                                                             run_scheduled_backup)
+    schedule.every(5).minutes.do(_ops_webhook_tick)
+
+
+def _ops_webhook_tick():
+    """Run the delivery job only when a delivery is due (no pipeline_log row every 5 minutes)."""
+    try:
+        from ops.webhooks import dispatch_due, due_count
+        if due_count():
+            run_job("ops_webhook_dispatch", dispatch_due)
+    except Exception as e:
+        log.warning(f"  webhook dispatch tick: {e}")
+
+
 def start_scheduler():
     if not HAS_SCHEDULE:
         log.error("schedule not installed. Run: pip install schedule"); return
@@ -1244,6 +1298,9 @@ def start_scheduler():
         for mm in (10, 40):
             schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_health_check)
 
+    # ── W8 operations: monitoring, verified backup, webhook delivery ───
+    _schedule_ops_jobs()
+
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)
@@ -1261,8 +1318,10 @@ def start_scheduler():
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
+    from ops.jobs import beat
     while True:
         schedule.run_pending()
+        beat("scheduler", detail=f"{len(schedule.get_jobs())} jobs")   # W8: throttled to one write / 60 s
         nxt = schedule.next_run()
         if nxt:
             rem = nxt - datetime.now()

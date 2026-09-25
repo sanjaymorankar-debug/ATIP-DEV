@@ -54,6 +54,9 @@ EXECUTION_DEFAULTS = {
     "product_type": "CNC",
     "max_intent_age_days": 5,
     "paper_fill_price": "live",
+    # W8: a BUY is REJECTED when the symbol's last daily bar is more than this many
+    # sessions behind the last completed session (null disables)
+    "max_market_data_age_sessions": 2,
 }
 
 # (default, description). Percentages are of current equity unless stated.
@@ -104,14 +107,22 @@ def execution_settings() -> dict:
 
 def live_gate() -> tuple[bool, str]:
     """(allowed, reason). LIVE execution is allowed only when execution.mode is
-    LIVE AND execution.live_trading_enabled is true. W4 ships both off, and the
-    W4 Dhan adapter refuses regardless (adapters.py)."""
+    LIVE AND execution.live_trading_enabled is true AND (W8) the ops environment
+    is production. W4 ships the first two off, and the W4 Dhan adapter refuses
+    regardless (adapters.py)."""
     s = execution_settings()
     if s["mode"] != LIVE:
         return False, "execution.mode is PAPER"
     if not s["live_trading_enabled"]:
         return False, "execution.live_trading_enabled is false"
-    return True, "execution.mode LIVE and live_trading_enabled true"
+    try:
+        from ops.config import environment
+        env = environment()
+    except Exception as e:
+        return False, f"ops environment unreadable ({type(e).__name__})"
+    if env != "production":
+        return False, f"environment is {env}; live execution requires production"
+    return True, "execution.mode LIVE, live_trading_enabled true, environment production"
 
 
 # -- risk limits -----------------------------------------------------------------

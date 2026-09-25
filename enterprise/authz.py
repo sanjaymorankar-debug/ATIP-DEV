@@ -43,12 +43,18 @@ import re
 
 from enterprise.config import COOKIE, settings
 
-PUBLIC = [("POST", r"^/api/auth/(login|register|reset)$"), ("GET", r"^/login$"), ("GET", r"^/api/enterprise/status$"),
-          ("GET", r"^/favicon\.ico$")]
+PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh)$"), ("GET", r"^/login$"),
+          ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"),
+          # W8: health probes (no sensitive data) and signed inbound webhooks (HMAC-verified)
+          ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml))?$"),
+          ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$")]
 SELF = r"^/api/auth/(me|logout|password)$"      # any signed-in principal
 
 ROUTE_RULES = [
     ("GET", r"^/api/admin/audit", "audit:read"),
+    ("*", r"^/api/admin/users/[^/]+/mfa-reset$", "admin:users"),
+    # W8 operations: metrics, status, backups, config, secrets status, webhooks
+    ("*", r"^/api/ops", "system:operate"),
     ("*", r"^/api/admin/(users|password-reset)", "admin:users"),
     ("*", r"^/api/admin/tenants", "admin:tenants"),
     ("*", r"^/api/admin/(roles|permissions)", "admin:roles"),

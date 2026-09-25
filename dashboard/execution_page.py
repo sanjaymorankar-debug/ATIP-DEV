@@ -54,8 +54,11 @@ const TOKEN=__TOKEN__;
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const num=(v,d=2)=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
 const pill=s=>`<span class="pill ${s}">${s}</span>`;
-async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);return t}
-const send=(m,u,b)=>j(u,{method:m,headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
+async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error((t.error&&t.error.message)||t.error||r.status);return t}
+// W8: every mutating call carries an Idempotency-Key; order create / cancel use a key tied to
+// the decision / order, so a double click or a network retry cannot act twice
+const idem=k=>k||((crypto.randomUUID&&crypto.randomUUID())||(Date.now()+'-'+Math.random().toString(36).slice(2)));
+const send=(m,u,b,k)=>j(u,{method:m,headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN,'Idempotency-Key':idem(k)},body:JSON.stringify(b||{})});
 const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
 async function load(){
   const s=await j('/api/execution/status');
@@ -82,8 +85,8 @@ async function load(){
 }
 async function run(ex){const m=document.getElementById('msg');m.textContent='running…';try{const r=await send('POST','/api/execution/run',{execute:ex});m.textContent=`${r.status}: ${r.rows} intents; risk ${JSON.stringify(r.risk)}; ${r.orders.length} orders`+(r.error?' — '+r.error:'');load()}catch(e){m.textContent=e.message}}
 async function approve(id){try{await send('POST',`/api/risk/decisions/${id}/approve`);load()}catch(e){alert(e.message)}}
-async function order(id){if(!confirm('Create and submit a PAPER order for this approved decision?'))return;try{await send('POST','/api/oms/orders',{risk_decision_id:id});load()}catch(e){alert(e.message)}}
-async function cancel(id){try{await send('POST',`/api/oms/orders/${id}/cancel`);load()}catch(e){alert(e.message)}}
+async function order(id){if(!confirm('Create and submit a PAPER order for this approved decision?'))return;try{await send('POST','/api/oms/orders',{risk_decision_id:id},`order-${id}`);load()}catch(e){alert(e.message)}}
+async function cancel(id){try{await send('POST',`/api/oms/orders/${id}/cancel`,{},`cancel-${id}`);load()}catch(e){alert(e.message)}}
 load();
 </script></body></html>"""
 

@@ -38,6 +38,8 @@ value and limit, so a decision can be read back without re-deriving it.
                          each caps the quantity; a binding cap is a WARN (resized)
     max_open_positions, max_daily_trades
     daily_loss_limit_pct, portfolio_drawdown_limit_pct (portfolio/pnl.py risk_state)
+  W8  market_data_fresh  a BUY is REJECTED when the symbol's last daily bar is more
+                         than execution.max_market_data_age_sessions (2) sessions old
     strategy_drawdown_limit_pct (the strategy's fills P&L)
                          pass/fail; a limit that cannot be measured FAILS (fail closed)
     w1_pretrade          orders/risk.py pretrade_check() -- the W1 limits in
@@ -195,6 +197,15 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return finish(REJECTED, f"no market data for {it['symbol']}")
     rd.reference_price = float(ref)
     add("market_data", PASS, f"reference {ref} ({src})", ref)
+    # W8: never size a BUY off stale data (a feed outage must not look like a price)
+    max_behind = settings.get("max_market_data_age_sessions")
+    if it["side"] == "BUY" and max_behind is not None:
+        from ops.data_health import symbol_bar_age
+        behind = symbol_bar_age(conn, it["symbol"])
+        if behind is None or behind > max_behind:
+            add("market_data_fresh", FAIL, f"last daily bar {behind} session(s) behind", behind, max_behind)
+            return finish(REJECTED, f"stale market data for {it['symbol']} ({behind} sessions behind)")
+        add("market_data_fresh", PASS, f"last daily bar {behind} session(s) behind", behind, max_behind)
 
     # -- reducing risk ----------------------------------------------------------
     if it["side"] == "SELL":
