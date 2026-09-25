@@ -23,6 +23,8 @@ STRATEGY ENGINE (W3) → StrategyDecision → PositionIntent
 RISK ENGINE (W4) → RiskDecision → ORDER MANAGER → PAPER EXECUTION
 ```
 
+**Risk integration (W4).** The risk engine's `ml_model_active` check applies to any intent whose decision used an `ml_*` feature. The prediction behind it must be from `ml.default_model` and ACTIVE, and that model version must still be ACTIVE when risk is evaluated; otherwise the intent is BLOCKED. The model, version, score and confidence are stored in the risk decision (ML provenance). `execution/` may read `ml/`; `ml/` never imports `execution/`.
+
 **Separation from execution.**
 - `ml/` imports nothing from `execution/`, `orders/` or the Dhan client. This was checked in the W5 build.
 - A model's output reaches trading only as a feature that a strategy definition reads. That strategy's decisions then pass the W4 risk engine like any other.
@@ -43,6 +45,11 @@ RISK ENGINE (W4) → RiskDecision → ORDER MANAGER → PAPER EXECUTION
     - `atip_technical@1`: the same without the ATIP scores, usable over the full price history.
 - **Categoricals:** regime, vol_regime, market_trend and score_signal are one-hot encoded with fixed categories.
 - **`ml_*` features are never model inputs.** `describe()` refuses them, which prevents feedback loops.
+- **ML-only context features** (`ml/context_features.py`, completion pass), computed per date and merged by the same `enrich()` for datasets and predictions:
+  - **Index returns:** `banknifty_ret_5/20`, `midcap_ret_20`, `smallcap_ret_20`.
+  - **Global inputs:** `gm_*` from `global_markets`, the latest row known before 15:30 IST (10:00 UTC, because `created_at` is UTC).
+  - **Sector:** `sector_ret_20`, `stock_vs_sector_20`, `sector_breadth`, cross-sectional over the same date's rows by NSE industry.
+  - **Feature set:** `atip_extended@1` (54 features).
 - **Availability:**
   - ATIP scores start 2026-07-27.
   - FII/DII flows start 2026-07-28.
@@ -80,6 +87,10 @@ Known residual risks:
 | forward_return | regression | Forward return % |
 | volatility_regime | classification | Future annualised volatility vs vol_low / vol_high |
 | market_regime | classification | Market Health regime h sessions later (market rows) |
+| signal_outcome | classification | WIN / LOSS / TIMEOUT: +target_pct vs −stop_pct within h sessions; a bar touching both is a LOSS |
+| return_rank | regression (ranking) | Percentile 0–100 of the forward return among the same date's rows |
+
+Named, versioned label definitions are stored in `ml_label` (6 built-ins). A dataset also embeds its own spec.
 
 ## 4. Models
 

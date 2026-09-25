@@ -47,7 +47,9 @@ Last updated: 2026-09-25 (W5).
 | W5-R6 | Monitoring persists drift and realised metrics but raises no alerts and has no dashboard charts. Realised metrics for `market_regime` models are not computed | ml/monitoring.py | Low | NOT BUILT | W6 / W8 |
 | W5-R7 | The assistant is templated (no LLM). An LLM layer needs a working Anthropic key (KD-001) | ml/assistant.py | Low | PARTIAL | Later |
 | W5-R8 | The universe for ML datasets is today's constituents (survivorship bias, as in W2) | ml/dataset.py | Medium | OPEN | W6 |
-| W5-R9 | Sector-return features are not built | strategy_engine/features.py | Low | NOT BUILT | W6 |
+| W5-R9 | Sector features are built as ML-only cross-sectional features (ml/context_features.py). They are not W3 strategy features, because a single-symbol FeatureContext cannot see other symbols | ml/context_features.py | Low | PARTIAL (by design) | W6 if strategies need them |
+| W5-R10 | Global market history starts 2026-07-25 (25 dates), so `atip_extended` datasets are short. The index series for Bank Nifty / Midcap / Smallcap go back to ~2025-01 | ml/context_features.py | Medium | OPEN (data) | Later |
+| W5-R11 | The industry map comes from the cached Nifty 500 list. If the cache is missing, sector features are None (and the W4 sector limit fails closed, W4-R8) | ml/context_features.py | Low | OPEN | — |
 
 ## Deferred testing items (for ChatGPT)
 
