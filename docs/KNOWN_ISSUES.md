@@ -69,14 +69,32 @@ Last updated: 2026-09-25 (W7).
 | Issue ID | Description | Module | Severity | Status | Deferred To |
 |---|---|---|---|---|---|
 | W7-R1 | Internet exposure (ENT-07) was deliberately not done. The dashboard stays bound to 127.0.0.1; TLS, MFA, rate limiting and a security review are prerequisites | dashboard/security.py | — (by design) | BLOCKED | Owner decision + ENT-14 legal review |
-| W7-R2 | No MFA | enterprise/users.py | Medium | NOT BUILT | Before any exposure |
+| W7-R2 | No MFA — **addressed in W8**: TOTP MFA (enterprise/mfa.py); needs an encryption key (`python -m ops keygen`) | enterprise/mfa.py | Medium | DEVELOPED (W8, untested) | Independent testing |
 | W7-R3 | Single paper book / broker account, so only the default tenant can read or trade execution, orders and portfolio | enterprise/authz.py | Medium | OPEN (by design) | Per-tenant books |
 | W7-R4 | Tenant isolation for W3–W6 data is enforced at the API layer (middleware); module-level SQL is not tenant-scoped, so CLI / scheduled jobs see all tenants | enterprise/authz.py | Medium | OPEN | SQL-level scoping |
 | W7-R5 | No e-mail: no verification, delivery or password-reset mail (admins hand out reset tokens) | enterprise/users.py, notifications.py | Low | NOT BUILT | Mail sender |
 | W7-R6 | No payment gateway: prices NULL until set, invoices DRAFT only | enterprise/billing.py | — (by design) | NOT BUILT | Owner decision |
 | W7-R7 | No per-user broker credential vault (ENT-06) | — | Medium | NOT BUILT | Design with the owner |
-| W7-R8 | The middleware opens a DB connection per request when enabled (get_connection runs migrations); acceptable locally, not at scale | enterprise/authz.py | Low | OPEN | Connection pooling |
+| W7-R8 | The middleware opens a DB connection per request when enabled. **W8:** get_connection no longer runs the migrations on every call (once per process per database), so a connection is cheap; there is still no pool | enterprise/authz.py; db/schema.py | Low | PARTLY ADDRESSED (W8) | Pool with DBS-05 |
 | W7-R9 | Workspace reports are saved definitions only; there is no rendering / export | enterprise/workspace.py | Low | NOT BUILT | Reporting work |
+
+## W8 items not built / known limits
+
+| ID | Item | Where | Severity | Status | Next |
+|---|---|---|---|---|---|
+| W8-R1 | TLS is architecture only: ATIP stays on 127.0.0.1 (ENT-07 BLOCKED). HSTS is sent only when `ops.tls_enabled` is true | docs/SECURITY_ARCHITECTURE.md | — (by design) | NOT DEPLOYED | With ENT-07 |
+| W8-R2 | Backups stay on the same disk as the database; no off-machine copy and no backup encryption | ops/backup.py | Medium | OPEN | Off-site target (owner decision) |
+| W8-R3 | No encryption key exists until the owner runs `python -m ops keygen`; until then MFA enrollment is refused and field encryption is unavailable (nothing falls back to plaintext) | ops/crypto.py | Low | OWNER ACTION | Generate + back up the key |
+| W8-R4 | Legacy secrets (Dhan client id / token, Alpha Vantage, Telegram) are still read from config.json when not in the environment / .env / atip_data/secrets; startup warns | ops/secrets.py | Medium | OWNER ACTION | Move them (the owner handles credentials) |
+| W8-R5 | Rate limiting is in-process (per ATIP process) and off by default | ops/http.py | Low | OPEN | Enable for production; shared store at scale |
+| W8-R6 | Metrics are in-process counters (reset on restart); no Prometheus server or dashboard is deployed | ops/metrics.py | Low | OPEN | Scraper when hosted |
+| W8-R7 | Resilience primitives (retry, breaker, timeout) are used by webhook delivery only; existing data-source clients keep their own error handling | ops/resilience.py | Low | OPEN | Wrap data sources gradually |
+| W8-R8 | The /api/v1 alias maps to the current API; there is no separate frozen v1 contract / OpenAPI reference yet | ops/http.py | Low | OPEN | API-05 |
+| W8-R9 | Existing W1–W7 routes keep their `{"error": "..."}` bodies; the new envelope covers new failures and unhandled exceptions | ops/errors.py | Low | OPEN (compatibility) | Migrate per route |
+| W8-R10 | enterprise_audit rows written before W8 have no hash; the chain starts at the first W8 row. Hash chain is process-locked (single writer process) | enterprise/audit.py | Low | OPEN | — |
+| W8-R11 | Job locks use pid liveness; on Windows a reused pid could keep a stale lock until it expires (6 h) | ops/jobs.py | Low | OPEN | — |
+| W8-R12 | pip-audit is not installed, so the dependency audit in `python -m ops scan` reports NOT RUN | ops/scan.py | Low | OPEN | Install in a dev environment |
+| W8-R13 | W8 is merged to MAIN but the running ATIP process loads it only after a restart (bare `python main.py`) | — | — | PENDING RESTART | Owner decision |
 
 ## Deferred testing items (for ChatGPT)
 
@@ -86,3 +104,4 @@ All W3 to W7 functionality. The test scenarios are listed in:
 - `W5_AI_ML_HANDOFF.md` section 9
 - `W6_ADVANCED_QUANT_HANDOFF.md` section 10
 - `W7_ENTERPRISE_HANDOFF.md` section 9
+- `W8_PRODUCTION_HARDENING_HANDOFF.md` section 9
