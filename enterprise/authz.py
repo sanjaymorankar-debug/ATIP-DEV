@@ -86,6 +86,9 @@ ROUTE_RULES = [
     ("*", r"^/api/risk", "risk:configure"),
     ("GET", r"^/api/(oms|execution|position-intents|audit)", "execution:read"),
     ("*", r"^/api/(oms|execution)", "execution:trade"),
+    # W11-W17 wealth track: the caller's own investor data (owner-scoped in wealth/)
+    ("GET", r"^/api/wealth", "wealth:read"),
+    ("*", r"^/api/wealth", "wealth:write"),
     # W1 order rules, portfolio
     ("GET", r"^/api/orders", "execution:read"),
     ("*", r"^/api/orders", "orders:manage"),

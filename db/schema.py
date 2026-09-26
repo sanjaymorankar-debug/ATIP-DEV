@@ -121,7 +121,7 @@ def _run_additive_migrations(conn):
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
-                       **W6_TABLES, **W7_TABLES, **W8_TABLES}.items():
+                       **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -750,6 +750,25 @@ W8_TABLES = {
             created_at TIMESTAMP, expires_at TIMESTAMP, used_at TIMESTAMP, revoked_at TIMESTAMP,
             replaced_by TEXT, ip TEXT)""",
         "CREATE INDEX IF NOT EXISTS idx_ent_refresh_family ON enterprise_refresh_token(family_id)",
+    ),
+}
+
+# ── Tables added in W11-W20 (wealth track, wealth/) ────────────────────────
+# Every row is owned by (tenant_id, owner_id); see wealth/common.py. *_version
+# and ledger tables are append-only (migration 0005 adds the triggers).
+WEALTH_TABLES = {
+    # W11 Investor DNA
+    "investor_profile_version": (
+        """CREATE TABLE IF NOT EXISTS investor_profile_version (
+            profile_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, version INTEGER NOT NULL,
+            questionnaire_version TEXT, methodology_version TEXT, answers_json TEXT, answers_hash TEXT,
+            result_json TEXT, band TEXT, risk_score REAL, created_at TIMESTAMP, created_by TEXT,
+            UNIQUE(tenant_id, owner_id, version))""",
+    ),
+    "investor_profile": (
+        """CREATE TABLE IF NOT EXISTS investor_profile (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, profile_id TEXT NOT NULL, version INTEGER,
+            band TEXT, risk_score REAL, mode TEXT, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, owner_id))""",
     ),
 }
 

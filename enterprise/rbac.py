@@ -33,6 +33,8 @@ PERMISSIONS = {
     "orders:manage": "manage W1 order rules (create / confirm / reject / delete)",
     "portfolio:read": "view portfolio, holdings, P&L",
     "portfolio:manage": "manage portfolio settings, rebalancing inputs",
+    "wealth:read": "view own investor profile, wealth, goals, allocation, performance, advisor (W11-W17)",
+    "wealth:write": "edit own investor profile, holdings, goals; run allocation / rebalance / advisor",
     "notifications:read": "read own notifications",
     "workspace:write": "own watchlists, alert rules, saved reports, API keys, preferences",
     "system:operate": "operate the platform: pipeline refresh, kill switch, data jobs",
@@ -43,7 +45,7 @@ PERMISSIONS = {
     "admin:billing": "manage plans, subscriptions, usage, invoices",
 }
 
-_READ = ["dashboard:read", "notifications:read", "workspace:write"]
+_READ = ["dashboard:read", "notifications:read", "workspace:write", "wealth:read", "wealth:write"]
 ROLES = {
     "SUPER_ADMIN": ("platform / tenant administrator: every permission", list(PERMISSIONS)),
     "RESEARCHER": ("research, factors, strategies (read), backtests",
@@ -67,7 +69,7 @@ ROLES = {
                                    "strategy:read", "risk:read", "execution:read", "research:read"]),
     "VIEWER": ("read-only dashboards",
                ["dashboard:read", "notifications:read", "research:read", "strategy:read", "quant:read",
-                "ml:read", "risk:read", "execution:read", "portfolio:read"]),
+                "ml:read", "risk:read", "execution:read", "portfolio:read", "wealth:read"]),
 }
 
 
@@ -75,14 +77,22 @@ def seed(conn) -> dict:
     """Idempotent: inserts missing roles / permissions / mappings; never removes an
     owner's edits (except that SUPER_ADMIN always regains every permission)."""
     now = datetime.now()
+    added = set()                        # permissions this release introduces to the database
     for p, d in PERMISSIONS.items():
-        conn.execute("INSERT OR IGNORE INTO enterprise_permission (permission,description) VALUES (?,?)", (p, d))
+        if conn.execute("INSERT OR IGNORE INTO enterprise_permission (permission,description) VALUES (?,?)",
+                        (p, d)).rowcount:
+            added.add(p)
     for r, (d, perms) in ROLES.items():
         new = conn.execute("INSERT OR IGNORE INTO enterprise_role (role,description,builtin,created_at) "
                            "VALUES (?,?,1,?)", (r, d, now)).rowcount
         if new or r == "SUPER_ADMIN":
             conn.executemany("INSERT OR IGNORE INTO enterprise_role_permission (role,permission) VALUES (?,?)",
                              [(r, p) for p in perms])
+        elif added:
+            # a permission that did not exist before (e.g. W11 wealth:*) goes to the
+            # built-in roles that list it; the owner's earlier edits are untouched
+            conn.executemany("INSERT OR IGNORE INTO enterprise_role_permission (role,permission) VALUES (?,?)",
+                             [(r, p) for p in perms if p in added])
     conn.commit()
     return {"roles": len(ROLES), "permissions": len(PERMISSIONS)}
 
