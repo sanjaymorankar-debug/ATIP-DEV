@@ -54,11 +54,22 @@ intent, a risk decision or an order rule.
     GET  /api/wealth/rebalance/plans        ; GET /api/wealth/rebalance/plans/{id}
     POST /api/wealth/rebalance/plans/{id}/decision  (token) {decision: ACCEPTED|DISMISSED|EXECUTED_MANUALLY, note}
 
+    W15.5 Performance attribution
+    GET  /api/wealth/performance/portfolios ledger portfolios (PAPER / OMS / LIVE / MANUAL)
+    GET  /api/wealth/performance/benchmarks named benchmarks
+    POST /api/wealth/performance/sync       (token) import new ledger rows from the sources
+    GET  /api/wealth/performance/ledger     ?portfolio&start&end&include_void
+    POST /api/wealth/performance/ledger     (token) manual transaction
+    POST /api/wealth/performance/ledger/{txn_id}/void   (token) {reason}
+    POST /api/wealth/performance/report     (token) {portfolio, start, end, benchmark, options, store}
+    GET  /api/wealth/performance/reports    ; GET .../reports/{id}
+    GET  /api/wealth/performance/reports/{id}/export?format=csv|json
+
     GET  /wealth                            page
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 
 def register(app, guard, Req, get_connection, json_safe):
@@ -69,6 +80,9 @@ def register(app, guard, Req, get_connection, json_safe):
     from wealth import goals as G
     from wealth import holdings as H
     from wealth import rebalance as RB
+    from wealth.perf import data as PD
+    from wealth.perf import ledger as PL
+    from wealth.perf import report as PR
 
     BAD = (ValueError, KeyError, TypeError)
 
@@ -352,6 +366,67 @@ def register(app, guard, Req, get_connection, json_safe):
         b = await body(request)
         return run(lambda conn: RB.decide(conn, owner(request), pid, b.get("decision"), b.get("note"),
                                           actor(request)))
+
+    # ── W15.5 Performance attribution ───────────────────────────────────────
+    @app.get("/api/wealth/performance/portfolios")
+    async def api_wealth_perf_portfolios(request: Req):
+        return run(lambda conn: {"portfolios": PL.portfolios(conn, owner(request)), "all": list(PL.PORTFOLIOS),
+                                 "house_book": C.owns_house_book(owner(request))})
+
+    @app.get("/api/wealth/performance/benchmarks")
+    async def api_wealth_perf_benchmarks():
+        return JSONResponse(PD.BENCHMARKS)
+
+    @app.post("/api/wealth/performance/sync", dependencies=guard)
+    async def api_wealth_perf_sync(request: Req):
+        return run(lambda conn: PL.sync(conn, owner(request)))
+
+    @app.get("/api/wealth/performance/ledger")
+    async def api_wealth_perf_ledger(request: Req, portfolio: str = None, start: str = None, end: str = None,
+                                     include_void: bool = False):
+        return run(lambda conn: PL.transactions(conn, owner(request), portfolio.upper() if portfolio else None,
+                                                start, end, include_void))
+
+    @app.post("/api/wealth/performance/ledger", dependencies=guard)
+    async def api_wealth_perf_ledger_add(request: Req):
+        b = await body(request)
+        return run(lambda conn: PL.add_manual(conn, owner(request), b, actor(request)))
+
+    @app.post("/api/wealth/performance/ledger/{txn_id}/void", dependencies=guard)
+    async def api_wealth_perf_ledger_void(txn_id: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: PL.void(conn, owner(request), txn_id, b.get("reason"), actor(request)))
+
+    @app.post("/api/wealth/performance/report", dependencies=guard)
+    async def api_wealth_perf_report(request: Req):
+        b = await body(request)
+        args = (b.get("portfolio") or "PAPER", b.get("start"), b.get("end"), b.get("benchmark"), b.get("options"))
+        if b.get("store", True) is False:
+            return run(lambda conn: PR.build(conn, owner(request), *args))
+        return run(lambda conn: PR.run(conn, owner(request), *args, actor=actor(request)))
+
+    @app.get("/api/wealth/performance/reports")
+    async def api_wealth_perf_reports(request: Req, limit: int = 50):
+        return run(lambda conn: PR.list_reports(conn, owner(request), max(1, min(limit, 500))))
+
+    @app.get("/api/wealth/performance/reports/{rid}")
+    async def api_wealth_perf_report_get(rid: str, request: Req):
+        return run(lambda conn: PR.get(conn, owner(request), rid))
+
+    @app.get("/api/wealth/performance/reports/{rid}/export")
+    async def api_wealth_perf_report_export(rid: str, request: Req, format: str = "csv"):
+        conn = get_connection()
+        try:
+            content, media = PR.export(PR.get(conn, owner(request), rid), format)
+        except LookupError as e:
+            return err(e, 404)
+        except BAD as e:
+            return err(e)
+        finally:
+            conn.close()
+        ext = "json" if media == "application/json" else "csv"
+        return Response(content=content, media_type=media,
+                        headers={"Content-Disposition": f'attachment; filename="atip_performance_{rid}.{ext}"'})
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)

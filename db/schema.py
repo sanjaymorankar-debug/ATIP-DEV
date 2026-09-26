@@ -842,6 +842,28 @@ WEALTH_TABLES = {
             result_json TEXT, methodology_version TEXT, decided_at TIMESTAMP, decided_by TEXT, decision_note TEXT)""",
         "CREATE INDEX IF NOT EXISTS idx_wealth_rbl_owner ON wealth_rebalance_plan(tenant_id, owner_id, created_at)",
     ),
+    # W15.5 Performance attribution
+    "perf_ledger": (
+        """CREATE TABLE IF NOT EXISTS perf_ledger (
+            txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, portfolio TEXT NOT NULL,
+            source TEXT NOT NULL, source_ref TEXT NOT NULL, trade_date DATE NOT NULL, ts TEXT, kind TEXT NOT NULL,
+            symbol TEXT, quantity REAL, price REAL, gross_value REAL, fees REAL, reference_price REAL,
+            price_quality TEXT, strategy_id TEXT, tag TEXT, note TEXT, created_at TIMESTAMP, import_run TEXT,
+            UNIQUE(tenant_id, owner_id, source, source_ref))""",
+        "CREATE INDEX IF NOT EXISTS idx_perf_ledger_pf ON perf_ledger(tenant_id, owner_id, portfolio, trade_date)",
+    ),
+    "perf_ledger_void": (
+        """CREATE TABLE IF NOT EXISTS perf_ledger_void (
+            txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, voided_at TIMESTAMP,
+            voided_by TEXT, reason TEXT)""",
+    ),
+    "perf_report_run": (
+        """CREATE TABLE IF NOT EXISTS perf_report_run (
+            report_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, portfolio TEXT,
+            period_start DATE, period_end DATE, benchmark TEXT, methodology_version TEXT, calculation_version TEXT,
+            inputs_hash TEXT, result_json TEXT, created_at TIMESTAMP, created_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_perf_report_owner ON perf_report_run(tenant_id, owner_id, created_at)",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with
