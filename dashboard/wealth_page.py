@@ -34,12 +34,12 @@ form .q{background:var(--panel);border:1px solid var(--line);border-radius:6px;p
 form .q label{display:block;margin-bottom:4px}form .q .help{font-size:11px;color:var(--muted)}
 input,select,button,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
 button.primary{background:#0369a1;border-color:#0369a1;cursor:pointer}button{cursor:pointer}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.scroll{max-height:420px;overflow:auto}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tw{overflow-x:auto;max-width:100%}.scroll{max-height:420px;overflow:auto}
 .disc{font-size:11px;color:var(--muted);margin-top:18px;border-top:1px solid var(--line);padding-top:8px}
 .msg{padding:6px 10px;border-radius:6px;margin:6px 0;background:#1e3a5f}.msg.e{background:#7f1d1d}
 @media(max-width:640px){.wrap{padding:10px}.top a{margin-left:8px}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="ld" class="muted" style="font-size:11px"></span></div>
 <div><a href="/">Trader dashboard</a><a href="/strategies">Strategies</a><a href="/trading">Trading</a><a href="/backtests">Backtests</a></div></div>
 <div class="wrap"><div class="tabs" id="tabs"></div>
 """
@@ -54,14 +54,14 @@ async function j(u,o){const r=await fetch(u,o);let t={};try{t=await r.json()}cat
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 const put=(u,b)=>j(u,{method:'PUT',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 const del=u=>j(u,{method:'DELETE',headers:{'X-ATIP-Token':TOKEN}});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th${x.startsWith('#')?' class="n"':''}>${x.replace(/^#/,'')}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+const table=(h,rows)=>`<div class="tw"><table><thead><tr>${h.map(x=>`<th${x.startsWith('#')?' class="n"':''}>${x.replace(/^#/,'')}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table></div>`;
 const card=(k,v,sub,bar)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="muted" style="font-size:11px">${sub}</div>`:''}${bar!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,bar))}%"></i></div>`:''}</div>`;
 const msg=(el,t,e)=>{document.getElementById(el).innerHTML=`<div class="msg${e?' e':''}">${esc(t)}</div>`};
 const LOADERS={};let CUR=null;
 function show(id){CUR=id;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t_'+id));
  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===id));
  try{localStorage.setItem('atip_wealth_tab',id)}catch(e){}
- if(LOADERS[id])LOADERS[id]().catch(e=>console.error(e));}
+ const ld=document.getElementById('ld');if(LOADERS[id]){ld.textContent='loading…';LOADERS[id]().catch(e=>{console.error(e);ld.textContent='could not load: '+e.message}).then(()=>{if(ld.textContent==='loading…')ld.textContent=''})}}
 """
 
 # ── W11 Investor DNA ──────────────────────────────────────────────────────
@@ -124,9 +124,9 @@ LOADERS.dna=async()=>{
 
 def _tabs():
     """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
-    from dashboard.wealth_ui import (advisor_tab, allocation_tab, goals_tab, performance_tab, rebalance_tab,
-                                     wealth_tab)
-    return [wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, rebalance_tab.TAB, performance_tab.TAB, advisor_tab.TAB,
+    from dashboard.wealth_ui import (advisor_tab, allocation_tab, goals_tab, overview_tab, performance_tab,
+                                     rebalance_tab, wealth_tab)
+    return [overview_tab.TAB, wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, rebalance_tab.TAB, performance_tab.TAB, advisor_tab.TAB,
             ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
 
 FOOT = r"""

@@ -815,6 +815,14 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("enterprise_jobs", run_enterprise, td)
         except Exception as e:
             log.warning(f"  Enterprise jobs: {e}")
+        # W17: investor cycle (snapshot, ledger import, DNA / allocation / goals / rebalance,
+        # weekly performance report, wealth alerts) for every owner with an Investor DNA.
+        # Advisory only: nothing is ordered. SKIPPED unless config wealth.enabled.
+        try:
+            from wealth.integrated import run_scheduled as run_wealth
+            run_job("wealth_cycle", run_wealth, td)
+        except Exception as e:
+            log.warning(f"  Wealth cycle: {e}")
 
     # 5:40 PM — Append today's signals to the immutable log, then re-evaluate
     # momentum outcomes for every open signal. Append-only: unlike ai_scores and

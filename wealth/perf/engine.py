@@ -316,8 +316,10 @@ def run_actual(conn, owner, portfolio: str, start: date, end: date, prices: D.Pr
                     "return_on_avg_capital_pct": _p(md_ret), "average_invested_capital": round(avg_cap, 2),
                     "gain": round(total_gain, 2),
                     "pme": {"benchmark": bench_sym, "xirr_pct": _p(pme_xirr),
-                            "value_if_invested": round(pme_val, 2) if pme_val else None,
-                            "note": "the same cash flows invested in the benchmark on the same days"},
+                            "value_if_invested": round(pme_val, 2) if pme_val and pme_val > 0 else None,
+                            "note": "the same cash flows invested in the benchmark on the same days"
+                            if not pme_val or pme_val > 0 else
+                            "undefined: withdrawals exceeded what the benchmark would have grown to (a sign the book beat the benchmark)"},
                     "realized_pnl": round(realized, 2), "unrealized_pnl": round(unreal, 2)},
         "positions": positions, "daily": daily, "trades": in_period_trips,
         "trade_stats": M.trade_stats(in_period_trips),

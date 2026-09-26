@@ -872,6 +872,18 @@ WEALTH_TABLES = {
             narration_model TEXT, feedback TEXT, feedback_note TEXT)""",
         "CREATE INDEX IF NOT EXISTS idx_wealth_advice_owner ON wealth_advice_log(tenant_id, owner_id, asked_at)",
     ),
+    # W17 Integrated intelligence
+    "wealth_cycle_run": (
+        """CREATE TABLE IF NOT EXISTS wealth_cycle_run (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, run_date DATE,
+            status TEXT, result_json TEXT, created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_cycle_owner ON wealth_cycle_run(tenant_id, owner_id, created_at)",
+    ),
+    "wealth_preference": (
+        """CREATE TABLE IF NOT EXISTS wealth_preference (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT, updated_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id, key))""",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with

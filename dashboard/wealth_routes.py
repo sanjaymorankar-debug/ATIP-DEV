@@ -72,6 +72,16 @@ intent, a risk decision or an order rule.
     GET  /api/wealth/advisor/history        ; GET /api/wealth/advisor/{id}
     POST /api/wealth/advisor/{id}/feedback  (token) {helpful, note}
 
+    W17 Integrated intelligence
+    GET  /api/wealth/overview               Investor-mode home: DNA, wealth, goals, allocation, performance,
+                                            briefing, today's signals with suitability
+    GET  /api/wealth/mode                   ; PUT (token) {mode: INVESTOR|TRADER}
+    GET  /api/wealth/status                 which parts of the chain exist and how fresh they are
+    GET  /api/wealth/signals                today's ATIP signals checked against the investor's profile / plan
+    GET  /api/wealth/suitability/{symbol}   one symbol
+    POST /api/wealth/cycle                  (token) run the investor cycle now
+    GET  /api/wealth/cycles                 cycle history
+
     GET  /wealth                            page
 """
 
@@ -87,6 +97,7 @@ def register(app, guard, Req, get_connection, json_safe):
     from wealth import dna as DNA
     from wealth import goals as G
     from wealth import holdings as H
+    from wealth import integrated as INT
     from wealth import rebalance as RB
     from wealth.perf import data as PD
     from wealth.perf import ledger as PL
@@ -463,6 +474,40 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_wealth_advisor_feedback(aid: str, request: Req):
         b = await body(request)
         return run(lambda conn: ADV.feedback(conn, owner(request), aid, b.get("helpful"), b.get("note")))
+
+    # ── W17 Integrated intelligence ─────────────────────────────────────────
+    @app.get("/api/wealth/overview")
+    async def api_wealth_overview(request: Req):
+        return run(lambda conn: INT.overview(conn, owner(request)))
+
+    @app.get("/api/wealth/mode")
+    async def api_wealth_mode(request: Req):
+        return run(lambda conn: INT.get_mode(conn, owner(request)))
+
+    @app.put("/api/wealth/mode", dependencies=guard)
+    async def api_wealth_mode_set(request: Req):
+        b = await body(request)
+        return run(lambda conn: INT.set_mode(conn, owner(request), b.get("mode")))
+
+    @app.get("/api/wealth/status")
+    async def api_wealth_status(request: Req):
+        return run(lambda conn: INT.status(conn, owner(request)))
+
+    @app.get("/api/wealth/signals")
+    async def api_wealth_signals(request: Req, limit: int = 15):
+        return run(lambda conn: INT.todays_signals(conn, owner(request), max(1, min(limit, 100))))
+
+    @app.get("/api/wealth/suitability/{symbol}")
+    async def api_wealth_suitability(symbol: str, request: Req):
+        return run(lambda conn: INT.signal_suitability(conn, owner(request), symbol))
+
+    @app.post("/api/wealth/cycle", dependencies=guard)
+    async def api_wealth_cycle(request: Req):
+        return run(lambda conn: INT.investor_cycle(conn, owner(request)))
+
+    @app.get("/api/wealth/cycles")
+    async def api_wealth_cycles(request: Req, limit: int = 30):
+        return run(lambda conn: INT.cycles(conn, owner(request), max(1, min(limit, 365))))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)
