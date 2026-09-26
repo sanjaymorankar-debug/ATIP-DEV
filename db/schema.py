@@ -770,6 +770,34 @@ WEALTH_TABLES = {
             tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, profile_id TEXT NOT NULL, version INTEGER,
             band TEXT, risk_score REAL, mode TEXT, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, owner_id))""",
     ),
+    # W12 Multi-asset wealth
+    "wealth_holding": (
+        """CREATE TABLE IF NOT EXISTS wealth_holding (
+            holding_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, asset_class TEXT NOT NULL,
+            instrument TEXT NOT NULL, valuation TEXT NOT NULL, name TEXT NOT NULL, symbol TEXT, quantity REAL NOT NULL,
+            unit TEXT, avg_cost REAL, currency TEXT DEFAULT 'INR', fx_rate REAL, manual_price REAL,
+            manual_price_as_of DATE, maturity_date DATE, coupon_pct REAL, notes TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP, updated_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_holding_owner ON wealth_holding(tenant_id, owner_id, status)",
+    ),
+    "wealth_liability": (
+        """CREATE TABLE IF NOT EXISTS wealth_liability (
+            liability_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, kind TEXT NOT NULL,
+            name TEXT, outstanding REAL NOT NULL, interest_pct REAL, emi REAL, end_date DATE, notes TEXT,
+            status TEXT NOT NULL, updated_at TIMESTAMP, updated_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_liability_owner ON wealth_liability(tenant_id, owner_id, status)",
+    ),
+    "wealth_classification": (
+        """CREATE TABLE IF NOT EXISTS wealth_classification (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, symbol TEXT NOT NULL, asset_class TEXT NOT NULL,
+            instrument TEXT, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, owner_id, symbol))""",
+    ),
+    "wealth_snapshot": (
+        """CREATE TABLE IF NOT EXISTS wealth_snapshot (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, date DATE NOT NULL, net_worth REAL, gross_assets REAL,
+            liabilities REAL, invested_cost REAL, by_class_json TEXT, positions INTEGER, created_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id, date))""",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with

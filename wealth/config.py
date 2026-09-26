@@ -15,6 +15,8 @@ Wealth configuration: atip_data/config.json section "wealth" (all optional).
         "rebalance_min_trade": 5000,   rupees; smaller legs are skipped
         "single_stock_cap_pct": 10.0,  of net worth; above it the rebalancer proposes a trim
         "tactical_max_tilt_pct": 10.0, the most a tactical view moves any asset class
+        "gold_domestic_premium_pct": 9.0,  added to international spot for physical / digital gold
+                                       and SGBs (approximates import duty + GST; an assumption)
         "cma": {...}                   capital market assumptions override (allocation.py)
     }
 
@@ -39,11 +41,12 @@ DEFAULTS = {
     "rebalance_min_trade": 5000.0,
     "single_stock_cap_pct": 10.0,
     "tactical_max_tilt_pct": 10.0,
+    "gold_domestic_premium_pct": 9.0,
     "cma": None,
 }
 NUMERIC = ("profile_validity_days", "default_inflation_pct", "risk_free_pct", "monte_carlo_paths",
            "rebalance_abs_band_pct", "rebalance_rel_band_pct", "rebalance_min_trade", "single_stock_cap_pct",
-           "tactical_max_tilt_pct")
+           "tactical_max_tilt_pct", "gold_domestic_premium_pct")
 
 
 def settings() -> dict:

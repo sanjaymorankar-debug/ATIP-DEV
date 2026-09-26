@@ -12,6 +12,19 @@ intent, a risk decision or an order rule.
     POST /api/wealth/dna/preview            (token) {answers} -> computed, not stored
     GET  /api/wealth/dna/history            versions
     GET  /api/wealth/dna/{profile_id}       one stored version (own only)
+
+    W12 Multi-asset wealth
+    GET  /api/wealth/assets                 asset-class registry (supported / EXCLUDED classes)
+    GET  /api/wealth/summary                net worth, by class / source / sector, concentration,
+                                            liquidity, ATIP risk overlay, health, reconciliation
+    GET  /api/wealth/positions              normalized positions (broker + manual + paper)
+    GET  /api/wealth/holdings               manual holdings ; POST (token) create
+    GET  /api/wealth/holdings/{id}          ; PUT (token) update ; DELETE (token) close (kept, status CLOSED)
+    GET  /api/wealth/liabilities            ; POST (token) ; PUT / DELETE /{id} (token)
+    GET  /api/wealth/classifications        symbol overrides ; PUT (token) {symbol, asset_class, instrument}
+    DELETE /api/wealth/classifications/{symbol}  (token)
+    GET  /api/wealth/snapshots?days=        net-worth history ; POST (token) record today's
+
     GET  /wealth                            page
 """
 
@@ -20,8 +33,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 
 def register(app, guard, Req, get_connection, json_safe):
+    from wealth import assets as AS
     from wealth import common as C
     from wealth import dna as DNA
+    from wealth import holdings as H
 
     BAD = (ValueError, KeyError, TypeError)
 
@@ -92,6 +107,89 @@ def register(app, guard, Req, get_connection, json_safe):
                 raise LookupError("not found")
             return DNA._row_to_profile(r)
         return run(f)
+
+    # ── W12 Multi-asset wealth ──────────────────────────────────────────────
+    @app.get("/api/wealth/assets")
+    async def api_wealth_assets():
+        return JSONResponse(AS.registry())
+
+    @app.get("/api/wealth/summary")
+    async def api_wealth_summary(request: Req, positions: bool = False):
+        def f(conn):
+            s = H.summary(conn, owner(request))
+            if not positions:
+                s.pop("positions")
+            return s
+        return run(f)
+
+    @app.get("/api/wealth/positions")
+    async def api_wealth_positions(request: Req):
+        def f(conn):
+            pos, recon = H.positions(conn, owner(request))
+            return {"positions": pos, "reconciliation": recon}
+        return run(f)
+
+    @app.get("/api/wealth/holdings")
+    async def api_wealth_holdings(request: Req, include_closed: bool = False):
+        return run(lambda conn: H.list_holdings(conn, owner(request), include_closed))
+
+    @app.post("/api/wealth/holdings", dependencies=guard)
+    async def api_wealth_holding_add(request: Req):
+        b = await body(request)
+        return run(lambda conn: H.add_holding(conn, owner(request), b, actor(request)))
+
+    @app.get("/api/wealth/holdings/{hid}")
+    async def api_wealth_holding(hid: str, request: Req):
+        return run(lambda conn: H.get_holding(conn, owner(request), hid))
+
+    @app.put("/api/wealth/holdings/{hid}", dependencies=guard)
+    async def api_wealth_holding_update(hid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: H.update_holding(conn, owner(request), hid, b, actor(request)))
+
+    @app.delete("/api/wealth/holdings/{hid}", dependencies=guard)
+    async def api_wealth_holding_close(hid: str, request: Req):
+        return run(lambda conn: H.close_holding(conn, owner(request), hid, actor(request)))
+
+    @app.get("/api/wealth/liabilities")
+    async def api_wealth_liabilities(request: Req):
+        return run(lambda conn: H.list_liabilities(conn, owner(request)))
+
+    @app.post("/api/wealth/liabilities", dependencies=guard)
+    async def api_wealth_liability_add(request: Req):
+        b = await body(request)
+        return run(lambda conn: H.add_liability(conn, owner(request), b, actor(request)))
+
+    @app.put("/api/wealth/liabilities/{lid}", dependencies=guard)
+    async def api_wealth_liability_update(lid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: H.update_liability(conn, owner(request), lid, b, actor(request)))
+
+    @app.delete("/api/wealth/liabilities/{lid}", dependencies=guard)
+    async def api_wealth_liability_close(lid: str, request: Req):
+        return run(lambda conn: H.close_liability(conn, owner(request), lid, actor(request)))
+
+    @app.get("/api/wealth/classifications")
+    async def api_wealth_classifications(request: Req):
+        return run(lambda conn: H.overrides(conn, owner(request)))
+
+    @app.put("/api/wealth/classifications", dependencies=guard)
+    async def api_wealth_classification_set(request: Req):
+        b = await body(request)
+        return run(lambda conn: H.set_classification(conn, owner(request), b.get("symbol"), b.get("asset_class"),
+                                                     b.get("instrument") or "ETF"))
+
+    @app.delete("/api/wealth/classifications/{symbol}", dependencies=guard)
+    async def api_wealth_classification_clear(symbol: str, request: Req):
+        return run(lambda conn: H.clear_classification(conn, owner(request), symbol))
+
+    @app.get("/api/wealth/snapshots")
+    async def api_wealth_snapshots(request: Req, days: int = 730):
+        return run(lambda conn: H.snapshots(conn, owner(request), max(1, min(days, 3650))))
+
+    @app.post("/api/wealth/snapshots", dependencies=guard)
+    async def api_wealth_snapshot_record(request: Req):
+        return run(lambda conn: H.record_snapshot(conn, owner(request)))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)

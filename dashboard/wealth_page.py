@@ -121,10 +121,10 @@ LOADERS.dna=async()=>{
 };
 """
 
-# (id, title, html, js) -- later waves append their tabs here.
-TABS = [
-    ("dna", "Investor DNA", DNA_HTML, DNA_JS),
-]
+def _tabs():
+    """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
+    from dashboard.wealth_ui import wealth_tab
+    return [wealth_tab.TAB, ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
 
 FOOT = r"""
 <p class="disc">⚠️ ATIP is for personal informational use only and is not SEBI-registered investment advice. Every figure is a model output from the data and assumptions shown. Nothing on this page places an order. NPS, FDs, tax, insurance and mutual funds are outside ATIP's scope.</p>
@@ -133,7 +133,8 @@ FOOT = r"""
 
 
 def render(token: str) -> str:
-    tabs = "".join(f'<button data-t="{t[0]}" onclick="show(\'{t[0]}\')">{t[1]}</button>' for t in TABS)
+    TABS = _tabs()
+    tabs ="".join(f'<button data-t="{t[0]}" onclick="show(\'{t[0]}\')">{t[1]}</button>' for t in TABS)
     bodies = "".join(f'<div class="tab" id="t_{t[0]}">{t[2]}</div>' for t in TABS)
     js = COMMON_JS + "".join(t[3] for t in TABS)
     first = TABS[0][0]
