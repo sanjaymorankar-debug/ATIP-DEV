@@ -41,7 +41,7 @@ button.primary{background:#0369a1;border-color:#0369a1;cursor:pointer}button{cur
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="ld" class="muted" style="font-size:11px"></span></div>
 <div><a href="/">Trader dashboard</a><a href="/strategies">Strategies</a><a href="/trading">Trading</a><a href="/backtests">Backtests</a></div></div>
-<div class="wrap"><div class="tabs" id="tabs"></div>
+<div class="wrap"><div id="uat_banner"></div><div class="tabs" id="tabs"></div>
 """
 
 COMMON_JS = r"""
@@ -122,12 +122,30 @@ LOADERS.dna=async()=>{
 };
 """
 
+FEEDBACK_JS = r"""
+function fbOpen(on){document.getElementById('fb_box').style.display=on===false?'none':'block';document.getElementById('fb_res').textContent=''}
+async function fbSend(){const b={page:CUR,category:document.getElementById('fb_cat').value,severity:document.getElementById('fb_sev').value,message:document.getElementById('fb_msg').value,context:{url:location.pathname,tab:CUR,width:window.innerWidth}};
+ try{const r=await post('/api/wealth/feedback',b);document.getElementById('fb_res').textContent='Thanks, recorded ('+r.feedback_id+').';document.getElementById('fb_msg').value=''}catch(e){document.getElementById('fb_res').textContent=e.message}}
+j('/api/wealth/uat/context').then(u=>{if(u.active)document.getElementById('uat_banner').innerHTML=`<div class="msg" style="background:#78350f">UAT persona: <b>${esc(u.owner.owner_id)}</b> (tenant ${esc(u.owner.tenant_id)}). This is test data, not your own. Remove wealth.uat_owner from config.json to return to your own data.</div>`}).catch(()=>{});
+"""
+
+
 def _tabs():
     """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
     from dashboard.wealth_ui import (advisor_tab, allocation_tab, goals_tab, overview_tab, performance_tab,
                                      rebalance_tab, wealth_tab)
     return [overview_tab.TAB, wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, rebalance_tab.TAB, performance_tab.TAB, advisor_tab.TAB,
             ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
+
+FEEDBACK = r"""
+<div style="position:fixed;right:14px;bottom:14px;z-index:5"><button class="primary" onclick="fbOpen()">Feedback</button></div>
+<div id="fb_box" style="display:none;position:fixed;right:14px;bottom:56px;width:min(360px,calc(100vw - 28px));z-index:6" class="card">
+<div class="k">Report a problem or idea about this tab</div>
+<div class="row" style="margin:6px 0"><select id="fb_cat"><option>BUG</option><option>UX</option><option>DATA</option><option>METHODOLOGY</option><option>IDEA</option></select>
+<select id="fb_sev"><option value="P3">P3 minor</option><option value="P2">P2 annoying</option><option value="P1">P1 wrong result</option><option value="P0">P0 blocker / unsafe</option></select></div>
+<textarea id="fb_msg" rows="4" style="width:100%" placeholder="What happened, and what did you expect?"></textarea>
+<div class="row" style="margin-top:6px"><button class="primary" onclick="fbSend()">Send</button><button onclick="fbOpen(false)">Close</button><span id="fb_res" class="muted"></span></div></div>
+"""
 
 FOOT = r"""
 <p class="disc">⚠️ ATIP is for personal informational use only and is not SEBI-registered investment advice. Every figure is a model output from the data and assumptions shown. Nothing on this page places an order. NPS, FDs, tax, insurance and mutual funds are outside ATIP's scope.</p>
@@ -144,5 +162,5 @@ def render(token: str) -> str:
     boot = (f"document.getElementById('tabs').innerHTML={json.dumps(tabs)};"
             f"let _t='{first}';try{{_t=localStorage.getItem('atip_wealth_tab')||_t}}catch(e){{}}"
             f"if(!document.getElementById('t_'+_t))_t='{first}';show(_t);")
-    html = HEAD + bodies + FOOT + "<script>" + js + boot + "</script></body></html>"
+    html = HEAD + bodies + FEEDBACK + FOOT + "<script>" + js + FEEDBACK_JS + boot + "</script></body></html>"
     return html.replace("__TOKEN__", json.dumps(token))

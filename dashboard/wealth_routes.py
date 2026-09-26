@@ -82,6 +82,11 @@ intent, a risk decision or an order rule.
     POST /api/wealth/cycle                  (token) run the investor cycle now
     GET  /api/wealth/cycles                 cycle history
 
+    W19 Beta / UAT
+    GET  /api/wealth/uat/context            is a UAT persona active (config wealth.uat_owner)?
+    POST /api/wealth/feedback               (token) {page, category, severity, message, context}
+    GET  /api/wealth/feedback               the caller's own feedback
+
     GET  /wealth                            page
 """
 
@@ -99,6 +104,7 @@ def register(app, guard, Req, get_connection, json_safe):
     from wealth import holdings as H
     from wealth import integrated as INT
     from wealth import rebalance as RB
+    from wealth import uat as UAT
     from wealth.perf import data as PD
     from wealth.perf import ledger as PL
     from wealth.perf import report as PR
@@ -116,7 +122,13 @@ def register(app, guard, Req, get_connection, json_safe):
         return b if isinstance(b, dict) else {}
 
     def owner(request):
-        return C.owner_from_principal(getattr(request.state, "principal", None))
+        p = getattr(request.state, "principal", None)
+        if not p:                                   # single-user install (enterprise off)
+            from wealth.uat import uat_owner_from_config
+            u = uat_owner_from_config()             # W19 beta: a seeded UAT persona, uat tenant only
+            if u:
+                return u
+        return C.owner_from_principal(p)
 
     def actor(request):
         p = getattr(request.state, "principal", None) or {}
@@ -508,6 +520,21 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/wealth/cycles")
     async def api_wealth_cycles(request: Req, limit: int = 30):
         return run(lambda conn: INT.cycles(conn, owner(request), max(1, min(limit, 365))))
+
+    # ── W19 Beta / UAT ──────────────────────────────────────────────────────
+    @app.get("/api/wealth/uat/context")
+    async def api_wealth_uat_context(request: Req):
+        o = owner(request)
+        return JSONResponse({"active": o["tenant_id"] == UAT.UAT_TENANT, "owner": o})
+
+    @app.post("/api/wealth/feedback", dependencies=guard)
+    async def api_wealth_feedback(request: Req):
+        b = await body(request)
+        return run(lambda conn: UAT.submit_feedback(conn, owner(request), b, actor(request)))
+
+    @app.get("/api/wealth/feedback")
+    async def api_wealth_feedback_list(request: Req):
+        return run(lambda conn: UAT.list_feedback(conn, owner(request)))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)

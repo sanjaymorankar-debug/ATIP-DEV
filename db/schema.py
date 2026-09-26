@@ -879,6 +879,14 @@ WEALTH_TABLES = {
             status TEXT, result_json TEXT, created_at TIMESTAMP)""",
         "CREATE INDEX IF NOT EXISTS idx_wealth_cycle_owner ON wealth_cycle_run(tenant_id, owner_id, created_at)",
     ),
+    # W19 Beta / UAT feedback
+    "wealth_feedback": (
+        """CREATE TABLE IF NOT EXISTS wealth_feedback (
+            feedback_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TIMESTAMP,
+            created_by TEXT, page TEXT, category TEXT, severity TEXT, message TEXT, context_json TEXT,
+            status TEXT NOT NULL, triage_note TEXT, triaged_at TIMESTAMP, triaged_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_feedback_status ON wealth_feedback(status, severity)",
+    ),
     "wealth_preference": (
         """CREATE TABLE IF NOT EXISTS wealth_preference (
             tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT, updated_at TIMESTAMP,

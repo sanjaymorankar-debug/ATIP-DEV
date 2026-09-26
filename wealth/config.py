@@ -21,6 +21,8 @@ Wealth configuration: atip_data/config.json section "wealth" (all optional).
         "advisor_llm_enabled": false,  W16: let Claude narrate the advisor's evidence pack
                                        (needs ANTHROPIC_API_KEY or an ant profile; off by default)
         "advisor_llm_model": "claude-opus-5"
+        "uat_owner": "uat:persona_..."  W19 beta: act as a seeded UAT persona (single-user installs
+                                       only; ignored with enterprise on; uat tenant only)
     }
 
 Nothing here can place an order or change execution settings.
@@ -48,6 +50,7 @@ DEFAULTS = {
     "cma": None,
     "advisor_llm_enabled": False,
     "advisor_llm_model": "claude-opus-5",
+    "uat_owner": None,
 }
 NUMERIC = ("profile_validity_days", "default_inflation_pct", "risk_free_pct", "monte_carlo_paths",
            "rebalance_abs_band_pct", "rebalance_rel_band_pct", "rebalance_min_trade", "single_stock_cap_pct",
