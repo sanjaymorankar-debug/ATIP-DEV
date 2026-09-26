@@ -36,7 +36,9 @@ from pathlib import Path
 
 log = logging.getLogger("atip.ops.backup")
 KEY_TABLES = ("prices_daily", "ai_scores", "market_health", "pipeline_log", "strategy", "oms_order", "risk_decision",
-              "ml_model", "enterprise_user", "enterprise_audit")
+              "ml_model", "enterprise_user", "enterprise_audit",
+              # W11-W20 wealth track: the owner's own records, counted when present
+              "investor_profile_version", "wealth_holding", "wealth_goal", "perf_ledger")
 
 
 def _dir() -> Path:

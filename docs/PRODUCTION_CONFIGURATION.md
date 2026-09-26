@@ -69,6 +69,28 @@ W1–W7 modules still read `config.json` directly. Overlays and env overrides th
 
 **LIVE_TRADING_ENABLED = FALSE.** Do not change it without an explicit owner decision. Even when changed, live execution requires `environment: production`, and the W4 Dhan adapter refuses every call; live execution is not built.
 
+## The `wealth` section (W11–W20, all optional)
+
+The wealth track is advisory. No setting here can place an order or change a trading setting.
+
+| Key | Default | Effect |
+|---|---|---|
+| `enabled` | false | Runs the scheduled investor cycle after the post-market run (snapshot, ledger import, DNA / allocation / goals / rebalance, weekly performance report, wealth alerts). The API and `/wealth` work either way |
+| `profile_validity_days` | 365 | An Investor DNA older than this is STALE |
+| `default_inflation_pct` | 6.0 | Goals without their own inflation or a type default |
+| `risk_free_pct` | 6.5 | Sharpe, Sortino, alpha |
+| `benchmark` | nifty50 | Performance benchmark (any `prices_daily` symbol or nifty50 / niftybank / midcap150 / smallcap250) |
+| `monte_carlo_paths` | 2000 | Goal success probability (100–20,000) |
+| `rebalance_abs_band_pct` / `rebalance_rel_band_pct` | 5 / 25 | Drift bands |
+| `rebalance_min_trade` | 5000 | Smallest rebalance leg (Rs) |
+| `single_stock_cap_pct` | 10 | Concentration cap (% of assets) |
+| `tactical_max_tilt_pct` | 10 | Largest tactical tilt per class (points) |
+| `gold_domestic_premium_pct` | 9 | Added to international gold / silver spot |
+| `cma` | built-in | Capital-market assumptions override: `returns`, `volatility`, `correlation` as `"A/B": rho` |
+| `advisor_llm_enabled` | false | Claude narrates the advisor's evidence pack (sends it to Anthropic; key from the environment) |
+| `advisor_llm_model` | claude-opus-5 | Narration model (must start with `claude-`) |
+| `uat_owner` | null | **Beta only:** `uat:persona_<name>` makes the single-user UI act as a seeded UAT persona. Leave unset in production. `/health/wealth` reports DEGRADED while it is set |
+
 ## W9 master switch (all order paths)
 
 From W9, **real-money orders on every path** need `execution.live_trading_enabled: true` **and** `environment: production` (`ops/trading_safety.live_trading_enabled()`).

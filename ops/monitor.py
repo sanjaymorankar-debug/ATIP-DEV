@@ -144,10 +144,17 @@ def r_live_trading(conn):
                                                    f"({r['master_switch']['reason']})")
 
 
+def r_wealth_cycle(conn):
+    from wealth.health import recent_cycle_problem
+    firing, msg = recent_cycle_problem(conn)
+    return firing, "warning", msg
+
+
 RULES = {"database": r_database, "data_stale": r_data_stale, "scheduler": r_scheduler,
          "job_failures": r_job_failures, "error_rate": r_error_rate, "auth_failures": r_auth_failures,
          "failed_orders": r_failed_orders, "risk_failures": r_risk_failures, "ml_failures": r_ml_failures,
-         "disk_space": r_disk_space, "backup": r_backup, "live_trading": r_live_trading}
+         "disk_space": r_disk_space, "backup": r_backup, "live_trading": r_live_trading,
+         "wealth_cycle": r_wealth_cycle}
 
 
 def _notify(rule, severity, message):

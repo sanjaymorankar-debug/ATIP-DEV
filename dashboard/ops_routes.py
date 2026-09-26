@@ -2,7 +2,7 @@
 W8 operations routes (ops/).
 
   health (public: uptime probes; nothing sensitive)
-    GET /health  /health/live  /health/ready  /health/{database|broker|data|scheduler|ml}
+    GET /health  /health/live  /health/ready  /health/{database|broker|data|scheduler|ml|storage|market_data|wealth}
   inbound webhooks (public, HMAC-verified: ops/webhooks.py)
     POST /api/webhooks/{source}
   operations (system:operate when the enterprise layer is on; mutating ones also need

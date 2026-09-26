@@ -6,7 +6,7 @@ This is the running list of items deliberately deferred during W3/W4 development
 - **Testing:** nothing here has been functionally tested. ChatGPT performs the independent testing.
 - **What was fixed during W3/W4:** no earlier defect was fixed, because none met the fix-now criteria (blocks startup, blocks W3/W4 structurally, risks data corruption, or could allow unintended live trading).
 
-Last updated: 2026-09-25 (W7).
+Last updated: 2026-09-26 (W20 wealth track).
 
 ## Deferred defects
 
@@ -19,6 +19,19 @@ Last updated: 2026-09-25 (W7).
 | KD-004 | The pre-market run stalls around 07:00. It is mitigated, but the root cause is unknown | pipeline/scheduler.py | Medium | OPEN (mitigated) | Defect-resolution phase |
 | KD-005 | Loss limits fail closed without `pnl_daily` history. This applies to the W1 limits **and** the W4 `daily_loss_limit_pct` / `portfolio_drawdown_limit_pct` checks | orders/risk.py, execution/risk_engine.py | Low | OPEN (by design, to confirm) | Defect-resolution phase |
 | KD-006 | The W2 stitched OOS equity curve starts at the first test window's close | backtest/ | Low | OPEN | Defect-resolution phase |
+
+## W11–W20 wealth track: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| WLT-1 | The live broker account has no fill history in ATIP. LIVE ledger sells are inferred at that session's close (APPROX_CLOSE); buys are exact from the average-cost identity | wealth/perf/ledger.py | Medium | OPEN (by data) | Owner enters contract-note trades / broker trade-book import |
+| WLT-2 | International prices are manual; gold / silver are spot × USD/INR × assumed domestic premium (9%), not IBJA / MCX | wealth/holdings.py | Low | OPEN | Data source wave |
+| WLT-3 | DNA-1.0, AAL-1.0 (model portfolios, CMA, signal weights), scenario shocks: ATIP methodology, not validated against outcomes | wealth/ | Medium | OPEN | W19 methodology review (SEBI RIA) |
+| WLT-4 | `fii_score` 0 on days FII data is pending reads as maximum outflow in the tactical signal (weight 0.05) | wealth/allocation.py | Low | OPEN | Signal hygiene follow-up |
+| WLT-5 | No dividend history source: dividends are manual ledger entries | wealth/perf | Low | OPEN | Data source wave |
+| WLT-6 | W18 suite written and compiled, not run by development | tests/test_wealth_*.py | — | PENDING | ChatGPT QA |
+| WLT-7 | Advisor narration (opt-in) sends the evidence pack to Anthropic | wealth/advisor.py | — (accepted, opt-in) | BY DESIGN | Owner decision |
+| WLT-8 | Excluded by the brief: NPS, FDs, tax, insurance, mutual funds (refused explicitly; rebalancing is tax-neutral) | wealth/assets.py | — | OUT OF SCOPE | Future brief |
 
 ## W3/W4 items not built (remaining work)
 

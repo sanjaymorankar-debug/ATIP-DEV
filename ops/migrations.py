@@ -83,6 +83,36 @@ def _sql_0004(conn):
             conn.execute(ddl)
 
 
+APPEND_ONLY_0005 = ("investor_profile_version", "perf_ledger", "perf_ledger_void", "perf_report_run",
+                    "wealth_allocation_run", "wealth_goal_event")
+
+
+def _triggers_0005():
+    """Append-only W11-W20 audit tables. UPDATE is always refused; DELETE is refused
+    except for the 'uat' tenant (W19 persona reset)."""
+    out = []
+    for t in APPEND_ONLY_0005:
+        out.append(f"CREATE TRIGGER IF NOT EXISTS trg_{t}_no_update BEFORE UPDATE ON {t} "
+                   f"BEGIN SELECT RAISE(ABORT, '{t} is append-only'); END")
+        out.append(f"CREATE TRIGGER IF NOT EXISTS trg_{t}_no_delete BEFORE DELETE ON {t} WHEN OLD.tenant_id <> 'uat' "
+                   f"BEGIN SELECT RAISE(ABORT, '{t} is append-only'); END")
+    return tuple(out)
+
+
+TRIGGERS_0005 = _triggers_0005()
+
+
+def _sql_0005(conn):
+    """W11-W20 wealth tables (db/schema.py WEALTH_TABLES) present + append-only triggers."""
+    from db.schema import WEALTH_TABLES
+    missing = [t for t in WEALTH_TABLES
+               if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone()]
+    if missing:
+        raise RuntimeError(f"wealth tables missing: {missing}")
+    for ddl in TRIGGERS_0005:
+        conn.execute(ddl)
+
+
 MIGRATIONS = (
     ("0001", "baseline_w1_w7", _sql_0001, "none (validation only)"),
     ("0002", "w8_ops_tables", _sql_0002, "DROP the W8 ops_* tables, enterprise_refresh_token and schema_migrations "
@@ -91,13 +121,19 @@ MIGRATIONS = (
                                       "idx_ent_audit_at"),
     ("0004", "w8_audit_append_only", _sql_0004, "DROP TRIGGER trg_ent_audit_no_update, trg_ent_audit_no_delete, "
                                                 "trg_oms_event_no_update, trg_oms_event_no_delete"),
+    ("0005", "w20_wealth_append_only", _sql_0005, "DROP TRIGGER trg_<table>_no_update / trg_<table>_no_delete for "
+                                                  "investor_profile_version, perf_ledger, perf_ledger_void, "
+                                                  "perf_report_run, wealth_allocation_run, wealth_goal_event; the "
+                                                  "wealth tables themselves are additive (restore the pre-W20 backup "
+                                                  "to remove them)"),
 )
 
 
 def _checksum(version, name, fn) -> str:
     import inspect
     src = inspect.getsource(fn)
-    extra = {"0003": "\n".join(INDEXES_0003), "0004": "\n".join(TRIGGERS_0004)}.get(version, "")
+    extra = {"0003": "\n".join(INDEXES_0003), "0004": "\n".join(TRIGGERS_0004),
+             "0005": "\n".join(TRIGGERS_0005)}.get(version, "")
     return hashlib.sha256(f"{version}|{name}|{src}|{extra}".encode()).hexdigest()
 
 

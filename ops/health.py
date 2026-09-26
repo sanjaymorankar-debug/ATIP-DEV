@@ -282,8 +282,14 @@ def market_data() -> dict:
     return out
 
 
+def wealth() -> dict:
+    """W11-W20 wealth track (optional: READY while wealth.enabled is false)."""
+    from wealth.health import component as _w
+    return _w()
+
+
 COMPONENTS = {"database": database, "broker": broker, "data": data, "scheduler": scheduler, "ml": ml,
-              "storage": storage, "market_data": market_data}
+              "storage": storage, "market_data": market_data, "wealth": wealth}
 
 
 def component(name) -> dict:
