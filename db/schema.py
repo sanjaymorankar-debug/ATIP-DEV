@@ -834,6 +834,14 @@ WEALTH_TABLES = {
             inputs_hash TEXT, created_at TIMESTAMP, created_by TEXT)""",
         "CREATE INDEX IF NOT EXISTS idx_wealth_alloc_owner ON wealth_allocation_run(tenant_id, owner_id, created_at)",
     ),
+    # W15 Rebalancing
+    "wealth_rebalance_plan": (
+        """CREATE TABLE IF NOT EXISTS wealth_rebalance_plan (
+            plan_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TIMESTAMP,
+            created_by TEXT, mode TEXT, new_cash REAL, target_run_id TEXT, verdict TEXT, status TEXT NOT NULL,
+            result_json TEXT, methodology_version TEXT, decided_at TIMESTAMP, decided_by TEXT, decision_note TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_rbl_owner ON wealth_rebalance_plan(tenant_id, owner_id, created_at)",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with

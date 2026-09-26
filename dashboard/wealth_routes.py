@@ -48,6 +48,12 @@ intent, a risk decision or an order rule.
     GET  /api/wealth/allocation/cma         capital market assumptions + model portfolios + bounds
     GET  /api/wealth/allocation/policy      ; PUT (token) {bounds, excluded_classes, tactical_enabled, max_tilt_pct}
 
+    W15 Rebalancing (advisory; no order is placed)
+    GET  /api/wealth/rebalance/check        drift vs target, triggers, verdict
+    POST /api/wealth/rebalance/plan         (token) {mode: to_band|to_target|cash_flow, new_cash, store}
+    GET  /api/wealth/rebalance/plans        ; GET /api/wealth/rebalance/plans/{id}
+    POST /api/wealth/rebalance/plans/{id}/decision  (token) {decision: ACCEPTED|DISMISSED|EXECUTED_MANUALLY, note}
+
     GET  /wealth                            page
 """
 
@@ -62,6 +68,7 @@ def register(app, guard, Req, get_connection, json_safe):
     from wealth import dna as DNA
     from wealth import goals as G
     from wealth import holdings as H
+    from wealth import rebalance as RB
 
     BAD = (ValueError, KeyError, TypeError)
 
@@ -320,6 +327,31 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_wealth_allocation_policy_set(request: Req):
         b = await body(request)
         return run(lambda conn: AL.set_policy(conn, owner(request), b))
+
+    # ── W15 Rebalancing ─────────────────────────────────────────────────────
+    @app.get("/api/wealth/rebalance/check")
+    async def api_wealth_rebalance_check(request: Req):
+        return run(lambda conn: RB.check_public(conn, owner(request)))
+
+    @app.post("/api/wealth/rebalance/plan", dependencies=guard)
+    async def api_wealth_rebalance_plan(request: Req):
+        b = await body(request)
+        return run(lambda conn: RB.plan(conn, owner(request), b.get("mode") or "to_band", b.get("new_cash") or 0,
+                                        b.get("store", True) is not False, actor(request)))
+
+    @app.get("/api/wealth/rebalance/plans")
+    async def api_wealth_rebalance_plans(request: Req, limit: int = 50):
+        return run(lambda conn: RB.plans(conn, owner(request), max(1, min(limit, 500))))
+
+    @app.get("/api/wealth/rebalance/plans/{pid}")
+    async def api_wealth_rebalance_plan_get(pid: str, request: Req):
+        return run(lambda conn: RB.get_plan(conn, owner(request), pid))
+
+    @app.post("/api/wealth/rebalance/plans/{pid}/decision", dependencies=guard)
+    async def api_wealth_rebalance_decide(pid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: RB.decide(conn, owner(request), pid, b.get("decision"), b.get("note"),
+                                          actor(request)))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)
