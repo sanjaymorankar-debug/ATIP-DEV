@@ -356,6 +356,10 @@ def _event(conn, owner, gid, kind, details, actor):
 
 
 def create(conn, owner, b: dict, actor="owner") -> dict:
+    n = conn.execute("SELECT COUNT(*) FROM wealth_goal WHERE tenant_id=? AND owner_id=? AND status='ACTIVE'",
+                     (owner["tenant_id"], owner["owner_id"])).fetchone()[0]
+    if n >= C.MAX_GOALS:
+        raise ValueError(f"at most {C.MAX_GOALS} active goals per investor")
     g = _clean(b)
     gid = C.new_id("goal")
     at = C.now()

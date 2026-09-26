@@ -169,8 +169,7 @@ def add_manual(conn, owner, b: dict, actor="owner") -> dict:
     td = C.parse_date(b.get("trade_date"), "trade_date")
     if td > date.today():
         raise ValueError("trade_date cannot be in the future")
-    sym = C.text(b.get("symbol"), "symbol", 40, required=kind != "FEE")
-    sym = sym.upper() if sym else None
+    sym = C.symbol(b.get("symbol"), "symbol", required=kind != "FEE")
     qty = C.num(b.get("quantity"), "quantity", 0, 1e12, required=kind in ("BUY", "SELL", "OPENING", "DIVIDEND"))
     if kind in ("BUY", "SELL", "OPENING") and not qty:
         raise ValueError("quantity must be > 0")

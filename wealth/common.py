@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from datetime import date, datetime
 
@@ -99,6 +100,24 @@ def text(v, name: str, max_len: int = 200, required: bool = True):
     s = str(v).strip()
     if len(s) > max_len:
         raise ValueError(f"{name} is longer than {max_len} characters")
+    return s
+
+
+SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9&_.\-]{0,39}$")
+MAX_HOLDINGS = 1000          # per owner (W18: bounds valuation work per request)
+MAX_GOALS = 50               # per owner (W18: bounds Monte Carlo work per request)
+
+
+def symbol(v, name: str = "symbol", required: bool = True):
+    """An exchange-style symbol: upper-case letters, digits and & _ . - only. Symbols
+    are echoed into the page (including inline handlers), so nothing else is accepted."""
+    if v is None or str(v).strip() == "":
+        if required:
+            raise ValueError(f"{name} is required")
+        return None
+    s = str(v).strip().upper()
+    if not SYMBOL_RE.match(s):
+        raise ValueError(f"{name} may contain only letters, digits and & _ . - (max 40)")
     return s
 
 

@@ -104,7 +104,7 @@ def overrides(conn, owner) -> dict:
 
 
 def set_classification(conn, owner, symbol, asset_class, instrument="ETF") -> dict:
-    sym = C.text(symbol, "symbol", 40).upper()
+    sym = C.symbol(symbol)
     cls = A.check_class(asset_class)
     inst, _ = A.check_instrument(instrument, cls, None)
     conn.execute("INSERT INTO wealth_classification (tenant_id,owner_id,symbol,asset_class,instrument,updated_at) "
@@ -116,12 +116,13 @@ def set_classification(conn, owner, symbol, asset_class, instrument="ETF") -> di
 
 
 def clear_classification(conn, owner, symbol) -> dict:
+    sym = C.symbol(symbol)
     n = conn.execute("DELETE FROM wealth_classification WHERE tenant_id=? AND owner_id=? AND symbol=?",
-                     (owner["tenant_id"], owner["owner_id"], str(symbol).upper())).rowcount
+                     (owner["tenant_id"], owner["owner_id"], sym)).rowcount
     conn.commit()
     if not n:
         raise LookupError("no override for that symbol")
-    return {"symbol": str(symbol).upper(), "cleared": True}
+    return {"symbol": sym, "cleared": True}
 
 
 # ── Manual holdings ────────────────────────────────────────────────────────
@@ -140,7 +141,7 @@ def _clean_holding(b: dict, existing: dict | None = None) -> dict:
                                    x.get("valuation"))
     out = {"asset_class": cls, "instrument": inst, "valuation": val,
            "name": C.text(x.get("name"), "name", 120),
-           "symbol": (C.text(x.get("symbol"), "symbol", 40, required=(val == "MARKET")) or None),
+           "symbol": C.symbol(x.get("symbol"), "symbol", required=(val == "MARKET")),
            "quantity": C.num(x.get("quantity"), "quantity", 0, 1e12),
            "unit": C.text(x.get("unit"), "unit", 20, required=False) or
            ("INR" if val == "CASH" else "grams" if val in ("GOLD_SPOT", "SILVER_SPOT") else "units"),
@@ -153,8 +154,6 @@ def _clean_holding(b: dict, existing: dict | None = None) -> dict:
            "maturity_date": C.parse_date(x.get("maturity_date"), "maturity_date", required=False),
            "coupon_pct": C.num(x.get("coupon_pct"), "coupon_pct", 0, 100, required=False),
            "notes": C.text(x.get("notes"), "notes", 500, required=False)}
-    if out["symbol"]:
-        out["symbol"] = out["symbol"].upper()
     if val == "FX_MANUAL" and out["currency"] == "INR":
         raise ValueError("FX_MANUAL needs a foreign currency (e.g. USD)")
     if val == "FX_MANUAL" and out["currency"] != "USD" and not out["fx_rate"]:
@@ -167,6 +166,10 @@ def _clean_holding(b: dict, existing: dict | None = None) -> dict:
 
 
 def add_holding(conn, owner, b: dict, actor="owner") -> dict:
+    n = conn.execute("SELECT COUNT(*) FROM wealth_holding WHERE tenant_id=? AND owner_id=? AND status='ACTIVE'",
+                     (owner["tenant_id"], owner["owner_id"])).fetchone()[0]
+    if n >= C.MAX_HOLDINGS:
+        raise ValueError(f"at most {C.MAX_HOLDINGS} active holdings per investor")
     h = _clean_holding(b)
     hid = C.new_id("hold")
     at = C.now()

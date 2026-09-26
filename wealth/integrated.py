@@ -242,7 +242,7 @@ def set_mode(conn, owner, mode) -> dict:
 def signal_suitability(conn, owner, symbol: str, _ctx: dict | None = None) -> dict:
     from wealth import dna
     from wealth import holdings as H
-    sym = C.text(symbol, "symbol", 40).upper()
+    sym = C.symbol(symbol)
     ctx = _ctx or {}
     d = ctx.get("dna") or dna.summary(conn, owner)
     summ = ctx.get("summary") or H.summary(conn, owner)

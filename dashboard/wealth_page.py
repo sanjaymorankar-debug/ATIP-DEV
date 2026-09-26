@@ -46,7 +46,7 @@ button.primary{background:#0369a1;border-color:#0369a1;cursor:pointer}button{cur
 
 COMMON_JS = r"""
 const TOKEN=__TOKEN__;
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=(v,d=2)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
 const inr=v=>v==null?'—':'₹'+num(v,0);const pct=(v,d=1)=>v==null?'—':num(v,d)+'%';
 const pill=(s,c)=>`<span class="pill ${esc(c||s)}">${esc(s)}</span>`;
