@@ -124,8 +124,8 @@ LOADERS.dna=async()=>{
 
 def _tabs():
     """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
-    from dashboard.wealth_ui import goals_tab, wealth_tab
-    return [wealth_tab.TAB, goals_tab.TAB, ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
+    from dashboard.wealth_ui import allocation_tab, goals_tab, wealth_tab
+    return [wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
 
 FOOT = r"""
 <p class="disc">⚠️ ATIP is for personal informational use only and is not SEBI-registered investment advice. Every figure is a model output from the data and assumptions shown. Nothing on this page places an order. NPS, FDs, tax, insurance and mutual funds are outside ATIP's scope.</p>

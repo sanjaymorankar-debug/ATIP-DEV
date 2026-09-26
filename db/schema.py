@@ -821,6 +821,19 @@ WEALTH_TABLES = {
             status TEXT, success_probability REAL, projected REAL, future_target REAL, gap REAL, result_json TEXT,
             methodology_version TEXT, created_at TIMESTAMP, PRIMARY KEY (goal_id, as_of))""",
     ),
+    # W14 Asset allocation
+    "wealth_allocation_policy": (
+        """CREATE TABLE IF NOT EXISTS wealth_allocation_policy (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, policy_json TEXT, updated_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id))""",
+    ),
+    "wealth_allocation_run": (
+        """CREATE TABLE IF NOT EXISTS wealth_allocation_run (
+            run_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, as_of DATE,
+            methodology_version TEXT, profile_id TEXT, band TEXT, target_json TEXT, result_json TEXT,
+            inputs_hash TEXT, created_at TIMESTAMP, created_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_alloc_owner ON wealth_allocation_run(tenant_id, owner_id, created_at)",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with

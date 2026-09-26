@@ -39,6 +39,15 @@ intent, a risk decision or an order rule.
     POST /api/wealth/dna/refresh            (token) re-score the current answers (risk requirement
                                             from goals) as a new version
 
+    W14 Asset allocation
+    GET  /api/wealth/allocation             latest stored run (404 if none)
+    POST /api/wealth/allocation/run         (token) compute + store a run
+    POST /api/wealth/allocation/preview     (token) compute, not stored
+    GET  /api/wealth/allocation/runs        ; GET /api/wealth/allocation/runs/{id}
+    GET  /api/wealth/allocation/signals     tactical signals now (ATIP market intelligence)
+    GET  /api/wealth/allocation/cma         capital market assumptions + model portfolios + bounds
+    GET  /api/wealth/allocation/policy      ; PUT (token) {bounds, excluded_classes, tactical_enabled, max_tilt_pct}
+
     GET  /wealth                            page
 """
 
@@ -47,6 +56,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 
 def register(app, guard, Req, get_connection, json_safe):
+    from wealth import allocation as AL
     from wealth import assets as AS
     from wealth import common as C
     from wealth import dna as DNA
@@ -263,6 +273,53 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/wealth/goals/{gid}/events")
     async def api_wealth_goal_events(gid: str, request: Req):
         return run(lambda conn: G.events(conn, owner(request), gid))
+
+    # ── W14 Asset allocation ────────────────────────────────────────────────
+    @app.get("/api/wealth/allocation")
+    async def api_wealth_allocation(request: Req):
+        def f(conn):
+            r = AL.latest(conn, owner(request))
+            if not r:
+                raise LookupError("no allocation run yet (POST /api/wealth/allocation/run)")
+            return r
+        return run(f)
+
+    @app.post("/api/wealth/allocation/run", dependencies=guard)
+    async def api_wealth_allocation_run(request: Req):
+        return run(lambda conn: AL.run(conn, owner(request), actor(request)))
+
+    @app.post("/api/wealth/allocation/preview", dependencies=guard)
+    async def api_wealth_allocation_preview(request: Req):
+        return run(lambda conn: AL.compute(conn, owner(request)))
+
+    @app.get("/api/wealth/allocation/runs")
+    async def api_wealth_allocation_runs(request: Req, limit: int = 50):
+        return run(lambda conn: AL.runs(conn, owner(request), max(1, min(limit, 500))))
+
+    @app.get("/api/wealth/allocation/runs/{rid}")
+    async def api_wealth_allocation_get(rid: str, request: Req):
+        return run(lambda conn: AL.get_run(conn, owner(request), rid))
+
+    @app.get("/api/wealth/allocation/signals")
+    async def api_wealth_allocation_signals():
+        return run(lambda conn: AL.signals(conn))
+
+    @app.get("/api/wealth/allocation/cma")
+    async def api_wealth_allocation_cma():
+        c = AL.cma()
+        return JSONResponse({"returns": c["returns"], "volatility": c["volatility"], "source": c["source"],
+                             "correlation": {f"{a}/{b}": v for (a, b), v in c["correlation"].items()},
+                             "models": AL.MODELS, "bounds": AL.BOUNDS, "signal_weights": AL.SIGNAL_WEIGHTS,
+                             "methodology_version": AL.METHODOLOGY_VERSION})
+
+    @app.get("/api/wealth/allocation/policy")
+    async def api_wealth_allocation_policy(request: Req):
+        return run(lambda conn: AL.policy(conn, owner(request)))
+
+    @app.put("/api/wealth/allocation/policy", dependencies=guard)
+    async def api_wealth_allocation_policy_set(request: Req):
+        b = await body(request)
+        return run(lambda conn: AL.set_policy(conn, owner(request), b))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)
