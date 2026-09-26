@@ -65,6 +65,13 @@ intent, a risk decision or an order rule.
     GET  /api/wealth/performance/reports    ; GET .../reports/{id}
     GET  /api/wealth/performance/reports/{id}/export?format=csv|json
 
+    W16 Advisor (explainable; cannot place orders)
+    POST /api/wealth/advisor/ask            (token) {question, topic?, narrate?} -> claims + evidence,
+                                            suitability-checked recommendations, caveats, optional narration
+    GET  /api/wealth/advisor/topics         topics + suggested questions + narration setting
+    GET  /api/wealth/advisor/history        ; GET /api/wealth/advisor/{id}
+    POST /api/wealth/advisor/{id}/feedback  (token) {helpful, note}
+
     GET  /wealth                            page
 """
 
@@ -73,6 +80,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 
 def register(app, guard, Req, get_connection, json_safe):
+    from wealth import advisor as ADV
     from wealth import allocation as AL
     from wealth import assets as AS
     from wealth import common as C
@@ -427,6 +435,34 @@ def register(app, guard, Req, get_connection, json_safe):
         ext = "json" if media == "application/json" else "csv"
         return Response(content=content, media_type=media,
                         headers={"Content-Disposition": f'attachment; filename="atip_performance_{rid}.{ext}"'})
+
+    # ── W16 Advisor ─────────────────────────────────────────────────────────
+    @app.post("/api/wealth/advisor/ask", dependencies=guard)
+    async def api_wealth_advisor_ask(request: Req):
+        b = await body(request)
+        nar = b.get("narrate")
+        return run(lambda conn: ADV.ask(conn, owner(request), b.get("question"), b.get("topic"),
+                                        nar if isinstance(nar, bool) else None, actor(request)))
+
+    @app.get("/api/wealth/advisor/topics")
+    async def api_wealth_advisor_topics():
+        from wealth.config import settings as _ws
+        return JSONResponse({"topics": list(ADV.TOPICS), "suggested": ADV.suggested_questions(),
+                             "narration_enabled": _ws()["advisor_llm_enabled"],
+                             "narration_model": _ws()["advisor_llm_model"]})
+
+    @app.get("/api/wealth/advisor/history")
+    async def api_wealth_advisor_history(request: Req, limit: int = 50):
+        return run(lambda conn: ADV.history(conn, owner(request), max(1, min(limit, 500))))
+
+    @app.get("/api/wealth/advisor/{aid}")
+    async def api_wealth_advisor_get(aid: str, request: Req):
+        return run(lambda conn: ADV.get(conn, owner(request), aid))
+
+    @app.post("/api/wealth/advisor/{aid}/feedback", dependencies=guard)
+    async def api_wealth_advisor_feedback(aid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: ADV.feedback(conn, owner(request), aid, b.get("helpful"), b.get("note")))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)

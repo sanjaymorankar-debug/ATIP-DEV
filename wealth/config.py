@@ -18,6 +18,9 @@ Wealth configuration: atip_data/config.json section "wealth" (all optional).
         "gold_domestic_premium_pct": 9.0,  added to international spot for physical / digital gold
                                        and SGBs (approximates import duty + GST; an assumption)
         "cma": {...}                   capital market assumptions override (allocation.py)
+        "advisor_llm_enabled": false,  W16: let Claude narrate the advisor's evidence pack
+                                       (needs ANTHROPIC_API_KEY or an ant profile; off by default)
+        "advisor_llm_model": "claude-opus-5"
     }
 
 Nothing here can place an order or change execution settings.
@@ -43,6 +46,8 @@ DEFAULTS = {
     "tactical_max_tilt_pct": 10.0,
     "gold_domestic_premium_pct": 9.0,
     "cma": None,
+    "advisor_llm_enabled": False,
+    "advisor_llm_model": "claude-opus-5",
 }
 NUMERIC = ("profile_validity_days", "default_inflation_pct", "risk_free_pct", "monte_carlo_paths",
            "rebalance_abs_band_pct", "rebalance_rel_band_pct", "rebalance_min_trade", "single_stock_cap_pct",
@@ -62,5 +67,8 @@ def settings() -> dict:
             continue                      # a malformed value keeps the default
         out[k] = v
     out["enabled"] = out.get("enabled") is True
+    out["advisor_llm_enabled"] = out.get("advisor_llm_enabled") is True
+    if not isinstance(out.get("advisor_llm_model"), str) or not out["advisor_llm_model"].startswith("claude-"):
+        out["advisor_llm_model"] = DEFAULTS["advisor_llm_model"]
     out["monte_carlo_paths"] = int(max(100, min(20000, out["monte_carlo_paths"])))
     return out

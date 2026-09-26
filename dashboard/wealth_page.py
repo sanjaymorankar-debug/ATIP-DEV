@@ -124,8 +124,9 @@ LOADERS.dna=async()=>{
 
 def _tabs():
     """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
-    from dashboard.wealth_ui import allocation_tab, goals_tab, performance_tab, rebalance_tab, wealth_tab
-    return [wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, rebalance_tab.TAB, performance_tab.TAB,
+    from dashboard.wealth_ui import (advisor_tab, allocation_tab, goals_tab, performance_tab, rebalance_tab,
+                                     wealth_tab)
+    return [wealth_tab.TAB, goals_tab.TAB, allocation_tab.TAB, rebalance_tab.TAB, performance_tab.TAB, advisor_tab.TAB,
             ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
 
 FOOT = r"""

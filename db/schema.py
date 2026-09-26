@@ -864,6 +864,14 @@ WEALTH_TABLES = {
             inputs_hash TEXT, result_json TEXT, created_at TIMESTAMP, created_by TEXT)""",
         "CREATE INDEX IF NOT EXISTS idx_perf_report_owner ON perf_report_run(tenant_id, owner_id, created_at)",
     ),
+    # W16 Advisor
+    "wealth_advice_log": (
+        """CREATE TABLE IF NOT EXISTS wealth_advice_log (
+            advice_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, asked_at TIMESTAMP,
+            asked_by TEXT, question TEXT, topic TEXT, response_json TEXT, narration_status TEXT,
+            narration_model TEXT, feedback TEXT, feedback_note TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_advice_owner ON wealth_advice_log(tenant_id, owner_id, asked_at)",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with
