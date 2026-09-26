@@ -25,6 +25,20 @@ intent, a risk decision or an order rule.
     DELETE /api/wealth/classifications/{symbol}  (token)
     GET  /api/wealth/snapshots?days=        net-worth history ; POST (token) record today's
 
+    W13 Goal planning
+    GET  /api/wealth/goals                  active goals with evaluation (?include_inactive=true)
+    POST /api/wealth/goals                  (token) create
+    GET  /api/wealth/goals/overview         totals, status counts, required return, link warnings
+    GET  /api/wealth/goals/{id}             goal + evaluation (projection, gap, required SIP / CAGR,
+                                            Monte Carlo, scenarios, glide path)
+    PUT  /api/wealth/goals/{id}             (token) update ; DELETE (token) -> ABANDONED
+    POST /api/wealth/goals/{id}/status      (token) {status}
+    POST /api/wealth/goals/{id}/simulate    (token) {overrides} what-if, not saved
+    POST /api/wealth/goals/{id}/projection  (token) store today's evaluation
+    GET  /api/wealth/goals/{id}/projections stored evaluations ; GET .../events  change history
+    POST /api/wealth/dna/refresh            (token) re-score the current answers (risk requirement
+                                            from goals) as a new version
+
     GET  /wealth                            page
 """
 
@@ -36,6 +50,7 @@ def register(app, guard, Req, get_connection, json_safe):
     from wealth import assets as AS
     from wealth import common as C
     from wealth import dna as DNA
+    from wealth import goals as G
     from wealth import holdings as H
 
     BAD = (ValueError, KeyError, TypeError)
@@ -96,6 +111,15 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/wealth/dna/history")
     async def api_wealth_dna_history(request: Req):
         return run(lambda conn: DNA.history(conn, owner(request)))
+
+    @app.post("/api/wealth/dna/refresh", dependencies=guard)
+    async def api_wealth_dna_refresh(request: Req):
+        def f(conn):
+            p = DNA.refresh_requirement(conn, owner(request), actor(request))
+            if not p:
+                raise LookupError("no investor profile yet")
+            return p
+        return run(f)
 
     @app.get("/api/wealth/dna/{profile_id}")
     async def api_wealth_dna_version(profile_id: str, request: Req):
@@ -190,6 +214,55 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.post("/api/wealth/snapshots", dependencies=guard)
     async def api_wealth_snapshot_record(request: Req):
         return run(lambda conn: H.record_snapshot(conn, owner(request)))
+
+    # ── W13 Goal planning ───────────────────────────────────────────────────
+    @app.get("/api/wealth/goals")
+    async def api_wealth_goals(request: Req, include_inactive: bool = False):
+        return run(lambda conn: G.list_goals(conn, owner(request), include_inactive))
+
+    @app.post("/api/wealth/goals", dependencies=guard)
+    async def api_wealth_goal_create(request: Req):
+        b = await body(request)
+        return run(lambda conn: G.create(conn, owner(request), b, actor(request)))
+
+    @app.get("/api/wealth/goals/overview")
+    async def api_wealth_goals_overview(request: Req):
+        return run(lambda conn: G.overview(conn, owner(request)))
+
+    @app.get("/api/wealth/goals/{gid}")
+    async def api_wealth_goal(gid: str, request: Req):
+        return run(lambda conn: G.get(conn, owner(request), gid))
+
+    @app.put("/api/wealth/goals/{gid}", dependencies=guard)
+    async def api_wealth_goal_update(gid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: G.update(conn, owner(request), gid, b, actor(request)))
+
+    @app.delete("/api/wealth/goals/{gid}", dependencies=guard)
+    async def api_wealth_goal_abandon(gid: str, request: Req):
+        return run(lambda conn: G.set_status(conn, owner(request), gid, "ABANDONED", actor(request)))
+
+    @app.post("/api/wealth/goals/{gid}/status", dependencies=guard)
+    async def api_wealth_goal_status(gid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: G.set_status(conn, owner(request), gid, b.get("status"), actor(request)))
+
+    @app.post("/api/wealth/goals/{gid}/simulate", dependencies=guard)
+    async def api_wealth_goal_simulate(gid: str, request: Req):
+        b = await body(request)
+        return run(lambda conn: G.simulate(conn, owner(request), gid, b.get("overrides") or {}))
+
+    @app.post("/api/wealth/goals/{gid}/projection", dependencies=guard)
+    async def api_wealth_goal_projection(gid: str, request: Req):
+        return run(lambda conn: G.record_projection(conn, owner(request), gid))
+
+    @app.get("/api/wealth/goals/{gid}/projections")
+    async def api_wealth_goal_projections(gid: str, request: Req):
+        return run(lambda conn: G.projections(conn, owner(request), gid))
+
+    @app.get("/api/wealth/goals/{gid}/events")
+    async def api_wealth_goal_events(gid: str, request: Req):
+        return run(lambda conn: G.events(conn, owner(request), gid))
 
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)

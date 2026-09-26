@@ -798,6 +798,29 @@ WEALTH_TABLES = {
             liabilities REAL, invested_cost REAL, by_class_json TEXT, positions INTEGER, created_at TIMESTAMP,
             PRIMARY KEY (tenant_id, owner_id, date))""",
     ),
+    # W13 Goal planning
+    "wealth_goal": (
+        """CREATE TABLE IF NOT EXISTS wealth_goal (
+            goal_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, name TEXT NOT NULL,
+            goal_type TEXT NOT NULL, priority TEXT NOT NULL, target_amount REAL, target_date DATE NOT NULL,
+            inflation_pct REAL, current_amount REAL, linked_json TEXT, monthly_contribution REAL, step_up_pct REAL,
+            expected_return_pct REAL, volatility_pct REAL, retirement_monthly_expense REAL, years_in_retirement REAL,
+            post_retirement_return_pct REAL, emergency_months REAL, notes TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_goal_owner ON wealth_goal(tenant_id, owner_id, status)",
+    ),
+    "wealth_goal_event": (
+        """CREATE TABLE IF NOT EXISTS wealth_goal_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL, at TIMESTAMP, kind TEXT NOT NULL, details_json TEXT, actor TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_wealth_goal_event ON wealth_goal_event(goal_id, id)",
+    ),
+    "wealth_goal_projection": (
+        """CREATE TABLE IF NOT EXISTS wealth_goal_projection (
+            goal_id TEXT NOT NULL, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, as_of DATE NOT NULL,
+            status TEXT, success_probability REAL, projected REAL, future_target REAL, gap REAL, result_json TEXT,
+            methodology_version TEXT, created_at TIMESTAMP, PRIMARY KEY (goal_id, as_of))""",
+    ),
 }
 
 # Columns added after a table first shipped (applied by get_connection with

@@ -71,7 +71,7 @@ DNA_HTML = r"""
 <h2>Questionnaire <span class="muted" id="dna_qv"></span></h2>
 <p class="muted">Answer once; re-take it whenever your situation changes. Every answer and score is kept as a version.</p>
 <form id="dna_form" onsubmit="return false"></form>
-<div class="row" style="margin:8px 0"><button onclick="dnaPreview()">Preview</button><button class="primary" onclick="dnaSave()">Save profile</button></div>
+<div class="row" style="margin:8px 0"><button onclick="dnaPreview()">Preview</button><button class="primary" onclick="dnaSave()">Save profile</button><button onclick="dnaRefresh()" title="re-score your saved answers; risk requirement then comes from your goals">Refresh from goals</button></div>
 <h2>History</h2><div id="dna_hist"></div>
 """
 
@@ -113,6 +113,7 @@ function dnaForm(answers){
 function dnaAnswers(){const a={};for(const q of DNAQ.questions){const el=document.querySelector(`#dna_form [name="${q.id}"]`);if(el&&el.value!=='')a[q.id]=q.type==='number'?Number(el.value):el.value}return a}
 async function dnaPreview(){try{const p=await post('/api/wealth/dna/preview',{answers:dnaAnswers()});dnaRender(p);msg('dna_msg','Preview only — not saved.')}catch(e){msg('dna_msg',e.message,1)}}
 async function dnaSave(){try{const p=await post('/api/wealth/dna',{answers:dnaAnswers()});dnaRender(p);msg('dna_msg','Saved as version '+p.version+'.');dnaHist()}catch(e){msg('dna_msg',e.message,1)}}
+async function dnaRefresh(){try{const p=await post('/api/wealth/dna/refresh');dnaRender(p);msg('dna_msg','Re-scored as version '+p.version+' (risk requirement from '+p.requirement_source+').');dnaHist()}catch(e){msg('dna_msg',e.message,1)}}
 async function dnaHist(){const H=await j('/api/wealth/dna/history');document.getElementById('dna_hist').innerHTML=table(['Version','Band','#Risk score','Questionnaire','Methodology','Saved'],H.map(h=>`<tr><td>${h.version}</td><td>${esc(h.band)}</td><td class="n">${num(h.risk_score,1)}</td><td>${esc(h.questionnaire_version)}</td><td>${esc(h.methodology_version)}</td><td>${esc(String(h.created_at).slice(0,16))}</td></tr>`))}
 LOADERS.dna=async()=>{
   if(!DNAQ){DNAQ=await j('/api/wealth/dna/questionnaire');document.getElementById('dna_qv').textContent=DNAQ.version+' · '+DNAQ.methodology}
@@ -123,8 +124,8 @@ LOADERS.dna=async()=>{
 
 def _tabs():
     """(id, title, html, js); later waves add a module under dashboard/wealth_ui/."""
-    from dashboard.wealth_ui import wealth_tab
-    return [wealth_tab.TAB, ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
+    from dashboard.wealth_ui import goals_tab, wealth_tab
+    return [wealth_tab.TAB, goals_tab.TAB, ("dna", "Investor DNA", DNA_HTML, DNA_JS)]
 
 FOOT = r"""
 <p class="disc">⚠️ ATIP is for personal informational use only and is not SEBI-registered investment advice. Every figure is a model output from the data and assumptions shown. Nothing on this page places an order. NPS, FDs, tax, insurance and mutual funds are outside ATIP's scope.</p>
