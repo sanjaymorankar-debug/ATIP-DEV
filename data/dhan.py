@@ -586,7 +586,12 @@ VIX_SYMBOL = "INDIAVIX"  # India VIX's daily close, stored the same way as NIFTY
 # trading symbol there, these are not.
 INDEX_SERIES_SYMBOLS = {"nifty50": BETA_BENCHMARK_SYMBOL, "india_vix": VIX_SYMBOL,
                         "banknifty": "NIFTYBANK", "midcap150": "NIFTYMIDCAP150",
-                        "smallcap250": "NIFTYSMLCAP250"}
+                        "smallcap250": "NIFTYSMLCAP250",
+                        # W21 (DP-13): sector index history; none collides with a stock symbol
+                        # in prices_daily (checked 2026-09-27)
+                        "nifty_it": "NIFTYIT", "nifty_pharma": "NIFTYPHARMA", "nifty_auto": "NIFTYAUTO",
+                        "nifty_fmcg": "NIFTYFMCG", "nifty_metal": "NIFTYMETAL", "nifty_realty": "NIFTYREALTY",
+                        "nifty_psubank": "NIFTYPSUBANK", "nifty_energy": "NIFTYENERGY"}
 
 def _store_benchmark_rows(conn, symbol, dates, closes, source="dhan_index") -> int:
     """
@@ -1067,6 +1072,23 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                     log.warning(f"  {sym}: Dhan reports {shifted} stored closes more than 1% "
                                 f"differently — a corporate action not in corporate_actions? "
                                 f"The rows before this window were not re-based.")
+            else:
+                # W21 (DP-03): intraday bars used to be fetched and dropped. Stored as
+                # returned (raw basis); retention in db/purge.py (short tables).
+                now_ts = datetime.now()
+                for _, row in df.iterrows():
+                    ts = row.get("datetime")
+                    if ts is None or pd.isna(ts):
+                        continue
+                    conn.execute("""
+                        INSERT INTO intraday_bars (symbol,ts,interval_min,open,high,low,close,volume,source,created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(symbol,interval_min,ts) DO UPDATE SET open=excluded.open, high=excluded.high,
+                            low=excluded.low, close=excluded.close, volume=excluded.volume
+                    """, (sym, pd.to_datetime(ts).strftime("%Y-%m-%d %H:%M:%S"), int(interval_min),
+                          row.get("open"), row.get("high"), row.get("low"), row.get("close"),
+                          int(row.get("volume") or 0), "dhan", now_ts))
+                    count += 1
 
             # Commit every 10 symbols
             if (i + 1) % 10 == 0:

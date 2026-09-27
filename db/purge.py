@@ -40,6 +40,8 @@ LONG_RETENTION_TABLES = {
     "accuracy_tracker":     "pred_date",
     "portfolio_holdings":   "date",
     "bulk_deals":           "date",
+    "technical_ext":        "date",      # W21
+    "sector_breadth":       "date",      # W21
 }
 
 SHORT_RETENTION_TABLES = {
@@ -49,6 +51,7 @@ SHORT_RETENTION_TABLES = {
     "pipeline_log":   "run_date",
     "live_quotes":    "timestamp",
     "live_ticks":     "received_at",
+    "intraday_bars":  "ts",              # W21 (DP-03)
 }
 
 DEFAULT_LONG_DAYS  = 600

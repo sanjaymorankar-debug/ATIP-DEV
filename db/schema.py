@@ -121,7 +121,8 @@ def _run_additive_migrations(conn):
     _migrate_pipeline_log_columns(conn)
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
-                       **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES}.items():
+                       **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
+                       **W21_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -891,6 +892,39 @@ WEALTH_TABLES = {
         """CREATE TABLE IF NOT EXISTS wealth_preference (
             tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT, updated_at TIMESTAMP,
             PRIMARY KEY (tenant_id, owner_id, key))""",
+    ),
+}
+
+# ── Tables added in W21 (data & technical analysis) ─────────────────────────
+W21_TABLES = {
+    # DP-03: intraday bars the 30-minute job fetched and used to discard
+    "intraday_bars": (
+        """CREATE TABLE IF NOT EXISTS intraday_bars (
+            symbol TEXT NOT NULL, ts TIMESTAMP NOT NULL, interval_min INTEGER NOT NULL, open REAL, high REAL,
+            low REAL, close REAL, volume INTEGER, source TEXT DEFAULT 'dhan', created_at TIMESTAMP,
+            PRIMARY KEY (symbol, interval_min, ts))""",
+        "CREATE INDEX IF NOT EXISTS idx_intraday_bars_ts ON intraday_bars(ts)",
+    ),
+    # TA-03/04/06/09/10/11, SC-16: data/technical_ext.py
+    "technical_ext": (
+        """CREATE TABLE IF NOT EXISTS technical_ext (
+            symbol TEXT NOT NULL, date DATE NOT NULL,
+            vwap_20d REAL, vwap_session REAL, vwap_dev_pct REAL, vp_poc REAL, vp_vah REAL, vp_val REAL, vp_basis TEXT,
+            sr_support REAL, sr_support_touches INTEGER, sr_support_dist_pct REAL, sr_resistance REAL,
+            sr_resistance_touches INTEGER, sr_resistance_dist_pct REAL, beta_60 REAL, beta_downside REAL,
+            beta_long REAL, beta_long_sessions INTEGER, bri REAL, weekly_rsi REAL, weekly_trend TEXT,
+            monthly_trend TEXT, mtf_alignment INTEGER, supertrend REAL, supertrend_dir INTEGER,
+            ichimoku_tenkan REAL, ichimoku_kijun REAL, ichimoku_span_a REAL, ichimoku_span_b REAL,
+            keltner_upper REAL, keltner_lower REAL, donchian_upper REAL, donchian_lower REAL, mfi_14 REAL,
+            cmf_20 REAL, roc_10 REAL, aroon_up REAL, aroon_down REAL, psar REAL, created_at TIMESTAMP,
+            PRIMARY KEY (symbol, date))""",
+        "CREATE INDEX IF NOT EXISTS idx_technical_ext_date ON technical_ext(date)",
+    ),
+    # DP-13: data/market_series.py
+    "sector_breadth": (
+        """CREATE TABLE IF NOT EXISTS sector_breadth (
+            date DATE NOT NULL, sector TEXT NOT NULL, stocks INTEGER, pct_advancing REAL, avg_return_pct REAL,
+            pct_above_50dma REAL, pct_above_200dma REAL, created_at TIMESTAMP, PRIMARY KEY (date, sector))""",
     ),
 }
 

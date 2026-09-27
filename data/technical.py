@@ -230,6 +230,15 @@ def compute_indicators(symbol, df):
         if all([r.get("bb_upper"),r.get("bb_lower"),r.get("bb_mid")]):
             r["bb_width"]=round((r["bb_upper"]-r["bb_lower"])/r["bb_mid"]*100,3)
 
+    # TA-11: stoch / Williams %R / CCI had columns and a wrapper but were never computed
+    st=_step(symbol,"stoch",lambda: ta.stoch(high,low,close,k=14,d=3))
+    if st is not None and not getattr(st,"empty",True):
+        r["stoch_k"]=safe_val(st.iloc[-1,0]); r["stoch_d"]=safe_val(st.iloc[-1,1])
+    wr=_step(symbol,"willr",lambda: ta.willr(high,low,close,length=14))
+    if wr is not None: r["williams_r"]=safe_val(wr.iloc[-1])
+    cci=_step(symbol,"cci",lambda: ta.cci(high,low,close,length=20))
+    if cci is not None: r["cci_20"]=safe_val(cci.iloc[-1])
+
     obv=_step(symbol,"obv",lambda: ta.obv(close,vol))
     if obv is not None: r["obv"]=safe_val(obv.iloc[-1])
 
@@ -331,6 +340,13 @@ def compute_tech_score(ind):
         scores["Gap"]=round(max(0.0,min(100.0,(60+gap*10) if abs(gap)<=2 else (30-abs(gap)*2))),2)
     rv=ind.get("rel_volume")
     if rv: scores["RelativeVolume"]=round(min(rv*50,100),2)
+    # W21 (TA-03): VWAP now exists (data/technical_ext.py). It joins the score only
+    # when config technical.vwap_in_score is true -- switching it on changes every
+    # Technical Score, and so ATIP scores and signals, so it is the owner's call.
+    if _vwap_in_score() and ind.get("vwap_dev_pct") is not None:
+        from data.technical_ext import vwap_score
+        vs=vwap_score(ind)
+        if vs is not None: scores["VWAP"]=round(vs,2)
     if not scores: return 50.0
     # Weights now match the doc's Technical Score formula. VWAP is the only
     # component still missing — it needs intraday bars, not daily OHLC — so its
@@ -350,6 +366,16 @@ _TECH_WEIGHTS_FALLBACK={"RSI":0.10,"MACD":0.10,"ADX":0.10,"ATR":0.08,"EMA":0.08,
                         "Bollinger":0.08,"Volume":0.08,"Trend":0.08,"SR":0.08,
                         "Gap":0.07,"RelativeVolume":0.07}
 _TECH_WEIGHTS_CACHE=None
+
+
+def _vwap_in_score():
+    try:
+        import json
+        from pathlib import Path
+        cfg=json.loads((Path("atip_data")/"config.json").read_text(encoding="utf-8"))
+        return (cfg.get("technical") or {}).get("vwap_in_score") is True
+    except Exception:
+        return False
 
 def _tech_weights():
     """
@@ -378,11 +404,35 @@ def _tech_weights():
     _TECH_WEIGHTS_CACHE=dict(_TECH_WEIGHTS_FALLBACK)
     return _TECH_WEIGHTS_CACHE
 
-def run_technical_pipeline(trade_date=None, symbol=None):
+def _ext_row(conn, sym, df, bench, trade_date):
+    """W21: extended technicals (data/technical_ext.py) for one symbol -> technical_ext."""
+    from data.technical_ext import COLUMNS, compute
+    bars=None
+    try:
+        b=pd.read_sql("SELECT ts, open, high, low, close, volume FROM intraday_bars WHERE symbol=? AND ts<=? AND "
+                      "ts>=date(?, '-30 days') ORDER BY ts", conn, params=(sym, f"{trade_date} 23:59:59", str(trade_date)))
+        if not b.empty:
+            b["datetime"]=pd.to_datetime(b["ts"]); bars=b
+    except Exception:
+        bars=None
+    ext=compute(df, bench, bars)
+    if not ext: return {}
+    cols=list(COLUMNS)
+    conn.execute(f"INSERT INTO technical_ext (symbol,date,{','.join(cols)},created_at) VALUES "
+                 f"({','.join(['?']*(len(cols)+3))}) ON CONFLICT(symbol,date) DO UPDATE SET "
+                 + ",".join(f"{c}=excluded.{c}" for c in cols+["created_at"]),
+                 [sym,str(trade_date)]+[ext.get(c) for c in cols]+[datetime.now()])
+    return ext
+
+
+def run_technical_pipeline(trade_date=None, symbol=None, symbols=None):
     if trade_date is None: trade_date=date.today()
     conn=get_connection(); result={"date":str(trade_date),"rows":0,"status":"SUCCESS"}
     try:
+        bench=pd.read_sql("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date<=? ORDER BY date",
+                          conn,params=(str(trade_date),))
         if symbol: symbols=[symbol]
+        elif symbols: symbols=list(symbols)
         else:
             rows=conn.execute("SELECT DISTINCT symbol FROM prices_daily WHERE date<=? ORDER BY symbol",(str(trade_date),)).fetchall()
             symbols=[r["symbol"] for r in rows]
@@ -390,11 +440,20 @@ def run_technical_pipeline(trade_date=None, symbol=None):
         count=0
         for sym in symbols:
             try:
-                df=pd.read_sql("SELECT date,open,high,low,close,adj_close,volume FROM prices_daily WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 260",
+                df=pd.read_sql("SELECT date,open,high,low,close,adj_close,volume FROM prices_daily WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 520",
                                conn,params=(sym,str(trade_date)))
                 if df.empty or len(df)<14: continue
-                df=df.sort_values("date"); ind=compute_indicators(sym,df)
+                df=df.sort_values("date")
+                full=df.reset_index(drop=True)
+                df=full.tail(260)                     # the classic indicators keep their 260-bar window
+                ind=compute_indicators(sym,df)
                 if not ind: continue
+                try:
+                    ext=_ext_row(conn,sym,full,bench,trade_date)      # W21: needs the longer window
+                    if ext.get("vwap_dev_pct") is not None: ind["vwap_dev_pct"]=ext["vwap_dev_pct"]
+                except Exception as e:
+                    _FAILED_INDICATORS["technical_ext"]=_FAILED_INDICATORS.get("technical_ext",0)+1
+                    log.debug(f"  {sym} technical_ext: {e}")
                 ind["tech_score"]=compute_tech_score(ind)
                 fields=["rsi_14","stoch_k","stoch_d","williams_r","cci_20","macd_line","macd_signal","macd_hist","macd_hist_pct","adx_14",
                         "ema_9","ema_21","ema_50","sma_200","atr_14","atr_pct","bb_upper","bb_lower","bb_mid","bb_width",
@@ -430,9 +489,42 @@ def run_technical_pipeline(trade_date=None, symbol=None):
     finally: conn.close()
     return result
 
+def backfill(sessions=426, universe="tracked", resume=True):
+    """TA-12: the full-history indicator panel. Runs run_technical_pipeline for every
+    NIFTY50 session in the last `sessions`, oldest first; with resume, a session that
+    already has technical_ext rows for most of the universe is skipped, so an interrupted
+    run continues where it stopped. Heavy (hours for the whole market): run it off-hours,
+    and against a copy first."""
+    conn=get_connection()
+    try:
+        days=[r[0] for r in conn.execute("SELECT date FROM prices_daily WHERE symbol='NIFTY50' ORDER BY date DESC LIMIT ?",
+                                         (int(sessions),))][::-1]
+        syms=None
+        if universe=="tracked":
+            try:
+                from data.dhan import get_tracked_symbols
+                syms=get_tracked_symbols(conn)
+            except Exception as e:
+                log.warning(f"  tracked universe unavailable ({e}); using every symbol")
+        done=0; skipped=0
+        for d in days:
+            if resume and syms:
+                have=conn.execute("SELECT COUNT(*) FROM technical_ext WHERE date=?",(str(d)[:10],)).fetchone()[0]
+                if have>=0.9*len(syms):
+                    skipped+=1; continue
+            run_technical_pipeline(datetime.strptime(str(d)[:10],"%Y-%m-%d").date(), symbols=syms); done+=1
+    finally:
+        conn.close()
+    return {"sessions_run":done,"sessions_skipped":skipped,"universe":len(syms) if syms else "all"}
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     ap=argparse.ArgumentParser(); ap.add_argument("--date"); ap.add_argument("--symbol")
+    ap.add_argument("--backfill",type=int,metavar="SESSIONS",help="TA-12: compute every stored session back this far")
+    ap.add_argument("--all-symbols",action="store_true",help="with --backfill: every prices_daily symbol, not the tracked universe")
     args=ap.parse_args()
-    td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else date.today()
-    run_technical_pipeline(td, args.symbol)
+    if args.backfill:
+        print(backfill(args.backfill, None if args.all_symbols else "tracked"))
+    else:
+        td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else date.today()
+        run_technical_pipeline(td, args.symbol)

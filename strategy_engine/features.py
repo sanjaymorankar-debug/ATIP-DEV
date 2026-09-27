@@ -371,3 +371,41 @@ def compute(name, ctx):
             return None
         return stock - (b1 / b0 - 1) * 100
     return None
+
+
+# -- W21 extended technicals (data/technical_ext.py) as strategy features -----
+# Computed from ctx.bars (and ctx.benchmark for the beta family) exactly like the
+# built-ins, so live decisions and backtests see the same value. One computation
+# per context, cached.
+TA_EXT_FEATURES = {
+    "supertrend_dir": ("supertrend_dir", ("bars",)),        # +1 up / -1 down
+    "mtf_alignment": ("mtf_alignment", ("bars",)),          # -3..+3 daily / weekly / monthly
+    "sr_support_dist_pct": ("sr_support_dist_pct", ("bars",)),
+    "sr_resistance_dist_pct": ("sr_resistance_dist_pct", ("bars",)),
+    "mfi_14": ("mfi_14", ("bars",)),
+    "cmf_20": ("cmf_20", ("bars",)),
+    "aroon_up": ("aroon_up", ("bars",)),
+    "aroon_down": ("aroon_down", ("bars",)),
+    "vwap_dev_pct": ("vwap_dev_pct", ("bars",)),
+    "beta_60": ("beta_60", ("bars", "benchmark")),
+    "beta_downside": ("beta_downside", ("bars", "benchmark")),
+    "bri": ("bri", ("bars", "benchmark")),
+}
+
+
+def _ta_ext(ctx) -> dict:
+    if "_ta_ext" not in ctx._cache:
+        try:
+            import pandas as pd
+            from data.technical_ext import compute as _tx
+            df = pd.DataFrame([{"date": b.date, "open": b.open, "high": b.high, "low": b.low, "close": b.close,
+                                "volume": b.volume} for b in ctx.bars[-520:]])
+            bench = pd.DataFrame(sorted(ctx.benchmark.items()), columns=["date", "close"]) if ctx.benchmark else None
+            ctx._cache["_ta_ext"] = _tx(df, bench) if len(df) >= 20 else {}
+        except Exception:
+            ctx._cache["_ta_ext"] = {}
+    return ctx._cache["_ta_ext"]
+
+
+for _name, (_col, _inputs) in TA_EXT_FEATURES.items():
+    register_feature(_name, (lambda c, _c=_col: _ta_ext(c).get(_c)), _inputs)

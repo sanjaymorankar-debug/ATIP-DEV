@@ -734,6 +734,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 4:45 PM — Compute 35 technical indicators
     from data.technical import run_technical_pipeline
     run_job("technical_indicators", run_technical_pipeline, td)
+    # W21: GIFT Nifty daily close + sector breadth (DP-11 / DP-13)
+    try:
+        from data.market_series import run_scheduled as run_market_series
+        run_job("market_series", run_market_series, td)
+    except Exception as e:
+        log.warning(f"  Market series: {e}")
 
     # 5:00 PM — Run all 9 AI scoring indexes
     # (this also writes today's predictions — entry/SL/targets/size — which is
