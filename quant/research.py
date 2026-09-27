@@ -120,6 +120,59 @@ def factor_correlation(conn, keys, as_of) -> dict:
     return out
 
 
+def backfill_scores(conn, sessions=250, factor_ids=None, universe="tracked_current", resume=True) -> dict:
+    """QR-01..03 need history: compute factor scores for each of the last `sessions`
+    NIFTY50 sessions (quant.engine.compute). Resumable: a session that already has
+    scores for every requested factor is skipped. Heavy; run off-hours, copy first."""
+    from quant import engine as EN
+    from quant import factors as FX
+    ids = list(factor_ids or FX.BUILTIN_SET)
+    keys = [FX.get(f).key for f in ids]
+    days = [r[0] for r in conn.execute("SELECT date FROM prices_daily WHERE symbol='NIFTY50' ORDER BY date DESC "
+                                       "LIMIT ?", (int(sessions),))][::-1]
+    done = skipped = 0
+    for d in days:
+        if resume:
+            have = {r[0] for r in conn.execute("SELECT DISTINCT factor_key FROM quant_factor_score WHERE as_of=?",
+                                               (str(d)[:10],))}
+            if set(keys) <= have:
+                skipped += 1
+                continue
+        EN.compute(conn, d, ids, universe)
+        done += 1
+    return {"sessions_computed": done, "sessions_skipped": skipped, "factors": len(ids)}
+
+
+def research_report(conn, start, end, keys=None, horizon=5, redundancy=0.7) -> dict:
+    """IC (QR-01), IC decay (QR-02) for every factor with stored scores in the period,
+    and the redundancy report (QR-03): pairs whose cross-sectional correlation on the
+    last date is at least `redundancy`. Everything is stored in quant_factor_research."""
+    if keys is None:
+        keys = [r[0] for r in conn.execute("SELECT DISTINCT factor_key FROM quant_factor_score WHERE kind='factor' "
+                                           "AND as_of BETWEEN ? AND ?", (str(start), str(end)))]
+    rows = []
+    for k in sorted(keys):
+        ic = factor_ic(conn, k, start, end, horizon)
+        dec = ic_decay(conn, k, start, end)
+        rows.append({"factor_key": k, "mean_ic": ic.get("mean_ic"), "t_stat": ic.get("t_stat"),
+                     "hit_rate": ic.get("hit_rate"), "dates": ic.get("dates"),
+                     "ic_by_horizon": dec["mean_ic_by_horizon"]})
+    last = conn.execute("SELECT MAX(as_of) FROM quant_factor_score WHERE as_of<=?", (str(end),)).fetchone()[0]
+    pairs = []
+    if last and len(keys) > 1:
+        m = factor_correlation(conn, sorted(keys), last)
+        ks = sorted(keys)
+        for i, a in enumerate(ks):
+            for b in ks[i + 1:]:
+                v = m[a].get(b)
+                if v is not None and abs(v) >= redundancy:
+                    pairs.append({"a": a, "b": b, "correlation": round(v, 3)})
+    rep = {"period": f"{start}..{end}", "horizon": horizon, "factors": rows, "redundant_pairs": pairs,
+           "correlation_date": str(last)[:10] if last else None, "redundancy_threshold": redundancy}
+    _store(conn, "__report__", "research_report", start, end, rep)
+    return rep
+
+
 def _store(conn, key, kind, start, end, payload):
     conn.execute("INSERT INTO quant_factor_research (factor_key,kind,start_date,end_date,result_json,created_at) "
                  "VALUES (?,?,?,?,?,?)", (key, kind, str(start), str(end), json.dumps(payload, default=str),

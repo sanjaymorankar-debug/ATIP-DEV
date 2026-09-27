@@ -276,6 +276,37 @@ FACTORS = [
     FactorDef("growth_consistency", "growth consistency", "growth", "1 / (1 + stdev of the last 4 revenue growths)",
               "1/(1+sd(revenue_growth_yoy[-4:]))", ("fundamentals",), 4, _growth_consistency, data_dependency=FUND),
 ]
+# W22 (AF-04): the families that lived only inside the ATIP composites (VPI's mean
+# reversion, MRI's trend / volume, RRI's recovery) plus the W21 technicals, as
+# standalone, individually researchable factors. All read W3 features, so they are
+# point in time and need no new data.
+FACTORS += [
+    FactorDef("mr_rsi_14", "RSI mean reversion", "mean_reversion", "50 - RSI(14): oversold scores high",
+              "50 - rsi_14", ("bars",), 15, lambda c: (50 - c.feat("rsi_14")) if c.feat("rsi_14") is not None else None),
+    FactorDef("mr_zscore_20", "20-session z-score reversion", "mean_reversion",
+              "minus the 20-session z-score of the close", "-zscore_20", ("bars",), 20,
+              lambda c: -c.feat("zscore_20") if c.feat("zscore_20") is not None else None),
+    FactorDef("trend_adx_14", "trend strength", "trend", "Wilder ADX(14)", "adx_14", ("bars",), 29,
+              lambda c: c.feat("adx_14")),
+    FactorDef("trend_dist_200", "distance from the 200-session average", "trend", "close / sma_200 - 1",
+              "close/sma_200-1", ("bars",), 200,
+              lambda c: (c.feat("close") / c.feat("sma_200") - 1) if c.feat("sma_200") else None),
+    FactorDef("trend_mtf", "multi-timeframe alignment", "trend", "daily / weekly / monthly trend agreement -3..+3",
+              "W21 mtf_alignment", ("bars",), 220, lambda c: c.feat("mtf_alignment")),
+    FactorDef("trend_supertrend", "Supertrend direction", "trend", "Supertrend(10,3) direction +1 / -1",
+              "W21 supertrend_dir", ("bars",), 30, lambda c: c.feat("supertrend_dir")),
+    FactorDef("volume_ratio_20", "relative volume", "volume", "volume / mean of the previous 20 sessions",
+              "vol_ratio_20", ("bars",), 21, lambda c: c.feat("vol_ratio_20")),
+    FactorDef("volume_mfi_14", "money flow index", "volume", "MFI(14)", "W21 mfi_14", ("bars",), 15,
+              lambda c: c.feat("mfi_14")),
+    FactorDef("volume_cmf_20", "Chaikin money flow", "volume", "CMF(20): accumulation vs distribution",
+              "W21 cmf_20", ("bars",), 20, lambda c: c.feat("cmf_20")),
+    FactorDef("recovery_range_252", "recovery from the 52-week low", "recovery",
+              "position in the 252-session high-low range (0 = at the low)", "range_pos_252", ("bars",), 252,
+              lambda c: c.feat("range_pos_252")),
+    FactorDef("risk_bri", "Beta Risk Index", "risk", "W21 BRI 0-100 (higher = riskier)", "W21 bri",
+              ("bars", "benchmark"), 250, lambda c: c.feat("bri"), direction=-1),
+]
 REGISTRY = {f.factor_id: f for f in FACTORS}
 CATEGORIES = sorted({f.category for f in FACTORS})
 BUILTIN_SET = [f.factor_id for f in FACTORS if not f.data_dependency or f.data_dependency == FUND]

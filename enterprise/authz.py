@@ -76,6 +76,12 @@ ROUTE_RULES = [
     ("POST", r"^/api/ml/models/[^/]+/(activate|pause|lifecycle)$", "ml:lifecycle"),
     ("GET", r"^/api/ml", "ml:read"),
     ("*", r"^/api/ml", "ml:write"),
+    # W22 research platform
+    ("POST", r"^/api/quant/approvals/", "strategy:lifecycle"),
+    ("POST", r"^/api/quant/research-report$", "research:run"),
+    ("GET", r"^/api/research/", "research:read"),
+    ("*", r"^/api/research/", "research:run"),
+    ("GET", r"^/api/(formulas|scores/components)", "strategy:read"),
     # W6 quant
     ("POST", r"^/api/quant/(research|experiments)", "research:run"),
     ("GET", r"^/api/quant", "quant:read"),

@@ -42,6 +42,7 @@ LONG_RETENTION_TABLES = {
     "bulk_deals":           "date",
     "technical_ext":        "date",      # W21
     "sector_breadth":       "date",      # W21
+    "score_components":     "date",      # W22
 }
 
 SHORT_RETENTION_TABLES = {

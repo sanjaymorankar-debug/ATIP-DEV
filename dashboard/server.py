@@ -1512,6 +1512,10 @@ if HAS_FASTAPI:
     from dashboard.quant_routes import register as _register_quant_routes
     _register_quant_routes(app, _guard, _Req, get_connection, json_safe)
 
+    # ── Research platform: factor approval, studies, formulas (W22) ───────
+    from dashboard.research_routes import register as _register_research_routes
+    _register_research_routes(app, _guard, _Req, get_connection, json_safe)
+
     # ── Wealth track: investor DNA, wealth, goals, allocation ... (W11-W17)
     from dashboard.wealth_routes import register as _register_wealth_routes
     _register_wealth_routes(app, _guard, _Req, get_connection, json_safe)

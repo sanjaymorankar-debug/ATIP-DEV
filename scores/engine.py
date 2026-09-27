@@ -15,7 +15,12 @@ def minmax(val, mn, mx, invert=False):
     s=max(0.0,min(100.0,(val-mn)/(mx-mn)*100))
     return round(100.0-s if invert else s,2)
 
-def weighted_score(components, weights):
+_CAPTURE=None   # W22 (AF-03): {label: {"components", "weights"}} while a symbol is scored
+
+def weighted_score(components, weights, label=None):
+    if _CAPTURE is not None and label:
+        _CAPTURE[label]={"components":{k:float(v) for k,v in components.items() if v is not None},
+                         "weights":dict(weights)}
     total_w=total_s=0.0
     for k,w in weights.items():
         v=components.get(k)
@@ -378,7 +383,7 @@ def compute_ins(fii,fund,bulk,weights):
     bulk_net=bulk.get("net_value_cr") if bulk else None
     if bulk_net is not None: c["BulkDeals"]=minmax(bulk_net,-50,50)
     if not c: return None
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"INS"),2)
 
 def compute_vpi(tech,prices,fund,inst,ns,weights,rs=None,liquidity=None):
     c={}
@@ -397,7 +402,7 @@ def compute_vpi(tech,prices,fund,inst,ns,weights,rs=None,liquidity=None):
         net=(inst.get("fii_net_cr",pd.Series([0])).sum()+(inst.get("dii_net_cr",pd.Series([0])).sum()))
         c["IS"]=minmax(float(net),-500,500)
     c["NS"]=ns
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"VPI"),2)
 
 def compute_mri(tech,ns,weights):
     c={}
@@ -416,7 +421,7 @@ def compute_mri(tech,ns,weights):
     e9,e21=tech.get("ema_9"),tech.get("ema_21")
     if e9 and e21: c["EMA"]=75 if e9>e21 else 30
     c["News"]=ns
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"MRI"),2)
 
 def compute_rri(tech,prices,inst,ns,weights):
     c={}
@@ -432,7 +437,7 @@ def compute_rri(tech,prices,inst,ns,weights):
         c["Institutional"]=minmax(float(dii),-200,500)
     c["Support"]=80 if tech.get("above_200dma") else 30
     c["News"]=ns
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"RRI"),2)
 
 def compute_cri(tech,fund,ns,mh,weights):
     c={}
@@ -453,7 +458,7 @@ def compute_cri(tech,fund,ns,mh,weights):
     if vix is not None and vix>18: mw+=30
     if vix is not None and vix>25: mw+=20
     c["MarketWeakness"]=min(mw,100)
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"CRI"),2)
 
 # ZPI's "Institutional -- Accumulation 10d" component. It used to read
 # institutional_data, which nothing has ever populated (there is no free
@@ -510,7 +515,7 @@ def compute_zpi(tech,inst,ns,sector_val,weights,accumulation=None):
         c["Institutional"]=accumulation   # delivery-based -- see compute_delivery_accumulation()
     c["News"]=ns
     c["Sector"]=sector_val  # real per-day industry-relative-performance score — see compute_sector_ranks()/sector_score()
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"ZPI"),2)
 
 # Below this share of the MH weight present, no MH score or regime is stored:
 # a "market health" from one or two inputs is not the index the weights define.
@@ -680,7 +685,7 @@ def compute_acs(sym,td,all_scores,mh,conn,weights,liquidity=None,news_conf=None)
     nc=news_conf if news_conf is not None else get_news_confidence(sym,td,conn)
     if nc is not None: c["NewsConfidence"]=nc
     if liquidity is not None: c["Liquidity"]=liquidity
-    return round(weighted_score(c,weights),2)
+    return round(weighted_score(c,weights,"ACS"),2)
 
 # ── Decision Engine thresholds ─────────────────────────────────────────────
 # Pulled out of determine_signal() so the gates are reviewable and tunable in
@@ -763,7 +768,14 @@ def run_scoring_pipeline(trade_date=None):
         bench_prices=get_prices(BETA_BENCHMARK_SYMBOL,trade_date,conn,n=30)
         sector_rank_map,n_sectors=compute_sector_ranks(conn,trade_date,symbols)
         count=0; all_scores_list=[]
+        global _CAPTURE
+        try:
+            from scores.formulas import record as _record_formula
+            result["formula"]=_record_formula(conn)          # W22 (SC-18)
+        except Exception as e:
+            log.warning(f"  formula registry: {e}")
         for sym in symbols:
+            _CAPTURE={}
             try:
                 tech=get_tech(sym,trade_date,conn); prices=get_prices(sym,trade_date,conn)
                 fund=get_fund(sym,conn); inst=get_inst(sym,trade_date,conn)
@@ -786,10 +798,10 @@ def run_scoring_pipeline(trade_date=None):
                 acs=compute_acs(sym,trade_date,all_s,mh,conn,w_acs,liquidity=liquidity,news_conf=news_conf)
                 all_s["acs"]=acs
                 atip_comp={"VPI":vpi,"SPI":spi,"RRI":rri,"MRI":mri,"MSI":msi,"ZPI":zpi,"TS":ts,"FS":fund.get("fundamental_score"),"INS":ins}
-                atip_score=round(weighted_score({k:v for k,v in atip_comp.items() if v is not None},w_atip),2)
+                atip_score=round(weighted_score({k:v for k,v in atip_comp.items() if v is not None},w_atip,"ATIP"),2)
                 all_s["atip_score"]=atip_score
                 tod_comp={"VPI":vpi,"ZPI":zpi,"MRI":mri,"MSI":msi,"Volume":min((tech.get("volume_ratio",1) or 1)*40,100),"Breakout":breakout,"Sector":sector_val,"ACS":acs}
-                tod_score=round(weighted_score(tod_comp,w_tod),2)
+                tod_score=round(weighted_score(tod_comp,w_tod,"TOD"),2)
                 signal=determine_signal(all_s,mh)
                 # Display-only reference figure -- 1-year beta vs Nifty 50.
                 # Not fed into VPI/CRI/ZPI/ATIP or any other weighted score;
@@ -810,8 +822,15 @@ def run_scoring_pipeline(trade_date=None):
                     (sym,str(trade_date),vpi,spi,rri,mri,cri,msi,zpi,acs,ts,fund.get("fundamental_score"),ins,ns,atip_score,tod_score,signal,acs,beta_1y,mh.get("mh_score"),mh.get("regime"),
                      factors[0] if len(factors)>0 else None,factors[1] if len(factors)>1 else None,factors[2] if len(factors)>2 else None))
                 all_scores_list.append({"symbol":sym,"atip_score":atip_score,"cri":cri,"acs":acs,"zpi":zpi,"tod_score":tod_score})
+                try:
+                    from scores.formulas import store_components
+                    store_components(conn,sym,trade_date,_CAPTURE)     # W22 (AF-03)
+                except Exception as e:
+                    log.debug(f"  {sym} components: {e}")
                 count+=1
             except Exception as e: log.warning(f"  {sym}: {e}")
+            finally:
+                _CAPTURE=None
         if all_scores_list:
             df_s=pd.DataFrame(all_scores_list).sort_values("atip_score",ascending=False)
             for i,(_,row) in enumerate(df_s.iterrows()):

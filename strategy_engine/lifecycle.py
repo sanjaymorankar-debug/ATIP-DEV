@@ -106,6 +106,11 @@ def transition(conn, strategy_id: str, to_state: str, reason: str = "", evidence
     ok, note = _evidence(conn, strategy_id, version, to_state)
     if not ok:
         raise LifecycleError(f"{frm} -> {to_state} needs {note}")
+    if to_state in ("APPROVED", "ACTIVE"):
+        from quant.approval import strategy_gate           # W22 (AF-08), off unless configured
+        gok, gnote = strategy_gate(conn, strategy_id, version)
+        if not gok:
+            raise LifecycleError(f"{frm} -> {to_state} needs {gnote}")
     ev = dict(evidence or {})
     if note:
         ev.setdefault("check", note)

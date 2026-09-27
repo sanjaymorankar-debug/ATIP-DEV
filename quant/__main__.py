@@ -9,6 +9,10 @@
     python -m quant research KEY --start D --end D [--kind ic|ic_decay|quantiles] [--horizon 5]
     python -m quant events                               # sync market_event from corporate actions + bulk deals
     python -m quant micro [--date D]                     # intraday features from live_quotes
+    python -m quant backfill [--sessions 250]            # W22: factor scores for past sessions (resumable)
+    python -m quant report --start D --end D             # W22: IC / decay / redundancy for every factor
+    python -m quant approval KEY                         # W22: evidence check for a factor (AF-08)
+    python -m quant approve KEY --decision APPROVED|REJECTED|RETIRED [--reason ...]
 """
 
 import argparse
@@ -34,6 +38,11 @@ def main(argv=None):
     rs = sub.add_parser("research"); rs.add_argument("key"); rs.add_argument("--start", required=True)
     rs.add_argument("--end", required=True); rs.add_argument("--kind", default="ic"); rs.add_argument("--horizon", type=int, default=5)
     m = sub.add_parser("micro"); m.add_argument("--date")
+    bf = sub.add_parser("backfill"); bf.add_argument("--sessions", type=int, default=250)
+    rp = sub.add_parser("report"); rp.add_argument("--start", required=True); rp.add_argument("--end", required=True)
+    ev = sub.add_parser("approval"); ev.add_argument("key")
+    apd = sub.add_parser("approve"); apd.add_argument("key"); apd.add_argument("--decision", required=True)
+    apd.add_argument("--reason", default="")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -42,7 +51,18 @@ def main(argv=None):
     from quant.config import settings
     conn = get_connection()
     try:
-        if a.cmd == "sync":
+        if a.cmd == "backfill":
+            factors.sync(conn)
+            out = research.backfill_scores(conn, a.sessions, None, settings()["universe"])
+        elif a.cmd == "report":
+            out = research.research_report(conn, a.start, a.end)
+        elif a.cmd == "approval":
+            from quant import approval
+            out = approval.evaluate(conn, a.key)
+        elif a.cmd == "approve":
+            from quant import approval
+            out = approval.decide(conn, a.key, a.decision, a.reason, actor="cli")
+        elif a.cmd == "sync":
             out = {"factors": factors.sync(conn), "factor_set": factors.ensure_builtin_set(conn),
                    "composites": [c["name"] + "@" + c["version"] for c in composite.ensure_builtin(conn)]}
         elif a.cmd == "compute":

@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -925,6 +925,38 @@ W21_TABLES = {
         """CREATE TABLE IF NOT EXISTS sector_breadth (
             date DATE NOT NULL, sector TEXT NOT NULL, stocks INTEGER, pct_advancing REAL, avg_return_pct REAL,
             pct_above_50dma REAL, pct_above_200dma REAL, created_at TIMESTAMP, PRIMARY KEY (date, sector))""",
+    ),
+}
+
+# ── Tables added in W22 (factor research platform) ─────────────────────────
+W22_TABLES = {
+    "score_components": (                    # AF-03: the sub-factors of each ATIP index
+        """CREATE TABLE IF NOT EXISTS score_components (
+            symbol TEXT NOT NULL, date DATE NOT NULL, index_name TEXT NOT NULL, component TEXT NOT NULL,
+            value REAL, weight REAL, PRIMARY KEY (symbol, date, index_name, component))""",
+        "CREATE INDEX IF NOT EXISTS idx_score_components_date ON score_components(date, index_name)",
+    ),
+    "formula_registry": (                    # SC-18: weights_hash -> the weights it stood for
+        """CREATE TABLE IF NOT EXISTS formula_registry (
+            weights_hash TEXT PRIMARY KEY, weights_json TEXT NOT NULL, notes_json TEXT, code_version TEXT,
+            first_seen_at TIMESTAMP)""",
+    ),
+    "quant_factor_approval": (               # AF-08: append-only decision history
+        """CREATE TABLE IF NOT EXISTS quant_factor_approval (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, factor_key TEXT NOT NULL, decision TEXT NOT NULL, verdict TEXT,
+            evidence_json TEXT, reason TEXT, decided_at TIMESTAMP, decided_by TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_qfa_key ON quant_factor_approval(factor_key, id)",
+    ),
+    "research_study": (                      # DBS-07
+        """CREATE TABLE IF NOT EXISTS research_study (
+            study_id TEXT PRIMARY KEY, title TEXT NOT NULL, hypothesis TEXT NOT NULL, method TEXT, status TEXT NOT NULL,
+            outcome TEXT, conclusion TEXT, tags_json TEXT, supersedes TEXT, created_at TIMESTAMP,
+            updated_at TIMESTAMP, created_by TEXT, concluded_by TEXT)""",
+    ),
+    "research_link": (
+        """CREATE TABLE IF NOT EXISTS research_link (
+            study_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, note TEXT, added_at TIMESTAMP,
+            added_by TEXT, PRIMARY KEY (study_id, kind, ref))""",
     ),
 }
 
