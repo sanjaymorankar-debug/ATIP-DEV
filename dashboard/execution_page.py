@@ -9,6 +9,9 @@ The /trading page (W4): the minimum UI over the W4 API.
                blocked / review, with the failing check), exposure by sector
                and strategy
     Execution  orders (state, fills), fills, positions (book + per strategy)
+    Portfolio risk (W25, DB-17)  PAPER / LIVE book: VaR / ES (historical, parametric,
+               Monte Carlo; 1 and 10 days), concentration, risk contribution,
+               correlation heatmap, performance attribution, emergency exit
 
 Everything is read from /api/*; nothing here computes a result.
 """
@@ -32,11 +35,16 @@ button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 1
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 .scroll{max-height:360px;overflow:auto}.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
 .nav a{color:var(--accent);margin-right:14px;text-decoration:none}
+h3{font-size:12px;color:var(--muted);margin:12px 0 6px}.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.kpis{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:120px}
+.kpi b{display:block;font-size:15px}.kpi span{color:var(--muted);font-size:10.5px}
+select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+button.danger{background:var(--bad)}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Trading — risk &amp; execution (W4)</span></div>
 <div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#execution">Execution</a></div>
+<div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a></div>
 <h2 id="status">Status</h2><div id="st"></div>
 <div class="row"><button class="ghost" onclick="run(false)">Evaluate risk on pending intents</button>
 <button onclick="run(true)">Run paper cycle (risk + paper orders)</button><span id="msg" class="note"></span></div>
@@ -45,6 +53,16 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--tex
 <h2 id="risk">Risk limits</h2><div id="lim" class="scroll"></div>
 <h2>Risk decisions</h2><div id="rd" class="scroll"></div>
 <h2>Exposure (PAPER book)</h2><div id="exp"></div>
+<h2 id="prisk">Portfolio risk (W25)</h2>
+<div class="row">Book <select id="pbook" onchange="loadRisk()"><option>PAPER</option><option>LIVE</option></select>
+<button class="ghost" onclick="loadRisk()">Refresh</button><span id="pmsg" class="muted"></span></div>
+<div id="phead"></div>
+<div class="grid2"><div><h3>Value at risk / expected shortfall</h3><div id="pvar"></div></div>
+<div><h3>Concentration</h3><div id="pconc"></div></div></div>
+<h3>Risk contribution by position</h3><div id="prc" class="scroll"></div>
+<h3>Correlation</h3><div id="pcorr" class="scroll"></div>
+<h3>Performance attribution</h3><div id="pperf" class="scroll"></div>
+<h3>Emergency exit</h3><div id="pemx"></div>
 <h2 id="execution">Orders</h2><div id="ord" class="scroll"></div>
 <h2>Fills</h2><div id="fil" class="scroll"></div>
 <h2>Positions</h2><div id="pos" class="scroll"></div>
@@ -87,7 +105,31 @@ async function run(ex){const m=document.getElementById('msg');m.textContent='run
 async function approve(id){try{await send('POST',`/api/risk/decisions/${id}/approve`);load()}catch(e){alert(e.message)}}
 async function order(id){if(!confirm('Create and submit a PAPER order for this approved decision?'))return;try{await send('POST','/api/oms/orders',{risk_decision_id:id},`order-${id}`);load()}catch(e){alert(e.message)}}
 async function cancel(id){try{await send('POST',`/api/oms/orders/${id}/cancel`,{},`cancel-${id}`);load()}catch(e){alert(e.message)}}
-load();
+async function loadRisk(){
+  const b=document.getElementById('pbook').value, m=document.getElementById('pmsg');m.textContent=' computing…';
+  let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent=' '+e.message;return}
+  m.textContent=' as of '+A.as_of+(A.coverage?` · risk covers ${num(A.coverage.value_share*100,1)}% of the book (${A.coverage.sessions} sessions)`:'');
+  const X=A.exposure||{}, V=A.var||{}, C=A.concentration||{}, RA=A.risk_attribution||{}, CO=A.correlation||{};
+  const l95=((V.levels||[]).find(l=>l.confidence==0.95)||{}).historical||{};
+  const k=(t,v)=>`<div class="kpi"><span>${t}</span><b>${v}</b></div>`;
+  document.getElementById('phead').innerHTML=A.note&&!X.positions?.length?`<p class="muted">${esc(A.note)}</p>`:
+   `<div class="kpis">${k('Positions',X.n_positions??'—')}${k('Invested',num(X.positions_value,0))}${k('Equity',num(X.equity,0))}${k('1-day VaR 95%',num(l95.var_value,0)+' <span>'+num(l95.var_pct)+'%</span>')}${k('ES 95%',num(l95.es_value,0))}${k('Volatility (ann.)',num(V.annual_vol_pct)+'%')}${k('Beta',num(RA.portfolio_beta))}${k('Effective N',num(C.effective_n))}${k('Avg correlation',num(CO.avg_pairwise_weighted))}</div>`+
+   table(['Sector','Value','Weight','% equity'],Object.entries(X.by_sector||{}).map(([s,v])=>`<tr><td>${esc(s)}</td><td>${num(v.value,0)}</td><td>${num(v.weight*100,1)}%</td><td>${v.pct_equity==null?'—':num(v.pct_equity,1)+'%'}</td></tr>`));
+  const meth=['historical','parametric','monte_carlo','historical_10d','parametric_10d'];
+  document.getElementById('pvar').innerHTML=table(['Method','Conf.','VaR %','VaR Rs','ES %','ES Rs','VaR % equity'],(V.levels||[]).flatMap(l=>meth.filter(x=>l[x]).map(x=>`<tr><td>${x.replace('_',' ')}</td><td>${l.confidence*100}%</td><td>${num(l[x].var_pct)}</td><td>${num(l[x].var_value,0)}</td><td>${num(l[x].es_pct)}</td><td>${num(l[x].es_value,0)}</td><td>${l[x].var_pct_equity==null?'—':num(l[x].var_pct_equity)}</td></tr>`)))+(V.worst_day_pct!=null?`<p class="muted">Worst day in window ${num(V.worst_day_pct)}% · losses shown positive</p>`:'');
+  document.getElementById('pconc').innerHTML=C.n?table(['Measure','Value'],[['Largest weight',num(C.max_weight*100,1)+'%'],['Top 5 weight',num(C.top5_weight*100,1)+'%'],['HHI',num(C.hhi,3)],['Effective positions',num(C.effective_n)],['Sectors',C.n_sectors],['Effective sectors',num(C.effective_sectors)],['Diversification ratio',num(CO.diversification_ratio)],['Systematic share of variance',RA.systematic_share==null?'—':num(RA.systematic_share*100,1)+'%']].map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td></tr>`)):'<p class="muted">—</p>';
+  document.getElementById('prc').innerHTML=table(['Symbol','Sector','Weight','Risk share','Risk / weight','Vol (ann.)','Beta','Component VaR 95% Rs'],(RA.positions||[]).map(p=>`<tr><td>${esc(p.symbol)}</td><td class="muted">${esc(p.sector)}</td><td>${num(p.weight*100,1)}%</td><td><b>${num(p.risk_share*100,1)}%</b></td><td class="${p.risk_to_weight>1.2?'neg':''}">${num(p.risk_to_weight)}</td><td>${num(p.vol_annual_pct,1)}%</td><td>${num(p.beta)}</td><td>${num(p.component_var95_value,0)}</td></tr>`));
+  const M=CO.matrix;
+  document.getElementById('pcorr').innerHTML=M?`<table><thead><tr><th></th>${M.symbols.map(s=>`<th>${esc(s)}</th>`).join('')}</tr></thead><tbody>${M.values.map((r,i)=>`<tr><th>${esc(M.symbols[i])}</th>${r.map((v,jx)=>`<td style="background:${i==jx?'transparent':v>=0?`rgba(220,38,38,${Math.min(Math.abs(v),1)*.7})`:`rgba(5,150,105,${Math.min(Math.abs(v),1)*.7})`}">${num(v)}</td>`).join('')}</tr>`).join('')}</tbody></table><p class="muted">Highly correlated pairs (≥0.7): ${(CO.high_pairs||[]).map(p=>esc(p.a+'/'+p.b+' '+p.corr)).join(', ')||'none'}</p>`:`<p class="muted">${esc(CO.note||'—')}</p>`;
+  const P=A.performance_attribution||{}, Bn=P.brinson;
+  document.getElementById('pperf').innerHTML=P.positions?`<p>${P.from} → ${P.to}: book <b class="${P.portfolio_return_pct>=0?'pos':'neg'}">${num(P.portfolio_return_pct)}%</b> vs ${P.benchmark} ${num(P.benchmark_return_pct)}% · beta ${num(P.beta)} → market part ${num(P.beta_return_pct)}%, alpha <b>${num(P.alpha_return_pct)}%</b>${Bn?` · Brinson vs ${esc(Bn.benchmark)}: allocation ${num(Bn.allocation_pct)}%, selection ${num(Bn.selection_pct)}%`:''}</p>`+
+   table(['Symbol','Start weight','Return','Contribution'],P.positions.map(p=>`<tr><td>${esc(p.symbol)}</td><td>${num(p.start_weight*100,1)}%</td><td class="${p.return_pct>=0?'pos':'neg'}">${num(p.return_pct)}%</td><td>${num(p.contribution_pct,3)}%</td></tr>`))+`<p class="muted">${esc(P.method)}</p>`:`<p class="muted">${esc(P.note||P.error||'—')}</p>`;
+  try{const E=await j('/api/risk/emergency-exit?book='+b);
+   document.getElementById('pemx').innerHTML=`<p>${E.positions.length} position(s), ${num(E.value,0)} · ${E.open_orders.length} open order(s) · kill switch ${E.kill_switch_on?'<b class="neg">ON</b>':'off'}</p><p class="muted">Will: ${E.will.map(esc).join('; ')}.</p>`+(E.confirm?`<button class="danger" onclick="flatten('${b}','${E.confirm}')">Emergency exit ${b}…</button>`:'<p class="muted">nothing to flatten</p>');}catch(e){document.getElementById('pemx').textContent=e.message}
+}
+async function flatten(b,code){const t=prompt(`EMERGENCY EXIT (${b}): halts all trading, cancels open orders`+(b==='PAPER'?' and sells every paper position.':'. LIVE: no order is sent; you get the sell list.')+`\nType ${code} to confirm:`);if(t!==code)return;
+ const reason=prompt('Reason (recorded):')||'';try{const r=await send('POST','/api/risk/emergency-exit',{book:b,confirm:code,reason},`emx-${code}`);alert(`${r.status}: sold ${r.sold.length}, failed ${r.failed.length}, cancelled ${r.cancelled_orders.length}`+(r.manual_sells.length?`\nSell at broker: `+r.manual_sells.map(x=>x.symbol+' '+x.qty).join(', '):''));load();loadRisk()}catch(e){alert(e.message)}}
+load();loadRisk();
 </script></body></html>"""
 
 

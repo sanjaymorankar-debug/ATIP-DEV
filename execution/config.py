@@ -75,6 +75,14 @@ RISK_DEFAULTS = {
     "daily_loss_limit_pct":         (3.0, "today's loss, % of equity; beyond it no BUY"),
     "portfolio_drawdown_limit_pct": (15.0, "drawdown from peak equity; beyond it no BUY"),
     "strategy_drawdown_limit_pct":  (10.0, "a strategy's P&L loss, % of its exposure cap; beyond it no BUY for it"),
+    # W25 (off by default: null)
+    "max_symbol_volatility_pct":    (None, "RK-09: the symbol's annualised 60-session volatility; above it no BUY"),
+    "max_adv_participation_pct":    (None, "RK-10: order shares, % of the symbol's 20-session average daily volume "
+                                           "(caps the order)"),
+    "max_avg_correlation":          (None, "RK-11: value-weighted mean correlation (0..1) of the symbol with the "
+                                           "held positions; above it no BUY"),
+    "max_portfolio_var_pct":        (None, "RK-12: the book's 1-day 95% historical VaR after the order, % of "
+                                           "equity; above it no BUY"),
 }
 INT_LIMITS = {"max_open_positions", "max_order_quantity", "max_daily_trades"}
 
@@ -136,8 +144,11 @@ def _valid(key, value):
         raise RiskLimitError(f"{key} must be a number or null")
     if value < 0:
         raise RiskLimitError(f"{key} cannot be negative")
-    if key.endswith("_pct") and key != "max_portfolio_exposure_pct" and value > 100:
+    if key.endswith("_pct") and key not in ("max_portfolio_exposure_pct", "max_symbol_volatility_pct") \
+            and value > 100:
         raise RiskLimitError(f"{key} is a percentage (0..100)")
+    if key == "max_avg_correlation" and value > 1:
+        raise RiskLimitError(f"{key} is a correlation (0..1)")
     return int(value) if key in INT_LIMITS else float(value)
 
 

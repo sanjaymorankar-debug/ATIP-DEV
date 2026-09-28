@@ -42,6 +42,12 @@ value and limit, so a decision can be read back without re-deriving it.
                          than execution.max_market_data_age_sessions (2) sessions old
     strategy_drawdown_limit_pct (the strategy's fills P&L)
                          pass/fail; a limit that cannot be measured FAILS (fail closed)
+  W25 (each off until set; portfolio/limits.py measures them)
+    max_adv_participation_pct   caps the quantity at a share of 20-session ADV (RK-10)
+    max_symbol_volatility_pct   the symbol's annualised volatility (RK-09)
+    max_avg_correlation         value-weighted correlation with the held book (RK-11)
+    max_portfolio_var_pct       post-trade 1-day 95% historical VaR, % of equity (RK-12)
+                                pass/fail, fail closed like the rest
     w1_pretrade          orders/risk.py pretrade_check() -- the W1 limits in
                          config.json risk_limits, unchanged
   REVIEW               require_manual_review, or any LIVE intent -> REVIEW_REQUIRED
@@ -297,6 +303,15 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
     if lim["per_trade_loss_pct"] is not None:
         cap("per_trade_loss_pct", lim["per_trade_loss_pct"],
             qty=math.floor(equity * lim["per_trade_loss_pct"] / 100 / (px - stop)), what="loss at stop % of equity")
+    if lim.get("max_adv_participation_pct") is not None:           # W25 RK-10
+        from portfolio.limits import average_daily_volume
+        adv = average_daily_volume(conn, it["symbol"])
+        if adv is None:
+            add("max_adv_participation_pct", FAIL, "average daily volume cannot be measured")
+            return finish(REJECTED, "liquidity cannot be measured (fail closed)")
+        cap("max_adv_participation_pct", lim["max_adv_participation_pct"],
+            qty=math.floor(adv * lim["max_adv_participation_pct"] / 100),
+            what=f"% of 20-session ADV {adv:,.0f} shares")
 
     qty = rd.requested_quantity
     binding = None
@@ -362,6 +377,10 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
                                     f"{lim['strategy_drawdown_limit_pct']}%")
         add("strategy_drawdown_limit_pct", PASS, f"strategy P&L {pnl:+,.2f}", dd, lim["strategy_drawdown_limit_pct"])
 
+    blocked = _w25_limits(conn, it, lim, add, bk, qty * px, equity)
+    if blocked:
+        return finish(REJECTED, blocked)
+
     # W1 limits (config.json risk_limits), unchanged
     try:
         from orders.risk import pretrade_check
@@ -375,6 +394,45 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     rd.est_value = round(qty * px, 2)
     return _review(finish, settings, it, add, qty)
+
+
+def _w25_limits(conn, it, lim, add, bk, order_value, equity) -> str | None:
+    """RK-09 / RK-11 / RK-12 pass/fail checks; the rejection reason, or None."""
+    keys = ("max_symbol_volatility_pct", "max_avg_correlation", "max_portfolio_var_pct")
+    if all(lim.get(k) is None for k in keys):
+        return None
+    from portfolio import limits as PL
+    sym = it["symbol"]
+    if lim.get("max_symbol_volatility_pct") is not None:
+        v, cap_ = PL.symbol_volatility(conn, sym), lim["max_symbol_volatility_pct"]
+        if v is None:
+            add("max_symbol_volatility_pct", FAIL, "volatility cannot be measured (short history)")
+            return "symbol volatility cannot be measured (fail closed)"
+        if v > cap_:
+            add("max_symbol_volatility_pct", FAIL, f"annualised volatility {v}%", v, cap_)
+            return f"{sym} volatility {v}% > {cap_}%"
+        add("max_symbol_volatility_pct", PASS, f"annualised volatility {v}%", v, cap_)
+    pos = [{"symbol": p["symbol"], "value": p.get("value")} for p in bk.get("positions", [])]
+    if lim.get("max_avg_correlation") is not None:
+        c, cap_ = PL.correlation_to_book(conn, sym, pos), lim["max_avg_correlation"]
+        if c is None:
+            add("max_avg_correlation", FAIL, "correlation with the book cannot be measured")
+            return "correlation cannot be measured (fail closed)"
+        if c["avg"] > cap_:
+            add("max_avg_correlation", FAIL, f"mean correlation {c['avg']} with {c['n']} held (max {c['max']} "
+                                             f"with {c['max_with']})", c["avg"], cap_)
+            return f"{sym} correlation with the book {c['avg']} > {cap_}"
+        add("max_avg_correlation", PASS, f"mean correlation {c['avg']} with {c['n']} held", c["avg"], cap_)
+    if lim.get("max_portfolio_var_pct") is not None:
+        v, cap_ = PL.post_trade_var(conn, pos, sym, order_value, equity), lim["max_portfolio_var_pct"]
+        if v is None:
+            add("max_portfolio_var_pct", FAIL, "post-trade VaR cannot be measured")
+            return "portfolio VaR cannot be measured (fail closed)"
+        if v > cap_:
+            add("max_portfolio_var_pct", FAIL, f"post-trade 1-day 95% VaR {v}% of equity", v, cap_)
+            return f"post-trade VaR {v}% of equity > {cap_}%"
+        add("max_portfolio_var_pct", PASS, f"post-trade 1-day 95% VaR {v}% of equity", v, cap_)
+    return None
 
 
 def _tenant_profile(conn, it) -> dict | None:

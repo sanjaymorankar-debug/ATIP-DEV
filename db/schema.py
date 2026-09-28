@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -984,6 +984,28 @@ W24_TABLES = {
     "ml_health_check": (               # ML-09 / MON-05
         """CREATE TABLE IF NOT EXISTS ml_health_check (
             id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP, status TEXT, result_json TEXT)""",
+    ),
+}
+
+# ── Tables added in W25 (portfolio risk) ──────────────────────────────────
+W25_TABLES = {
+    "portfolio_risk_snapshot": (       # PF-03/04/07/09, RK-11/12: post-market risk of each book
+        """CREATE TABLE IF NOT EXISTS portfolio_risk_snapshot (
+            as_of DATE NOT NULL, book TEXT NOT NULL, headline_json TEXT, analysis_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (as_of, book))""",
+    ),
+    "portfolio_optimization": (        # PF-10
+        """CREATE TABLE IF NOT EXISTS portfolio_optimization (
+            opt_id TEXT PRIMARY KEY, as_of DATE, objective TEXT, result_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "portfolio_rebalance_plan": (      # PF-06
+        """CREATE TABLE IF NOT EXISTS portfolio_rebalance_plan (
+            plan_id TEXT PRIMARY KEY, book TEXT, as_of DATE, plan_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "risk_emergency_exit": (           # RK-16
+        """CREATE TABLE IF NOT EXISTS risk_emergency_exit (
+            run_id TEXT PRIMARY KEY, book TEXT, actor TEXT, reason TEXT, status TEXT, result_json TEXT,
+            created_at TIMESTAMP)""",
     ),
 }
 

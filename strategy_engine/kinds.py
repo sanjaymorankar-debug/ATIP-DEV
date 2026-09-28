@@ -551,7 +551,12 @@ class PortfolioEvaluator(Evaluator):
     weight them with quant/portfolio.construct (equal / score / inverse_vol /
     risk / factor; max_weight, sector_cap, gross; long_short None / dollar /
     beta / sector) and decide:
-      held and still in the long book -> HOLD (target_position_pct = weight)
+      held and still in the long book -> HOLD (target_position_pct = weight), or with
+                                         reweight_band_pct set (W25, PF-06) ADD / REDUCE
+                                         when its share of the held target names drifts
+                                         more than the band (percentage points) from its
+                                         target share; the share quantity rides on the
+                                         decision (features.rebalance_qty)
       held and no longer in it        -> EXIT (PORTFOLIO_DROP)
       new long names                  -> BUY (target_position_pct = weight x 100)
       short names                     -> SELL decision, SHORT_LEG (no intent)
@@ -598,12 +603,22 @@ class PortfolioEvaluator(Evaluator):
                         d.get("long_short"), shorts)
         w = res["weights"]
         allow_lo = bool(pval(d.get("allow_long_only", False), p))
+        band = d.get("reweight_band_pct")
+        band = None if band is None else float(pval(band, p))
+        drift = self._drift(held, w, ctxs) if band else {}
         out, cands = [], []
         for s in held:
             if s not in ctxs:
                 continue
             if w.get(s, 0) > 0:
-                it = self.intent(s, as_of, HOLD, None, f"in portfolio, weight {w[s]:.4f}", ctxs[s])
+                dq = drift.get(s)
+                if dq and abs(dq[0]) > band and dq[1]:
+                    act = ADD if dq[0] < 0 else REDUCE
+                    it = self.intent(s, as_of, act, None, f"reweight: {dq[0]:+.2f} pts from target share, "
+                                                          f"{act} {dq[1]} shares", ctxs[s], entry=act == ADD)
+                    it.features["rebalance_qty"] = dq[1]
+                else:
+                    it = self.intent(s, as_of, HOLD, None, f"in portfolio, weight {w[s]:.4f}", ctxs[s])
                 it.target_position_pct = round(w[s] * 100, 4)
                 out.append(it)
             else:
@@ -625,6 +640,22 @@ class PortfolioEvaluator(Evaluator):
                 it.target_position_pct = round(wt * 100, 4)
                 cands.append((-wt, s, it))
         return out + self.limit_buys(cands, len(held))
+
+    @staticmethod
+    def _drift(held, w, ctxs) -> dict:
+        """symbol -> (current share - target share in pct points, shares to trade), over
+        the held names that stay in the target (equity is not known here, so the held
+        target names are rebalanced among themselves)."""
+        keep = [s for s in held if w.get(s, 0) > 0 and s in ctxs and ctxs[s].get("close")]
+        vals = {s: float(held[s].get("qty") or 0) * float(ctxs[s].get("close")) for s in keep}
+        tv, tw = sum(vals.values()), sum(w[s] for s in keep)
+        if tv <= 0 or tw <= 0:
+            return {}
+        out = {}
+        for s in keep:
+            cur, tgt = vals[s] / tv, w[s] / tw
+            out[s] = ((cur - tgt) * 100, int(abs(cur - tgt) * tv // float(ctxs[s].get("close"))))
+        return out
 
 
 EVALUATORS = {"rule": RuleEvaluator, "multi_factor": MultiFactorEvaluator, "quant_rank": QuantRankEvaluator,

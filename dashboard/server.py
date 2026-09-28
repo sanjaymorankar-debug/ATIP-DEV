@@ -1571,6 +1571,8 @@ if HAS_FASTAPI:
     # ── Risk engine & execution (W4) ─────────────────────────────────────
     from dashboard.execution_routes import register as _register_execution_routes
     _register_execution_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.portfolio_risk_routes import register as _register_portfolio_risk     # W25
+    _register_portfolio_risk(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

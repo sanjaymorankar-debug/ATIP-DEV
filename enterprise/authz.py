@@ -88,6 +88,7 @@ ROUTE_RULES = [
     ("*", r"^/api/quant", "quant:write"),
     # W4 risk + execution
     ("POST", r"^/api/risk/decisions/[^/]+/approve$", "risk:approve"),
+    ("POST", r"^/api/risk/emergency-exit$", "risk:approve"),          # W25 RK-16
     ("GET", r"^/api/risk", "risk:read"),
     ("*", r"^/api/risk", "risk:configure"),
     ("GET", r"^/api/(oms|execution|position-intents|audit)", "execution:read"),

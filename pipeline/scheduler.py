@@ -780,6 +780,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("daily_pnl", record_daily_pnl, td)
         except Exception as e:
             log.warning(f"  Daily P&L: {e}")
+        # W25: VaR / concentration / correlation snapshot of each book, after its P&L
+        try:
+            from portfolio.risk import run_scheduled as run_portfolio_risk
+            run_job("portfolio_risk", run_portfolio_risk, td)
+        except Exception as e:
+            log.warning(f"  Portfolio risk: {e}")
 
     # Strategy Engine (W3): decisions for every PAPER / READY / ACTIVE strategy
     # on this session's scores, then a health snapshot for every strategy.

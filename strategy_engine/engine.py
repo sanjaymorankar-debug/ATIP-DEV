@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta
 
 from db.schema import get_connection
 from strategy_engine import lifecycle, registry
-from strategy_engine.decisions import A_ADD, A_BUY, NOT_AUTHORIZED, intent_for
+from strategy_engine.decisions import A_ADD, A_BUY, A_REDUCE, NOT_AUTHORIZED, intent_for
 from strategy_engine.definition import specs
 from strategy_engine.kinds import EvalEnv, make_evaluator, session_ordinal
 from strategy_engine.params import resolve
@@ -103,6 +103,9 @@ def _capital(conn, book: str, as_of: date):
 def _quantity(dec, capital, close):
     """Indicative quantity for a BUY / ADD intent via the W1 sizer (orders/risk.py
     size_position, pure). None when it cannot be sized; W4 confirms sizing."""
+    rq = (dec.features or {}).get("rebalance_qty")          # W25 PF-06 reweight
+    if rq and dec.action in (A_ADD, A_REDUCE):
+        return int(rq)
     if capital is None or not close or dec.action not in (A_BUY, A_ADD):
         return None
     try:

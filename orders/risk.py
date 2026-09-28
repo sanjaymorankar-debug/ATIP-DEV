@@ -28,6 +28,10 @@ when it is set, so an install that sets none behaves exactly as before:
       "max_daily_loss_value":     5000,     # rupees lost today (RK-07)
       "max_drawdown_pct":         10        # % below the equity peak (RK-08)
 
+      "max_adv_participation_pct": 5        # W25 RK-10: order shares, % of the
+                                            # 20-session average daily volume
+                                            # (BUY and SELL; unmeasurable -> blocked)
+
 The two loss limits are measured by portfolio/pnl.py (risk_state): today's P&L
 against the last pnl_daily row, the drawdown against the highest stored
 equity, both marked to the latest prices. They block new BUYs only -- a SELL
@@ -68,7 +72,8 @@ log = logging.getLogger("atip.orders")
 
 HALT_FLAG = Path("atip_data") / "TRADING_HALTED"
 LIMIT_KEYS = ("max_order_value", "max_orders_per_day", "max_open_positions",
-              "max_symbol_exposure_value", "max_daily_loss_value", "max_drawdown_pct")
+              "max_symbol_exposure_value", "max_daily_loss_value", "max_drawdown_pct",
+              "max_adv_participation_pct")
 
 # RK-13 defaults -- the same figures scores/predictions.py has used for its
 # position_size_pct since the trade planner was written.
@@ -212,6 +217,22 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
         check("max_symbol_exposure_value", held.get(symbol, 0.0) + (est_value or 0.0),
               lim.get("max_symbol_exposure_value"), " Rs")
     check("max_orders_per_day", _orders_today(conn) + 1, lim.get("max_orders_per_day"))
+    if lim.get("max_adv_participation_pct") is not None:       # W25 RK-10
+        try:
+            from portfolio.limits import average_daily_volume
+            adv = average_daily_volume(conn, symbol)
+        except Exception:
+            adv = None
+        if adv is None:
+            checks.append({"limit": "max_adv_participation_pct", "value": None,
+                           "cap": lim["max_adv_participation_pct"], "breached": True,
+                           "reason": "average daily volume cannot be measured"})
+            if blocked is None:
+                blocked = ("max_adv_participation_pct", "max_adv_participation_pct is set but the symbol's "
+                                                        "average daily volume cannot be measured - order refused")
+        else:
+            check("max_adv_participation_pct", float(quantity or 0) / adv * 100,
+                  lim["max_adv_participation_pct"], "% of ADV")
     if transaction_type == "BUY" and (lim.get("max_daily_loss_value") or lim.get("max_drawdown_pct")):
         _loss_checks(conn, env, lim, checks, check)
         if blocked is None:
