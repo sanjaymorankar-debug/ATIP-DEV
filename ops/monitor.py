@@ -144,6 +144,15 @@ def r_live_trading(conn):
                                                    f"({r['master_switch']['reason']})")
 
 
+def r_ml_model_health(conn):
+    r = _q(conn, "SELECT status, result_json FROM ml_health_check ORDER BY id DESC LIMIT 1")
+    if not r or r[0][0] != "ALERT":
+        return False, "warning", "model / factor health OK"
+    import json as _json
+    d = _json.loads(r[0][1] or "{}")
+    return True, "warning", f"{d.get('alerts')} model / factor health alert(s) at {d.get('checked_at')}"
+
+
 def r_wealth_cycle(conn):
     from wealth.health import recent_cycle_problem
     firing, msg = recent_cycle_problem(conn)
@@ -154,7 +163,7 @@ RULES = {"database": r_database, "data_stale": r_data_stale, "scheduler": r_sche
          "job_failures": r_job_failures, "error_rate": r_error_rate, "auth_failures": r_auth_failures,
          "failed_orders": r_failed_orders, "risk_failures": r_risk_failures, "ml_failures": r_ml_failures,
          "disk_space": r_disk_space, "backup": r_backup, "live_trading": r_live_trading,
-         "wealth_cycle": r_wealth_cycle}
+         "wealth_cycle": r_wealth_cycle, "ml_model_health": r_ml_model_health}
 
 
 def _notify(rule, severity, message):

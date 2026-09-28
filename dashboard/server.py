@@ -1575,6 +1575,8 @@ if HAS_FASTAPI:
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes
     _register_ml_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.ml_w24_routes import register as _register_ml_w24_routes     # W24
+    _register_ml_w24_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── Advanced quant (W6) ──────────────────────────────────────────────
     from dashboard.quant_routes import register as _register_quant_routes

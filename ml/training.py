@@ -76,7 +76,10 @@ def train(conn, model_id: str, dataset_spec: dict, params: dict | None = None, v
             raise ValueError("no training rows after the time split")
         Xtr = ds.X[tr]
         miss = np.isnan(Xtr).mean(axis=0)
-        const = np.nanstd(np.where(np.isnan(Xtr), np.nanmean(Xtr, axis=0), Xtr), axis=0) < 1e-12
+        import warnings
+        with warnings.catch_warnings():                 # an all-missing column is dropped by `miss` anyway
+            warnings.simplefilter("ignore", RuntimeWarning)
+            const = np.nanstd(np.where(np.isnan(Xtr), np.nanmean(Xtr, axis=0), Xtr), axis=0) < 1e-12
         keep = [i for i in range(ds.X.shape[1]) if miss[i] <= max_missing and not const[i]]
         dropped = [ds.columns[i] for i in range(ds.X.shape[1]) if i not in keep]
         if not keep:

@@ -17,6 +17,8 @@ Families (MODEL_TYPES):
     linear_regression     numpy; ridge closed form; residual stdev on the training
                           rows gives a +/-1.96 sd interval (stated as such, not a
                           guarantee)
+    native_gbm, native_random_forest, ensemble   numpy-only trees and a blended ensemble
+                          (W24, ml/trees.py) -- usable without any extra package
     random_forest, gradient_boosting   scikit-learn adapters
     xgboost, lightgbm                  adapters for those packages
     neural_network                     placeholder for a future wave
@@ -324,6 +326,11 @@ class NeuralNetworkAdapter(BaseModel):
 
 MODEL_TYPES = {c.model_type: c for c in (LogisticModel, RidgeModel, RandomForestAdapter, GradientBoostingAdapter,
                                          XGBoostAdapter, LightGBMAdapter, NeuralNetworkAdapter)}
+
+
+from ml.trees import EnsembleModel, NativeGBM, NativeRandomForest   # noqa: E402  (W24; needs BaseModel above)
+
+MODEL_TYPES.update({c.model_type: c for c in (NativeGBM, NativeRandomForest, EnsembleModel)})
 
 
 def make_model(model_type: str, task: str, params=None, columns=None, classes=None) -> BaseModel:

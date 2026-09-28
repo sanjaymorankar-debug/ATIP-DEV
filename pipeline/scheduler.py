@@ -790,6 +790,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         try:
             from ml.predict import run_scheduled_predictions
             run_job("ml_predictions", run_scheduled_predictions, td)
+            # W24: model drift / decay + factor decay (SKIPPED unless ml or quant is
+            # enabled) and the anomaly scan (SKIPPED unless ml.anomalies_enabled)
+            from ml.decay import run_scheduled as run_ml_health
+            from ml.unsupervised import run_scheduled_anomalies
+            run_job("ml_model_health", run_ml_health, td)
+            run_job("ml_anomalies", run_scheduled_anomalies, td)
         except Exception as e:
             log.warning(f"  ML predictions: {e}")
         # W6: factor scores, composites, events, intraday microstructure -- before the

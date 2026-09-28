@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -957,6 +957,33 @@ W22_TABLES = {
         """CREATE TABLE IF NOT EXISTS research_link (
             study_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, note TEXT, added_at TIMESTAMP,
             added_by TEXT, PRIMARY KEY (study_id, kind, ref))""",
+    ),
+}
+
+# ── Tables added in W24 (machine learning) ─────────────────────────────────
+W24_TABLES = {
+    "ml_validation_report": (          # ML-08 walk-forward reports
+        """CREATE TABLE IF NOT EXISTS ml_validation_report (
+            report_id TEXT PRIMARY KEY, model_type TEXT, dataset_id TEXT, label_json TEXT, params_json TEXT,
+            report_json TEXT, verdict TEXT, created_at TIMESTAMP)""",
+    ),
+    "ml_cluster_run": (                # ML-03
+        """CREATE TABLE IF NOT EXISTS ml_cluster_run (
+            run_id TEXT PRIMARY KEY, as_of DATE, method TEXT, k INTEGER, summary_json TEXT, created_at TIMESTAMP)""",
+    ),
+    "ml_cluster": (
+        """CREATE TABLE IF NOT EXISTS ml_cluster (
+            run_id TEXT NOT NULL, as_of DATE, symbol TEXT NOT NULL, cluster INTEGER,
+            PRIMARY KEY (run_id, symbol))""",
+    ),
+    "ml_anomaly": (                    # ML-06
+        """CREATE TABLE IF NOT EXISTS ml_anomaly (
+            as_of DATE NOT NULL, symbol TEXT NOT NULL, kind TEXT, score REAL, detail_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (as_of, symbol))""",
+    ),
+    "ml_health_check": (               # ML-09 / MON-05
+        """CREATE TABLE IF NOT EXISTS ml_health_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP, status TEXT, result_json TEXT)""",
     ),
 }
 

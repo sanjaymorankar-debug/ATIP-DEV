@@ -43,6 +43,7 @@ LONG_RETENTION_TABLES = {
     "technical_ext":        "date",      # W21
     "sector_breadth":       "date",      # W21
     "score_components":     "date",      # W22
+    "ml_anomaly":           "as_of",     # W24
 }
 
 SHORT_RETENTION_TABLES = {

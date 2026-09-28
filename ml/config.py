@@ -3,6 +3,7 @@ ML configuration: atip_data/config.json section "ml" (all optional).
 
     "ml": {
         "enabled": false,                  scheduled predictions + monitoring run only when true
+        "anomalies_enabled": false,        W24: daily price / volume anomaly scan (ml/unsupervised.py)
         "default_model": null,             model_id whose ACTIVE version feeds the W3 ml_* features
         "feature_set": "atip_core",        default feature-set name for new datasets
         "prediction_horizon": 5,           default label horizon (sessions)
@@ -26,6 +27,7 @@ CONFIG_PATH = Path("atip_data") / "config.json"
 
 DEFAULTS = {
     "enabled": False,
+    "anomalies_enabled": False,
     "default_model": None,
     "feature_set": "atip_core",
     "prediction_horizon": 5,
@@ -49,6 +51,7 @@ def settings() -> dict:
         elif k in out:
             out[k] = v
     out["enabled"] = out.get("enabled") is True
+    out["anomalies_enabled"] = out.get("anomalies_enabled") is True
     if out["regime_source"] not in REGIME_SOURCES:
         out["regime_source"] = "deterministic"
     return out
