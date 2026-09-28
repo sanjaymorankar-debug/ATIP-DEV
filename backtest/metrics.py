@@ -20,6 +20,13 @@ Conventions (stated, not invented):
   * drawdown_t = E_t / max(E_0..E_t) - 1 (0 at a new peak, negative below);
   * a metric that is undefined (no variance, no losses, too little data) is
     None, never 0 or infinity.
+  * W23 (BT-12) tail risk on daily returns, as positive loss fractions:
+    var_95 / var_99   historical Value-at-Risk: the loss exceeded on 5% / 1% of sessions
+                      (the 5th / 1st percentile of returns, sign flipped; linear interpolation)
+    cvar_95 / cvar_99 expected shortfall: the mean loss on the sessions at or beyond VaR
+    var_95_param      parametric (normal) VaR: -(mean - 1.645 x stdev)
+    skew, excess_kurtosis of daily returns; worst_day, best_day
+    None with fewer than 20 returns (99% figures need 100).
 Trade statistics are per closed trade, on net P&L (after costs):
   win = net P&L > 0; profit factor = gross profits / |gross losses|;
   expectancy = mean net P&L per trade (also given as mean net return %).
@@ -179,6 +186,37 @@ def summarize(dates: list, equity: list, net_pnls: list, net_returns: list | Non
         "avg_exposure": _mean(exposure) if exposure else None,
     }
     out.update(trade_stats(net_pnls, net_returns))
+    out.update(tail_risk(rets))
+    return out
+
+
+def _pctile(sorted_xs, q):
+    if not sorted_xs:
+        return None
+    k = (len(sorted_xs) - 1) * q
+    lo, hi = math.floor(k), math.ceil(k)
+    return sorted_xs[lo] + (sorted_xs[hi] - sorted_xs[lo]) * (k - lo)
+
+
+def tail_risk(returns: list) -> dict:
+    r = sorted(x for x in returns if x is not None)
+    n = len(r)
+    out = {"var_95": None, "cvar_95": None, "var_99": None, "cvar_99": None, "var_95_param": None,
+           "skew": None, "excess_kurtosis": None, "worst_day": r[0] if r else None, "best_day": r[-1] if r else None}
+    if n < 20:
+        return out
+    for q, name, need in ((0.05, "95", 20), (0.01, "99", 100)):
+        if n < need:
+            continue
+        v = _pctile(r, q)
+        tail = [x for x in r if x <= v] or [r[0]]
+        out[f"var_{name}"] = -v
+        out[f"cvar_{name}"] = -sum(tail) / len(tail)
+    mu, sd = _mean(r), _stdev(r)
+    if sd:
+        out["var_95_param"] = -(mu - 1.645 * sd)
+        out["skew"] = sum(((x - mu) / sd) ** 3 for x in r) / n
+        out["excess_kurtosis"] = sum(((x - mu) / sd) ** 4 for x in r) / n - 3
     return out
 
 

@@ -10,6 +10,12 @@
     python -m backtest montecarlo RUN_ID --method trade_shuffle --sims 1000 --seed 42
     python -m backtest list
     python -m backtest show RUN_ID
+    python -m backtest optimize --strategy dip --start D --end D --space '{"stop_pct":{"values":[3,5]}}'
+                           [--method grid|random|adaptive] [--trials 60] [--select-by sharpe]
+    python -m backtest sensitivity --strategy dip --start D --end D --space '{...}' [--steps 2] [--pairwise a,b]
+    python -m backtest robustness --strategy dip --start D --end D [--subsamples 3]
+    python -m backtest study momentum|mean_reversion_rsi|<strategy> --start D --end D [--space '{...}']
+                           [--trials 30]      (W23: optimise -> validate -> sensitivity -> robustness -> test)
 """
 
 import argparse
@@ -49,6 +55,24 @@ def main(argv=None):
     m.add_argument("--method", default="trade_shuffle"); m.add_argument("--sims", type=int, default=1000)
     m.add_argument("--seed", type=int, default=42); m.add_argument("--block", type=int, default=1)
 
+    o = sub.add_parser("optimize"); common(o)
+    o.add_argument("--start", required=True); o.add_argument("--end", required=True)
+    o.add_argument("--space", type=json.loads, required=True); o.add_argument("--method", default="grid")
+    o.add_argument("--trials", type=int, default=60); o.add_argument("--select-by", default="sharpe")
+    o.add_argument("--seed", type=int, default=42); o.add_argument("--min-trades", type=int, default=10)
+    se = sub.add_parser("sensitivity"); common(se)
+    se.add_argument("--start", required=True); se.add_argument("--end", required=True)
+    se.add_argument("--space", type=json.loads, required=True); se.add_argument("--steps", type=int, default=2)
+    se.add_argument("--select-by", default="sharpe"); se.add_argument("--pairwise", default=None)
+    rb = sub.add_parser("robustness"); common(rb)
+    rb.add_argument("--start", required=True); rb.add_argument("--end", required=True)
+    rb.add_argument("--subsamples", type=int, default=3)
+    st = sub.add_parser("study"); st.add_argument("strategy")
+    st.add_argument("--start", required=True); st.add_argument("--end", required=True)
+    st.add_argument("--space", type=json.loads, default=None); st.add_argument("--trials", type=int, default=30)
+    st.add_argument("--method", default="adaptive"); st.add_argument("--universe", type=lambda s: s.split(","),
+                                                                        default=None)
+
     sub.add_parser("list")
     s = sub.add_parser("show"); s.add_argument("run_id")
 
@@ -75,6 +99,28 @@ def main(argv=None):
         req = request(); req.update({"start": a.start, "end": a.end})
         out = run_walk_forward(req, a.train, a.validation, a.test, a.step, a.candidates, a.select_by)
         print(json.dumps({k: out[k] for k in ("run_id", "status", "oos_metrics")}, indent=2, default=str))
+    elif a.cmd == "optimize":
+        from backtest.optimize import optimize
+        req = request(); req.update({"start": a.start, "end": a.end})
+        out = optimize(req, a.space, a.method, a.select_by, a.trials, a.seed, a.min_trades)
+        print(json.dumps({k: out.get(k) for k in ("run_id", "status", "best", "diagnostics")}, indent=2, default=str))
+    elif a.cmd == "sensitivity":
+        from backtest.sensitivity import sensitivity
+        req = request(); req.update({"start": a.start, "end": a.end})
+        out = sensitivity(req, a.space, a.select_by, a.steps, pairwise=a.pairwise.split(",") if a.pairwise else None)
+        print(json.dumps({k: out.get(k) for k in ("run_id", "robust_share", "knife_edges", "parameters")}, indent=2,
+                         default=str))
+    elif a.cmd == "robustness":
+        from backtest.robustness import robustness
+        req = request(); req.update({"start": a.start, "end": a.end})
+        out = robustness(req, a.subsamples)
+        print(json.dumps({k: out.get(k) for k in ("run_id", "verdict", "score", "checks", "regimes", "monte_carlo")},
+                         indent=2, default=str))
+    elif a.cmd == "study":
+        from backtest.study import run_study
+        out = run_study(a.strategy, a.space, a.start, a.end, method=a.method, max_trials=a.trials,
+                        universe=a.universe)
+        print(json.dumps(out, indent=2, default=str))
     elif a.cmd == "montecarlo":
         print(json.dumps(service.run_montecarlo(a.run_id, a.method, a.sims, a.seed, a.block), indent=2, default=str))
     else:

@@ -1435,6 +1435,74 @@ if HAS_FASTAPI:
                                b.get("candidates"), b.get("select_by", "sharpe"))).start()
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind walk_forward)"})
 
+    # ── W23: optimisation, sensitivity, robustness, research study ─────────
+    # Each validates synchronously (400 on a bad request), then runs in a thread;
+    # the parent run appears in /api/backtests (kind optimization / sensitivity /
+    # robustness) and its summary holds the result. A study is found under
+    # /api/research/studies.
+    def _bg(fn, *args):
+        import threading
+        threading.Thread(target=fn, args=args, daemon=True).start()
+
+    @app.post("/api/backtests/optimize", dependencies=_guard)
+    async def api_backtest_optimize(request: _Req):
+        """Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}."""
+        from backtest.optimize import optimize, prepare
+        b = await request.json()
+        try:
+            prepare(b["request"], b["space"], b.get("method", "grid"), int(b.get("max_trials", 60)))
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(optimize, b["request"], b["space"], b.get("method", "grid"), b.get("select_by", "sharpe"),
+            int(b.get("max_trials", 60)), int(b.get("seed", 42)), int(b.get("min_trades", 10)))
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind optimization)"})
+
+    @app.post("/api/backtests/sensitivity", dependencies=_guard)
+    async def api_backtest_sensitivity(request: _Req):
+        """Body: {request, space, select_by?, steps?, pairwise?}."""
+        from backtest.optimize import validate_space
+        from backtest.sensitivity import sensitivity
+        b = await request.json()
+        try:
+            validate_space(b["space"]); bt_service.resolve_config(b["request"])
+            if b["request"].get("period_label") == "test" or b["request"].get("allow_test"):
+                raise ValueError("sensitivity analysis on the test window is refused")
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(sensitivity, b["request"], b["space"], b.get("select_by", "sharpe"), int(b.get("steps", 2)), 10,
+            b.get("pairwise"))
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind sensitivity)"})
+
+    @app.post("/api/backtests/robustness", dependencies=_guard)
+    async def api_backtest_robustness(request: _Req):
+        """Body: {request (start/end), n_subsamples?, seed?}."""
+        from backtest.robustness import robustness
+        b = await request.json()
+        try:
+            snap = bt_service.resolve_config(b["request"])
+            if snap.get("periods") or snap["period_label"] == "test":
+                raise ValueError("give start / end (not periods); the test window is refused")
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(robustness, b["request"], int(b.get("n_subsamples", 3)), int(b.get("seed", 42)))
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind robustness)"})
+
+    @app.post("/api/backtests/study", dependencies=_guard)
+    async def api_backtest_study(request: _Req):
+        """Body: {strategy_id, start, end, space?, hypothesis?, method?, max_trials?, universe?}."""
+        from backtest.study import PRESETS, run_study, split_periods
+        b = await request.json()
+        try:
+            if not b.get("space") and b.get("strategy_id") not in PRESETS:
+                raise ValueError(f"space is required (presets exist for {sorted(PRESETS)})")
+            split_periods(b["start"], b["end"])
+            bt_service.resolve_config({"strategy_id": b["strategy_id"], "start": b["start"], "end": b["end"]})
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(lambda: run_study(b["strategy_id"], b.get("space"), b["start"], b["end"], b.get("hypothesis"),
+                              b.get("method", "adaptive"), int(b.get("max_trials", 30)), universe=b.get("universe")))
+        return JSONResponse({"status": "RUNNING", "note": "the study appears in /api/research/studies"})
+
     @app.get("/api/backtests/{run_id}")
     async def api_backtest_get(run_id: str):
         conn=get_connection()
