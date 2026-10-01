@@ -1293,6 +1293,10 @@ def _schedule_ops_jobs():
         schedule.every().day.at(str(cfg.get("backup_time") or "19:15")).do(run_job, "ops_backup",
                                                                              run_scheduled_backup)
     schedule.every(5).minutes.do(_ops_webhook_tick)
+    if cfg.get("restore_drill_enabled", True):               # W31 (OPS-06): weekly restore drill
+        from ops.backup import restore_drill
+        schedule.every().sunday.at(str(cfg.get("restore_drill_time") or "10:00")).do(run_job, "restore_drill",
+                                                                                    restore_drill)
     _schedule_w29_jobs()
 
 

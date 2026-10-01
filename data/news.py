@@ -56,7 +56,8 @@ def fetch_feeds(hours_back=12):
     for feed in RSS_FEEDS:
         n=0; err=None
         try:
-            f=feedparser.parse(feed["url"])
+            from ops.resilience import breaker as _br     # W31 (OPS-10): a dead feed is skipped fast
+            f=_br("news:"+feed["name"],failure_threshold=3,reset_seconds=1800).call(feedparser.parse,feed["url"])
             if getattr(f,"bozo",0) and not f.entries:
                 err=f"unreadable feed: {getattr(f,'bozo_exception','')}"[:300]
             elif getattr(f,"status",200)>=400:

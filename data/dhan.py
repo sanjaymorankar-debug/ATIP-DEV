@@ -73,7 +73,28 @@ def load_dhan_config() -> dict:
             pass
     cfg.setdefault("dhan_client_id",     os.getenv("DHAN_CLIENT_ID", ""))
     cfg.setdefault("dhan_access_token",  os.getenv("DHAN_ACCESS_TOKEN", ""))
+    # W31 (SEC-04): a credential moved to the encrypted vault is blank in config.json
+    for key, name in (("dhan_client_id", "DHAN_CLIENT_ID"), ("dhan_access_token", "DHAN_ACCESS_TOKEN")):
+        if not cfg.get(key):
+            try:
+                from ops.secrets import get as _sget
+                cfg[key] = _sget(name, log_access=False) or ""
+            except Exception:
+                pass
     return cfg
+
+
+def _guarded(fn, *a, **k):
+    """
+    W31 (OPS-10): every Dhan MARKET-DATA call goes through one circuit breaker
+    ("dhan_data": OPEN after 6 consecutive failures, a trial call after 120 s). While it is
+    open, calls fail fast with DependencyUnavailable -- which each caller already handles
+    like any other fetch error -- instead of hammering an API that is refusing (the 429
+    storm of 2026-09-07). Order placement never goes through here, and nothing is retried
+    here: retries stay with the callers that already pace themselves.
+    """
+    from ops.resilience import breaker
+    return breaker("dhan_data", failure_threshold=6, reset_seconds=120).call(fn, *a, **k)
 
 
 def get_dhan_client():
@@ -272,7 +293,7 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
         return cached
 
     try:
-        resp = dhan.historical_daily_data(
+        resp = _guarded(dhan.historical_daily_data,
             security_id   = sec["security_id"],
             exchange_segment = sec["exchange"],
             instrument_type  = "EQUITY",
@@ -334,7 +355,7 @@ def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,
         return pd.DataFrame()
 
     try:
-        resp = dhan.intraday_minute_data(
+        resp = _guarded(dhan.intraday_minute_data,
             security_id      = sec["security_id"],
             exchange_segment = sec["exchange"],
             instrument_type  = "EQUITY",
@@ -399,7 +420,7 @@ def fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        resp = dhan.quote_data(instruments)
+        resp = _guarded(dhan.quote_data, instruments)
         if not resp or resp.get("status") == "failure":
             log.warning(f"  Quote data failed: {resp}")
             return pd.DataFrame()
@@ -513,7 +534,7 @@ def fetch_index_quotes(cols: list = None, dhan=None) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        resp = dhan.ohlc_data({INDEX_EXCHANGE_SEGMENT: sec_ids})
+        resp = _guarded(dhan.ohlc_data, {INDEX_EXCHANGE_SEGMENT: sec_ids})
         if not resp or resp.get("status") == "failure":
             log.warning(f"  Index quote data failed: {resp}")
             return pd.DataFrame()
@@ -655,7 +676,7 @@ def sync_index_benchmark_history(days: int = 420, end_date: date = None,
     end_dt   = end_date or date.today()
     start_dt = end_dt - timedelta(days=days)
     try:
-        resp = dhan.historical_daily_data(
+        resp = _guarded(dhan.historical_daily_data,
             security_id      = sec_id,
             exchange_segment = INDEX_EXCHANGE_SEGMENT,
             instrument_type  = "INDEX",
@@ -700,7 +721,7 @@ def fetch_live_ohlc(symbols: list, dhan=None) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        resp = dhan.ohlc_data(instruments)
+        resp = _guarded(dhan.ohlc_data, instruments)
         if not resp or resp.get("status") == "failure":
             return pd.DataFrame()
 

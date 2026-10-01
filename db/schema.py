@@ -1120,6 +1120,16 @@ W30_TABLES = {
             trade_id TEXT PRIMARY KEY, order_id TEXT, strategy_id TEXT, underlying TEXT, expiry DATE, side TEXT,
             lots INTEGER, lot_size INTEGER, price REAL, fees REAL, reason TEXT, at TIMESTAMP)""",
     ),
+    "ops_restore_drill": (             # W31 (OPS-06): scheduled restore drills
+        """CREATE TABLE IF NOT EXISTS ops_restore_drill (
+            drill_id TEXT PRIMARY KEY, backup_id TEXT, source TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            seconds REAL, status TEXT, details_json TEXT)""",
+    ),
+    "ops_rollback_drill": (            # W31 (OPS-11): executed rollback drills (scratch clone)
+        """CREATE TABLE IF NOT EXISTS ops_rollback_drill (
+            drill_id TEXT PRIMARY KEY, from_ref TEXT, to_ref TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            rto_seconds REAL, status TEXT, details_json TEXT)""",
+    ),
     "event_study": (                   # QR-09: stored event-study results
         """CREATE TABLE IF NOT EXISTS event_study (
             study_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, period TEXT, params_json TEXT, result_json TEXT,
@@ -1156,7 +1166,9 @@ W3_W4_COLUMNS = {
     "oms_order": {"trigger_price": "REAL", "parent_order_id": "TEXT", "modified_count": "INTEGER DEFAULT 0",
                   "instrument": "TEXT DEFAULT 'CASH'"},
     # W30 (QR-10 / QR-05): implied volatility from option settle prices; lot size for futures shorts
-    "live_quotes": {"buy_qty": "REAL", "sell_qty": "REAL"},        # W30 (AF-07): stock-feed order imbalance
+    "live_quotes": {"buy_qty": "REAL", "sell_qty": "REAL"},
+    # W31 (OPS-06): encrypted off-site copy of each verified backup
+    "ops_backup": {"offsite_path": "TEXT", "offsite_status": "TEXT", "encrypted_sha256": "TEXT"},        # W30 (AF-07): stock-feed order imbalance
     "fo_underlying_daily": {"atm_iv": "REAL", "iv_call_atm": "REAL", "iv_put_atm": "REAL", "iv_skew": "REAL",
                             "iv_expiry": "DATE", "iv_dte": "INTEGER", "lot_size": "INTEGER"},
     "global_markets": {"us_3m": "REAL", "us_3m_chg": "REAL", "us_5y": "REAL", "us_5y_chg": "REAL",

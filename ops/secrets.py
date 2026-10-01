@@ -6,7 +6,8 @@ get(name) resolves a secret from, in order:
     2. the .env file (python-dotenv, already a dependency) -- loaded once
     3. atip_data/secrets/<name> file (one value per file; the directory is git-ignored
        because atip_data/ is)
-    4. LEGACY: the key's historical location in atip_data/config.json (Dhan, Telegram,
+    4. W31: the encrypted vault atip_data/secrets/vault.json (ops/vault.py)
+    5. LEGACY: the key's historical location in atip_data/config.json (Dhan, Telegram,
        Anthropic ...). Supported so nothing breaks; flagged "legacy" by validate().
 Every access is recorded in ops_secret_access with the NAME, source, caller and
 time -- never the value. mask() and the logging filter (logs.py) keep values
@@ -73,6 +74,13 @@ def _resolve(name):
             v = f.read_text(encoding="utf-8").strip()
             if v:
                 return v, "file"
+    except Exception:
+        pass
+    try:                                            # W31 (SEC-04): the encrypted vault
+        from ops.vault import get as _vget
+        v = _vget(name)
+        if v:
+            return v, "vault"
     except Exception:
         pass
     v = _legacy(name)

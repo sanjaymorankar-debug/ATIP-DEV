@@ -177,6 +177,15 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W30-4 | Non-tracked symbols' prices (bhavcopy dump) have gaps and unadjusted corporate actions; event studies now guard day 0 and gaps, but market-wide studies stay noisy | quant/event_study.py | Low | MITIGATED | — |
 | W30-5 | Microstructure spreads are estimates (Roll, Corwin-Schultz), not quoted spreads | quant/microstructure.py | Low | BY DESIGN until DP-04/05 | Data-source wave |
 
+## W31 production hardening: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W31-1 | Inbound signed webhooks never received the request object (from __future__ annotations + closure-typed Req) since W8 | dashboard/ops_routes.py | High | FIXED in W31 | — |
+| W31-2 | deploy/*.ps1 stop every `python main.py` on the machine: never run them beside a live instance; rehearse with `python -m ops rollback-drill` | deploy/ | Medium | DOCUMENTED | — |
+| W31-3 | Credentials still in config.json until the owner runs vault-migrate --apply | ops/vault.py | Medium | OPEN (owner) | Owner |
+| W31-4 | Off-site backups need ops.backup_offsite_dir and a data key kept outside the machine | ops/backup.py | Medium | OPEN (owner) | Owner |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:

@@ -20,6 +20,10 @@ import time
 log = logging.getLogger(__name__)
 
 MIN_GAP_S = 0.35
+
+
+class _Failed(Exception):
+    """All attempts failed -- counted by the breaker, returned to callers as None."""
 TIMEOUT_S = 25
 RETRIES = 3
 
@@ -47,7 +51,19 @@ class NseClient:
             self._last = time.monotonic()
 
     def get(self, url: str, accept_json: bool = True):
-        """The response (status 200) or None after RETRIES attempts."""
+        """The response (status 200) or None after RETRIES attempts. W31 (OPS-10): behind the
+        "nse" circuit breaker -- after 8 consecutive failed fetches it fails fast (None) for
+        180 s instead of retrying every symbol of a 500-symbol sweep against a dead host."""
+        from ops.errors import DependencyUnavailable
+        from ops.resilience import breaker
+        try:
+            return breaker("nse", failure_threshold=8, reset_seconds=180).call(self._get, url, accept_json)
+        except DependencyUnavailable:
+            return None
+        except _Failed:
+            return None
+
+    def _get(self, url: str, accept_json: bool = True):
         from data.bhavcopy import HEADERS
         headers = {**HEADERS, "Accept": "application/json"} if accept_json else HEADERS
         refreshed = False
@@ -66,9 +82,9 @@ class NseClient:
                 self._fresh()
                 continue
             if r.status_code == 404:
-                return None
+                return None                      # a missing file is an answer, not a failure
             time.sleep(2.0 * (attempt + 1))
-        return None
+        raise _Failed(url)
 
     def json(self, url: str):
         r = self.get(url)

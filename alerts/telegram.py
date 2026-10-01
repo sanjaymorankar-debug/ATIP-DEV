@@ -14,6 +14,12 @@ def load_config():
         except: pass
     cfg.setdefault("telegram_token",  os.getenv("ATIP_TELEGRAM_TOKEN",""))
     cfg.setdefault("telegram_chat_id",os.getenv("ATIP_TELEGRAM_CHAT_ID",""))
+    for key,name in (("telegram_token","TELEGRAM_TOKEN"),("telegram_chat_id","TELEGRAM_CHAT_ID")):   # W31: vault
+        if not cfg.get(key):
+            try:
+                from ops.secrets import get as _sget
+                cfg[key]=_sget(name,log_access=False) or ""
+            except Exception: pass
     return cfg
 
 def _is_placeholder(v):

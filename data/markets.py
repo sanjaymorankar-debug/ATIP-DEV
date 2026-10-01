@@ -30,6 +30,19 @@ GLOBAL_TICKERS = {
 # it is left out rather than approximated (see docs/W27 handoff).
 YIELD_SERIES = ("us_3m","us_5y","us_10y","us_30y")
 
+def _yf_download(*a, **k):
+    """W31 (OPS-10): yfinance through a breaker and a short retry (Yahoo throttles bursts)."""
+    from ops.resilience import breaker, retry
+
+    @retry(attempts=3, base=2.0, cap=20.0, retry_on=(Exception,))
+    def _once():
+        df = yf.download(*a, **k)
+        if df is None or getattr(df, "empty", True):
+            raise ConnectionError("yfinance returned no data")
+        return df
+    return breaker("yfinance", failure_threshold=4, reset_seconds=300).call(_once)
+
+
 def safe_float(val):
     try: f = float(val); return None if f!=f else round(f,4)
     except: return None
@@ -112,7 +125,7 @@ def fetch_global_markets(trade_date=None, mode="premarket"):
     if trade_date is None: trade_date = date.today()
     log.info(f"🌍 Global markets ({mode})")
     tickers = list(GLOBAL_TICKERS.values())
-    try: data = yf.download(tickers, period="3d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
+    try: data = _yf_download(tickers, period="3d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
     except Exception as e: log.error(f"  Failed: {e}"); return {}
     record={"date":str(trade_date),"time":mode}; changes={}
     for col, ticker in GLOBAL_TICKERS.items():
@@ -162,7 +175,7 @@ def backfill_global_history(period="5y", series=None) -> dict:
     (yfinance period string: 1y / 5y / max). Idempotent."""
     cols = {c: t for c, t in GLOBAL_TICKERS.items() if not series or c in series}
     try:
-        data = yf.download(list(cols.values()), period=period, interval="1d", group_by="ticker",
+        data = _yf_download(list(cols.values()), period=period, interval="1d", group_by="ticker",
                            progress=False, auto_adjust=True)
     except Exception as e:
         log.error(f"  Global history failed: {e}"); return {"status": "FAILED", "error": str(e)}

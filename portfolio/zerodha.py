@@ -17,6 +17,12 @@ def load_cfg():
         except: pass
     cfg.setdefault("kite_api_key",os.getenv("KITE_API_KEY",""))
     cfg.setdefault("kite_api_secret",os.getenv("KITE_API_SECRET",""))
+    for key,name in (("kite_api_key","KITE_API_KEY"),("kite_api_secret","KITE_API_SECRET")):   # W31: vault
+        if not cfg.get(key):
+            try:
+                from ops.secrets import get as _sget
+                cfg[key]=_sget(name,log_access=False) or ""
+            except Exception: pass
     return cfg
 
 def get_kite():

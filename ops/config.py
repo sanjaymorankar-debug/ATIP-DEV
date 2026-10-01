@@ -52,6 +52,9 @@ OPS_DEFAULTS = {
     "backup_enabled": True, "backup_time": "19:15", "backup_keep_daily": 7, "backup_keep_weekly": 4,
     "backup_dir": "atip_data/backups", "monitor_enabled": True, "monitor_minutes": 15, "json_logs": True,
     "migrate_every_connection": False, "features": {},
+    # W31 (OPS-06): encrypted off-site backup copies + weekly restore drill
+    "backup_offsite_dir": None, "backup_offsite_plaintext": False, "backup_offsite_keep": 14,
+    "restore_drill_enabled": True, "restore_drill_time": "10:00",
 }
 SECRET_WORDS = ("token", "secret", "password", "passwd", "api_key", "apikey", "private", "pin", "key_id",
                 "client_secret", "access_key")
