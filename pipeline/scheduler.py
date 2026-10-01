@@ -481,6 +481,149 @@ def run_morning_catchup():
         _run_portfolio_sync(date.today())
 
 
+def _last_ok(conn, jobs, ok=("SUCCESS", "NO_NEW", "EMPTY", "PARTIAL"), before=None):
+    """Start time of the newest successful run of any of `jobs` (at or before `before`), or None."""
+    q = (f"SELECT MAX(start_time) FROM pipeline_log WHERE kind='run' AND job_name IN ({','.join('?' * len(jobs))}) "
+         f"AND status IN ({','.join('?' * len(ok))}) AND start_time<=?")
+    v = conn.execute(q, (*jobs, *ok, before or datetime.now())).fetchone()[0]
+    if not v:
+        return None
+    return v if isinstance(v, datetime) else datetime.fromisoformat(str(v)[:26].replace(" ", "T"))
+
+
+def run_startup_market_catchup(now=None):
+    """
+    Bring the market indicators up to date when ATIP starts after their scheduled
+    slots have passed (the PC was off or asleep). `schedule` never re-runs a missed
+    slot: started at 10:30, the 07:00 global-markets / pre-open quotes waited until
+    the next day -- pipeline_log shows global_premarket last ran on 2026-09-29, so
+    every later morning ran without them -- and started after the close, the index
+    panel kept the last intraday values until the next session.
+
+    Each step runs only if its slot has passed today AND its job has not succeeded
+    since that slot, so a restart in the middle of a normal day does nothing:
+
+      07:00-15:30  global markets if none fetched since 07:00; before 09:15 also the
+                   pre-open Dhan quotes, and 08:30-09:15 the morning brief if unsent
+      09:15-15:30  the 15-minute refresh (quotes, indexes, VIX, GIFT Nifty, global)
+                   when the last one is older than 15 min; 15-min bars when older
+                   than 30 min
+      after 15:30  one closing snapshot of indexes + quotes if none was taken after
+                   the close (what the index panel shows overnight)
+      17:00-       FII/DII settle for held signals (its own guard decides)
+      19:30-       delivery (EOD late)
+      23:00- / before 07:00  overnight global markets if not fetched since 23:00
+      weekend      the Saturday weekly job if it did not run this week
+
+    Called by start_scheduler() before the post-market catch-up (these are quick
+    and the dashboard should show current values while scoring catches up).
+    """
+    now = now or datetime.now()
+    td = now.date()
+
+    def today(h, m):
+        return datetime.combine(td, datetime.min.time()).replace(hour=h, minute=m)
+
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        plan = startup_catchup_plan(conn, now)
+    finally:
+        conn.close()
+    return _run_startup_plan(plan, now, td, today)
+
+
+def startup_catchup_plan(conn, now) -> list:
+    """The missed market-indicator steps at `now` (pure: reads pipeline_log only)."""
+    td = now.date()
+
+    def today(h, m):
+        return datetime.combine(td, datetime.min.time()).replace(hour=h, minute=m)
+
+    def last(*jobs):
+        return _last_ok(conn, jobs, before=now)
+    plan = []
+    if is_trading_day(td):
+        if today(7, 0) <= now < today(15, 30):
+            g = last("global_premarket", "global_intraday", "global_catchup")
+            if not g or g < today(7, 0):
+                plan.append("global")
+            q = last("dhan_quotes_premarket", "dhan_quotes_pre-open", "dhan_quotes_intraday",
+                     "dhan_quotes_catchup")
+            if now < today(9, 15) and (not q or q < today(7, 0)):
+                plan.append("preopen_quotes")
+            d = last("morning_digest")
+            if today(8, 30) <= now < today(9, 15) and (not d or d < today(8, 30)):
+                plan.append("digest")
+        if today(9, 15) <= now <= today(15, 30):
+            i = last("intraday_indexes")
+            if not i or i < now - timedelta(minutes=15):
+                plan.append("intraday_15")
+            b = last("dhan_15min_bars")
+            if now >= today(9, 45) and (not b or b < now - timedelta(minutes=30)):
+                plan.append("intraday_30")
+        if now >= today(15, 31):
+            i = last("intraday_indexes", "close_indexes")
+            if not i or i < today(15, 30):
+                plan.append("close_snapshot")
+        if now.time() >= datetime.strptime(FII_DII_WATCH_START, "%H:%M").time():
+            plan.append("fii_dii")
+        eh, em = (int(x) for x in EOD_LATE_RUN_TIME.split(":"))
+        if now >= today(eh, em):
+            dl = last("delivery")
+            if not dl or dl < today(eh, em):
+                plan.append("eod_late")
+    o = last("global_overnight")
+    if now >= today(23, 0):
+        if not o or o < today(23, 0):
+            plan.append("overnight")
+    elif now < today(7, 0) and (not o or o < today(23, 0) - timedelta(days=1)):
+        plan.append("overnight")
+    if now.weekday() in (5, 6):
+        sat = today(8, 0) - timedelta(days=now.weekday() - 5)
+        w = last("accuracy_audit", "db_purge")
+        if now >= sat and (not w or w < sat):
+            plan.append("weekly")
+    return plan
+
+
+def _run_startup_plan(plan, now, td, today):
+    if not plan:
+        log.info("  ✓ Market indicators are current — no start-up catch-up needed")
+        return {"status": "SKIPPED", "rows": 0, "ran": []}
+    log.warning(f"  ↻ Start-up catch-up: missed market-indicator slots → {', '.join(plan)}")
+    from data.markets import fetch_global_markets, fetch_intraday_indexes
+    for step in plan:
+        try:
+            if step == "global":
+                run_job("global_catchup", fetch_global_markets, td,
+                        "premarket" if now < today(9, 15) else "intraday")
+            elif step == "preopen_quotes":
+                _run_dhan_quotes(td, label="catchup")
+            elif step == "digest":
+                run_morning_digest()
+            elif step == "intraday_15":
+                run_intraday_15min(force=True)
+            elif step == "intraday_30":
+                run_intraday_30min()
+            elif step == "close_snapshot":
+                run_job("close_indexes", fetch_intraday_indexes, td)
+                _run_dhan_quotes(td, label="close_catchup")
+            elif step == "fii_dii":
+                run_fii_dii_watch()
+            elif step == "eod_late":
+                run_eod_late()
+            elif step == "overnight":
+                run_overnight()
+            elif step == "weekly":
+                run_weekly()
+        except Exception as e:
+            log.warning(f"  Start-up catch-up step {step}: {e}")
+    if any(s in plan for s in ("global", "preopen_quotes", "close_snapshot", "overnight")):
+        run_job("dashboard_refresh", _rebuild_dashboard, td)
+    return {"status": "SUCCESS", "rows": len(plan), "ran": plan}
+
+
 def _run_portfolio_sync(td):
     """Sync portfolio — tries Dhan first, then Zerodha."""
     try:
@@ -1331,12 +1474,28 @@ def start_scheduler():
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)
 
+    # Market indicators whose slots passed while the PC was off (global markets,
+    # indexes / VIX / GIFT Nifty, quotes, FII/DII, delivery, overnight) -- first,
+    # because they are quick and the dashboard should be current while scoring catches up.
+    try:
+        run_startup_market_catchup()
+    except Exception as e:
+        log.warning(f"  Market-indicator catch-up failed: {e}")
+
     # A missed post-market (machine off or asleep at run time, or started late)
     # is recovered here rather than silently skipped until tomorrow.
     try:
         run_postmarket_if_missing()
     except Exception as e:
         log.warning(f"  Post-market catch-up failed: {e}")
+    # The FII/DII settle only acts once post-market has held the session's signals, so it
+    # is retried after the post-market catch-up -- started after the 21:30 watch window, it
+    # would otherwise never run for the day.
+    try:
+        if is_market_day() and datetime.now().strftime("%H:%M") >= FII_DII_WATCH_START:
+            run_fii_dii_watch()
+    except Exception as e:
+        log.warning(f"  FII/DII catch-up failed: {e}")
     try:
         run_morning_catchup()
     except Exception as e:
