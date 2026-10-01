@@ -120,7 +120,10 @@ def test_plan_decisions_are_one_way(book):
 def test_advisor_claims_carry_evidence_and_never_trade(book):
     for q in ADV.suggested_questions():
         r = ADV.ask(book, OWNER, q, narrate=False)
-        assert r["claims"] and all(c["evidence"] for c in r["claims"])
+        # every claim carries evidence; with nothing to go on (no goals, no stored report)
+        # the advisor says so instead of producing claims
+        assert all(c["evidence"] for c in r["claims"])
+        assert r["claims"] or any("no data" in a for a in r["answer"])
         assert "cannot place" in r["trading_note"]
         assert r["narration"]["status"] == "OFF"
 

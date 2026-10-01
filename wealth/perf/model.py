@@ -54,6 +54,10 @@ DEFAULTS = {"horizon": 20, "slippage_bps": 10.0, "notional": 100000.0, "max_adv_
 
 
 def load_signals(conn, start: date, end: date) -> list:
+    # signal_log is created by scores/signal_log.ensure_tables on the first post-market run;
+    # a fresh install has none yet, which used to crash the whole report.
+    from scores.signal_log import ensure_tables
+    ensure_tables(conn)
     rows = conn.execute("SELECT id, run_id, signal_date, symbol, signal, entry_price, atip_score, vpi, cri, zpi, regime, "
                         "model_version, logged_at FROM signal_log WHERE duplicate_of IS NULL AND signal_date>=? AND "
                         "signal_date<=? ORDER BY signal_date, logged_at", (str(start), str(end))).fetchall()

@@ -128,13 +128,17 @@ def owner_for(persona: str) -> dict:
     return {"tenant_id": UAT_TENANT, "owner_id": f"persona_{persona}"}
 
 
+# One statement per table, built once from the fixed OWNER_TABLES list: table names cannot
+# be bound parameters, and no request value can ever reach this text.
+_RESET_SQL = {t: "DELETE FROM " + t + " WHERE tenant_id=? AND owner_id=?" for t in OWNER_TABLES}
+
+
 def reset(conn, persona: str) -> dict:
     o = owner_for(persona)
     n = {}
     for t in OWNER_TABLES:
         if C.table_exists(conn, t):
-            n[t] = conn.execute(f"DELETE FROM {t} WHERE tenant_id=? AND owner_id=?",           # t: fixed table list
-                                (o["tenant_id"], o["owner_id"])).rowcount
+            n[t] = conn.execute(_RESET_SQL[t], (o["tenant_id"], o["owner_id"])).rowcount
     conn.commit()
     return {"owner": o, "deleted": {k: v for k, v in n.items() if v}}
 

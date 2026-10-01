@@ -41,9 +41,12 @@ from wealth.perf import metrics as M
 
 
 def _txns(conn, owner, portfolio, end):
+    # Same-day order: the trade time when the source gives one, else the order of entry
+    # (rowid). txn_id is a random id: as the tie-breaker it put a same-day SELL before its
+    # BUY about half the time -- the sell was capped (EXCESS_SELL) and the round trip lost.
     return [dict(r) for r in conn.execute(
         "SELECT * FROM perf_ledger l WHERE tenant_id=? AND owner_id=? AND portfolio=? AND trade_date<=? AND NOT EXISTS "
-        "(SELECT 1 FROM perf_ledger_void v WHERE v.txn_id=l.txn_id) ORDER BY trade_date, ts, txn_id",
+        "(SELECT 1 FROM perf_ledger_void v WHERE v.txn_id=l.txn_id) ORDER BY trade_date, ts, l.rowid",
         (owner["tenant_id"], owner["owner_id"], portfolio, str(end)))]
 
 
