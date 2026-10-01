@@ -156,6 +156,9 @@ def _run_additive_migrations(conn):
     from db.schema_w36 import W36_TABLES                    # W36: ML / strategy tooling
     for name, ddls in W36_TABLES.items():
         _create_table_if_missing(conn, name, ddls)
+    from db.schema_w38 import W38_TABLES                    # W38: platform & compliance
+    for name, ddls in W38_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
     from db.schema_w37 import W37_TABLES, W37_COLUMNS       # W37: brokers & multi-asset
     for name, ddls in W37_TABLES.items():
         _create_table_if_missing(conn, name, ddls)

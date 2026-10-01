@@ -259,8 +259,9 @@ def saas_daily() -> dict:
     def f(c):
         from enterprise import payments, privacy, reports
         out = {"billing_cycle": payments.run_cycle(c), "dunning": payments.run_dunning(c),
-               "reports": reports.run_due(c), "retention": privacy.purge_expired(c)}
-        return {"rows": 4, **out}
+               "reports": reports.run_due(c), "retention": privacy.purge_expired(c),
+               "dsr_reminders": privacy.sla_reminders(c)}                      # W38 (ENT-17)
+        return {"rows": 5, **out}
     return _run(f)
 
 

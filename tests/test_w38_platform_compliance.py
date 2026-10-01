@@ -1,6 +1,8 @@
 """W38: PostgreSQL path (DBS-05), deployment packaging (OPS-04), compliance monitoring (SEC-05),
 data privacy (ENT-17), mobile / PWA (ENT-09), regulatory pack register (ENT-14)."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 
@@ -81,6 +83,134 @@ def test_scanner_reports_the_work_list(tmp_path):
     r = scan(tmp_path)
     assert (r["statements"], r["translatable"], r["needs_change"]) == (5, 4, 1)
     assert r["by_kind"] == {"PRAGMA": 1} and r["items"][0]["line"] == 6
+
+
+@pytest.fixture
+def db(temp_db):
+    from db.schema import get_connection, init_db
+    init_db()
+    conn = get_connection()
+    yield conn
+    conn.close()
+
+
+# ── SEC-05 ──
+def test_compliance_run_stores_results_and_alerts_only_when_worse(db, monkeypatch):
+    from ops import compliance as C
+    sent = []
+    monkeypatch.setattr(C, "_alert", lambda worse: sent.append([w["check_id"] for w in worse]))
+    r1 = C.run(db, trigger="test")
+    ids = {x["check_id"]: x for x in r1["results"]}
+    assert set(ids) == {cid for cid, _, _ in C.CHECKS} and all(x["status"] in C.RANK for x in r1["results"])
+    assert ids["live_trading_gate"]["status"] == "PASS"                     # paper by default
+    assert ids["backup_recency"]["status"] == "FAIL"                         # a fresh DB has no backup
+    assert sent and "backup_recency" in sent[0]                              # first run: worse than nothing
+    sent.clear()
+    C.run(db, trigger="test")
+    assert sent == [], "unchanged results do not alert again"
+    db.execute("INSERT INTO ops_backup (backup_id, kind, finished_at, integrity, status) VALUES "
+               "('b1','scheduled',?, 'ok','VERIFIED')", (datetime.now(),))
+    db.commit()
+    r3 = C.run(db, trigger="test")
+    assert {x["check_id"]: x["status"] for x in r3["results"]}["backup_recency"] == "PASS" and sent == []
+    latest = C.latest(db)
+    assert latest["run"]["run_id"] == r3["run_id"] and len(latest["history"]) == 3
+
+
+def test_a_broken_audit_chain_fails(db):
+    from enterprise import audit
+    from ops.compliance import c_audit_chain
+    audit.record(db, "x.one", actor="t")
+    audit.record(db, "x.two", actor="t")
+    assert c_audit_chain(db, datetime.now())[0] == "PASS"
+    db.execute("DROP TRIGGER IF EXISTS trg_ent_audit_no_update")             # simulate tampering
+    db.execute("UPDATE enterprise_audit SET action='x.forged' WHERE action='x.one'")
+    st, detail, _ = c_audit_chain(db, datetime.now())
+    assert st == "FAIL" and "changed" in detail
+
+
+def test_exposure_without_sign_in_fails(monkeypatch, db):
+    from ops.compliance import c_dashboard_exposure
+    monkeypatch.setenv("ATIP_DASHBOARD_HOST", "0.0.0.0")
+    assert c_dashboard_exposure(db, datetime.now())[0] == "FAIL"
+    monkeypatch.setenv("ATIP_DASHBOARD_HOST", "127.0.0.1")
+    assert c_dashboard_exposure(db, datetime.now())[0] == "PASS"
+
+
+# ── ENT-14 ──
+def test_register_needs_evidence_and_gates_fail_when_crossed(db, monkeypatch):
+    from ops import regulatory as REG
+    from ops import compliance as C
+    items = REG.items(db)
+    assert {i["gate"] for i in items} == set(REG.GATES) and all(i["status"] == "OPEN" for i in items)
+    with pytest.raises(ValueError, match="reviewer"):
+        REG.update(db, "TERMS", "SIGNED_OFF", "owner")
+    r = REG.update(db, "TERMS", "SIGNED_OFF", "owner", reviewer="A. Lawyer", reference="opinion 2026-10")
+    assert r["status"] == "SIGNED_OFF" and r["signed_at"]
+    assert C.c_regulatory_signoff(db, datetime.now())[0] == "NA"            # single owner, paper
+    monkeypatch.setattr(C, "_enterprise_on", lambda: True)
+    st, detail, ev = C.c_regulatory_signoff(db, datetime.now())
+    assert st == "FAIL" and "TERMS" not in ev["open_pre_multi_user"]
+    for i in REG.open_items(db, "pre_multi_user"):
+        REG.update(db, i["item_id"], "NOT_APPLICABLE", "owner", reviewer="A. Lawyer", reference="ref")
+    assert C.c_regulatory_signoff(db, datetime.now())[0] == "NA"            # pre-live items still open, live off
+
+
+# ── ENT-17 ──
+def test_inventory_classifies_every_table_and_dsr_sla(db):
+    from enterprise import privacy as P
+    assert P.inventory_gaps(db) == [], "every table created by init_db must be classified"
+    inv = {i["table"]: i for i in P.full_inventory(db)}
+    assert inv["portfolio_holdings"]["personal"] is True and inv["prices_daily"]["class"] == "market"
+    old = datetime.now() - timedelta(days=P.DSR_SLA_DAYS + 2)
+    db.execute("INSERT INTO enterprise_privacy_request (request_id, tenant_id, user_id, kind, status, requested_at) "
+               "VALUES ('prq_old','default','u1','export','PENDING',?)", (old,))
+    db.execute("INSERT INTO enterprise_privacy_request (request_id, tenant_id, user_id, kind, status, requested_at) "
+               "VALUES ('prq_new','default','u2','delete','PENDING',?)", (datetime.now() - timedelta(days=25),))
+    db.commit()
+    s = P.sla_status(db)
+    assert [r["request_id"] for r in s["overdue"]] == ["prq_old"] and [r["request_id"] for r in s["due_soon"]] == ["prq_new"]
+    assert P.get_request(db, "prq_old")["overdue"] is True
+    from ops.compliance import c_dsr_sla
+    assert c_dsr_sla(db, datetime.now())[0] == "FAIL"
+
+
+def test_privacy_notice_is_a_draft_until_approved(db):
+    from enterprise.privacy import policy
+    from dashboard.w38_page import render_privacy
+    p = policy(db)
+    assert p["approved"] is False and "financial" in p["personal_data"]
+    page = render_privacy(p)
+    assert "DRAFT" in page and "Your rights" in page
+
+
+# ── ENT-09 / OPS-04 ──
+def test_mobile_app_shell_and_summary(db):
+    from dashboard.w38_page import MANIFEST, SERVICE_WORKER, mobile_summary, render_mobile
+    import json as _json
+    m = _json.loads(MANIFEST)
+    assert m["start_url"] == "/m" and m["display"] == "standalone"
+    assert "/api/" not in SERVICE_WORKER.split("SHELL=")[1].split("]")[0], "no API response is cached"
+    page = render_mobile("secret-token")
+    assert "secret-token" not in page and "serviceWorker" in page
+    s = mobile_summary(db)
+    assert set(s) >= {"market", "indexes", "buys", "sells", "pnl", "alerts", "pipeline_problems"}
+
+
+def test_container_packaging_keeps_everything_private():
+    import re
+    from pathlib import Path
+    import yaml
+    compose = yaml.safe_load(Path("docker-compose.yml").read_text(encoding="utf-8"))
+    for name, svc in compose["services"].items():
+        for p in svc.get("ports", []):
+            assert str(p).startswith("127.0.0.1:"), f"{name} publishes {p} beyond localhost"
+    df = Path("Dockerfile").read_text(encoding="utf-8")
+    assert "TZ=Asia/Kolkata" in df and re.search(r"^USER atip$", df, re.M) and "HEALTHCHECK" in df
+    ign = Path(".dockerignore").read_text(encoding="utf-8").split()
+    assert "atip_data/" in ign and ".env" in ign
+    yaml.safe_load(Path("deploy/cloud/cloud-init.yaml").read_text(encoding="utf-8"))
+    assert "deploy/atip.env" in Path(".gitignore").read_text(encoding="utf-8")
 
 
 def test_runtime_stays_on_sqlite_unless_all_three_switches(monkeypatch, tmp_path):

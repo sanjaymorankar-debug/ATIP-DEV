@@ -48,7 +48,10 @@ PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh|forgot|verify-emai
           ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"),
           # W8: health probes (no sensitive data) and signed inbound webhooks (HMAC-verified)
           ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml|storage|market_data|wealth|notifications|billing))?$"),
-          ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$")]
+          ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$"),
+          # W38: the privacy notice must be readable before sign-up (ENT-17); PWA shell files (ENT-09)
+          ("GET", r"^/privacy$"), ("GET", r"^/api/privacy/policy$"),
+          ("GET", r"^/(manifest\.webmanifest|sw\.js|icon\.svg)$")]
 SELF = r"^/api/auth/(me|logout|password|switch-tenant|consent)$"      # any signed-in principal
 
 ROUTE_RULES = [
@@ -67,6 +70,11 @@ ROUTE_RULES = [
     # W8 operations: metrics, status, backups, config, secrets status, webhooks
     ("*", r"^/api/ops", "system:operate"),
     ("POST", r"^/api/health/recover$", "system:operate"),          # re-run missed jobs (pipeline/recover.py)
+    # W38: compliance monitoring (SEC-05), inventory / DSR (ENT-17), regulatory register (ENT-14)
+    ("GET", r"^/api/compliance", "audit:read"),
+    ("POST", r"^/api/compliance/", "system:operate"),
+    ("GET", r"^/api/platform/", "system:operate"),
+    ("GET", r"^/api/mobile/", "dashboard:read"),
     ("*", r"^/api/admin/(users|password-reset)", "admin:users"),
     ("*", r"^/api/admin/tenants", "admin:tenants"),
     ("*", r"^/api/admin/(roles|permissions)", "admin:roles"),

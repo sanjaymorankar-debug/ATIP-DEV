@@ -68,6 +68,18 @@ INVENTORY = {
     "prices_daily": ("market", False, "600 days (W1 purge)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
+    # W38 (ENT-17): the rest of the enterprise tables
+    "enterprise_tenant": ("operational", False, "tenant lifetime (organisation name / settings)"),
+    "enterprise_role": ("operational", False, "configuration"),
+    "enterprise_permission": ("operational", False, "configuration"),
+    "enterprise_role_permission": ("operational", False, "configuration"),
+    "enterprise_user_role": ("personal", True, "membership: removed on a delete request"),
+    "enterprise_risk_profile": ("financial", True, "risk questionnaire answers: account lifetime"),
+    "enterprise_plan": ("operational", False, "configuration"),
+    "enterprise_subscription": ("financial", False, "kept (accounting)"),
+    "enterprise_onboarding": ("personal", True, "account lifetime"),
+    "enterprise_mfa_recovery": ("credential", True, "digest only; cleared when MFA is reset"),
+    "intraday_scan_hit": ("research", False, "derived research: kept"),
 }
 DEFAULT_RETENTION = {"notifications_read": 180, "deliveries": 90, "report_outputs": 90, "api_usage": 400}
 EXPORT_DIR = Path("atip_data") / "privacy_exports"
@@ -142,6 +154,13 @@ def get_request(conn, rid) -> dict:
         raise ValueError(f"no request {rid}")
     d = dict(r)
     d["result"] = json.loads(d.pop("result_json") or "null")
+    try:                                                       # W38 (ENT-17): response SLA
+        at = d["requested_at"] if isinstance(d["requested_at"], datetime) else \
+            datetime.fromisoformat(str(d["requested_at"])[:19])
+        d["due_at"] = str(at + timedelta(days=sla_days()))
+        d["overdue"] = d["status"] == "PENDING" and at + timedelta(days=sla_days()) < datetime.now()
+    except (TypeError, ValueError):
+        pass
     return d
 
 
@@ -270,3 +289,138 @@ def purge_expired(conn) -> dict:
 
 def inventory() -> list:
     return [{"table": t, "class": c, "personal": p, "retention": r} for t, (c, p, r) in sorted(INVENTORY.items())]
+
+
+# ── W38 (ENT-17): the whole database classified, DSR SLA, generated privacy policy ──────────
+# Explicit INVENTORY entries win; these prefix rules classify the rest. A table matched by neither is
+# an inventory gap (ops/compliance.py data_inventory check) -- new tables must be classified here.
+RULES = [
+    (r"^assistant_", "personal", True, "conversation history: account lifetime; removed on a delete request"),
+    (r"^(investor_profile|wealth_|perf_)", "financial", True, "owner's financial records: kept (audit, tax)"),
+    (r"^(portfolio_|broker_import_run|live_pnl_snapshot)", "financial", True, "holdings / imports: kept"),
+    (r"^(paper_|tenant_paper|tenant_pnl|pnl_daily|order_log|order_rules|oms_|exec_algo|execution_|reconciliation_|"
+     r"risk_)", "financial", False, "paper / order records: kept (trade audit)"),
+    (r"^(prices_daily|intraday_bars|index_levels|live_quotes|live_ticks|global_|fo_|option_chain|options_|"
+     r"derivatives_|bulk_deals|corporate_|fii_dii|institutional_data|insider_trade|sast_disclosure|shareholding_|"
+     r"fundamental_|macro_|market_event|sector_breadth|mf_nav|asset_price_daily|order_book_snapshot|technical_|"
+     r"microstructure_|news_|market_series)", "market", False, "public market data: rolling windows (W1 purge)"),
+    (r"^(ai_scores|score_components|predictions|accuracy_tracker|signal_|strategy|backtest_|quant_|ml_|research_|"
+     r"event_study|formula_registry|weight_config|alt_|lake_partition|data_quality|market_health)", "research", False,
+     "derived research: kept"),
+    (r"^(ops_|pipeline_log|alert_log|job_recovery|compliance_|regulatory_|schema_migrations|ai_usage_log|"
+     r"broker_health_check|"
+     r"live_feed_status|tick_capture_status|latency_rollup|audit_export)", "operational", False,
+     "operational logs: kept / rotated by ops jobs"),
+]
+DSR_SLA_DAYS = 30
+
+
+def classify(table: str) -> dict | None:
+    import re
+    if table in INVENTORY:
+        c, p, r = INVENTORY[table]
+        return {"table": table, "class": c, "personal": p, "retention": r, "source": "explicit"}
+    for rx, c, p, r in RULES:
+        if re.match(rx, table):
+            return {"table": table, "class": c, "personal": p, "retention": r, "source": "rule"}
+    return None
+
+
+def _tables(conn) -> list:
+    return sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                                             "AND name NOT LIKE 'sqlite_%'"))
+
+
+def full_inventory(conn) -> list:
+    """Every table in the database with its class / personal flag / retention (None = unclassified)."""
+    return [classify(t) or {"table": t, "class": None, "personal": None, "retention": None, "source": None}
+            for t in _tables(conn)]
+
+
+def inventory_gaps(conn) -> list:
+    return [t for t in _tables(conn) if classify(t) is None]
+
+
+def sla_days() -> int:
+    try:
+        return int(_cfg().get("dsr_sla_days") or DSR_SLA_DAYS)
+    except (TypeError, ValueError):
+        return DSR_SLA_DAYS
+
+
+def sla_status(conn, now=None) -> dict:
+    """Open data-subject requests against the response SLA (saas.dsr_sla_days, default 30)."""
+    now = now or datetime.now()
+    days = sla_days()
+    open_, overdue, soon = 0, [], []
+    for r in conn.execute("SELECT request_id, tenant_id, user_id, kind, requested_at FROM enterprise_privacy_request "
+                          "WHERE status='PENDING'"):
+        open_ += 1
+        at = r[4] if isinstance(r[4], datetime) else datetime.fromisoformat(str(r[4])[:19])
+        due = at + timedelta(days=days)
+        d = {"request_id": r[0], "tenant_id": r[1], "user_id": r[2], "kind": r[3], "requested_at": str(at),
+             "due_at": str(due), "days_left": (due - now).days}
+        if due < now:
+            overdue.append(d)
+        elif due - now <= timedelta(days=7):
+            soon.append(d)
+    return {"sla_days": days, "open": open_, "overdue": overdue, "due_soon": soon}
+
+
+def sla_reminders(conn) -> int:
+    """Daily (saas_daily): remind administrators of requests due within 7 days or overdue."""
+    s = sla_status(conn)
+    n = 0
+    for r in s["overdue"] + s["due_soon"]:
+        try:
+            from enterprise.notifications import notify
+            late = r["days_left"] < 0
+            notify(conn, r["tenant_id"], "privacy",
+                   f"Privacy request {'OVERDUE' if late else 'due soon'}: {r['kind']}",
+                   f"request {r['request_id']} is due {r['due_at'][:10]} ({s['sla_days']}-day SLA)",
+                   permission="admin:users")
+            n += 1
+        except Exception:
+            pass
+    return n
+
+
+def policy(conn) -> dict:
+    """The privacy notice, generated from the data inventory and settings (saas.company_name,
+    saas.privacy_contact, saas.grievance_officer). DRAFT until saas.privacy_policy_approved is true --
+    it needs legal review before publication (ENT-14)."""
+    cfg = _cfg()
+    inv = [i for i in full_inventory(conn) if i["class"]]
+    personal = [i for i in inv if i["personal"]]
+    groups: dict = {}
+    for i in personal:
+        groups.setdefault(i["class"], []).append(i)
+    return {
+        "version": privacy_version(),
+        "approved": cfg.get("privacy_policy_approved") is True,
+        "controller": cfg.get("company_name") or "the operator of this ATIP installation",
+        "contact": cfg.get("privacy_contact") or "(privacy contact not configured: saas.privacy_contact)",
+        "grievance_officer": cfg.get("grievance_officer") or "(grievance officer not configured: saas.grievance_officer)",
+        "sla_days": sla_days(),
+        "personal_data": {k: [{"table": i["table"], "retention": i["retention"]} for i in v] for k, v in groups.items()},
+        "not_personal": sorted({i["class"] for i in inv if not i["personal"]}),
+        "purposes": [
+            "provide the research, portfolio and paper-trading service you signed up for",
+            "secure your account (sign-in, MFA, sessions, audit trail)",
+            "send the notifications you enabled",
+            "billing for paid plans",
+        ],
+        "never": [
+            "card numbers or bank credentials are never stored (payments go through the payment provider)",
+            "broker credentials are stored encrypted (AES-256-GCM) and only used for the purpose you approve",
+            "personal data is not sold or shared for advertising",
+        ],
+        "rights": [
+            "access: download a copy of your data (Account -> Privacy -> Export)",
+            "erasure: ask for your account to be deleted (Account -> Privacy -> Delete); audit records are kept, "
+            "linked only to an anonymised id",
+            "correction: edit your profile, or ask the privacy contact",
+            "withdraw consent: stop using the service and request deletion",
+            f"a response within {sla_days()} days; complaints to the grievance officer",
+        ],
+    }

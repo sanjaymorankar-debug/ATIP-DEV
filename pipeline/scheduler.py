@@ -1475,6 +1475,16 @@ def _schedule_w29_jobs():
     _schedule_w35_jobs()
     schedule.every().day.at("16:20").do(_w37_options_settle)           # W37 (ENT-15)
     schedule.every().day.at("08:10").do(_w37_vault_expiry)             # W37 (ENT-06)
+    schedule.every().day.at("07:50").do(_w38_compliance)              # W38 (SEC-05)
+
+
+def _w38_compliance():
+    """Daily compliance-monitoring run (ops/compliance.py); alerts only on a check that got worse."""
+    try:
+        from ops.compliance import run_job as compliance_job
+        run_job("compliance_checks", compliance_job)
+    except Exception as e:
+        log.warning(f"  Compliance checks: {e}")
 
 
 def _w37_options_settle():
