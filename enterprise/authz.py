@@ -80,6 +80,9 @@ ROUTE_RULES = [
     ("POST", r"^/api/strategy-builder/", "research:run"),
     ("POST", r"^/api/assistant/", "research:run"),
     ("GET", r"^/api/schemas", "dashboard:read"),
+    # W37: broker accounts are portfolio data; a payload preview reads an order
+    ("GET", r"^/api/brokers", "portfolio:read"),
+    ("POST", r"^/api/brokers/", "portfolio:manage"),
     ("*", r"^/api/strategies/[^/]+/(activate|pause|disable|retire|archive|lifecycle|current-version)$",
      "strategy:lifecycle"),
     ("PUT", r"^/api/strategies/regime-mapping", "strategy:lifecycle"),

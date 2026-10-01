@@ -1472,6 +1472,40 @@ def _schedule_w29_jobs():
     _schedule_w32_jobs()
     _schedule_w34_jobs()
     _schedule_w35_jobs()
+    schedule.every().day.at("16:20").do(_w37_options_settle)           # W37 (ENT-15)
+    schedule.every().day.at("08:10").do(_w37_vault_expiry)             # W37 (ENT-06)
+
+
+def _w37_options_settle():
+    """Settle paper options that expired today (intrinsic value). No-op without open positions."""
+    if not is_market_day():
+        return
+    try:
+        from execution.options_paper import settings as opt_settings, settle_expired
+        if opt_settings()["enabled"]:
+            run_job("options_expiry", settle_expired)
+    except Exception as e:
+        log.warning(f"  Options expiry: {e}")
+
+
+def _w37_vault_expiry():
+    """Tell the owner which stored broker credentials expire today (daily tokens)."""
+    try:
+        from db.schema import get_connection
+        from enterprise.vault import expiring
+        c = get_connection()
+        try:
+            soon = expiring(c, hours=16)
+        finally:
+            c.close()
+        if soon:
+            from alerts.telegram import notify
+            lines = [f"{x['broker']} ({x['label']}) {'EXPIRED' if x['expired'] else 'expires ' + x['expires_at']}"
+                     for x in soon[:10]]
+            notify("<b>Broker credentials</b>\n" + "\n".join(lines), category="vault", severity="warning",
+                   key="vault_expiry")
+    except Exception as e:
+        log.warning(f"  Vault expiry reminder: {e}")
 
 
 def _schedule_w35_jobs():

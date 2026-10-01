@@ -125,6 +125,13 @@ def rotate_key(conn, apply: bool = False) -> dict:
     entries = V._load()["entries"]
     for n, tok in entries.items():
         items.append(("vault", n, None, tok, f"vault:{n}"))
+    try:                                   # W37 (ENT-06): per-user broker credentials
+        for cid, t, u, b, lab, tok in conn.execute(
+                "SELECT credential_id, tenant_id, user_id, broker, label, secret_enc FROM enterprise_vault_credential "
+                "WHERE status='ACTIVE' AND secret_enc<>''").fetchall():
+            items.append(("evault", cid, "secret_enc", tok, f"vault:{t}:{u}:{b}:{lab}"))
+    except Exception:
+        pass                               # table absent before the W9 enterprise layer
     if not apply:
         return {"dry_run": True, "current_key_id": key_id(k_old), "values": len(items),
                 "fields": sorted({f"{i[0]}:{i[2] or 'entry'}" for i in items})}
@@ -142,6 +149,9 @@ def rotate_key(conn, apply: bool = False) -> dict:
         for it, tok in new:
             if it[0] == "db":
                 conn.execute(f"UPDATE enterprise_user SET {it[2]}=? WHERE user_id=?", (tok, it[1]))
+            elif it[0] == "evault":
+                conn.execute("UPDATE enterprise_vault_credential SET secret_enc=?, key_id=? WHERE credential_id=?",
+                             (tok, key_id(k_new), it[1]))
         vd = V._load()
         for it, tok in new:
             if it[0] == "vault":

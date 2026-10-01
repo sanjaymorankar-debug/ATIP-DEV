@@ -172,5 +172,9 @@
 
   "_SECTION_17": "W36 AI assistant (off by default)",
   "assistant": {"enabled": false, "model": "claude-opus-5-5", "effort": "medium", "daily_cost_cap_usd": 2.0, "max_tool_rounds": 6, "history_turns": 6},
-  "_assistant_note": "enabled=true lets /assistant answer with Claude using read-only tools over ATIP data; needs ANTHROPIC_API_KEY. Own daily cap, separate from news AI. Off: rule-based answers."
+  "_assistant_note": "enabled=true lets /assistant answer with Claude using read-only tools over ATIP data; needs ANTHROPIC_API_KEY. Own daily cap, separate from news AI. Off: rule-based answers.",
+
+  "_SECTION_18": "W37 paper options book (off by default)",
+  "options": {"enabled": false, "max_premium_trade_pct": 2.0, "max_premium_total_pct": 10.0, "no_new_days_to_expiry": 1, "max_quote_age_minutes": 30, "slippage_bps": 50, "brokerage_per_order": 20, "sell_stt_pct": 0.1},
+  "_options_note": "Paper only. Long premium (no option writing), whole lots, premium caps as % of paper cash. Broker credentials for other brokers go in the encrypted vault (Account page)."
 }
