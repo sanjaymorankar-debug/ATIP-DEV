@@ -160,5 +160,11 @@
     "features":                       {}
   },
   "_ops_note": "environment: development | test | staging | production (ATIP_ENV overrides; config.<env>.json overlays; ATIP__SECTION__KEY env vars override single keys). Production refuses to start on a configuration error (enterprise on, no legacy token, backups on, encryption key present). Live execution additionally requires environment production. Secrets belong in the environment, .env or atip_data/secrets/<NAME>, not in this file.",
-  "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model)."
+  "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model).",
+
+  "_SECTION_16": "W28 news intelligence + intraday scans (all optional; safe defaults)",
+  "news_ai": {"enabled": false, "model": "claude-opus-5-5", "effort": "low", "daily_budget_usd": 1.0, "batch_size": 20, "max_articles_per_run": 200},
+  "_news_ai_note": "enabled=true sends new headlines (batched), session digests and earnings-call PDFs of tracked stocks to Claude, capped by daily_budget_usd (estimated spend in news_ai_usage). Needs ANTHROPIC_API_KEY. Off: a finance-lexicon model classifies everything and digests are extractive.",
+  "intraday_scan": {"alerts": false},
+  "_intraday_scan_note": "alerts=true sends a Telegram alert for an intraday scan hit that agrees with the stock's BUY/SELL signal"
 }

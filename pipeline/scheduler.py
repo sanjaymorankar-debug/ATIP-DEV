@@ -391,6 +391,24 @@ def _run_job_locked(name, fn, start, run_date, log_job, args, kwargs):
 #  Refresh: Global markets, GIFT Nifty, News, Portfolio sync
 # ═════════════════════════════════════════════════════════════════════════
 
+def _run_news_digest(session):
+    """W28 (NS-04): AI (or extractive) news summary for the session; never fatal."""
+    try:
+        from data.news_digest import run_scheduled as run_digest
+        run_job(f"news_digest_{session}", run_digest, session)
+    except Exception as e:
+        log.warning(f"  News digest ({session}): {e}")
+
+
+def _run_intraday_scan():
+    """W28 (SG-08): scans on the session's stored 15-min bars; never fatal."""
+    try:
+        from scores.intraday_scan import run_scan
+        run_job("intraday_scan", run_scan)
+    except Exception as e:
+        log.warning(f"  Intraday scan: {e}")
+
+
 def run_premarket(force=False):
     if not force and not is_market_day():
         log.info("⏩  Weekend — skipping pre-market"); return
@@ -410,6 +428,7 @@ def run_premarket(force=False):
     # run_morning_catchup() also fetches it if it is still missing.
     from data.news import run_news_pipeline
     run_job("news_premarket", run_news_pipeline, 14)
+    _run_news_digest("premarket")                  # W28 (NS-04)
 
     # Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
     from data.markets import fetch_global_markets
@@ -562,6 +581,7 @@ def run_intraday_30min():
                 interval_min=15)
     except Exception as e:
         log.warning(f"  Dhan 15-min bars: {e}")
+    _run_intraday_scan()                           # W28 (SG-08): scan the bars just stored
 
 
 def run_midday_news():
@@ -569,6 +589,12 @@ def run_midday_news():
     if not is_market_day(): return
     from data.news import run_news_pipeline
     run_job("news_midday", run_news_pipeline, 5)
+    _run_news_digest("midday")                     # W28 (NS-04)
+    try:
+        from data.announcements import run_announcements
+        run_job("announcements_midday", run_announcements, 1)     # W28 (NS-06)
+    except Exception as e:
+        log.warning(f"  Announcements: {e}")
 
 
 def run_midday_zpi_scan():
@@ -586,6 +612,7 @@ def run_preclose_scan():
     if not is_market_hours(): return
     log.info(f"  [{now_ist()}] Pre-close scan")
     _run_dhan_quotes(date.today(), "preclose")
+    _run_intraday_scan()                           # W28 (SG-08)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -744,6 +771,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 5:00 PM — Run all 9 AI scoring indexes
     # (this also writes today's predictions — entry/SL/targets/size — which is
     # what makes the accuracy tracker below able to measure anything at all)
+    # W28 (NS-05): source weights + per-symbol decayed news scores, read by get_ns()
+    try:
+        from data.news_ai import run_scheduled as run_news_weights
+        run_job("news_weights", run_news_weights, td)
+    except Exception as e:
+        log.warning(f"  News weights: {e}")
     from scores.engine import run_scoring_pipeline
     run_job("ai_scoring_engine", run_scoring_pipeline, td)
 
@@ -818,6 +851,11 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("strategy_health", run_health_all, td)
         except Exception as e:
             log.warning(f"  Strategy engine: {e}")
+        try:
+            from strategy_engine.performance import run_all as run_strategy_perf
+            run_job("strategy_performance", run_strategy_perf, td)          # W28 (DB-16)
+        except Exception as e:
+            log.warning(f"  Strategy performance: {e}")
         # W4: new intents -> risk engine. Orders are sent only when
         # execution.auto_execute_paper is true (default false) and only to the
         # PAPER adapter; LIVE execution does not exist in W4.
@@ -870,6 +908,15 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             send_tod_alert(td)
         except Exception as e:
             log.warning(f"  Post-market alerts: {e}")
+
+    # W28: the day's announcements (NS-06) and the closing news summary (NS-04)
+    if not backfill:
+        try:
+            from data.announcements import run_announcements
+            run_job("announcements_eod", run_announcements, 1)
+        except Exception as e:
+            log.warning(f"  Announcements: {e}")
+        _run_news_digest("close")
 
     # 6:00 PM — Rebuild dashboard state. A backfill leaves this to its caller,
     # which rebuilds once for the newest session instead of once per old one.

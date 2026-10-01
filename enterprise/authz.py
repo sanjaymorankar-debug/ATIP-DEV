@@ -101,6 +101,10 @@ ROUTE_RULES = [
     ("*", r"^/api/orders", "orders:manage"),
     ("GET", r"^/api/(portfolio|holdings|pnl|positions)", "portfolio:read"),
     ("*", r"^/api/(portfolio|holdings|pnl|positions)", "portfolio:manage"),
+    # W28 insights: switching the AI strategies on is an ML lifecycle act; the rest are research runs
+    ("POST", r"^/api/insights/ai-strategies/activate$", "ml:lifecycle"),
+    ("POST", r"^/api/insights/(news-digest|strategies/refresh|scans/run)$", "research:run"),
+    ("GET", r"^/api/insights", "dashboard:read"),
     # everything else
     ("GET", r"^/api/", "dashboard:read"),
     ("*", r"^/api/", "system:operate"),

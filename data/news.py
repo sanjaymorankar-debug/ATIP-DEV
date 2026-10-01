@@ -171,44 +171,37 @@ def classify_rule_based(art):
     return art
 
 def classify_with_claude(articles, batch_size=10):
-    if not HAS_CLAUDE: return [classify_rule_based(a) for a in articles]
-    api_key=os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        log.error("ANTHROPIC_API_KEY not set — falling back to rule-based sentiment for all articles")
-        return [classify_rule_based(a) for a in articles]
-    client=anthropic.Anthropic(api_key=api_key); results=[]
-    for i in range(0,len(articles),batch_size):
-        batch=articles[i:i+batch_size]
-        for art in batch:
-            try:
-                resp=client.messages.create(model="claude-sonnet-5",max_tokens=200,
-                    messages=[{"role":"user","content":SENTIMENT_PROMPT.format(headline=art["headline"])}])
-                text=re.sub(r"```json|```","",resp.content[0].text).strip()
-                data=json.loads(text)
-                art.update({"sentiment":float(data.get("sentiment",0)),"importance":data.get("importance","MEDIUM"),
-                            "confidence":float(data.get("confidence",0.7)),"category":data.get("category","GENERAL"),
-                            "ai_summary":data.get("ai_summary",art["headline"][:80]),"classifier":"claude"})
-            except Exception as ex:
-                log.warning(f"  Claude sentiment call failed for '{art['headline'][:50]}...': {ex}")
-                art=classify_rule_based(art)
-            results.append(art); time.sleep(0.3)
-        log.info(f"  Classified {min(i+batch_size,len(articles))}/{len(articles)}")
-    return results
+    """W28: one classifier for every caller -- data/news_ai.classify (batched Claude
+    calls under the daily cost cap, finance-lexicon model for the rest). The old
+    per-headline loop here sent one request per article with no budget."""
+    from data.news_ai import classify
+    return classify(articles)
 
 def compute_news_score(sentiment, importance, confidence, recency_hours):
     iw={"HIGH":1.0,"MEDIUM":0.7,"LOW":0.4}.get(importance,0.7)
     return round(0.50*((sentiment+1)/2*100)+0.20*(iw*100)+0.20*max(0,100-recency_hours*(100/24))+0.10*(confidence*100),2)
+
+def _known(conn, days=3):
+    since=datetime.now()-timedelta(days=days)
+    urls={r[0] for r in conn.execute("SELECT url FROM news_articles WHERE fetched_at>=? AND url<>''",(since,))}
+    keys={headline_key(r[0]) for r in conn.execute("SELECT headline FROM news_articles WHERE fetched_at>=?",(since,))}
+    return urls,keys
+
+def unseen(articles, conn):
+    """The fetched articles not stored in the last 3 days -- so only new ones are sent
+    to the (paid) classifier."""
+    urls,keys=_known(conn)
+    return [a for a in articles if not ((a.get("url") and a["url"] in urls) or headline_key(a["headline"]) in keys)]
 
 def store_articles(articles, conn):
     """Store articles not already stored. INSERT OR IGNORE had no unique key to
     ignore on, so the overlapping pre-market (14h) and midday (12h) windows
     stored the same story twice: 142 of 1,249 stored headlines were repeats.
     An article is skipped when its URL, or its headline key, was stored in the
-    last 3 days."""
+    last 3 days. W28: event type, novelty, source weight, half-life and the
+    lexicon reading are stored beside the label (data/news_ai.py)."""
     count=0; now=datetime.now()
-    since=now-timedelta(days=3)
-    known_urls={r[0] for r in conn.execute("SELECT url FROM news_articles WHERE fetched_at>=? AND url<>''",(since,))}
-    known_keys={headline_key(r[0]) for r in conn.execute("SELECT headline FROM news_articles WHERE fetched_at>=?",(since,))}
+    known_urls,known_keys=_known(conn)
     for art in articles:
         try:
             if (art.get("url") and art["url"] in known_urls) or headline_key(art["headline"]) in known_keys:
@@ -217,10 +210,13 @@ def store_articles(articles, conn):
             pub=art.get("published",now); recency=(now-pub).total_seconds()/3600
             syms=detect_symbols(art["headline"]+" "+art.get("summary",""))
             ns=compute_news_score(art.get("sentiment",0),art.get("importance","MEDIUM"),art.get("confidence",0.5),recency)
-            conn.execute("INSERT OR IGNORE INTO news_articles (fetched_at,headline,source,url,category,symbols_mentioned,sentiment,importance,confidence,news_score,ai_summary,processed,classifier) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?)",
+            conn.execute("INSERT OR IGNORE INTO news_articles (fetched_at,headline,source,url,category,symbols_mentioned,sentiment,importance,confidence,news_score,ai_summary,processed,classifier,"
+                         "event_type,novelty,dup_of,source_weight,half_life_h,sentiment_lex,lex_confidence,model,published_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?)",
                 (pub.strftime("%Y-%m-%d %H:%M:%S"),art["headline"],art.get("source",""),art.get("url",""),
                  art.get("category","GENERAL"),json.dumps(syms),art.get("sentiment",0),art.get("importance","MEDIUM"),
-                 art.get("confidence",0.5),ns,art.get("ai_summary",art["headline"][:80]),art.get("classifier")))
+                 art.get("confidence",0.5),ns,art.get("ai_summary",art["headline"][:80]),art.get("classifier"),
+                 art.get("event_type"),art.get("novelty"),art.get("dup_of"),art.get("source_weight"),art.get("half_life_h"),
+                 art.get("sentiment_lex"),art.get("lex_confidence"),art.get("model"),pub.strftime("%Y-%m-%d %H:%M:%S")))
             count+=1
         except Exception as e: log.warning(f"  Article store: {e}")
     return count
@@ -229,13 +225,15 @@ def run_news_pipeline(hours_back=12):
     log.info(f"📰 News pipeline (last {hours_back}h)")
     conn=get_connection(); result={"rows":0,"status":"SUCCESS"}
     try:
-        articles=fetch_feeds(hours_back)
-        articles=classify_with_claude(articles)
+        fetched=fetch_feeds(hours_back)
+        from data.news_ai import classify, enrich
+        articles=unseen(fetched,conn)
+        articles=enrich(classify(articles,conn),conn)
         rows=store_articles(articles,conn); conn.commit(); result["rows"]=rows
-        result["fetched"]=len(articles)
+        result["fetched"]=len(fetched)
         # Fetched but all already stored is a working feed, not an empty job
-        if rows==0 and articles: result["status"]="NO_NEW"
-        log.info(f"  ✓ {rows} new articles stored ({len(articles)-rows} already had)")
+        if rows==0 and fetched: result["status"]="NO_NEW"
+        log.info(f"  ✓ {rows} new articles stored ({len(fetched)-rows} already had)")
         log_job("news","SUCCESS",rows)
     except Exception as e:
         conn.rollback(); result["status"]="FAILED"; log.error(f"  ✗ {e}"); log_job("news","FAILED",0,error=e)

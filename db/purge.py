@@ -44,6 +44,9 @@ LONG_RETENTION_TABLES = {
     "sector_breadth":       "date",      # W21
     "score_components":     "date",      # W22
     "ml_anomaly":           "as_of",     # W24
+    "news_symbol_score":    "date",      # W28 (NS-05)
+    "strategy_performance": "as_of",     # W28 (DB-16)
+    "corporate_announcement": "broadcast_at",   # W28 (NS-06)
 }
 
 SHORT_RETENTION_TABLES = {
@@ -54,6 +57,8 @@ SHORT_RETENTION_TABLES = {
     "live_quotes":    "timestamp",
     "live_ticks":     "received_at",
     "intraday_bars":  "ts",              # W21 (DP-03)
+    "intraday_scan_hit": "scan_date",    # W28 (SG-08)
+    "news_digest":    "date",            # W28 (NS-04)
 }
 
 DEFAULT_LONG_DAYS  = 600

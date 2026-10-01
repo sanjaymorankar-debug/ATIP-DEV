@@ -43,6 +43,17 @@ def get_inst(sym,td,conn):
     return pd.read_sql("SELECT * FROM institutional_data WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 30",conn,params=(sym,str(td)))
 
 def get_ns(sym,td,conn):
+    """W28 (NS-05): the decayed, novelty- and source-weighted score (data/news_ai.py),
+    stored by the post-market news job or computed here; the plain 7-day average only
+    for a database without the W28 columns; 50 (neutral) with no news at all."""
+    try:
+        r=conn.execute("SELECT score FROM news_symbol_score WHERE symbol=? AND date=?",(sym,str(td))).fetchone()
+        if r and r[0] is not None: return float(r[0])
+        from data.news_ai import symbol_score
+        s=symbol_score(conn,sym,td)
+        return s["score"] if s else 50.0
+    except Exception as e:
+        log.debug(f"  {sym} weighted news score unavailable ({e}); 7-day average used")
     from datetime import timedelta
     since=str((datetime.strptime(str(td),"%Y-%m-%d")-timedelta(days=7)).date())
     r=conn.execute("SELECT AVG(news_score) as ns FROM news_articles WHERE symbols_mentioned LIKE ? AND fetched_at>=?",(f'%\"{sym}\"%',since)).fetchone()

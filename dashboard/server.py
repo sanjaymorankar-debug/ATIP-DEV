@@ -494,6 +494,30 @@ def _check_js(html):
             log.error(f"      {b}")
 
 
+def news_digest_panel_html():
+    """W28 (DB-06): the latest AI news summary (data/news_digest.py) above the News tab."""
+    import html as _h
+    try:
+        from data.news_digest import latest
+        conn=get_connection()
+        try: d=latest(conn)
+        finally: conn.close()
+    except Exception:
+        d=None
+    if not d:
+        return ('<div style="padding:8px 10px;color:#94a3b8;font-size:12px">No AI news summary yet — '
+                '<a href="/insights" style="color:#38bdf8">Insights</a> can build one.</div>')
+    by=("written by "+_h.escape(d.get("model") or "Claude")) if d.get("method")=="claude" else "extractive (no LLM)"
+    bullets="".join(f"<li>{_h.escape(b)}</li>" for b in (d.get("bullets") or [])[:6])
+    return (f'<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+            f'<div style="font-size:11px;color:#94a3b8">🧠 AI news summary · {_h.escape(d["session"])} · {_h.escape(str(d["generated_at"]))} · '
+            f'{by} · tone <b>{_h.escape(d.get("market_tone") or "")}</b></div>'
+            f'<div style="font-weight:600;margin:4px 0">{_h.escape(d.get("headline") or "")}</div>'
+            f'<div style="font-size:12px">{_h.escape(d.get("summary") or "")}</div>'
+            f'<ul style="margin:4px 0 0 18px;font-size:12px">{bullets}</ul>'
+            f'<div style="font-size:11px;color:#64748b;margin-top:4px">A restatement of the news, not advice. '
+            f'<a href="/insights" style="color:#38bdf8">More on Insights →</a></div></div>')
+
 def build_html(state):
     from dashboard.stock_view import ASSETS as _stock_assets      # W26 stock panel + table filters
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
@@ -515,6 +539,7 @@ def build_html(state):
         return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
     score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores)
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
+    news_digest_html=news_digest_panel_html()                       # W28 (DB-06)
     port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
     # about where the market closed, which is the first thing you look for
@@ -875,7 +900,7 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/insights" style="font-size:12px;color:#38bdf8;text-decoration:none">Insights</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
@@ -934,7 +959,7 @@ def build_html(state):
   <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>MRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
   <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>CRI 🔴</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','')}</tbody></table></div>
   <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
-  <div id="news" class="tc section"><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
+  <div id="news" class="tc section">{news_digest_html}<table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
   <div id="hist" class="tc section">
     <div class="st">Momentum success rate &mdash; did price move the way the signal said?</div>
     <table><thead><tr><th>Signal</th>
@@ -1565,6 +1590,8 @@ if HAS_FASTAPI:
     _register_portfolio_risk(app, _guard, _Req, get_connection, json_safe)
     from dashboard.stock_view import register as _register_stock_view                   # W26
     _register_stock_view(app, get_connection, json_safe)
+    from dashboard.insights_routes import register as _register_insights                # W28
+    _register_insights(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes
