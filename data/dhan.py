@@ -394,6 +394,13 @@ def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,
 # ═════════════════════════════════════════════════════════════════════════
 
 def fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
+    """W34 (EX-15): timed as stage data.live_quotes; the work is in _fetch_live_quotes."""
+    from ops.latency import timed
+    with timed("data.live_quotes"):
+        return _fetch_live_quotes(symbols, dhan)
+
+
+def _fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
     """
     Fetch live LTP, OHLC, volume, prev_close for a list of symbols.
     Uses Dhan's quote_data() REST endpoint (batch, up to 1000 symbols).

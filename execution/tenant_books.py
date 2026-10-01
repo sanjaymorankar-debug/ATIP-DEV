@@ -182,6 +182,10 @@ def risk_state(conn, tenant_id) -> dict:
 
 
 def orders_today(conn, tenant_id) -> int:
-    return conn.execute("SELECT COUNT(*) FROM oms_order o JOIN strategy s ON s.strategy_id=o.strategy_id WHERE "
-                        "COALESCE(s.tenant_id,'default')=? AND DATE(o.created_at)=?",
-                        (tenant_id, str(date.today()))).fetchone()[0]
+    """W34: an algo parent counts once, not once per child slice."""
+    d = str(date.today())
+    return conn.execute("SELECT (SELECT COUNT(*) FROM oms_order o JOIN strategy s ON s.strategy_id=o.strategy_id WHERE "
+                        "COALESCE(s.tenant_id,'default')=? AND DATE(o.created_at)=? AND o.algo_parent_id IS NULL) + "
+                        "(SELECT COUNT(*) FROM exec_algo_parent p JOIN strategy s ON s.strategy_id=p.strategy_id WHERE "
+                        "COALESCE(s.tenant_id,'default')=? AND DATE(p.created_at)=?)",
+                        (tenant_id, d, tenant_id, d)).fetchone()[0]

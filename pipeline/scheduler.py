@@ -1327,6 +1327,50 @@ def _schedule_w29_jobs():
     schedule.every().day.at("08:45").do(run_job, "broker_health", _broker_health_now)
     schedule.every().day.at("19:30").do(_w29_audit_export)
     _schedule_w32_jobs()
+    _schedule_w34_jobs()
+
+
+def _schedule_w34_jobs():
+    """W34 execution microstructure: algo ticks + event delivery each minute in session (logged only
+    when there is work), latency rollups every 5 minutes, impact re-calibration weekly."""
+    schedule.every(1).minutes.do(_w34_algo_tick)
+    schedule.every(5).minutes.do(_w34_latency_flush)
+    schedule.every().saturday.at("09:00").do(_w34_impact_calibration)
+
+
+def _w34_algo_tick():
+    if not is_market_hours():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            busy = c.execute("SELECT (SELECT COUNT(*) FROM exec_algo_parent WHERE status IN ('WAITING','WORKING')) + "
+                             "(SELECT COUNT(*) FROM oms_event_outbox WHERE dispatched_at IS NULL AND attempts<5)"
+                             ).fetchone()[0]
+        finally:
+            c.close()
+        if busy:
+            from execution.algos import run_scheduled as run_algos
+            run_job("execution_algos", run_algos)
+    except Exception as e:
+        log.warning(f"  Execution algos: {e}")
+
+
+def _w34_latency_flush():
+    try:
+        from ops.latency import flush
+        flush()                                  # not a run_job: it would add a pipeline_log row every 5 min
+    except Exception as e:
+        log.warning(f"  Latency flush: {e}")
+
+
+def _w34_impact_calibration():
+    try:
+        from execution.impact import run_scheduled as run_impact
+        run_job("impact_calibration", run_impact)
+    except Exception as e:
+        log.warning(f"  Impact calibration: {e}")
 
 
 def _schedule_w32_jobs():

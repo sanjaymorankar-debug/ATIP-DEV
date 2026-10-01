@@ -1575,6 +1575,8 @@ if HAS_FASTAPI:
     _register_w28b_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w29_routes import register as _register_w29_routes                   # W29
     _register_w29_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w34_routes import register as _register_w34_routes                   # W34
+    _register_w34_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

@@ -60,6 +60,8 @@ SHORT_RETENTION_TABLES = {
     "intraday_bars":  "ts",              # W21 (DP-03)
     "broker_health_check": "checked_at",  # W29
     "live_pnl_snapshot": "ts",            # W29
+    "latency_rollup": "minute",          # W34 (EX-15)
+    "oms_event_delivery": "at",          # W34 (EX-16); the outbox itself is kept (audit)
 }
 
 DEFAULT_LONG_DAYS  = 600

@@ -94,7 +94,10 @@ def load_intent(conn, intent_id: str) -> dict:
 
 
 def _orders_today(conn) -> int:
-    return conn.execute("SELECT COUNT(*) FROM oms_order WHERE DATE(created_at)=?", (str(date.today()),)).fetchone()[0]
+    """Trades created today: an algo parent (W34, EX-11) counts once, not once per child slice."""
+    d = str(date.today())
+    return conn.execute("SELECT (SELECT COUNT(*) FROM oms_order WHERE DATE(created_at)=? AND algo_parent_id IS NULL) + "
+                        "(SELECT COUNT(*) FROM exec_algo_parent WHERE DATE(created_at)=?)", (d, d)).fetchone()[0]
 
 
 def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = True) -> RiskDecision:

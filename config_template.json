@@ -82,7 +82,8 @@
     "order_type":            "MARKET",
     "product_type":          "CNC",
     "max_intent_age_days":   5,
-    "paper_fill_price":      "live"
+    "paper_fill_price":      "live",
+    "algo": {"enabled": false, "default_algo": "TWAP", "min_order_value": 500000, "min_participation": 0.02, "duration_min": 60, "interval_min": 5, "pov_rate": 0.1, "iceberg_display_pct": 10, "complete_at_end": true, "min_child_qty": 1}
   },
   "_execution_note": "LIVE needs mode LIVE AND live_trading_enabled true, and even then the W4 Dhan adapter refuses: live execution is not built. auto_execute_paper false = the post-market cycle evaluates risk only. paper_fill_price: live (Dhan LTP) | reference (decision close).",
   "w4_risk_limits": {

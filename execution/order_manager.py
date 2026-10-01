@@ -81,6 +81,11 @@ def transition(conn, order_id: str, to: str, message: str = "", details: dict | 
     conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
                  "VALUES (?,?,?,?,?,?,?)", (order_id, o["status"], to, (message or "")[:2000],
                                             json.dumps(details or {}, default=str), actor, _now()))
+    from execution.events import publish                     # W34 (EX-16): same transaction as the change
+    publish(conn, "order.state", order_id, {"order_id": order_id, "from": o["status"], "to": to,
+                                            "symbol": o["symbol"], "side": o["side"], "quantity": o["quantity"],
+                                            "strategy_id": o["strategy_id"], "mode": o["mode"],
+                                            "algo_parent_id": o.get("algo_parent_id"), "message": (message or "")[:300]})
     conn.commit()
     (log.warning if to in (O_REJECTED, FAILED) else log.info)(
         f"  order {order_id} {o['side']} {o['quantity']} {o['symbol']}: {o['status']} -> {to} {message}")
@@ -174,6 +179,11 @@ def _record_fill(conn, o, eid, qty, price, fees, source):
                  "quantity,price,fees,price_source,mode,filled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  ("FL" + uuid.uuid4().hex[:16].upper(), o["order_id"], eid, o["strategy_id"], o["strategy_version"],
                   o["symbol"], o["side"], int(qty), float(price), float(fees or 0), source, o["mode"], _now()))
+    from execution.events import publish                     # W34 (EX-16)
+    publish(conn, "order.fill", o["order_id"], {"order_id": o["order_id"], "fill_qty": int(qty), "price": float(price),
+                                                "fees": float(fees or 0), "symbol": o["symbol"], "side": o["side"],
+                                                "strategy_id": o["strategy_id"], "mode": o["mode"],
+                                                "algo_parent_id": o.get("algo_parent_id")})
     conn.commit()
 
 
@@ -211,8 +221,13 @@ def submit_order(conn, order_id: str) -> dict:
     request = {k: o.get(k) for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
                                      "trigger_price", "product_type", "reference_price")}
     try:
+        from ops.latency import record, since_ms, timed       # W34 (EX-15)
+        it = conn.execute("SELECT created_at FROM strategy_position_intent WHERE intent_id=?",
+                          (o["intent_id"],)).fetchone()
+        record("order.decision_to_submit", since_ms(it[0]) if it else None)
         adapter = _adapter(conn, o)
-        r = adapter.submit(o)
+        with timed("order.submit_adapter"):
+            r = adapter.submit(o)
     except (LiveTradingDisabled, BrokerError) as e:
         eid = _record_execution(conn, o, "submit", request, error=str(e))
         log.error(f"  order {order_id}: submit failed: {e}")

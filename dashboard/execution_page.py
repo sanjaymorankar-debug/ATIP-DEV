@@ -42,7 +42,7 @@ select{background:var(--panel);color:var(--text);border:1px solid var(--line);bo
 button.danger{background:var(--bad)}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Trading — risk &amp; execution (W4)</span></div>
-<div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
+<div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/execution-lab">Execution lab</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
 <div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a><a href="#livepnl">Live P&amp;L</a><a href="#ops">Execution ops</a></div>
 <h2 id="status">Status</h2><div id="st"></div>

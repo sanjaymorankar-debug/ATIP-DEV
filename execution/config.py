@@ -64,6 +64,8 @@ EXECUTION_DEFAULTS = {
     # W29 (RK-17): refuse new BUYs while the last broker health check says DOWN or STALE
     "block_on_broker_health": True,
     "broker_health_max_age_minutes": 30,
+    # W34 (EX-11): large PAPER orders worked by an execution algo; keys in execution/algos.py DEFAULTS
+    "algo": {"enabled": False},
 }
 
 # (default, description). Percentages are of current equity unless stated.
