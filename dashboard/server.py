@@ -396,14 +396,27 @@ def alerts_panel_html():
         tg=telegram_configured()
     except Exception:
         tg=False
+    try:
+        from pipeline.recover import today as _recovered_today
+        reran=_recovered_today()
+    except Exception:
+        reran=[]
+    rerun_html=("".join(f'<div>🔁 {_h.escape(r["what"])} re-run at {_h.escape(r["last_at"][11:16])} '
+                        f'({r["attempts"]}x) for {_h.escape(r["problems"] or "")} — '
+                        f'{"done" if r["result"]=="RAN" else _h.escape(str(r["result"]))}</div>' for r in reran))
     if problems:
         rows="".join(f'<div>• <b>{_h.escape(p["kind"])}</b> {_h.escape(p["label"])} — {_h.escape(p["detail"])}</div>'
                      for p in problems)
+        btn=('<button style="margin-left:10px;font-size:11px" onclick="this.disabled=true;this.textContent=\'Re-running…\';'
+             'afetch(\'/api/health/recover\',{method:\'POST\'}).then(r=>r.json()).then(()=>location.reload())">'
+             'Re-run missed jobs now</button>')
         head=(f'<div style="background:#7f1d1d;color:#fee2e2;padding:6px 18px;font-size:12px;line-height:1.6">'
-              f'<b>🩺 Pipeline problems ({len(problems)})</b>{rows}</div>')
+              f'<b>🩺 Pipeline problems ({len(problems)})</b>{btn}{rows}'
+              f'<div style="color:#fecaca;font-size:11px">Missed / failed jobs are re-run automatically every 30 min '
+              f'(up to 3 tries a day each).</div>{rerun_html}</div>')
     else:
         head=('<div style="background:#0f2e24;color:#a7f3d0;padding:4px 18px;font-size:11.5px">'
-              '🩺 Pipeline: every monitored job has run</div>')
+              '🩺 Pipeline: every monitored job has run' + (f'{rerun_html}' if rerun_html else '') + '</div>')
     sev_col={"error":"#f87171","warning":"#fbbf24"}
     items="".join(
         f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#64748b;width:44px">{str(a["created_at"])[11:16]}</span>'
@@ -1329,7 +1342,25 @@ if HAS_FASTAPI:
     @app.get("/api/tod")
     async def api_tod(): return JSONResponse(json_safe(get_tod(latest_scored_date())))
     @app.get("/api/alerts")
-    async def api_alerts(): return JSONResponse(json_safe({"job_health":get_job_health(),"alerts":get_alerts(hours=72,limit=100)}))
+    async def api_alerts():
+        try:
+            from pipeline.recover import today as _recovered_today
+            reran=_recovered_today()
+        except Exception:
+            reran=[]
+        return JSONResponse(json_safe({"job_health":get_job_health(),"recovered_today":reran,
+                                       "alerts":get_alerts(hours=72,limit=100)}))
+    @app.post("/api/health/recover", dependencies=_guard)
+    async def api_health_recover():
+        """Re-run every missed / failed job now (pipeline/recover.py) and report what is still open."""
+        from starlette.concurrency import run_in_threadpool
+        from pipeline.recover import check_and_recover
+        out=await run_in_threadpool(check_and_recover)
+        return JSONResponse(json_safe({"ran":[{"step":r["step"],"for":r["labels"],"result":r["result"]} for r in out["ran"]],
+                                       "skipped":[{"step":s["step"],"reason":s["reason"]} for s in out["skipped"]],
+                                       "recovered":out["recovered"],
+                                       "still_open":[{"label":p.label,"kind":p.kind,"detail":p.detail}
+                                                     for p in out["problems"]]}))
     @app.get("/api/pnl")
     async def api_pnl():
         """PF-02 / PF-13: both books valued now (no broker call), today's risk

@@ -219,6 +219,21 @@ def send_job_health_alerts(problems):
         sent+=int(r["recorded"])
     return sent
 
+def send_recovery_notice(out):
+    """What pipeline/recover.py re-ran, and whether that cleared the problem (one alert per run)."""
+    from pipeline.recover import STEP_LABEL
+    fixed=set(out.get("recovered") or [])
+    lines=[]
+    for r in out["ran"]:
+        labels=[l.split(" ",1)[1] for l in r["labels"]]
+        ok=all(l in fixed for l in labels) and not str(r["result"]).startswith("FAILED")
+        lines.append(f"{'✅' if ok else '⚠️'} <b>{_html(STEP_LABEL.get(r['step'],r['step']))}</b> re-run for "
+                     f"{_html(', '.join(labels))}" + ("" if ok else f" — still open ({_html(r['result'])})"))
+    for s in out.get("skipped") or []:
+        lines.append(f"⏸ {_html(STEP_LABEL.get(s['step'],s['step']))}: {_html(s['reason'])}")
+    return notify(fmt("🔁","Missed jobs re-run","\n".join(lines)),category="job_health",severity="warning",
+                  key=f"recover:{datetime.now():%Y-%m-%d %H:%M}")
+
 def run_all_alert_checks(trade_date=None):
     if trade_date is None: trade_date=date.today()
     results={}
@@ -329,8 +344,15 @@ def send_morning_digest(trade_date=None):
     try:
         from pipeline.health import check_job_health
         c2=get_connection()
-        try: problems=check_job_health(c2)
+        try:
+            # this brief is being sent now: it is not missing from itself
+            problems=[p for p in check_job_health(c2) if p.label!="Morning brief"]
+            from pipeline.recover import today as _recovered_today
+            reran=_recovered_today(c2)
         finally: c2.close()
+        if reran:
+            body.append("\n🔁 <b>Re-run today</b>: "+_html(", ".join(
+                f"{r['what']} ({'ok' if str(r['result'])=='RAN' else r['result']})" for r in reran)))
         if problems:
             body.append(f"\n🩺 <b>Pipeline problems ({len(problems)})</b>")
             body.extend(f"  {p.kind}: {_html(p.label)} — {_html(p.detail)}" for p in problems[:8])
