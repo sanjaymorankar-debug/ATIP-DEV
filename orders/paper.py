@@ -103,6 +103,11 @@ def ensure_tables(conn):
         cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_order)").fetchall()}
         if "tag" not in cols:
             conn.execute("ALTER TABLE paper_order ADD COLUMN tag TEXT")
+        # W29 (EX-02 / EX-08): stop orders and modifications
+        for col, typ in (("trigger_price", "REAL"), ("triggered_at", "TEXT"), ("updated_at", "TEXT"),
+                         ("modifications", "INTEGER DEFAULT 0")):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE paper_order ADD COLUMN {col} {typ}")
     except Exception as e:
         log.warning(f"  paper_order migration skipped: {e}")
     conn.execute("""
@@ -211,10 +216,22 @@ class PaperBroker:
             "receiveableAmount": 0.0, "utilizedAmount": 0.0,
             "blockedPayoutAmount": 0.0, "withdrawableBalance": round(bal, 2)}}
 
+    ORDER_TYPES = ("MARKET", "LIMIT", "SL", "SL-M", "STOP_LOSS", "STOP_LOSS_MARKET")
+
+    @staticmethod
+    def _norm_type(order_type):
+        t = str(order_type or "MARKET").upper()
+        return {"STOP_LOSS": "SL", "STOP_LOSS_MARKET": "SL-M", "SLM": "SL-M"}.get(t, t)
+
+    @staticmethod
+    def _triggered(side, ltp, trigger) -> bool:
+        """A stop BUY triggers at or above its trigger, a stop SELL at or below."""
+        return ltp >= trigger if side == "BUY" else ltp <= trigger
+
     def place_order(self, security_id=None, exchange_segment=None,
                     transaction_type=None, quantity=None, order_type="MARKET",
                     product_type="CNC", price=0, symbol=None, tag=None,
-                    reference_price=None, **kw) -> dict:
+                    reference_price=None, trigger_price=None, **kw) -> dict:
         """
         Simulate an order against the live price.
 
@@ -224,6 +241,34 @@ class PaperBroker:
         qty = int(quantity or 0)
         sym = symbol or self._symbol_for(security_id) or str(security_id)
         oid = f"PAPER{uuid.uuid4().hex[:10].upper()}"
+        order_type = self._norm_type(order_type)
+        if order_type not in ("MARKET", "LIMIT", "SL", "SL-M"):
+            return self._reject(oid, sym, security_id, exchange_segment, transaction_type, qty, order_type,
+                                product_type, price, f"unsupported order type {order_type}", tag)
+        if order_type in ("SL", "SL-M") and qty > 0:
+            # W29 (EX-02): stop orders rest until the trigger is touched; SL then becomes a
+            # LIMIT at `price`, SL-M a MARKET. Validated like Dhan: a SL BUY's limit must be
+            # at or above its trigger, a SL SELL's at or below.
+            trig = float(trigger_price or 0)
+            if trig <= 0:
+                return self._reject(oid, sym, security_id, exchange_segment, transaction_type, qty, order_type,
+                                    product_type, price, "a stop order needs trigger_price > 0", tag)
+            if order_type == "SL":
+                lim = float(price or 0)
+                if lim <= 0 or (transaction_type == "BUY" and lim < trig) or \
+                        (transaction_type == "SELL" and lim > trig):
+                    return self._reject(oid, sym, security_id, exchange_segment, transaction_type, qty, order_type,
+                                        product_type, price, "SL limit price must be on the far side of the "
+                                        "trigger (BUY: limit >= trigger, SELL: limit <= trigger)", tag)
+            ltp_now = float(reference_price) if reference_price else self._ltp(sym)
+            if ltp_now is None or not self._triggered(transaction_type, ltp_now, trig):
+                self._write_order(oid, sym, security_id, exchange_segment, transaction_type, qty, 0, order_type,
+                                  product_type, float(price or 0), None, "PENDING", "awaiting trigger", 0.0, tag)
+                self.conn.execute("UPDATE paper_order SET trigger_price=? WHERE order_id=?", (trig, oid))
+                self.conn.commit()
+                return {"status": "success", "remarks": "", "data": {"orderId": oid, "orderStatus": "PENDING"}}
+            # already through the trigger: SL-M fills now, SL is a LIMIT from here
+            order_type = "LIMIT" if order_type == "SL" else "MARKET"
 
         if qty <= 0:
             return self._reject(oid, sym, security_id, exchange_segment, transaction_type,
@@ -262,6 +307,9 @@ class PaperBroker:
                         "data": {"orderId": oid, "orderStatus": "PENDING"}}
             fill = self._slipped(min(lim, ltp) if transaction_type == "BUY"
                                  else max(lim, ltp), transaction_type)
+            # W29: a LIMIT never fills worse than its limit -- slippage used to push a BUY
+            # limited at 3000 (market 2999) to 3000.50
+            fill = min(fill, lim) if transaction_type == "BUY" else max(fill, lim)
         else:
             fill = self._slipped(ltp, transaction_type)
 
@@ -319,6 +367,98 @@ class PaperBroker:
         return {"status": "failure",
                 "remarks": {"error_message": "no pending paper order with that id"},
                 "data": ""}
+
+    def modify_order(self, order_id, order_type=None, leg_name=None, quantity=None, price=None,
+                     trigger_price=None, disclosed_quantity=None, validity=None, **kw) -> dict:
+        """W29 (EX-08): change a PENDING order's quantity / price / trigger (dhanhq-shaped).
+        A modified order is re-checked against the live price at once, like a broker would."""
+        r = self.conn.execute("SELECT * FROM paper_order WHERE order_id=?", (order_id,)).fetchone()
+        if not r or r["status"] != "PENDING":
+            return {"status": "failure", "remarks": {"error_message": "only a PENDING paper order can be modified"},
+                    "data": ""}
+        r = dict(r)
+        otype = self._norm_type(order_type or r["order_type"])
+        qty = int(quantity if quantity is not None else r["quantity"])
+        lim = float(price) if price is not None else r["limit_price"]
+        trig = float(trigger_price) if trigger_price is not None else r.get("trigger_price")
+        if qty <= 0:
+            return {"status": "failure", "remarks": {"error_message": "quantity must be > 0"}, "data": ""}
+        if otype not in ("LIMIT", "SL", "SL-M"):
+            return {"status": "failure", "remarks": {"error_message": f"cannot modify to {otype}"}, "data": ""}
+        if otype in ("SL", "SL-M") and not trig:
+            return {"status": "failure", "remarks": {"error_message": "a stop order needs trigger_price"}, "data": ""}
+        if otype in ("LIMIT", "SL") and not lim:
+            return {"status": "failure", "remarks": {"error_message": "a limit price is required"}, "data": ""}
+        if otype == "SL" and ((r["transaction_type"] == "BUY" and lim < trig) or
+                              (r["transaction_type"] == "SELL" and lim > trig)):
+            return {"status": "failure", "remarks": {"error_message": "SL limit on the wrong side of the trigger"},
+                    "data": ""}
+        self.conn.execute("UPDATE paper_order SET order_type=?, quantity=?, limit_price=?, trigger_price=?, "
+                          "updated_at=?, modifications=COALESCE(modifications,0)+1 WHERE order_id=?",
+                          (otype, qty, lim, trig, _now(), order_id))
+        self.conn.commit()
+        self.match_pending(order_ids=[order_id])
+        st = self.get_order_by_id(order_id)["data"]["status"]
+        return {"status": "success", "data": {"orderId": order_id, "orderStatus": st}}
+
+    def match_pending(self, prices: dict | None = None, order_ids=None) -> list:
+        """
+        W29 (fixes W4-R4): re-check every PENDING order against the current price and fill
+        what has crossed -- a resting LIMIT used to stay ACKNOWLEDGED forever. `prices`
+        ({symbol: ltp}) lets the caller supply fresh quotes (the scheduler passes the latest
+        live_quotes); a symbol without one is priced from the Dhan quote API.
+        Returns [{order_id, symbol, status, fill_price}] for orders that changed.
+        """
+        sql = "SELECT * FROM paper_order WHERE status='PENDING'"
+        args = []
+        if order_ids:
+            sql += f" AND order_id IN ({','.join('?' * len(order_ids))})"
+            args = list(order_ids)
+        changed = []
+        for r in [dict(x) for x in self.conn.execute(sql, args).fetchall()]:
+            ltp = (prices or {}).get(r["symbol"])
+            if ltp is None:
+                ltp = self._ltp(r["symbol"])
+            if not ltp:
+                continue
+            side, otype = r["transaction_type"], r["order_type"]
+            if otype in ("SL", "SL-M"):
+                if not self._triggered(side, ltp, float(r["trigger_price"] or 0)):
+                    continue
+                otype = "LIMIT" if otype == "SL" else "MARKET"
+                self.conn.execute("UPDATE paper_order SET triggered_at=?, order_type=?, reason=? WHERE order_id=?",
+                                  (_now(), otype, f"{r['order_type']} triggered at {ltp}", r["order_id"]))
+            if otype == "LIMIT":
+                lim = float(r["limit_price"] or 0)
+                if not ((ltp <= lim) if side == "BUY" else (ltp >= lim)):
+                    continue
+                fill = self._slipped(min(lim, ltp) if side == "BUY" else max(lim, ltp), side)
+                fill = min(fill, lim) if side == "BUY" else max(fill, lim)     # never worse than the limit
+            else:
+                fill = self._slipped(ltp, side)
+            qty = int(r["quantity"]) - int(r["filled_qty"] or 0)
+            value = fill * qty
+            brokerage = round(value * float(self.cfg["paper_brokerage_pct"]) / 100.0, 2)
+            why = None
+            if side == "BUY" and self.balance < value + brokerage:
+                why = f"insufficient paper funds at fill: need {value + brokerage:,.2f}"
+            elif side == "SELL" and self._position_qty(r["symbol"]) < qty:
+                why = "position no longer holds the quantity"
+            if why:
+                self.conn.execute("UPDATE paper_order SET status='REJECTED', reason=?, updated_at=? WHERE order_id=?",
+                                  (why, _now(), r["order_id"]))
+                changed.append({"order_id": r["order_id"], "symbol": r["symbol"], "status": "REJECTED"})
+                continue
+            self._adjust_balance(-(value + brokerage) if side == "BUY" else (value - brokerage))
+            self._apply_position(r["symbol"], side, qty, fill)
+            self.conn.execute("UPDATE paper_order SET status='TRADED', filled_qty=quantity, fill_price=?, "
+                              "brokerage=COALESCE(brokerage,0)+?, updated_at=? WHERE order_id=?",
+                              (fill, brokerage, _now(), r["order_id"]))
+            changed.append({"order_id": r["order_id"], "symbol": r["symbol"], "status": "TRADED",
+                            "fill_price": fill})
+            log.info(f"  [PAPER] resting {side} {qty} {r['symbol']} filled @ {fill} (ltp {ltp}) -> {r['order_id']}")
+        self.conn.commit()
+        return changed
 
     def get_order_list(self) -> dict:
         rows = self.conn.execute(

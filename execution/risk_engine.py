@@ -23,6 +23,9 @@ value and limit, so a decision can be read back without re-deriving it.
     live_gate            a LIVE-book intent needs execution.mode LIVE and
                          live_trading_enabled; both default off
   VALIDITY (-> REJECTED)
+    broker_health        (W29, RK-17) a BUY is REJECTED while the latest broker health check
+                         (execution/broker_health.py, <= broker_health_max_age_minutes old)
+                         is DOWN or STALE; SKIP with no recent check; exits never blocked
     intent_valid         side, symbol, action, quantity sane
     intent_fresh         as_of within max_intent_age_days
     market_data          a reference price (the decision close, else the latest close)
@@ -212,6 +215,17 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
             add("market_data_fresh", FAIL, f"last daily bar {behind} session(s) behind", behind, max_behind)
             return finish(REJECTED, f"stale market data for {it['symbol']} ({behind} sessions behind)")
         add("market_data_fresh", PASS, f"last daily bar {behind} session(s) behind", behind, max_behind)
+    # W29 (RK-17): broker / operational risk -- no new BUY while the latest broker health
+    # check (execution/broker_health.py) says DOWN or STALE. Exits are never blocked here.
+    try:
+        from execution.broker_health import gate as _bh_gate
+        bst, bmsg = _bh_gate(conn, it["side"])
+    except Exception as e:
+        bst, bmsg = SKIP, f"broker health unreadable ({e})"
+    if bst == FAIL:
+        add("broker_health", FAIL, bmsg)
+        return finish(REJECTED, f"broker / data health: {bmsg}")
+    add("broker_health", PASS if bst == "PASS" else SKIP, bmsg)
 
     # -- reducing risk ----------------------------------------------------------
     if it["side"] == "SELL":

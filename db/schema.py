@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES, **W29_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -1081,6 +1081,31 @@ W28_TABLES = {
     ),
 }
 
+# ── Tables added in W29 (execution) ───────────────────────────────────────
+W29_TABLES = {
+    "reconciliation_run": (            # BR-05
+        """CREATE TABLE IF NOT EXISTS reconciliation_run (
+            run_id TEXT PRIMARY KEY, trade_date DATE, run_at TIMESTAMP, status TEXT, breaks INTEGER,
+            explained INTEGER, details_json TEXT)""",
+    ),
+    "broker_health_check": (           # BR-06 / RK-17
+        """CREATE TABLE IF NOT EXISTS broker_health_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP NOT NULL, overall TEXT NOT NULL,
+            in_session INTEGER, checks_json TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_broker_health_at ON broker_health_check(checked_at)",
+    ),
+    "live_pnl_snapshot": (             # MON-04: intraday book P&L every 15 min
+        """CREATE TABLE IF NOT EXISTS live_pnl_snapshot (
+            ts TIMESTAMP NOT NULL, book TEXT NOT NULL, value REAL, day_pnl REAL, unrealized REAL, positions INTEGER,
+            PRIMARY KEY (ts, book))""",
+    ),
+    "audit_export": (                  # SEC-03: one row per exported audit segment
+        """CREATE TABLE IF NOT EXISTS audit_export (
+            export_id TEXT PRIMARY KEY, source TEXT NOT NULL, first_id INTEGER, last_id INTEGER, rows INTEGER,
+            path TEXT, offbox_path TEXT, sha256 TEXT, chain_ok INTEGER, created_at TIMESTAMP)""",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
@@ -1106,6 +1131,8 @@ W3_W4_COLUMNS = {
                          "fpi_hold": "REAL", "shares_out": "REAL", "equity_cr": "REAL", "debt_cr": "REAL",
                          "profit_fy_cr": "REAL"},
     "institutional_data": {"ins_components": "TEXT"},
+    # W29: per-order type (EX-02), modify (EX-08), protective child stops
+    "oms_order": {"trigger_price": "REAL", "parent_order_id": "TEXT", "modified_count": "INTEGER DEFAULT 0"},
     "global_markets": {"us_3m": "REAL", "us_3m_chg": "REAL", "us_5y": "REAL", "us_5y_chg": "REAL",
                        "us_30y": "REAL", "us_30y_chg": "REAL"},
 }

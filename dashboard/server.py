@@ -1570,6 +1570,8 @@ if HAS_FASTAPI:
     _register_market_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w28_routes import register as _register_w28_routes                   # W28
     _register_w28_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w29_routes import register as _register_w29_routes                   # W29
+    _register_w29_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

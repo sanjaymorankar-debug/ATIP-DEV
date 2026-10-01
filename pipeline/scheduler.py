@@ -415,6 +415,11 @@ def run_premarket(force=False):
     from data.news import run_news_pipeline
     run_job("news_premarket", run_news_pipeline, 14)
     _news_summary()
+    try:                                             # W29 (BR-02): an expired Kite session alerts now,
+        from portfolio.zerodha import check_token_and_alert   # not as a failed sync tonight
+        run_job("zerodha_token_check", check_token_and_alert)
+    except Exception as e:
+        log.warning(f"  Zerodha token check: {e}")
 
     # Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
     from data.markets import fetch_global_markets
@@ -860,6 +865,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("execution_cycle", run_execution_cycle, td)
         except Exception as e:
             log.warning(f"  Execution cycle: {e}")
+        # W29 (BR-05): OMS vs broker book; a break raises an alert
+        try:
+            from execution.reconcile import run_reconciliation
+            run_job("execution_reconciliation", run_reconciliation, td)
+        except Exception as e:
+            log.warning(f"  Reconciliation: {e}")
         # W7: workspace alert rules + tenant usage metering. SKIPPED unless
         # config enterprise.enabled.
         try:
@@ -1264,6 +1275,63 @@ def _schedule_ops_jobs():
         schedule.every().day.at(str(cfg.get("backup_time") or "19:15")).do(run_job, "ops_backup",
                                                                              run_scheduled_backup)
     schedule.every(5).minutes.do(_ops_webhook_tick)
+    _schedule_w29_jobs()
+
+
+def _schedule_w29_jobs():
+    """W29 execution jobs. Market-hours guards inside each tick keep pipeline_log quiet
+    outside the session."""
+    schedule.every(2).minutes.do(_w29_paper_match_tick)
+    schedule.every(5).minutes.do(_w29_broker_health_tick)
+    schedule.every(15).minutes.do(_w29_pnl_tick)
+    schedule.every().day.at("08:45").do(run_job, "broker_health", _broker_health_now)
+    schedule.every().day.at("19:30").do(_w29_audit_export)
+
+
+def _broker_health_now():
+    from execution.broker_health import run_scheduled
+    return run_scheduled()
+
+
+def _w29_paper_match_tick():
+    """EX-02 / W4-R4: fill resting paper LIMIT / SL / SL-M orders that have crossed. Logged only
+    when something is pending."""
+    if not is_market_hours():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM paper_order WHERE status='PENDING'").fetchone()[0]
+        finally:
+            c.close()
+        if n:
+            from execution.paper_matching import run_matching
+            run_job("paper_matching", run_matching)
+    except Exception as e:
+        log.warning(f"  Paper matching: {e}")
+
+
+def _w29_broker_health_tick():
+    if is_market_hours():
+        run_job("broker_health", _broker_health_now)
+
+
+def _w29_pnl_tick():
+    if is_market_hours():
+        try:
+            from portfolio.live_pnl import snapshot
+            run_job("live_pnl_snapshot", snapshot)
+        except Exception as e:
+            log.warning(f"  Live P&L snapshot: {e}")
+
+
+def _w29_audit_export():
+    try:
+        from enterprise.audit_export import run_scheduled
+        run_job("audit_export", run_scheduled)
+    except Exception as e:
+        log.warning(f"  Audit export: {e}")
 
 
 def _ops_webhook_tick():

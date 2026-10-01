@@ -40,6 +40,9 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def status(self, order: dict) -> BrokerResult: ...
 
+    def modify(self, order: dict, changes: dict) -> BrokerResult:      # W29 (EX-08)
+        raise BrokerError(f"{self.name} adapter does not support modify")
+
 
 class PaperBrokerAdapter(BrokerAdapter):
     name, mode = "paper", PAPER
@@ -67,7 +70,8 @@ class PaperBrokerAdapter(BrokerAdapter):
                                  quantity=int(order["quantity"]), order_type=order["order_type"],
                                  product_type=order.get("product_type") or "CNC",
                                  price=order.get("limit_price") or 0, symbol=order["symbol"],
-                                 tag=order["order_id"], reference_price=ref)
+                                 tag=order["order_id"], reference_price=ref,
+                                 trigger_price=order.get("trigger_price"))
         except Exception as e:
             raise BrokerError(f"paper broker raised: {e}") from e
         data = (resp or {}).get("data") or {}
@@ -114,6 +118,17 @@ class PaperBrokerAdapter(BrokerAdapter):
         return BrokerResult("CANCELLED" if ok else "ERROR", order["broker_order_id"],
                             message=(resp or {}).get("remarks"), raw=resp)
 
+    def modify(self, order: dict, changes: dict) -> BrokerResult:
+        b = self._broker()
+        resp = b.modify_order(order["broker_order_id"], order_type=changes.get("order_type"),
+                              quantity=changes.get("quantity"), price=changes.get("limit_price"),
+                              trigger_price=changes.get("trigger_price"))
+        if (resp or {}).get("status") != "success":
+            rem = (resp or {}).get("remarks")
+            return BrokerResult("REJECTED", order["broker_order_id"],
+                                message=str(rem.get("error_message") if isinstance(rem, dict) else rem), raw=resp)
+        return self.status(order)
+
     def status(self, order: dict) -> BrokerResult:
         b = self._broker()
         resp = b.get_order_by_id(order["broker_order_id"])
@@ -146,6 +161,9 @@ class DhanBrokerAdapter(BrokerAdapter):
 
     def status(self, order):
         self._refuse("status")
+
+    def modify(self, order, changes):
+        self._refuse("modify")
 
 
 def get_adapter(conn, mode: str) -> BrokerAdapter:

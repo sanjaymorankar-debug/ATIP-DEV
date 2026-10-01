@@ -56,6 +56,8 @@ SHORT_RETENTION_TABLES = {
     "live_quotes":    "timestamp",
     "live_ticks":     "received_at",
     "intraday_bars":  "ts",              # W21 (DP-03)
+    "broker_health_check": "checked_at",  # W29
+    "live_pnl_snapshot": "ts",            # W29
 }
 
 DEFAULT_LONG_DAYS  = 600

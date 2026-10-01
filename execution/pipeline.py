@@ -73,6 +73,14 @@ def run_execution_cycle(trade_date=None, execute: bool | None = None, as_of=None
                     o = execute_approved(conn, rd.risk_decision_id)
                     orders.append({"order_id": o["order_id"], "symbol": o["symbol"], "side": o["side"],
                                    "status": o["status"], "filled": o["filled_quantity"]})
+                    if s.get("protective_stops") and o["side"] == "BUY" and o["filled_quantity"]:
+                        try:                        # W29 (EX-02)
+                            st = OM.place_protective_stop(conn, o["order_id"],
+                                                          limit_offset_pct=s.get("protective_stop_limit_offset_pct"))
+                            orders.append({"order_id": st["order_id"], "symbol": st["symbol"], "side": "SELL",
+                                           "status": st["status"], "protective_stop_for": o["order_id"]})
+                        except Exception as e:
+                            errors.append(f"protective stop for {o['order_id']}: {e}")
                 except Exception as e:
                     errors.append(f"order for {rd.risk_decision_id}: {e}")
                     log.warning(f"  order for {rd.risk_decision_id}: {e}")
