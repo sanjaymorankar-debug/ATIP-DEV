@@ -129,6 +129,53 @@ def test_a_broken_audit_chain_fails(db):
     assert st == "FAIL" and "changed" in detail
 
 
+def test_order_controls_need_limits_and_a_rate_cap_only_for_live(monkeypatch, db):
+    from ops import compliance as C
+    import orders.risk as R
+    import ops.trading_safety as T
+    monkeypatch.setattr(R, "limits", lambda: {})
+    monkeypatch.setattr(T, "report", lambda: {"LIVE_TRADING_ENABLED": False})
+    assert C.c_algo_order_controls(db, datetime.now())[0] == "WARN"
+    monkeypatch.setattr(R, "limits", lambda: {"max_order_value": 1e4, "max_orders_per_day": 10, "max_open_positions": 10})
+    st, detail, _ = C.c_algo_order_controls(db, datetime.now())
+    assert st == "PASS" and "before live" in detail
+    monkeypatch.setattr(T, "report", lambda: {"LIVE_TRADING_ENABLED": True})
+    assert C.c_algo_order_controls(db, datetime.now())[0] == "FAIL"           # live without a rate cap
+
+
+def test_token_refresh_writes_back_to_the_vault_once_migrated(tmp_path, monkeypatch):
+    import base64, importlib.util, json, os
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("dtr", Path("tools/dhan_token_refresh.py").resolve())
+    dtr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dtr)
+    (tmp_path / "atip_data" / "secrets").mkdir(parents=True)
+    (tmp_path / "atip_data" / "secrets" / "ATIP_ENCRYPTION_KEY").write_text(base64.b64encode(os.urandom(32)).decode())
+    cfg = tmp_path / "atip_data" / "config.json"
+    cfg.write_text(json.dumps({"dhan_client_id": "", "dhan_access_token": "", "other": 1}))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ATIP_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setattr(dtr, "CFG", cfg)
+    from ops import vault
+    vault.set_secret("DHAN_ACCESS_TOKEN", "old-token")
+    c = json.loads(cfg.read_text())
+    assert dtr.secret(c, "dhan_access_token", "DHAN_ACCESS_TOKEN") == "old-token"
+    assert dtr.save(c, "new-token") == "vault"
+    assert vault.get("DHAN_ACCESS_TOKEN") == "new-token"
+    assert json.loads(cfg.read_text())["dhan_access_token"] == "", "config.json stays blank"
+    legacy = {"dhan_access_token": "plain"}
+    cfg.write_text(json.dumps(legacy))
+    assert dtr.save(legacy, "new2") == "config.json"                        # not migrated: old behaviour
+
+
+def test_alpha_vantage_key_falls_back_to_the_secret_store(monkeypatch, tmp_path):
+    import data.fundamentals as F
+    import ops.secrets as S
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(S, "get", lambda name, log_access=True: "from-vault" if name == "ALPHA_VANTAGE_KEY" else None)
+    assert F.get_av_key() == "from-vault"
+
+
 def test_exposure_without_sign_in_fails(monkeypatch, db):
     from ops.compliance import c_dashboard_exposure
     monkeypatch.setenv("ATIP_DASHBOARD_HOST", "0.0.0.0")

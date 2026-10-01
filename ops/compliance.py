@@ -112,14 +112,18 @@ def c_algo_order_controls(conn, now):
         ev["max_orders_per_second"] = ex.get("max_orders_per_second")
     except Exception:
         ex = {}
+    from ops.trading_safety import report
+    live = bool(report().get("LIVE_TRADING_ENABLED"))
     if missing:
-        from ops.trading_safety import report
-        live = bool(report().get("LIVE_TRADING_ENABLED"))
         return (FAIL if live else WARN), (f"order limits not set: {', '.join(missing)} (config.json risk_limits)"
                                           + ("" if live else " -- required before any live order")), ev
     if not ex.get("max_orders_per_second"):
-        return WARN, ("per-second order-rate cap not configured (execution.max_orders_per_second) -- exchange "
-                      "algo rules cap API order rates; required before any live algorithmic orders"), ev
+        if live:
+            return FAIL, ("LIVE trading without a per-second order-rate cap (execution.max_orders_per_second): "
+                          "exchange algo rules cap API order rates"), ev
+        # paper only: the cap is a pre-live requirement, gated by the ENT-14 LIVE-RISK / SEBI-ALGO items
+        return PASS, (f"limits set, kill switch {'ENGAGED' if halted else 'available'}; per-second cap still to "
+                      "set before live (ENT-14 LIVE-RISK)"), ev
     return PASS, f"limits set, kill switch {'ENGAGED' if halted else 'available'}", ev
 
 

@@ -1,5 +1,6 @@
 """
-Refresh the Dhan access token and write it into atip_data/config.json.
+Refresh the Dhan access token and write it into atip_data/config.json -- or, once the credentials
+were moved to the encrypted vault (python -m ops vault-migrate --apply), back into the vault.
 
 Run daily at 08:00 by the Windows scheduled task "ATIP_DhanTokenRefresh".
 Stdlib only.
@@ -77,18 +78,49 @@ def generate(cid, pin, secret):
     return tok
 
 
+def _vaulted(cfg) -> bool:
+    """W38: the credentials were moved to the encrypted vault (python -m ops vault-migrate): config.json
+    holds the keys blank and the token must be saved back to the vault, never to config.json."""
+    return "dhan_access_token" in cfg and not cfg.get("dhan_access_token")
+
+
+def secret(cfg, key, name):
+    """config.json value when present (legacy), else ATIP's secret store (env / secrets / vault)."""
+    if cfg.get(key):
+        return cfg[key]
+    try:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from ops.secrets import get
+        return get(name, log_access=False) or ""
+    except Exception as e:
+        log(f"secret store unavailable for {name}: {type(e).__name__}")
+        return ""
+
+
 def save(cfg, tok):
+    if _vaulted(cfg):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from ops.vault import get, set_secret
+        set_secret("DHAN_ACCESS_TOKEN", tok)
+        if get("DHAN_ACCESS_TOKEN") != tok:
+            raise RuntimeError("vault verification failed; the old token is still in place")
+        return "vault"
     bak = CFG.with_suffix(".json.bak-tokenrefresh")
     bak.write_text(CFG.read_text(encoding="utf-8"), encoding="utf-8")
     cfg["dhan_access_token"] = tok
     tmp = CFG.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, CFG)
+    return "config.json"
 
 
 def main():
+    os.chdir(ROOT)                      # ops/* resolve atip_data/ relative to the repository
     cfg = json.loads(CFG.read_text(encoding="utf-8"))
-    cid, tok = cfg.get("dhan_client_id", ""), cfg.get("dhan_access_token", "")
+    cid = secret(cfg, "dhan_client_id", "DHAN_CLIENT_ID")
+    tok = secret(cfg, "dhan_access_token", "DHAN_ACCESS_TOKEN")
     if not cid:
         log("dhan_client_id missing in config.json"); return 1
     if "--check" in sys.argv:
@@ -98,7 +130,7 @@ def main():
     new = renew(cid, tok) if tok else None
     how = "RenewToken"
     if not new:
-        pin, sec = cfg.get("dhan_pin", ""), cfg.get("dhan_totp_secret", "")
+        pin, sec = secret(cfg, "dhan_pin", "DHAN_PIN"), secret(cfg, "dhan_totp_secret", "DHAN_TOTP_SECRET")
         if not (pin and sec):
             log("Token expired and dhan_pin / dhan_totp_secret are not in config.json -- cannot auto-generate"); return 1
         new, how = generate(cid, pin, sec), "generateAccessToken"
@@ -106,8 +138,8 @@ def main():
         return 1
     if not token_valid(cid, new):
         log(f"{how} returned a token that failed the profile check; config NOT changed"); return 1
-    save(cfg, new)
-    log(f"OK: new Dhan token saved via {how}")
+    where = save(cfg, new)
+    log(f"OK: new Dhan token saved via {how} (to {where})")
     return 0
 
 

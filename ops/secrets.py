@@ -30,6 +30,9 @@ from pathlib import Path
 CATALOG = {
     "DHAN_CLIENT_ID": {"legacy": "dhan_client_id", "rotation_days": None, "desc": "Dhan client id"},
     "DHAN_ACCESS_TOKEN": {"legacy": "dhan_access_token", "rotation_days": 1, "desc": "Dhan API token (24 h)"},
+    # W38: what tools/dhan_token_refresh.py logs in with -- together a full account login, so vaulted too
+    "DHAN_PIN": {"legacy": "dhan_pin", "rotation_days": None, "desc": "Dhan trading PIN (token auto-renewal)"},
+    "DHAN_TOTP_SECRET": {"legacy": "dhan_totp_secret", "rotation_days": None, "desc": "Dhan TOTP seed (token auto-renewal)"},
     "TELEGRAM_TOKEN": {"legacy": "telegram_token", "rotation_days": 365, "desc": "Telegram bot token"},
     "TELEGRAM_CHAT_ID": {"legacy": "telegram_chat_id", "rotation_days": None, "desc": "Telegram chat id"},
     "ANTHROPIC_API_KEY": {"legacy": None, "rotation_days": 180, "desc": "Anthropic API key (.env)"},

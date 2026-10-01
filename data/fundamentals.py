@@ -24,7 +24,11 @@ def get_av_key():
             if cfg.get("alpha_vantage_key") and cfg["alpha_vantage_key"]!="YOUR_ALPHA_VANTAGE_KEY":
                 return cfg["alpha_vantage_key"]
         except: pass
-    return os.getenv("ALPHA_VANTAGE_KEY","")
+    try:                                        # W38: blank in config.json once moved to the vault / secrets
+        from ops.secrets import get as _sget
+        return _sget("ALPHA_VANTAGE_KEY", log_access=False) or ""
+    except Exception:
+        return os.getenv("ALPHA_VANTAGE_KEY","")
 
 def av_get(function, symbol):
     key=get_av_key()
