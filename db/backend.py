@@ -49,142 +49,29 @@ def masked_url(url: str | None = None) -> str:
     return re.sub(r"//([^:/@]+):([^@]+)@", r"//\1:***@", url or database_url())
 
 
-# -- SQL translation -----------------------------------------------------------------------
+# -- SQL translation (W38: db/postgres.py; the W9 regex rules are superseded) ---------------
 
-_RULES = [
-    (re.compile(r"INTEGER PRIMARY KEY AUTOINCREMENT", re.I), "BIGSERIAL PRIMARY KEY"),
-    (re.compile(r"\bREAL\b", re.I), "DOUBLE PRECISION"),
-    (re.compile(r"\bBLOB\b", re.I), "BYTEA"),
-    (re.compile(r"\bINSERT OR IGNORE INTO\b", re.I), "INSERT INTO"),
-    (re.compile(r"datetime\('now'\)", re.I), "CURRENT_TIMESTAMP"),
-]
-SQLITE_ONLY = {
-    "PRAGMA": re.compile(r"\bPRAGMA\b"),
-    "INSERT OR IGNORE": re.compile(r"INSERT OR IGNORE", re.I),
-    "INSERT OR REPLACE": re.compile(r"INSERT OR REPLACE", re.I),
-    "sqlite_master": re.compile(r"sqlite_master"),
-    "DATE(x, modifier)": re.compile(r"\bDATE\([^)]*,\s*'[+-]", re.I),
-    "datetime()/strftime()": re.compile(r"\b(datetime|strftime|julianday)\(", re.I),
-    "AUTOINCREMENT": re.compile(r"AUTOINCREMENT", re.I),
-}
-
-
-def translate(sql: str) -> str:
-    out = sql
-    ignore = bool(re.search(r"\bINSERT OR IGNORE INTO\b", sql, re.I))
-    for rx, rep in _RULES:
-        out = rx.sub(rep, out)
-    if ignore and "ON CONFLICT" not in out.upper():
-        out = out.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
-    return _placeholders(out)
-
-
-def _placeholders(sql: str) -> str:
-    """? -> %s outside string literals."""
-    res, q = [], False
-    for ch in sql:
-        if ch == "'":
-            q = not q
-            res.append(ch)
-        elif ch == "?" and not q:
-            res.append("%s")
-        elif ch == "%" and not q:
-            res.append("%%")
-        else:
-            res.append(ch)
-    return "".join(res)
+def translate(sql: str, pk_of=None) -> str:
+    """ddl() for CREATE / ALTER, translate() for everything else (db/postgres.py)."""
+    from db import postgres
+    if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
+        return postgres.ddl(sql)
+    return postgres.translate(sql, pk_of)
 
 
 def compatibility_report(root=".") -> dict:
-    counts = {k: 0 for k in SQLITE_ONLY}
-    files = {}
-    for p in Path(root).rglob("*.py"):
-        s = str(p).replace("\\", "/")
-        if "/tests/" in s or "site-packages" in s:
-            continue
-        try:
-            t = p.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            continue
-        for k, rx in SQLITE_ONLY.items():
-            n = len(rx.findall(t))
-            if n:
-                counts[k] += n
-                files[s.split("/")[-2] + "/" + p.name] = files.get(s.split("/")[-2] + "/" + p.name, 0) + n
-    return {"sqlite_only_constructs": counts, "total": sum(counts.values()),
-            "top_files": sorted(files.items(), key=lambda x: -x[1])[:25]}
+    """W38: the AST-based scan of every SQL statement (db/dialect_scan.py)."""
+    from db.dialect_scan import scan
+    r = scan(root)
+    return {"sqlite_only_constructs": r["by_kind"], "total": r["needs_change"], "statements": r["statements"],
+            "pct_ready": r["pct_ready"], "top_files": list(r["by_file"].items())}
 
 
-# -- PostgreSQL connection wrapper ---------------------------------------------------------
-
-class _Row(tuple):
-    """Tuple row that also answers row['column'] and keys(), like sqlite3.Row."""
-    def __new__(cls, values, names):
-        r = super().__new__(cls, values)
-        r._names = names
-        return r
-
-    def __getitem__(self, k):
-        if isinstance(k, str):
-            return tuple.__getitem__(self, self._names.index(k))
-        return tuple.__getitem__(self, k)
-
-    def keys(self):
-        return list(self._names)
-
-
-class _Cursor:
-    def __init__(self, cur):
-        self._c = cur
-
-    def _wrap(self, r):
-        if r is None:
-            return None
-        names = [d[0] for d in (self._c.description or [])]
-        return _Row(r, names)
-
-    def fetchone(self):
-        return self._wrap(self._c.fetchone())
-
-    def fetchall(self):
-        return [self._wrap(r) for r in self._c.fetchall()]
-
-    def __iter__(self):
-        return iter(self.fetchall())
-
-    @property
-    def rowcount(self):
-        return self._c.rowcount
-
-
-class PgConnection:
-    def __init__(self, url):
-        try:
-            import psycopg
-        except ImportError as e:
-            raise RuntimeError("PostgreSQL support needs the 'psycopg' package (not installed; install it in the "
-                               "environment that will run the migration)") from e
-        self._c = psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://"))
-        self.row_factory = None
-
-    def execute(self, sql, params=()):
-        cur = self._c.cursor()
-        cur.execute(translate(sql), tuple(params))
-        return _Cursor(cur)
-
-    def executemany(self, sql, seq):
-        cur = self._c.cursor()
-        cur.executemany(translate(sql), [tuple(p) for p in seq])
-        return _Cursor(cur)
-
-    def commit(self):
-        self._c.commit()
-
-    def rollback(self):
-        self._c.rollback()
-
-    def close(self):
-        self._c.close()
+# -- PostgreSQL connection -------------------------------------------------------------------
+def PgConnection(url):
+    """W38: the full wrapper lives in db.postgres (unique-key-aware upserts, rows by name)."""
+    from db.postgres import PgConnection as _Pg
+    return _Pg(url.replace("postgresql+psycopg://", "postgresql://"))
 
 
 def connect(url: str | None = None):

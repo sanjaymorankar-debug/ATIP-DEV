@@ -61,7 +61,34 @@ for _decl in ("timestamp", "TIMESTAMP", "datetime", "DATETIME"):
 BUSY_TIMEOUT_MS = 60_000
 
 
+_PG_URL: list = []
+
+
+def pg_runtime_url():
+    """W38 (DBS-05): the PostgreSQL URL when the runtime is switched over, else None. All three are
+    required -- ATIP_DATABASE_URL (not the generic DATABASE_URL other projects set) is postgresql://,
+    config database.backend = "postgresql" and database.allow_experimental = true -- because the
+    statements db/dialect_scan.py lists (PRAGMA, sqlite_master, rowid) still fail on PostgreSQL."""
+    if not _PG_URL:
+        url = os.environ.get("ATIP_DATABASE_URL", "")
+        ok = False
+        if url.lower().startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
+            try:
+                import json
+                cfg = json.loads((Path("atip_data") / "config.json").read_text(encoding="utf-8"))
+                d = cfg.get("database") or {}
+                ok = d.get("backend") == "postgresql" and d.get("allow_experimental") is True
+            except Exception:
+                ok = False
+        _PG_URL.append(url if ok else None)
+    return _PG_URL[0]
+
+
 def get_connection():
+    pg = pg_runtime_url()
+    if pg:
+        from db.backend import PgConnection
+        return PgConnection(pg)
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row

@@ -1,0 +1,42 @@
+# ATIP container image (W38, OPS-04).
+#
+#   docker build -t atip:local .
+#   docker compose up -d                       # see docker-compose.yml: app + optional PostgreSQL
+#
+# The image runs the same single process as the laptop install (`python main.py`: scheduler +
+# dashboard + index feed). State lives in the /app/atip_data volume (SQLite DB, config.json,
+# secrets, logs, backups) -- never in the image. LIVE trading stays off: nothing here changes
+# execution.mode, and the image carries no credentials.
+FROM python:3.14-slim
+
+# The scheduler runs on wall-clock IST (07:00 pre-market, 16:45 post-market ...). UTC would shift
+# every job by 5h30.
+ENV TZ=Asia/Kolkata \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    ATIP_DASHBOARD_HOST=0.0.0.0
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tzdata \
+ && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 10001 atip
+
+WORKDIR /app
+COPY requirements.txt requirements.lock.txt ./
+# The lock is the tested set; requirements.txt adds nothing it lacks. psycopg is only for the
+# PostgreSQL path (DBS-05) and is harmless when the runtime stays on SQLite.
+RUN pip install -r requirements.lock.txt && pip install "psycopg[binary]>=3.2"
+
+COPY --chown=atip:atip . .
+RUN mkdir -p /app/atip_data && chown atip:atip /app/atip_data
+USER atip
+VOLUME ["/app/atip_data"]
+EXPOSE 8000
+
+# /health/live: the process answers; /health/ready also checks the database and the scheduler
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=8).status == 200 else 1)"
+
+CMD ["python", "main.py"]

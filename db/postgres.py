@@ -35,6 +35,68 @@ class UnsupportedSQL(ValueError):
 
 _UNSUPPORTED = [(re.compile(r"^\s*PRAGMA\b", re.I), "PRAGMA"), (re.compile(r"\bsqlite_master\b", re.I), "sqlite_master"),
                 (re.compile(r"\browid\b", re.I), "rowid"), (re.compile(r"\bstrftime\s*\(", re.I), "strftime()")]
+
+# sqlite_master as PostgreSQL sees it (type, name, tbl_name, sql) -- catalog queries run unchanged
+_SQLITE_MASTER = (
+    "(SELECT 'table' AS type, table_name AS name, table_name AS tbl_name, CAST(NULL AS text) AS sql "
+    "FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' "
+    "UNION ALL SELECT 'view', table_name, table_name, view_definition FROM information_schema.views "
+    "WHERE table_schema=current_schema() "
+    "UNION ALL SELECT 'index', indexname, tablename, indexdef FROM pg_indexes WHERE schemaname=current_schema() "
+    "UNION ALL SELECT DISTINCT 'trigger', trigger_name, event_object_table, CAST(NULL AS text) "
+    "FROM information_schema.triggers WHERE trigger_schema=current_schema()) AS sqlite_master_pg")
+
+
+def _table_info(t):
+    pk = ("SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage "
+          "kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema WHERE "
+          f"tc.table_schema=current_schema() AND tc.table_name='{t}' AND tc.constraint_type='PRIMARY KEY'")
+    return ("SELECT ordinal_position-1 AS cid, column_name AS name, upper(data_type) AS type, "
+            "CASE WHEN is_nullable='NO' THEN 1 ELSE 0 END AS notnull, column_default AS dflt_value, "
+            f"CASE WHEN column_name IN ({pk}) THEN 1 ELSE 0 END AS pk FROM information_schema.columns "
+            f"WHERE table_schema=current_schema() AND table_name='{t}' ORDER BY ordinal_position")
+
+
+def _catalog(sql):
+    """PRAGMAs ATIP uses -> PostgreSQL equivalents (or harmless no-ops); None if not one of them."""
+    m = re.match(r"\s*PRAGMA\s+table_info\s*\(\s*[\"']?(\w+)[\"']?\s*\)\s*;?\s*$", sql, re.I)
+    if m:
+        return _table_info(m.group(1))
+    if re.match(r"\s*PRAGMA\s+(busy_timeout|foreign_keys|synchronous|cache_size)\b", sql, re.I):
+        return "SELECT 1"
+    if re.match(r"\s*PRAGMA\s+journal_mode\b", sql, re.I):
+        return "SELECT 'wal' AS journal_mode"
+    if re.match(r"\s*PRAGMA\s+(integrity_check|quick_check)\s*;?\s*$", sql, re.I):
+        return "SELECT 'ok' AS integrity_check"
+    return None
+
+
+def _bool_aggs(sql):
+    """SUM / AVG / TOTAL of a comparison (SQLite booleans are 0/1) -> SUM(CAST((cmp) AS INT))."""
+    out, i = [], 0
+    pat = re.compile(r"\b(SUM|AVG|TOTAL)\s*\(", re.I)
+    cmp_rx = re.compile(r"\bIS\s+(NOT\s+)?NULL\b|<>|!=|<=|>=|[<>=]|\bLIKE\b|\bIN\b", re.I)
+    while True:
+        m = pat.search(sql, i)
+        if not m:
+            out.append(sql[i:])
+            return "".join(out)
+        depth, j = 1, m.end()
+        while j < len(sql) and depth:
+            depth += sql[j] == "("
+            depth -= sql[j] == ")"
+            j += 1
+        arg = sql[m.end():j - 1]
+        flat = arg                                            # only top-level comparisons count
+        while re.search(r"\([^()]*\)", flat):
+            flat = re.sub(r"\([^()]*\)", "", flat)
+        out.append(sql[i:m.start()])
+        if cmp_rx.search(flat) and not re.match(r"\s*(CASE|DISTINCT)\b", arg, re.I):
+            fn = "SUM" if m.group(1).upper() == "TOTAL" else m.group(1)
+            out.append(f"{fn}(CAST(({_bool_aggs(arg)}) AS INT))")
+        else:
+            out.append(m.group(0) + _bool_aggs(arg) + ")")
+        i = j
 _UNITS = {"day": "day", "days": "day", "month": "month", "months": "month", "year": "year", "years": "year",
           "hour": "hour", "hours": "hour", "minute": "minute", "minutes": "minute"}
 
@@ -96,10 +158,49 @@ def _greatest(sql):
         i = m.end()
 
 
+def _qualify_upsert(sql, table, cols):
+    """In ON CONFLICT ... DO UPDATE SET a=a+excluded.a, a bare `a` on the right is ambiguous in
+    PostgreSQL (target row or excluded row?); SQLite means the target row -> `table.a`."""
+    m = re.search(r"\bDO\s+UPDATE\s+SET\b", sql, re.I)
+    if not m or not cols:
+        return sql
+    head, tail = sql[:m.end()], sql[m.end():]
+    names = "|".join(re.escape(c) for c in sorted(cols, key=len, reverse=True))
+    out, depth, start, parts = [], 0, 0, []
+    for i, ch in enumerate(tail):                     # split assignments on top-level commas
+        depth += ch == "("
+        depth -= ch == ")"
+        if ch == "," and depth == 0:
+            parts.append(tail[start:i])
+            start = i + 1
+    parts.append(tail[start:])
+    for p in parts:
+        if "=" in p:
+            lhs, rhs = p.split("=", 1)
+            rhs = re.sub(rf"(?<![\w.])({names})\b(?!\s*\()", rf"{table}.\1", rhs)
+            p = lhs + "=" + rhs
+        out.append(p)
+    return head + ",".join(out)
+
+
 def translate(sql: str, pk_of=None) -> str:
-    """SQLite SQL -> PostgreSQL. pk_of(table) -> [pk columns] is needed for INSERT OR REPLACE."""
+    """SQLite SQL -> PostgreSQL. pk_of(table) -> [[key columns], ...] (primary key and UNIQUE
+    constraints) is needed for INSERT OR REPLACE: SQLite replaces on ANY unique key, so the key used
+    is the first one the inserted columns cover (a surrogate id that is not inserted cannot clash)."""
+    cat = _catalog(sql)
+    if cat is not None:
+        return cat
+    if re.search(r"\bsqlite_master\b", sql, re.I):            # code parts only, never inside a literal
+        sql = "".join(p if s else re.sub(r"\bsqlite_master\b", _SQLITE_MASTER, p, flags=re.I)
+                      for s, p in _split_strings(sql))
+    # rowid as an ORDER BY tie-breaker (entry order) -> ctid. Valid because every such use is on an
+    # append-only table (perf_ledger, ml_dl_benefit: no UPDATE / DELETE, so tuples never move); any
+    # other rowid use still fails below.
+    ob = re.search(r"\bORDER\s+BY\b(?!.*\bORDER\s+BY\b)", sql, re.I | re.S)
+    if ob and re.search(r"\browid\b", sql[ob.end():], re.I) and not re.search(r"\browid\b", sql[:ob.start()], re.I):
+        sql = sql[:ob.end()] + re.sub(r"\b((?:\w+\.)?)rowid\b", r"\1ctid", sql[ob.end():], flags=re.I)
     for rx, name in _UNSUPPORTED:
-        if rx.search(sql):
+        if rx.search("".join(p for s, p in _split_strings(sql) if not s)):
             raise UnsupportedSQL(f"{name} has no automatic PostgreSQL translation: {sql.strip()[:120]}")
     parts = _split_strings(sql)
     text = "\x00".join(p for s, p in parts if not s)                    # code only, joined by markers
@@ -117,6 +218,7 @@ def translate(sql: str, pk_of=None) -> str:
     text = re.sub(r"\bNOT\s+LIKE\b", "NOT ILIKE", text, flags=re.I)
     text = re.sub(r"(?<!NOT )\bLIKE\b", "ILIKE", text, flags=re.I)
     text = _greatest(text)
+    text = _bool_aggs(text)
     # rejoin with the string literals back in place, then the date() modifiers (they contain literals)
     chunks = text.split("\x00")
     out = []
@@ -127,32 +229,92 @@ def translate(sql: str, pk_of=None) -> str:
     sql2 = "".join(out)
     sql2 = re.sub(r"\bdate\s*\(\s*([^,()]+?)\s*,\s*'([-+])\s*(\d+)\s+([a-z]+)'\s*\)", _date_mod, sql2, flags=re.I)
     sql2 = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", sql2, flags=re.I)
-    # ? -> %s outside literals (literals have no '?' rewrites; re-split to be exact)
-    sql2 = "".join(p if s else p.replace("%", "%%").replace("?", "%s") for s, p in _split_strings(sql2))
+    # ? -> %s outside literals; every % is doubled, INSIDE literals too (LIKE 'a%'): psycopg parses the
+    # whole statement for placeholders when parameters are passed, and PgConnection always passes them
+    sql2 = "".join(p.replace("%", "%%") if s else p.replace("%", "%%").replace("?", "%s")
+                   for s, p in _split_strings(sql2))
     if ignore and not re.search(r"\bON\s+CONFLICT\b", sql2, re.I):
         sql2 = sql2.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
     if replace_target:
         table, cols = replace_target
-        pk = list(pk_of(table)) if pk_of else []
-        if not pk:
-            raise UnsupportedSQL(f"INSERT OR REPLACE into {table}: primary key unknown")
-        sets = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in pk)
-        sql2 = sql2.rstrip().rstrip(";") + f" ON CONFLICT ({', '.join(pk)}) " + (f"DO UPDATE SET {sets}" if sets
-                                                                                else "DO NOTHING")
+        keys = [list(k) for k in (pk_of(table) if pk_of else []) if k]
+        if keys and isinstance(keys[0], str):                 # a bare [col, ...] list = one key
+            keys = [keys]
+        key = next((k for k in keys if set(k) <= set(cols)), None)
+        if not key:
+            raise UnsupportedSQL(f"INSERT OR REPLACE into {table}: no primary / unique key among the inserted "
+                                 f"columns {cols}")
+        sets = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in key)
+        sql2 = sql2.rstrip().rstrip(";") + f" ON CONFLICT ({', '.join(key)}) " + (f"DO UPDATE SET {sets}" if sets
+                                                                                  else "DO NOTHING")
+    else:
+        m2 = re.search(r"\bINSERT\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)", sql2, re.I)
+        if m2:
+            sql2 = _qualify_upsert(sql2, m2.group(1), [c.strip() for c in m2.group(2).split(",")])
     return sql2
 
 
 def ddl(stmt: str) -> str:
     s = stmt
-    s = re.sub(r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY",
+    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered with or without AUTOINCREMENT
+    s = re.sub(r"\bINTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY",
                s, flags=re.I)
     s = re.sub(r"\bAUTOINCREMENT\b", "", s, flags=re.I)
+    s = re.sub(r"\(\s*datetime\s*\(\s*'now'\s*\)\s*\)|\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", s, flags=re.I)
+    s = re.sub(r"\(\s*date\s*\(\s*'now'\s*\)\s*\)|\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", s, flags=re.I)
+    s = re.sub(r"\bWITHOUT\s+ROWID\b", "", s, flags=re.I)
+    s = re.sub(r"\s+COLLATE\s+NOCASE\b", "", s, flags=re.I)
     s = re.sub(r"\bREAL\b", "DOUBLE PRECISION", s, flags=re.I)
     s = re.sub(r"\bBLOB\b", "BYTEA", s, flags=re.I)
     s = re.sub(r"\bINTEGER\b", "BIGINT", s, flags=re.I)
+    s = re.sub(r"\bBOOL(EAN)?\b", "SMALLINT", s, flags=re.I)     # SQLite stores 0/1 and the code compares with 1
     s = re.sub(r"\bDATETIME\b", "TIMESTAMP", s, flags=re.I)
     s = re.sub(r"CHECK\s*\(\s*id\s*=\s*1\s*\)", "CHECK (id = 1)", s, flags=re.I)
     return s
+
+
+APPEND_ONLY_FN = ("CREATE OR REPLACE FUNCTION atip_append_only() RETURNS trigger LANGUAGE plpgsql AS $$ "
+                  "BEGIN RAISE EXCEPTION '%', TG_ARGV[0]; END $$")
+
+
+def trigger_ddl(sql: str) -> str:
+    """ATIP's SQLite triggers are all append-only guards:
+         BEFORE UPDATE|DELETE ON t [WHEN cond] BEGIN SELECT RAISE(ABORT, 'msg'); END
+    -> a PostgreSQL row trigger calling atip_append_only('msg') (APPEND_ONLY_FN, created first).
+    Anything else raises UnsupportedSQL rather than being dropped silently."""
+    m = re.match(r"\s*CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+(BEFORE|AFTER)\s+(UPDATE|DELETE|INSERT)\s+"
+                 r"ON\s+(\w+)\s+(?:FOR\s+EACH\s+ROW\s+)?(?:WHEN\s+(.+?)\s+)?BEGIN\s+SELECT\s+RAISE\s*\(\s*ABORT\s*,\s*"
+                 r"'((?:[^']|'')*)'\s*\)\s*;\s*END\s*;?\s*$", sql, re.I | re.S)
+    if not m:
+        raise UnsupportedSQL(f"trigger is not an append-only guard: {' '.join(sql.split())[:120]}")
+    name, when, event, table, cond, msg = m.groups()
+    cond_sql = f" WHEN ({cond})" if cond else ""
+    return (f"CREATE TRIGGER {name} {when.upper()} {event.upper()} ON {table} FOR EACH ROW{cond_sql} "
+            f"EXECUTE FUNCTION atip_append_only('{msg}')")
+
+
+def keys_from_ddl(stmts) -> dict:
+    """{table: [[key columns], ...]} from CREATE TABLE / CREATE UNIQUE INDEX statements (PK first)."""
+    keys: dict = {}
+    for s in stmts:
+        m = re.search(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_]\w*)\s*\((.*)\)", s, re.I | re.S)
+        if m:
+            t, body = m.group(1), m.group(2)
+            ks = keys.setdefault(t, [])
+            for c in re.finditer(r"PRIMARY\s+KEY\s*\(([^)]*)\)", body, re.I):
+                ks.insert(0, [x.strip() for x in c.group(1).split(",")])
+            for c in re.finditer(r"(?:^|,)\s*([A-Za-z_]\w*)\s+[^,]*?\bPRIMARY\s+KEY\b", body, re.I):
+                ks.insert(0, [c.group(1)])
+            for c in re.finditer(r"\bUNIQUE\s*\(([^)]*)\)", body, re.I):
+                ks.append([x.strip() for x in c.group(1).split(",")])
+            for c in re.finditer(r"(?:^|,)\s*([A-Za-z_]\w*)\s+\w+[^,(]*?\bUNIQUE\b(?!\s*\()", body, re.I):
+                ks.append([c.group(1)])
+            continue
+        m = re.search(r"CREATE\s+UNIQUE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?\w+\s+ON\s+([A-Za-z_]\w*)\s*\(([^)]*)\)",
+                      s, re.I)
+        if m:
+            keys.setdefault(m.group(1), []).append([x.strip().split()[0] for x in m.group(2).split(",")])
+    return keys
 
 
 # ── a sqlite3-shaped connection over psycopg 3 ────────────────────────────
@@ -211,20 +373,43 @@ class PgConnection:
         self.row_factory = None                                     # accepted for sqlite3 compatibility
 
     def pk_of(self, table):
+        """[[columns] per unique index], primary key first."""
         if table not in self._pk:
             cur = self._conn.execute(
-                "SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) "
-                "WHERE i.indrelid=%s::regclass AND i.indisprimary", (table,))
-            self._pk[table] = [r[0] for r in cur.fetchall()]
+                "SELECT i.indexrelid, i.indisprimary, a.attname FROM pg_index i "
+                "JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) "
+                "WHERE i.indrelid=%s::regclass AND i.indisunique ORDER BY i.indisprimary DESC, i.indexrelid",
+                (table,))
+            keys: dict = {}
+            for idx, _prim, col in cur.fetchall():
+                keys.setdefault(idx, []).append(col)
+            self._pk[table] = list(keys.values())
         return self._pk[table]
 
+    @staticmethod
+    def _is_ddl(sql):
+        return sql.lstrip().upper().startswith(("CREATE ", "ALTER ", "DROP "))
+
     def execute(self, sql, params=()):
+        if self._is_ddl(sql):                       # untouched by placeholder parsing (trigger bodies use %)
+            if re.match(r"\s*CREATE\s+TRIGGER", sql, re.I):
+                stmt = sql if re.search(r"\bEXECUTE\s+FUNCTION\b", sql, re.I) else trigger_ddl(sql)
+            elif re.match(r"\s*CREATE\s+(OR\s+REPLACE\s+)?FUNCTION", sql, re.I):
+                stmt = sql                          # PostgreSQL already (atip_append_only)
+            else:
+                stmt = ddl(sql)
+            return _Cursor(self._conn.execute(stmt))
         return _Cursor(self._conn.execute(translate(sql, self.pk_of), tuple(params or ())))
 
     def executemany(self, sql, seq):
         cur = self._conn.cursor()
         cur.executemany(translate(sql, self.pk_of), [tuple(p) for p in seq])
         return _Cursor(cur)
+
+    def reset_identity(self, table, column="id"):
+        """After a bulk copy with explicit ids, move the identity sequence past MAX(id)."""
+        self._conn.execute(f"SELECT setval(pg_get_serial_sequence('{table}', '{column}'), "
+                           f"COALESCE((SELECT MAX({column}) FROM {table}), 0) + 1, false)")
 
     def commit(self):
         self._conn.commit()

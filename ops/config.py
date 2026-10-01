@@ -201,8 +201,13 @@ def validate(cfg: dict | None = None) -> list:
     try:
         from db.backend import backend as _db_backend
         if _db_backend() == "postgresql":
-            add("error", "DATABASE_URL", "the ATIP runtime runs on SQLite in W9; PostgreSQL is for "
-                                         "tools/sqlite_to_postgres.py only (docs/POSTGRESQL_MIGRATION.md)")
+            if (cfg.get("database") or {}).get("allow_experimental") is True:
+                add("warning", "database.backend", "EXPERIMENTAL PostgreSQL runtime: statements listed by "
+                                                   "`python -m db.dialect_scan --details` still fail on it")
+            else:
+                add("error", "DATABASE_URL", "the ATIP runtime runs on SQLite; PostgreSQL is for "
+                                             "tools/sqlite_to_postgres.py unless database.allow_experimental "
+                                             "(docs/POSTGRESQL_MIGRATION.md)")
     except ValueError as e:
         add("error", "DATABASE_URL", str(e))
     from ops.secrets import status as _secret_status

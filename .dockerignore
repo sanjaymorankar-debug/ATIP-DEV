@@ -1,0 +1,20 @@
+# Never bake state or secrets into the image: atip_data is a volume
+atip_data/
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+*.log
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+docs/*.xlsx
+deploy/backups/

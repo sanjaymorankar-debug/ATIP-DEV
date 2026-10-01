@@ -1,0 +1,63 @@
+#cloud-config
+# ATIP on a cloud VM (W38, OPS-04) -- provider-neutral: paste as "user data" when creating an
+# Ubuntu 24.04 VM (AWS EC2, GCP, Azure, DigitalOcean, Hetzner ...). Size: 2 vCPU / 4 GB / 40 GB.
+#
+# What it does: Docker + compose, a firewall that admits SSH ONLY, an `atip` user, the repository
+# at a pinned release tag, and the compose stack with every port on 127.0.0.1. You reach the
+# dashboard through an SSH tunnel:   ssh -L 8000:127.0.0.1:8000 atip@<vm>
+#
+# What it does NOT do (gated, ENT-07): open 80/443, a TLS proxy, a domain, public auth. Making ATIP
+# reachable from the internet is a separate decision with its own review.
+#
+# Before use: replace <ssh-public-key> and <release-tag>; after boot, copy deploy/atip.env and the
+# atip_data volume contents (config.json, secrets) over SSH -- never put secrets in user data.
+
+package_update: true
+packages: [ca-certificates, curl, git, ufw, unattended-upgrades]
+
+users:
+  - name: atip
+    groups: [docker]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:/usr/bin/docker, /usr/bin/systemctl restart atip"]
+    ssh_authorized_keys:
+      - <ssh-public-key>
+
+timezone: Asia/Kolkata
+
+runcmd:
+  # firewall: SSH in, everything else closed
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw --force enable
+  # Docker engine + compose plugin (official convenience script, pinned channel)
+  - curl -fsSL https://get.docker.com | sh -s -- --channel stable
+  - usermod -aG docker atip
+  # Docker publishes ports around ufw: keep the compose bindings on 127.0.0.1 (they are)
+  - sudo -u atip git clone --branch <release-tag> --depth 1 https://github.com/sanjaymorankar-debug/ATIP-DEV.git /home/atip/atip
+  - sudo -u atip cp /home/atip/atip/deploy/atip.env.example /home/atip/atip/deploy/atip.env
+  - sudo -u atip sh -c 'head -c 24 /dev/urandom | base64 > /home/atip/atip/deploy/pg_password.txt'
+  - chmod 600 /home/atip/atip/deploy/atip.env /home/atip/atip/deploy/pg_password.txt
+  # systemd unit so the stack comes back after a reboot
+  - |
+    cat > /etc/systemd/system/atip.service <<'EOF'
+    [Unit]
+    Description=ATIP (docker compose)
+    Requires=docker.service
+    After=docker.service network-online.target
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    User=atip
+    WorkingDirectory=/home/atip/atip
+    ExecStart=/usr/bin/docker compose up -d --build
+    ExecStop=/usr/bin/docker compose down
+    TimeoutStartSec=900
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+  - systemctl daemon-reload
+  - systemctl enable atip.service
+  # not started here: deploy/atip.env and config.json must be filled in first, then
+  #   sudo systemctl restart atip

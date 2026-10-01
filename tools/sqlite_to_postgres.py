@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 def plan(source: Path) -> dict:
     from db.backend import translate
+    from db.postgres import APPEND_ONLY_FN, UnsupportedSQL, trigger_ddl
     c = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
     try:
         objs = c.execute("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE "
@@ -37,8 +38,15 @@ def plan(source: Path) -> dict:
         tables, ddl, skipped = [], [], []
         for typ, name, tbl, sql in objs:
             if typ == "trigger":
-                skipped.append({"name": name, "reason": "SQLite trigger syntax: re-create by hand (see ROLLBACK.md "
-                                                        "notes for the audit triggers)"})
+                # W38: the append-only guards become PostgreSQL row triggers; anything else is listed
+                try:
+                    stmt = trigger_ddl(sql)
+                except UnsupportedSQL as e:
+                    skipped.append({"name": name, "reason": str(e)})
+                    continue
+                if APPEND_ONLY_FN + ";" not in ddl:
+                    ddl.append(APPEND_ONLY_FN + ";")
+                ddl.append(stmt + ";")
                 continue
             if typ == "view":
                 skipped.append({"name": name, "reason": "view: review manually"})
@@ -77,6 +85,9 @@ def execute(source: Path, target: str, p: dict) -> dict:
                     break
                 pg.executemany(f'INSERT INTO "{name}" ({",".join(chr(34) + x + chr(34) for x in cols)}) VALUES ({ph})',
                                batch)
+            if "id" in cols and re.search(rf'CREATE TABLE IF NOT EXISTS "?{name}"?\s*\([^;]*\bid BIGINT GENERATED',
+                                          "\n".join(p["ddl"])):
+                pg.reset_identity(name)                     # W38: new rows must not reuse copied ids
             pg.commit()
             n = pg.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
             results.append({"table": name, "source_rows": t["rows"], "target_rows": n, "ok": n == t["rows"]})
@@ -92,6 +103,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="atip_data/pg_migration")
     ap.add_argument("--target")
     ap.add_argument("--execute", action="store_true")
+    ap.add_argument("--no-upgrade", action="store_true", help="do not apply this release's schema to the copy first")
     a = ap.parse_args(argv)
     from db.schema import DB_PATH
     source = Path(a.source)
@@ -101,6 +113,17 @@ def main(argv=None) -> int:
     if not source.exists():
         print(f"no such file {source}")
         return 2
+    if not a.no_upgrade:
+        # W38: bring the COPY to this release's schema first (what init_db does at start-up on SQLite);
+        # otherwise tables / columns added since the copy was taken are missing on PostgreSQL
+        import os
+        import subprocess
+        env = {**os.environ, "ATIP_DB_PATH": str(source.resolve())}
+        r = subprocess.run([sys.executable, "-c", "from db.schema import init_db; init_db()"], env=env,
+                           cwd=str(Path(__file__).resolve().parents[1]), capture_output=True, text=True)
+        if r.returncode:
+            print(f"schema upgrade of the copy failed:\n{r.stderr[-2000:]}")
+            return 1
     p = plan(source)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,50 @@
+# ATIP on Docker (W38, OPS-04).
+#
+#   cp deploy/atip.env.example deploy/atip.env      # then fill it in (it is git-ignored)
+#   docker compose up -d                            # app on SQLite (the default)
+#   docker compose --profile postgres up -d         # + PostgreSQL 16 (experimental runtime, DBS-05)
+#
+# EXPOSURE: every port is published on the HOST'S 127.0.0.1 only. Putting ATIP on the internet is
+# a separate, gated step (ENT-07: TLS proxy, auth on every route, enterprise.enabled, a security
+# review) -- do not change these bindings to 0.0.0.0 to "make it work remotely".
+services:
+  atip:
+    build: .
+    image: atip:local
+    container_name: atip
+    restart: unless-stopped
+    env_file: deploy/atip.env
+    environment:
+      TZ: Asia/Kolkata
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - atip_data:/app/atip_data
+    stop_grace_period: 60s          # let a running job finish its transaction
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16
+    container_name: atip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atip
+      POSTGRES_DB: atip
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets: [pg_password]
+    ports:
+      - "127.0.0.1:54320:5432"
+    volumes:
+      - atip_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atip -d atip"]
+      interval: 30s
+      retries: 5
+
+secrets:
+  pg_password:
+    file: deploy/pg_password.txt     # git-ignored; one line
+
+volumes:
+  atip_data:
+  atip_pg:

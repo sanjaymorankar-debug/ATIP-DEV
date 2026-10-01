@@ -19,3 +19,7 @@ venv/
 .idea/
 Thumbs.db
 desktop.ini
+
+# W38 OPS-04: filled-in container env and the PostgreSQL password (deploy/atip.env.example is the template)
+deploy/atip.env
+deploy/pg_password.txt

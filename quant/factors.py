@@ -451,7 +451,10 @@ FACTORS += [   # W36 (AF-06) derivatives -- research factors; F&O-segment symbol
 ]
 REGISTRY = {f.factor_id: f for f in FACTORS}
 CATEGORIES = sorted({f.category for f in FACTORS})
-BUILTIN_SET = [f.factor_id for f in FACTORS if not f.data_dependency or f.data_dependency in (FUND, FUND_NSE)]
+# The W36 derivatives factors are research factors (F&O symbols only), not part of the daily set: adding them
+# changed atip_factors@1's content and every quant route failed on an existing database (found in W38).
+BUILTIN_SET = [f.factor_id for f in FACTORS if (not f.data_dependency or f.data_dependency in (FUND, FUND_NSE))
+               and f.category != "derivatives"]
 
 
 def get(factor_id: str) -> FactorDef:
@@ -545,4 +548,15 @@ def save_factor_set(conn, name: str, version: str, factor_ids: list, description
 
 
 def ensure_builtin_set(conn) -> dict:
-    return save_factor_set(conn, "atip_factors", "1", BUILTIN_SET, "all factors computable from ATIP data")
+    """atip_factors at the version whose content matches BUILTIN_SET; when the built-in set changes in a
+    release, the next version is registered (old versions stay, so past research stays reproducible)
+    instead of raising on every quant request."""
+    rows = conn.execute("SELECT version FROM quant_factor_set WHERE name='atip_factors'").fetchall()
+    versions = sorted((str(r[0]) for r in rows), key=lambda v: int(v) if v.isdigit() else 0)
+    for v in reversed(versions or ["1"]):
+        try:
+            return save_factor_set(conn, "atip_factors", v, BUILTIN_SET, "all factors computable from ATIP data")
+        except ValueError:
+            continue
+    nxt = str(max([int(v) for v in versions if v.isdigit()] or [0]) + 1)
+    return save_factor_set(conn, "atip_factors", nxt, BUILTIN_SET, "all factors computable from ATIP data")

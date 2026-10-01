@@ -30,6 +30,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 import secrets
 from pathlib import Path
 
@@ -70,8 +71,11 @@ def token_ok(supplied: str | None) -> bool:
 
 
 def dashboard_host() -> str:
-    """127.0.0.1 unless config.json deliberately says otherwise."""
-    host = str(_config().get("dashboard_host", LOCAL_HOST)).strip() or LOCAL_HOST
+    """127.0.0.1 unless config.json (or, W38 OPS-04, ATIP_DASHBOARD_HOST -- the container image sets
+    0.0.0.0 INSIDE the container; docker-compose publishes it on the host's 127.0.0.1 only)
+    deliberately says otherwise."""
+    host = (os.environ.get("ATIP_DASHBOARD_HOST") or str(_config().get("dashboard_host", LOCAL_HOST))).strip() \
+        or LOCAL_HOST
     if host not in (LOCAL_HOST, "localhost", "::1"):
         log.warning(f"  Dashboard bound to {host} by config.json — the API is reachable "
                     f"from other machines; mutating routes still require the token in "
