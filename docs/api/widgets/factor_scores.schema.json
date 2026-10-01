@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "factor_scores",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string"
+      },
+      "factor_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "rank": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
+    }
+  }
+}

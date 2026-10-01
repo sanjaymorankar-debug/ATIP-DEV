@@ -42,9 +42,23 @@ class QuantHistory:
             self._events = EventHistory(conn, end)
         except Exception:
             self._events = None
+        try:                                            # W30 (AF-07): ms_* microstructure features
+            from quant.microstructure import MicrostructureHistory
+            self._ms = MicrostructureHistory(conn, start, end)
+        except Exception:
+            self._ms = None
+        try:                                            # W30 (QR-10): dv_* derivatives features
+            from quant.derivatives_features import DerivHistory
+            self._deriv = DerivHistory(conn, start, end)
+        except Exception:
+            self._deriv = None
 
     def on(self, as_of, symbol) -> dict:
         out = dict(self._rows.get((as_of, symbol), {}))
         if self._events is not None:
             out.update(self._events.on(as_of, symbol))
+        if self._deriv is not None:
+            out.update(self._deriv.on(as_of, symbol))
+        if self._ms is not None:
+            out.update(self._ms.on(as_of, symbol))
         return out

@@ -122,10 +122,23 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES, **W29_TABLES, **W30_TABLES, **W9_TABLES, **W32_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
+    from db.schema_w28b import W28B_TABLES, W28B_COLUMNS   # W28b: NS-05 / NS-06
+    for name, ddls in W28B_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in W28B_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
+    from db.schema_w34 import W34_TABLES, W34_COLUMNS     # W34: execution microstructure
+    for name, ddls in W34_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in W34_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
+    from db.schema_w35 import W35_TABLES                    # W35: data platform
+    for name, ddls in W35_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing
@@ -1009,6 +1022,230 @@ W25_TABLES = {
     ),
 }
 
+# ── Tables added in W27 (data & scores) ───────────────────────────────────
+W27_TABLES = {
+    "fundamental_filing": (            # DP-15: one NSE integrated-filing XBRL, parsed (point in time)
+        """CREATE TABLE IF NOT EXISTS fundamental_filing (
+            xbrl_url TEXT PRIMARY KEY, symbol TEXT NOT NULL, period_end DATE NOT NULL, nature TEXT NOT NULL,
+            audited TEXT, broadcast_at TIMESTAMP, facts_json TEXT, status TEXT NOT NULL DEFAULT 'PARSED',
+            error TEXT, fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ff_symbol_period ON fundamental_filing(symbol, period_end)",
+    ),
+    "shareholding_pattern": (          # DP-16: quarterly shareholding pattern (NSE SHP XBRL)
+        """CREATE TABLE IF NOT EXISTS shareholding_pattern (
+            symbol TEXT NOT NULL, as_of DATE NOT NULL, promoter_pct REAL, public_pct REAL, mf_pct REAL,
+            fpi_pct REAL, insurance_pct REAL, dii_pct REAL, retail_pct REAL, pledged_pct REAL,
+            submitted_at TIMESTAMP, xbrl_url TEXT, source TEXT DEFAULT 'nse_shp', fetched_at TIMESTAMP,
+            PRIMARY KEY (symbol, as_of))""",
+    ),
+    "insider_trade": (                 # DP-16: SEBI PIT disclosures (NSE corporates-pit)
+        """CREATE TABLE IF NOT EXISTS insider_trade (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, person TEXT, person_category TEXT,
+            txn_type TEXT, security_type TEXT, qty REAL, value_rs REAL, mode TEXT, txn_from DATE, txn_to DATE,
+            disclosed_at TIMESTAMP, post_pct REAL, fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_insider_symbol ON insider_trade(symbol, disclosed_at)",
+    ),
+    "sast_disclosure": (               # DP-16: SAST Reg 29 acquisitions / disposals
+        """CREATE TABLE IF NOT EXISTS sast_disclosure (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, acquirer TEXT, is_promoter INTEGER,
+            txn_type TEXT, shares_acq REAL, shares_sold REAL, post_pct REAL, disclosed_at TIMESTAMP,
+            fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_sast_symbol ON sast_disclosure(symbol, disclosed_at)",
+    ),
+    "fo_underlying_daily": (           # DP-08 (partial) / SC-06: per-underlying F&O summary from NSE F&O bhavcopy
+        """CREATE TABLE IF NOT EXISTS fo_underlying_daily (
+            date DATE NOT NULL, symbol TEXT NOT NULL, kind TEXT NOT NULL, underlying_price REAL,
+            fut_close REAL, fut_oi REAL, fut_oi_chg REAL, fut_volume REAL,
+            call_oi REAL, put_oi REAL, call_oi_chg REAL, put_oi_chg REAL, call_volume REAL, put_volume REAL,
+            pcr_oi REAL, pcr_volume REAL, max_pain REAL, near_expiry DATE, created_at TIMESTAMP,
+            PRIMARY KEY (date, symbol))""",
+    ),
+    "global_market_history": (         # DP-12: daily close history of every global series (incl. yields)
+        """CREATE TABLE IF NOT EXISTS global_market_history (
+            series TEXT NOT NULL, date DATE NOT NULL, close REAL, source TEXT DEFAULT 'yfinance',
+            PRIMARY KEY (series, date))""",
+    ),
+    "live_feed_status": (              # DP-01: stock feed health (one row per feed, overwritten)
+        """CREATE TABLE IF NOT EXISTS live_feed_status (
+            feed TEXT PRIMARY KEY, mode TEXT, subscribed INTEGER, ticks INTEGER, last_tick_at TIMESTAMP,
+            last_flush_at TIMESTAMP, detail TEXT, updated_at TIMESTAMP)""",
+    ),
+}
+
+# ── Tables added in W28 (strategy & AI) ───────────────────────────────────
+W28_TABLES = {
+    "ai_usage_log": (                  # NS-02..04: every Anthropic request, tokens + cost (daily cap)
+        """CREATE TABLE IF NOT EXISTS ai_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, day DATE NOT NULL, created_at TIMESTAMP, purpose TEXT, model TEXT,
+            input_tokens INTEGER, output_tokens INTEGER, cache_write_tokens INTEGER, cache_read_tokens INTEGER,
+            cost_usd REAL, ok INTEGER, error TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage_log(day)",
+    ),
+    "news_summary": (                  # NS-04 / DB-06
+        """CREATE TABLE IF NOT EXISTS news_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP, window_hours INTEGER, article_count INTEGER,
+            classifier TEXT, model TEXT, summary_json TEXT, fallback_reason TEXT)""",
+    ),
+    "intraday_scan_hit": (             # SG-08
+        """CREATE TABLE IF NOT EXISTS intraday_scan_hit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, run_at TIMESTAMP, session DATE, scan TEXT,
+            symbol TEXT, price REAL, score REAL, details_json TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_scan_hit_session ON intraday_scan_hit(session, scan)",
+    ),
+}
+
+# ── Tables added in W29 (execution) ───────────────────────────────────────
+W29_TABLES = {
+    "reconciliation_run": (            # BR-05
+        """CREATE TABLE IF NOT EXISTS reconciliation_run (
+            run_id TEXT PRIMARY KEY, trade_date DATE, run_at TIMESTAMP, status TEXT, breaks INTEGER,
+            explained INTEGER, details_json TEXT)""",
+    ),
+    "broker_health_check": (           # BR-06 / RK-17
+        """CREATE TABLE IF NOT EXISTS broker_health_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP NOT NULL, overall TEXT NOT NULL,
+            in_session INTEGER, checks_json TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_broker_health_at ON broker_health_check(checked_at)",
+    ),
+    "live_pnl_snapshot": (             # MON-04: intraday book P&L every 15 min
+        """CREATE TABLE IF NOT EXISTS live_pnl_snapshot (
+            ts TIMESTAMP NOT NULL, book TEXT NOT NULL, value REAL, day_pnl REAL, unrealized REAL, positions INTEGER,
+            PRIMARY KEY (ts, book))""",
+    ),
+    "audit_export": (                  # SEC-03: one row per exported audit segment
+        """CREATE TABLE IF NOT EXISTS audit_export (
+            export_id TEXT PRIMARY KEY, source TEXT NOT NULL, first_id INTEGER, last_id INTEGER, rows INTEGER,
+            path TEXT, offbox_path TEXT, sha256 TEXT, chain_ok INTEGER, created_at TIMESTAMP)""",
+    ),
+}
+
+# ── Tables added in W30 (advanced quant) ──────────────────────────────────
+W30_TABLES = {
+    "paper_futures_position": (        # QR-05 / QR-06: short legs via stock futures (paper)
+        """CREATE TABLE IF NOT EXISTS paper_futures_position (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id TEXT NOT NULL DEFAULT '', underlying TEXT NOT NULL,
+            expiry DATE NOT NULL, lots INTEGER NOT NULL, lot_size INTEGER NOT NULL, avg_price REAL NOT NULL,
+            realized_pnl REAL NOT NULL DEFAULT 0, margin_blocked REAL NOT NULL DEFAULT 0, opened_at TIMESTAMP,
+            updated_at TIMESTAMP, UNIQUE(strategy_id, underlying, expiry))""",
+    ),
+    "paper_futures_trade": (
+        """CREATE TABLE IF NOT EXISTS paper_futures_trade (
+            trade_id TEXT PRIMARY KEY, order_id TEXT, strategy_id TEXT, underlying TEXT, expiry DATE, side TEXT,
+            lots INTEGER, lot_size INTEGER, price REAL, fees REAL, reason TEXT, at TIMESTAMP)""",
+    ),
+    "ops_restore_drill": (             # W31 (OPS-06): scheduled restore drills
+        """CREATE TABLE IF NOT EXISTS ops_restore_drill (
+            drill_id TEXT PRIMARY KEY, backup_id TEXT, source TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            seconds REAL, status TEXT, details_json TEXT)""",
+    ),
+    "ops_rollback_drill": (            # W31 (OPS-11): executed rollback drills (scratch clone)
+        """CREATE TABLE IF NOT EXISTS ops_rollback_drill (
+            drill_id TEXT PRIMARY KEY, from_ref TEXT, to_ref TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            rto_seconds REAL, status TEXT, details_json TEXT)""",
+    ),
+    "event_study": (                   # QR-09: stored event-study results
+        """CREATE TABLE IF NOT EXISTS event_study (
+            study_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, period TEXT, params_json TEXT, result_json TEXT,
+            created_at TIMESTAMP)""",
+    ),
+}
+
+# ── Tables added in W9 (enterprise SaaS) ───────────────────────────────────
+# Per-tenant paper books, credential vault (ciphertext only), onboarding,
+# payments (SANDBOX by default), notification preferences / deliveries,
+# report outputs, consent and privacy requests, per-API-key usage.
+W32_TABLES = {
+    # SEC-02 MFA recovery codes: sha256 digests only, one-time (enterprise/w32.py)
+    "enterprise_mfa_recovery": (
+        """CREATE TABLE IF NOT EXISTS enterprise_mfa_recovery (
+            code_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMP, used_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_mfa_recovery_user ON enterprise_mfa_recovery(user_id)",
+    ),
+}
+
+W9_TABLES = {
+    "tenant_paper_account": (
+        """CREATE TABLE IF NOT EXISTS tenant_paper_account (
+            tenant_id TEXT PRIMARY KEY, starting_cash REAL NOT NULL, cash REAL NOT NULL, realized_pnl REAL DEFAULT 0,
+            peak_equity REAL, created_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "tenant_paper_position": (
+        """CREATE TABLE IF NOT EXISTS tenant_paper_position (
+            tenant_id TEXT NOT NULL, symbol TEXT NOT NULL, quantity INTEGER NOT NULL, avg_price REAL NOT NULL,
+            realized_pnl REAL DEFAULT 0, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, symbol))""",
+    ),
+    "tenant_paper_fill": (
+        """CREATE TABLE IF NOT EXISTS tenant_paper_fill (
+            fill_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_id TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL,
+            quantity INTEGER NOT NULL, price REAL NOT NULL, fees REAL, filled_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_tpf_tenant ON tenant_paper_fill(tenant_id, filled_at)",
+    ),
+    "tenant_pnl_daily": (
+        """CREATE TABLE IF NOT EXISTS tenant_pnl_daily (
+            tenant_id TEXT NOT NULL, date DATE NOT NULL, equity REAL, cash REAL, positions_value REAL, day_pnl REAL,
+            peak_equity REAL, drawdown_pct REAL, recorded_at TIMESTAMP, PRIMARY KEY (tenant_id, date))""",
+    ),
+    "enterprise_vault_credential": (
+        """CREATE TABLE IF NOT EXISTS enterprise_vault_credential (
+            credential_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, broker TEXT NOT NULL,
+            label TEXT, secret_enc TEXT NOT NULL, field_names_json TEXT, key_id TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP, rotated_at TIMESTAMP, last_accessed_at TIMESTAMP,
+            access_count INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, user_id, broker, label))""",
+    ),
+    "enterprise_onboarding": (
+        """CREATE TABLE IF NOT EXISTS enterprise_onboarding (
+            tenant_id TEXT PRIMARY KEY, steps_json TEXT, completed_at TIMESTAMP, updated_at TIMESTAMP)""",
+    ),
+    "enterprise_payment": (
+        """CREATE TABLE IF NOT EXISTS enterprise_payment (
+            payment_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, invoice_id TEXT, provider TEXT NOT NULL,
+            amount REAL, currency TEXT, status TEXT NOT NULL, provider_ref TEXT, idempotency_key TEXT UNIQUE,
+            error TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_payment_tenant ON enterprise_payment(tenant_id, created_at)",
+    ),
+    "enterprise_notification_pref": (
+        """CREATE TABLE IF NOT EXISTS enterprise_notification_pref (
+            tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, category TEXT NOT NULL, channels_json TEXT,
+            mode TEXT NOT NULL DEFAULT 'immediate', quiet_start TEXT, quiet_end TEXT,
+            unsubscribed INTEGER NOT NULL DEFAULT 0, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, user_id, category))""",
+    ),
+    "enterprise_notification_delivery": (
+        """CREATE TABLE IF NOT EXISTS enterprise_notification_delivery (
+            delivery_id TEXT PRIMARY KEY, tenant_id TEXT, notification_id INTEGER, user_id TEXT NOT NULL,
+            channel TEXT NOT NULL, destination_masked TEXT, subject TEXT, status TEXT NOT NULL, mode TEXT,
+            error TEXT, created_at TIMESTAMP, sent_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_ndel_status ON enterprise_notification_delivery(status, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ent_ndel_user ON enterprise_notification_delivery(user_id, created_at)",
+    ),
+    "enterprise_email_token": (
+        """CREATE TABLE IF NOT EXISTS enterprise_email_token (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, purpose TEXT NOT NULL, email TEXT,
+            expires_at TIMESTAMP, used_at TIMESTAMP, created_at TIMESTAMP)""",
+    ),
+    "enterprise_report_output": (
+        """CREATE TABLE IF NOT EXISTS enterprise_report_output (
+            output_id TEXT PRIMARY KEY, report_id TEXT NOT NULL, tenant_id TEXT NOT NULL, user_id TEXT,
+            format TEXT NOT NULL, content TEXT, rows INTEGER, created_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ent_rout_report ON enterprise_report_output(report_id, created_at)",
+    ),
+    "enterprise_consent": (
+        """CREATE TABLE IF NOT EXISTS enterprise_consent (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, user_id TEXT NOT NULL, document TEXT NOT NULL,
+            version TEXT NOT NULL, accepted_at TIMESTAMP, ip TEXT, UNIQUE(user_id, document, version))""",
+    ),
+    "enterprise_privacy_request": (
+        """CREATE TABLE IF NOT EXISTS enterprise_privacy_request (
+            request_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL,
+            status TEXT NOT NULL, reason TEXT, requested_at TIMESTAMP, decided_by TEXT, decided_at TIMESTAMP,
+            completed_at TIMESTAMP, result_json TEXT)""",
+    ),
+    "enterprise_api_usage": (
+        """CREATE TABLE IF NOT EXISTS enterprise_api_usage (
+            key_id TEXT NOT NULL, tenant_id TEXT NOT NULL, date DATE NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (key_id, date))""",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
@@ -1018,15 +1255,44 @@ W3_W4_COLUMNS = {
     # W7: tenant ownership of tenant-owned W3-W6 rows (existing rows -> 'default')
     "strategy": {"tenant_id": "TEXT DEFAULT 'default'"},
     "risk_decision": {"tenant_id": "TEXT DEFAULT 'default'"},
-    "oms_order": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "oms_order": {"tenant_id": "TEXT DEFAULT 'default'",
+                  # W29: per-order type (EX-02), modify (EX-08), protective child stops; W30: instrument
+                  "trigger_price": "REAL", "parent_order_id": "TEXT", "modified_count": "INTEGER DEFAULT 0",
+                  "instrument": "TEXT DEFAULT 'CASH'"},
     "ml_model": {"tenant_id": "TEXT DEFAULT 'default'"},
     "quant_pair": {"tenant_id": "TEXT DEFAULT 'default'"},
     "quant_experiment": {"tenant_id": "TEXT DEFAULT 'default'"},
     "quant_portfolio": {"tenant_id": "TEXT DEFAULT 'default'"},
     # W8: MFA (TOTP secret encrypted with ops/crypto.py) and the audit hash chain
     "enterprise_user": {"mfa_enabled": "INTEGER NOT NULL DEFAULT 0", "mfa_secret_enc": "TEXT",
-                        "mfa_pending_enc": "TEXT"},
+                        "mfa_pending_enc": "TEXT", "email_verified_at": "TIMESTAMP", "deleted_at": "TIMESTAMP"},
     "enterprise_audit": {"prev_hash": "TEXT", "row_hash": "TEXT"},
+    # W27: fundamentals from NSE filings -- point-in-time availability, SPI stored beside FS,
+    # and which inputs each score actually used
+    "fundamental_data": {"period_end": "DATE", "available_from": "TIMESTAMP", "nature": "TEXT",
+                         "eps_q": "REAL", "spi_score": "REAL", "score_inputs": "TEXT", "mf_hold": "REAL",
+                         "fpi_hold": "REAL", "shares_out": "REAL", "equity_cr": "REAL", "debt_cr": "REAL",
+                         "profit_fy_cr": "REAL"},
+    "institutional_data": {"ins_components": "TEXT"},
+    # W29 / W30 columns of oms_order live in the single "oms_order" entry above (a second
+    # key here silently replaced W7's tenant_id -- fixed in W32)
+    # W30 (QR-10 / QR-05): implied volatility from option settle prices; lot size for futures shorts
+    "live_quotes": {"buy_qty": "REAL", "sell_qty": "REAL"},        # W30 (AF-07): stock-feed order imbalance
+    # W31 (OPS-06): encrypted off-site copy of each verified backup
+    "ops_backup": {"offsite_path": "TEXT", "offsite_status": "TEXT", "encrypted_sha256": "TEXT"},
+    "fo_underlying_daily": {"atm_iv": "REAL", "iv_call_atm": "REAL", "iv_put_atm": "REAL", "iv_skew": "REAL",
+                            "iv_expiry": "DATE", "iv_dte": "INTEGER", "lot_size": "INTEGER"},
+    "global_markets": {"us_3m": "REAL", "us_3m_chg": "REAL", "us_5y": "REAL", "us_5y_chg": "REAL",
+                       "us_30y": "REAL", "us_30y_chg": "REAL"},
+    # W9: tenant ownership of the remaining tenant-owned tables, e-mail verification,
+    # API-key limits, billing dunning, report schedules
+    "backtest_run": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "ml_dataset": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "quant_factor_research": {"tenant_id": "TEXT DEFAULT 'default'"},
+    "enterprise_api_key": {"rate_limit_per_minute": "INTEGER", "daily_quota": "INTEGER"},
+    "enterprise_subscription": {"dunning_state": "TEXT", "grace_until": "TIMESTAMP", "payment_provider": "TEXT"},
+    "enterprise_invoice": {"due_date": "DATE", "paid_at": "TIMESTAMP", "payment_id": "TEXT", "finalized_at": "TIMESTAMP"},
+    "enterprise_report": {"schedule": "TEXT", "formats_json": "TEXT", "last_run_at": "TIMESTAMP"},
 }
 
 # Every alert ATIP raises, whether or not Telegram delivered it: the dashboard

@@ -58,8 +58,16 @@ def _universe(conn, defn) -> tuple:
 
 def _held(conn, book: str, as_of: date) -> dict:
     from portfolio.pnl import positions
-    return {p["symbol"]: {"qty": p["qty"], "entry_price": p["avg_price"], "held_sessions": None}
+    held = {p["symbol"]: {"qty": p["qty"], "entry_price": p["avg_price"], "held_sessions": None}
             for p in positions(conn, book, as_of)}
+    if book == "PAPER":                    # W30: short legs held in the paper futures book
+        try:
+            from execution.futures_paper import held_shorts
+            for s, v in held_shorts(conn).items():
+                held.setdefault(s, v)
+        except Exception as e:
+            log.debug(f"  futures shorts unavailable: {e}")
+    return held
 
 
 def build_env(conn, symbols, as_of: date, inputs=None) -> EvalEnv:

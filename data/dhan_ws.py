@@ -340,6 +340,14 @@ class IndexFeedManager:
         snap = self.snapshot()
         if not snap:
             return  # no ticks yet (e.g. market closed) — nothing to write
+        try:                                    # W34 (EX-15): age of the newest tick at flush time
+            from ops.latency import record as _lat
+            with self._lock:
+                newest = max(self._last_tick_at.values()) if self._last_tick_at else None
+            if newest:
+                _lat("feed.tick_to_flush", (datetime.now() - newest).total_seconds() * 1000.0)
+        except Exception:
+            pass
         record = {"date": str(date.today()), "time": datetime.now().strftime("%H:%M:%S")}
         for col, vals in snap.items():
             record[col] = vals["ltp"]

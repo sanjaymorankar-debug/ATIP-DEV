@@ -1,4 +1,11 @@
-"""ATIP — Fundamental Data Fetcher (Alpha Vantage + Screener.in fallback)"""
+"""ATIP — Fundamental Data Fetcher
+
+W27 (DP-15): the source of record is NSE filings (data/nse_filings.py), chosen by
+the owner on 2026-10-01. run_fundamentals_pipeline() now delegates there unless
+config.json "fundamentals": {"source": "alpha_vantage" | "screener"} selects one of
+the legacy fetchers below. compute_fs() no longer returns 50.0 when nothing
+parses (it returns None); FS and SPI are scores/fundamental.py.
+"""
 import os, re, json, time, logging, argparse
 import requests, pandas as pd
 from datetime import datetime
@@ -103,10 +110,22 @@ def compute_fs(f):
     if f.get("debt_equity") is not None: scores["Debt"]=nm(f["debt_equity"],0,4,inv=True)
     if f.get("peg_ratio"): scores["PEG"]=nm(f["peg_ratio"],0,4,inv=True)
     if f.get("operating_margin"): scores["Margin"]=nm(f["operating_margin"],0,0.4)
-    return round(sum(scores.values())/len(scores),2) if scores else 50.0
+    return round(sum(scores.values())/len(scores),2) if scores else None
+
+def fundamentals_source() -> str:
+    try:
+        cfg=json.loads(Path("atip_data/config.json").read_text(encoding="utf-8"))
+        return str((cfg.get("fundamentals") or {}).get("source") or "nse").lower()
+    except Exception:
+        return "nse"
 
 def run_fundamentals_pipeline(symbols=None):
-    import re
+    if fundamentals_source()=="nse":
+        from data.nse_filings import run_fundamentals_pipeline as _nse
+        return _nse(symbols)
+    return run_legacy_fundamentals_pipeline(symbols)
+
+def run_legacy_fundamentals_pipeline(symbols=None):
     conn=get_connection(); result={"rows":0,"status":"SUCCESS"}
     if not symbols:
         rows=conn.execute("SELECT DISTINCT symbol FROM prices_daily").fetchall()
@@ -114,8 +133,8 @@ def run_fundamentals_pipeline(symbols=None):
     log.info(f"📊 Fundamentals for {len(symbols)} symbols"); count=0
     for sym in symbols:
         try:
-            data=parse_av(sym)
-            if not data or len(data)<5: data=fetch_screener(sym)
+            data=fetch_screener(sym) if fundamentals_source()=="screener" else parse_av(sym)
+            if fundamentals_source()!="screener" and (not data or len(data)<5): data=fetch_screener(sym)
             if not data: continue
             q=data.get("quarter") or datetime.now().strftime("Q%mFY%y")
             conn.execute("""INSERT INTO fundamental_data

@@ -10,6 +10,14 @@ The order manager (W4): APPROVED risk decision -> order -> execution -> fills.
     cancel_order(order_id)           CANCELLED (not yet at the broker) or
                                      CANCEL_PENDING -> CANCELLED (resting paper LIMIT)
     refresh_order(order_id)          poll the adapter for a resting order
+    modify_order(order_id, ...)      (W29, EX-08) quantity / limit / trigger / type of a
+                                     resting (ACKNOWLEDGED) order; an oms_order_event row
+                                     records old -> new; CREATED / VALIDATED orders are
+                                     edited in place before they reach the broker
+    place_protective_stop(order_id)  (W29, EX-02) after an entry fills: a child SL-M (or SL)
+                                     SELL for the filled quantity at the intent's stop_price,
+                                     linked by parent_order_id. Risk-reducing, so it needs no
+                                     risk decision; PAPER only (LIVE is refused upstream)
 
 Every state change goes through transition(), which enforces
 models.ORDER_TRANSITIONS and writes an oms_order_event row. Every adapter call
@@ -30,7 +38,8 @@ from execution.adapters import get_adapter
 from execution.config import LIVE, execution_settings, live_gate
 from execution.errors import BrokerError, DuplicateOrderError, ExecutionError, InvalidIntentError, LiveTradingDisabled
 from execution.models import (ACKNOWLEDGED, APPROVED, CANCEL_PENDING, CANCELLED, CREATED, FAILED, FILLED,
-                              O_REJECTED, PARTIALLY_FILLED, SUBMITTED, TERMINAL, VALIDATED, check_transition)
+                              MODIFIABLE, O_REJECTED, PARTIALLY_FILLED, SUBMITTED, TERMINAL, VALIDATED,
+                              check_order_type, check_transition)
 
 from ops.resilience import non_idempotent
 
@@ -46,6 +55,13 @@ def _in_market_session(now=None) -> bool:
 
 def _now():
     return datetime.now()
+
+
+def _adapter(conn, o):
+    """The adapter for an order: tenant (W9 per-tenant paper books) and instrument (W30 FUT)."""
+    from execution.tenant_books import tenant_of_strategy
+    return get_adapter(conn, o["mode"], instrument=o.get("instrument"),
+                       tenant_id=tenant_of_strategy(conn, o["strategy_id"]))
 
 
 def get_order(conn, order_id: str) -> dict:
@@ -65,13 +81,19 @@ def transition(conn, order_id: str, to: str, message: str = "", details: dict | 
     conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
                  "VALUES (?,?,?,?,?,?,?)", (order_id, o["status"], to, (message or "")[:2000],
                                             json.dumps(details or {}, default=str), actor, _now()))
+    from execution.events import publish                     # W34 (EX-16): same transaction as the change
+    publish(conn, "order.state", order_id, {"order_id": order_id, "from": o["status"], "to": to,
+                                            "symbol": o["symbol"], "side": o["side"], "quantity": o["quantity"],
+                                            "strategy_id": o["strategy_id"], "mode": o["mode"],
+                                            "algo_parent_id": o.get("algo_parent_id"), "message": (message or "")[:300]})
     conn.commit()
     (log.warning if to in (O_REJECTED, FAILED) else log.info)(
         f"  order {order_id} {o['side']} {o['quantity']} {o['symbol']}: {o['status']} -> {to} {message}")
     return get_order(conn, order_id)
 
 
-def create_order(conn, risk_decision_id: str, actor: str = "oms") -> dict:
+def create_order(conn, risk_decision_id: str, actor: str = "oms", order_type: str | None = None,
+                 limit_price: float | None = None, trigger_price: float | None = None) -> dict:
     rd = conn.execute("SELECT * FROM risk_decision WHERE risk_decision_id=?", (risk_decision_id,)).fetchone()
     if not rd:
         raise InvalidIntentError(f"no risk decision {risk_decision_id}")
@@ -84,15 +106,27 @@ def create_order(conn, risk_decision_id: str, actor: str = "oms") -> dict:
     if ex:
         raise DuplicateOrderError(f"intent {rd['intent_id']} already has order {ex[0]}")
     s = execution_settings()
+    instrument = "FUT" if rd.get("action") in ("SHORT", "COVER") else "CASH"     # W30: futures short legs
+    if instrument == "FUT":
+        if s["mode"] == LIVE:
+            raise InvalidIntentError("LIVE futures are not built")
+        order_type, limit_price, trigger_price = "MARKET", None, None           # filled at the EOD futures close
+    otype = (order_type or s["order_type"]).upper()
+    if otype == "LIMIT" and limit_price is None:
+        limit_price = rd["reference_price"]
+    otype = check_order_type(otype, rd["side"], limit_price, trigger_price)
     oid = "OMS" + uuid.uuid4().hex[:14].upper()
     now = _now()
     conn.execute("INSERT INTO oms_order (order_id,intent_id,risk_decision_id,decision_id,strategy_id,strategy_version,"
-                 "symbol,side,quantity,order_type,limit_price,product_type,mode,adapter,status,reference_price,"
-                 "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                 "symbol,side,quantity,order_type,limit_price,trigger_price,product_type,mode,adapter,status,"
+                 "reference_price,instrument,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  (oid, rd["intent_id"], risk_decision_id, rd["decision_id"], rd["strategy_id"], rd["strategy_version"],
-                  rd["symbol"], rd["side"], int(rd["approved_quantity"]), s["order_type"],
-                  rd["reference_price"] if s["order_type"] == "LIMIT" else None, s["product_type"], s["mode"],
-                  "paper" if s["mode"] != LIVE else "dhan", CREATED, rd["reference_price"], now, now))
+                  rd["symbol"], rd["side"], int(rd["approved_quantity"]), otype,
+                  limit_price if otype in ("LIMIT", "SL") else None,
+                  trigger_price if otype in ("SL", "SL-M") else None,
+                  "NRML" if instrument == "FUT" else s["product_type"], s["mode"],
+                  ("paper_fut" if instrument == "FUT" else "paper") if s["mode"] != LIVE else "dhan", CREATED,
+                  rd["reference_price"], instrument, now, now))
     conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
                  "VALUES (?,?,?,?,?,?,?)", (oid, None, CREATED, f"from risk decision {risk_decision_id}",
                                             json.dumps({"risk_decision_id": risk_decision_id}), actor, now))
@@ -145,6 +179,11 @@ def _record_fill(conn, o, eid, qty, price, fees, source):
                  "quantity,price,fees,price_source,mode,filled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  ("FL" + uuid.uuid4().hex[:16].upper(), o["order_id"], eid, o["strategy_id"], o["strategy_version"],
                   o["symbol"], o["side"], int(qty), float(price), float(fees or 0), source, o["mode"], _now()))
+    from execution.events import publish                     # W34 (EX-16)
+    publish(conn, "order.fill", o["order_id"], {"order_id": o["order_id"], "fill_qty": int(qty), "price": float(price),
+                                                "fees": float(fees or 0), "symbol": o["symbol"], "side": o["side"],
+                                                "strategy_id": o["strategy_id"], "mode": o["mode"],
+                                                "algo_parent_id": o.get("algo_parent_id")})
     conn.commit()
 
 
@@ -179,11 +218,16 @@ def submit_order(conn, order_id: str) -> dict:
     if o["status"] != VALIDATED:
         raise ExecutionError(f"order {order_id} is {o['status']}; only CREATED / VALIDATED orders are submitted")
     o = transition(conn, order_id, SUBMITTED, f"to {o['adapter']} adapter ({o['mode']})")
-    request = {k: o[k] for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
-                                 "product_type", "reference_price")}
+    request = {k: o.get(k) for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
+                                     "trigger_price", "product_type", "reference_price")}
     try:
-        adapter = get_adapter(conn, o["mode"])
-        r = adapter.submit(o)
+        from ops.latency import record, since_ms, timed       # W34 (EX-15)
+        it = conn.execute("SELECT created_at FROM strategy_position_intent WHERE intent_id=?",
+                          (o["intent_id"],)).fetchone()
+        record("order.decision_to_submit", since_ms(it[0]) if it else None)
+        adapter = _adapter(conn, o)
+        with timed("order.submit_adapter"):
+            r = adapter.submit(o)
     except (LiveTradingDisabled, BrokerError) as e:
         eid = _record_execution(conn, o, "submit", request, error=str(e))
         log.error(f"  order {order_id}: submit failed: {e}")
@@ -207,7 +251,7 @@ def cancel_order(conn, order_id: str, reason: str = "cancelled by owner") -> dic
         raise ExecutionError(f"order {order_id} is SUBMITTED with no broker acknowledgement yet; refresh it first")
     o = transition(conn, order_id, CANCEL_PENDING, reason)
     try:
-        r = get_adapter(conn, o["mode"]).cancel(o)
+        r = _adapter(conn, o).cancel(o)
     except Exception as e:
         eid = _record_execution(conn, o, "cancel", {"order_id": order_id}, error=str(e))
         return transition(conn, order_id, FAILED, f"cancel failed: {e}", {"execution_id": eid}, reason=str(e))
@@ -222,13 +266,122 @@ def refresh_order(conn, order_id: str) -> dict:
     if o["status"] in TERMINAL or not o["broker_order_id"]:
         return o
     try:
-        r = get_adapter(conn, o["mode"]).status(o)
+        r = _adapter(conn, o).status(o)
     except Exception as e:
         eid = _record_execution(conn, o, "status", {"order_id": order_id}, error=str(e))
         log.warning(f"  order {order_id}: status poll failed: {e}")
         return get_order(conn, order_id)
     eid = _record_execution(conn, o, "status", {"order_id": order_id}, r)
     return _apply(conn, o, eid, r)
+
+
+def _event(conn, o, message, details, actor):
+    """An audit row with no state change (oms_order_event is append-only)."""
+    conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
+                 "VALUES (?,?,?,?,?,?,?)", (o["order_id"], o["status"], o["status"], message[:2000],
+                                            json.dumps(details, default=str), actor, _now()))
+
+
+@non_idempotent
+def modify_order(conn, order_id: str, quantity: int | None = None, limit_price: float | None = None,
+                 trigger_price: float | None = None, order_type: str | None = None, actor: str = "owner") -> dict:
+    """EX-08. Quantity may only go DOWN from the approved quantity -- raising it would
+    bypass the risk decision that sized the order."""
+    o = get_order(conn, order_id)
+    if o["status"] in TERMINAL:
+        raise ExecutionError(f"order {order_id} is {o['status']} (terminal)")
+    if o["status"] not in MODIFIABLE | {CREATED, VALIDATED}:
+        raise ExecutionError(f"order {order_id} is {o['status']}; only CREATED / VALIDATED / ACKNOWLEDGED "
+                             f"orders can be modified")
+    new = {"quantity": int(quantity) if quantity is not None else int(o["quantity"]),
+           "limit_price": float(limit_price) if limit_price is not None else o["limit_price"],
+           "trigger_price": float(trigger_price) if trigger_price is not None else o.get("trigger_price"),
+           "order_type": (order_type or o["order_type"]).upper()}
+    if new["quantity"] <= 0:
+        raise ExecutionError("quantity must be > 0")
+    if new["quantity"] > int(o["quantity"]) and o.get("risk_decision_id"):
+        raise ExecutionError(f"quantity can only be reduced (approved {o['quantity']}); a larger order needs a "
+                             f"new risk decision")
+    try:
+        new["order_type"] = check_order_type(new["order_type"], o["side"], new["limit_price"], new["trigger_price"])
+    except ValueError as e:
+        raise ExecutionError(str(e)) from e
+    old = {k: o.get(k) for k in new}
+    if new == old:
+        raise ExecutionError("nothing to change")
+    if o["status"] in (CREATED, VALIDATED):
+        conn.execute("UPDATE oms_order SET quantity=?, limit_price=?, trigger_price=?, order_type=?, "
+                     "modified_count=COALESCE(modified_count,0)+1, updated_at=? WHERE order_id=?",
+                     (new["quantity"], new["limit_price"], new["trigger_price"], new["order_type"], _now(), order_id))
+        _event(conn, o, "modified before submission", {"from": old, "to": new}, actor)
+        conn.commit()
+        return get_order(conn, order_id)
+    try:
+        if o.get("instrument") == "FUT":
+            raise ExecutionError("futures paper orders fill at once; nothing to modify")
+        r = _adapter(conn, o).modify(o, new)
+    except Exception as e:
+        eid = _record_execution(conn, o, "modify", {"order_id": order_id, **new}, error=str(e))
+        _event(conn, o, f"modify failed: {e}", {"execution_id": eid, "to": new}, actor)
+        conn.commit()
+        raise ExecutionError(f"modify failed: {e}") from e
+    eid = _record_execution(conn, o, "modify", {"order_id": order_id, **new}, r)
+    if r.status == "REJECTED":
+        _event(conn, o, f"modify rejected: {r.message}", {"execution_id": eid, "to": new}, actor)
+        conn.commit()
+        raise ExecutionError(f"modify rejected by the broker: {r.message}")
+    conn.execute("UPDATE oms_order SET quantity=?, limit_price=?, trigger_price=?, order_type=?, "
+                 "modified_count=COALESCE(modified_count,0)+1, updated_at=? WHERE order_id=?",
+                 (new["quantity"], new["limit_price"], new["trigger_price"], new["order_type"], _now(), order_id))
+    _event(conn, o, "modified at the broker", {"execution_id": eid, "from": old, "to": new}, actor)
+    conn.commit()
+    return _apply(conn, get_order(conn, order_id), eid, r)
+
+
+def place_protective_stop(conn, order_id: str, stop_price: float | None = None, limit_offset_pct: float | None = None,
+                          actor: str = "oms") -> dict:
+    """EX-02: a protective SELL stop for a filled BUY entry, as a child order. SL-M by
+    default; with limit_offset_pct an SL whose limit sits that far below the trigger."""
+    o = get_order(conn, order_id)
+    if o["side"] != "BUY" or o["status"] not in (FILLED, PARTIALLY_FILLED):
+        raise ExecutionError("a protective stop needs a filled (or partly filled) BUY entry")
+    if o["mode"] == LIVE:
+        raise LiveTradingDisabled("protective stops are paper-only (live execution is not built)")
+    if conn.execute("SELECT 1 FROM oms_order WHERE parent_order_id=? AND status NOT IN ('CANCELLED','REJECTED',"
+                    "'FAILED')", (order_id,)).fetchone():
+        raise DuplicateOrderError(f"order {order_id} already has a live protective stop")
+    if stop_price is None:
+        r = conn.execute("SELECT stop_price FROM strategy_position_intent WHERE intent_id=?",
+                         (o["intent_id"],)).fetchone()
+        stop_price = r[0] if r else None
+    if not stop_price or float(stop_price) <= 0:
+        raise ExecutionError("no stop price (the intent carries none; pass stop_price)")
+    trig = float(stop_price)
+    otype, lim = "SL-M", None
+    if limit_offset_pct:
+        otype, lim = "SL", round(trig * (1 - float(limit_offset_pct) / 100), 2)
+    qty = int(o["filled_quantity"] or 0)
+    oid = "OMS" + uuid.uuid4().hex[:14].upper()
+    now = _now()
+    conn.execute("INSERT INTO oms_order (order_id,intent_id,risk_decision_id,decision_id,strategy_id,strategy_version,"
+                 "symbol,side,quantity,order_type,limit_price,trigger_price,product_type,mode,adapter,status,"
+                 "reference_price,parent_order_id,tenant_id,created_at,updated_at) "
+                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                 # oms_order.intent_id / risk_decision_id are NOT NULL UNIQUE: a child stop has
+                 # neither, so it carries a synthetic id that names its parent
+                 (oid, f"PSTOP-{order_id}", f"PSTOP-{order_id}", o["decision_id"], o["strategy_id"],
+                  o["strategy_version"], o["symbol"], "SELL",
+                  # reference = the entry's fill price (the market when the stop is placed): the
+                  # paper adapter's "reference" pricing must not see the trigger as the market,
+                  # or the stop would trigger on placement. Stop slippage is measured vs trigger.
+                  qty, otype, lim, trig, o["product_type"], o["mode"], o["adapter"], CREATED,
+                  o["avg_fill_price"] or o["reference_price"], order_id,
+                  o.get("tenant_id") or "default", now, now))
+    conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
+                 "VALUES (?,?,?,?,?,?,?)", (oid, None, CREATED, f"protective stop for {order_id}",
+                                            json.dumps({"parent_order_id": order_id, "trigger": trig}), actor, now))
+    conn.commit()
+    return submit_order(conn, oid)
 
 
 def order_detail(conn, order_id: str) -> dict:

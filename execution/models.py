@@ -21,6 +21,13 @@ ORDER STATES (every change is a row in oms_order_event)
        +-----------+-----------+-> REJECTED / FAILED / CANCELLED (see the table)
 
 FILLED, CANCELLED, REJECTED and FAILED are terminal.
+
+ORDER TYPES (W29, EX-02)
+    MARKET   fill at the market
+    LIMIT    limit_price
+    SL       stop-limit: rests until the trigger_price is touched, then a LIMIT at limit_price
+             (BUY: limit >= trigger; SELL: limit <= trigger)
+    SL-M     stop-market: rests until the trigger, then a MARKET order
 """
 
 from __future__ import annotations
@@ -46,6 +53,25 @@ O_REJECTED, FAILED = "REJECTED", "FAILED"
 ORDER_STATES = (CREATED, VALIDATED, SUBMITTED, ACKNOWLEDGED, PARTIALLY_FILLED, FILLED, CANCEL_PENDING,
                 CANCELLED, O_REJECTED, FAILED)
 TERMINAL = {FILLED, CANCELLED, O_REJECTED, FAILED}
+ORDER_TYPES = ("MARKET", "LIMIT", "SL", "SL-M")
+MODIFIABLE = {ACKNOWLEDGED}          # resting at the broker, nothing filled yet
+
+
+def check_order_type(order_type, side, limit_price=None, trigger_price=None):
+    """ValueError when the price fields do not fit the order type."""
+    t = str(order_type or "").upper()
+    if t not in ORDER_TYPES:
+        raise ValueError(f"order_type must be one of {ORDER_TYPES}")
+    if t in ("LIMIT", "SL") and not (limit_price and float(limit_price) > 0):
+        raise ValueError(f"{t} needs limit_price > 0")
+    if t in ("SL", "SL-M") and not (trigger_price and float(trigger_price) > 0):
+        raise ValueError(f"{t} needs trigger_price > 0")
+    if t == "SL":
+        lp, tp = float(limit_price), float(trigger_price)
+        if (side == "BUY" and lp < tp) or (side == "SELL" and lp > tp):
+            raise ValueError("SL limit price must be on the far side of the trigger "
+                             "(BUY: limit >= trigger, SELL: limit <= trigger)")
+    return t
 ORDER_TRANSITIONS = {
     CREATED:          {VALIDATED, O_REJECTED, CANCELLED, FAILED},
     VALIDATED:        {SUBMITTED, CANCELLED, FAILED},

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "watchlists",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "watchlist_id": {
+        "type": "string"
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "symbols": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "shared": {
+        "type": [
+          "boolean",
+          "integer"
+        ]
+      }
+    }
+  }
+}

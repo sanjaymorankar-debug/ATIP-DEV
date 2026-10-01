@@ -99,9 +99,13 @@ EOD_COVERAGE_MIN = 0.5
 # the (now working) Screener fetch back on would move the BUY gate for reasons
 # unrelated to price. Flip this, or set "fundamentals_enabled": true in
 # atip_data/config.json, once the weighting is settled.
-FUNDAMENTALS_ENABLED = False
-FUNDAMENTALS_HOLD_REASON = ("fundamental_score is weighted twice (SPI 0.15 + FS 0.10) and "
-                            "defaults to 50.0 when nothing parses; see FUNDAMENTALS_ENABLED")
+FUNDAMENTALS_ENABLED = True
+# W27: the hold above is resolved -- SPI and FS are now two different formulas
+# (scores/fundamental.py), nothing defaults to 50.0, and whether fundamentals
+# reach the scores at all is a separate switch (fundamentals.score_enabled,
+# off by default; scores/engine.w27_flags). This flag now only gates INGESTION
+# from NSE filings (data/nse_filings.py), which is safe to run.
+FUNDAMENTALS_HOLD_REASON = "fundamentals_enabled is false in atip_data/config.json"
 
 
 def fundamentals_enabled() -> bool:
@@ -410,6 +414,12 @@ def run_premarket(force=False):
     # run_morning_catchup() also fetches it if it is still missing.
     from data.news import run_news_pipeline
     run_job("news_premarket", run_news_pipeline, 14)
+    _news_summary()
+    try:                                             # W29 (BR-02): an expired Kite session alerts now,
+        from portfolio.zerodha import check_token_and_alert   # not as a failed sync tonight
+        run_job("zerodha_token_check", check_token_and_alert)
+    except Exception as e:
+        log.warning(f"  Zerodha token check: {e}")
 
     # Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
     from data.markets import fetch_global_markets
@@ -479,6 +489,149 @@ def run_morning_catchup():
     if need_book:
         log.info("  ↻ Catch-up: portfolio not synced yet today")
         _run_portfolio_sync(date.today())
+
+
+def _last_ok(conn, jobs, ok=("SUCCESS", "NO_NEW", "EMPTY", "PARTIAL"), before=None):
+    """Start time of the newest successful run of any of `jobs` (at or before `before`), or None."""
+    q = (f"SELECT MAX(start_time) FROM pipeline_log WHERE kind='run' AND job_name IN ({','.join('?' * len(jobs))}) "
+         f"AND status IN ({','.join('?' * len(ok))}) AND start_time<=?")
+    v = conn.execute(q, (*jobs, *ok, before or datetime.now())).fetchone()[0]
+    if not v:
+        return None
+    return v if isinstance(v, datetime) else datetime.fromisoformat(str(v)[:26].replace(" ", "T"))
+
+
+def run_startup_market_catchup(now=None):
+    """
+    Bring the market indicators up to date when ATIP starts after their scheduled
+    slots have passed (the PC was off or asleep). `schedule` never re-runs a missed
+    slot: started at 10:30, the 07:00 global-markets / pre-open quotes waited until
+    the next day -- pipeline_log shows global_premarket last ran on 2026-09-29, so
+    every later morning ran without them -- and started after the close, the index
+    panel kept the last intraday values until the next session.
+
+    Each step runs only if its slot has passed today AND its job has not succeeded
+    since that slot, so a restart in the middle of a normal day does nothing:
+
+      07:00-15:30  global markets if none fetched since 07:00; before 09:15 also the
+                   pre-open Dhan quotes, and 08:30-09:15 the morning brief if unsent
+      09:15-15:30  the 15-minute refresh (quotes, indexes, VIX, GIFT Nifty, global)
+                   when the last one is older than 15 min; 15-min bars when older
+                   than 30 min
+      after 15:30  one closing snapshot of indexes + quotes if none was taken after
+                   the close (what the index panel shows overnight)
+      17:00-       FII/DII settle for held signals (its own guard decides)
+      19:30-       delivery (EOD late)
+      23:00- / before 07:00  overnight global markets if not fetched since 23:00
+      weekend      the Saturday weekly job if it did not run this week
+
+    Called by start_scheduler() before the post-market catch-up (these are quick
+    and the dashboard should show current values while scoring catches up).
+    """
+    now = now or datetime.now()
+    td = now.date()
+
+    def today(h, m):
+        return datetime.combine(td, datetime.min.time()).replace(hour=h, minute=m)
+
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        plan = startup_catchup_plan(conn, now)
+    finally:
+        conn.close()
+    return _run_startup_plan(plan, now, td, today)
+
+
+def startup_catchup_plan(conn, now) -> list:
+    """The missed market-indicator steps at `now` (pure: reads pipeline_log only)."""
+    td = now.date()
+
+    def today(h, m):
+        return datetime.combine(td, datetime.min.time()).replace(hour=h, minute=m)
+
+    def last(*jobs):
+        return _last_ok(conn, jobs, before=now)
+    plan = []
+    if is_trading_day(td):
+        if today(7, 0) <= now < today(15, 30):
+            g = last("global_premarket", "global_intraday", "global_catchup")
+            if not g or g < today(7, 0):
+                plan.append("global")
+            q = last("dhan_quotes_premarket", "dhan_quotes_pre-open", "dhan_quotes_intraday",
+                     "dhan_quotes_catchup")
+            if now < today(9, 15) and (not q or q < today(7, 0)):
+                plan.append("preopen_quotes")
+            d = last("morning_digest")
+            if today(8, 30) <= now < today(9, 15) and (not d or d < today(8, 30)):
+                plan.append("digest")
+        if today(9, 15) <= now <= today(15, 30):
+            i = last("intraday_indexes")
+            if not i or i < now - timedelta(minutes=15):
+                plan.append("intraday_15")
+            b = last("dhan_15min_bars")
+            if now >= today(9, 45) and (not b or b < now - timedelta(minutes=30)):
+                plan.append("intraday_30")
+        if now >= today(15, 31):
+            i = last("intraday_indexes", "close_indexes")
+            if not i or i < today(15, 30):
+                plan.append("close_snapshot")
+        if now.time() >= datetime.strptime(FII_DII_WATCH_START, "%H:%M").time():
+            plan.append("fii_dii")
+        eh, em = (int(x) for x in EOD_LATE_RUN_TIME.split(":"))
+        if now >= today(eh, em):
+            dl = last("delivery")
+            if not dl or dl < today(eh, em):
+                plan.append("eod_late")
+    o = last("global_overnight")
+    if now >= today(23, 0):
+        if not o or o < today(23, 0):
+            plan.append("overnight")
+    elif now < today(7, 0) and (not o or o < today(23, 0) - timedelta(days=1)):
+        plan.append("overnight")
+    if now.weekday() in (5, 6):
+        sat = today(8, 0) - timedelta(days=now.weekday() - 5)
+        w = last("accuracy_audit", "db_purge")
+        if now >= sat and (not w or w < sat):
+            plan.append("weekly")
+    return plan
+
+
+def _run_startup_plan(plan, now, td, today):
+    if not plan:
+        log.info("  ✓ Market indicators are current — no start-up catch-up needed")
+        return {"status": "SKIPPED", "rows": 0, "ran": []}
+    log.warning(f"  ↻ Start-up catch-up: missed market-indicator slots → {', '.join(plan)}")
+    from data.markets import fetch_global_markets, fetch_intraday_indexes
+    for step in plan:
+        try:
+            if step == "global":
+                run_job("global_catchup", fetch_global_markets, td,
+                        "premarket" if now < today(9, 15) else "intraday")
+            elif step == "preopen_quotes":
+                _run_dhan_quotes(td, label="catchup")
+            elif step == "digest":
+                run_morning_digest()
+            elif step == "intraday_15":
+                run_intraday_15min(force=True)
+            elif step == "intraday_30":
+                run_intraday_30min()
+            elif step == "close_snapshot":
+                run_job("close_indexes", fetch_intraday_indexes, td)
+                _run_dhan_quotes(td, label="close_catchup")
+            elif step == "fii_dii":
+                run_fii_dii_watch()
+            elif step == "eod_late":
+                run_eod_late()
+            elif step == "overnight":
+                run_overnight()
+            elif step == "weekly":
+                run_weekly()
+        except Exception as e:
+            log.warning(f"  Start-up catch-up step {step}: {e}")
+    if any(s in plan for s in ("global", "preopen_quotes", "close_snapshot", "overnight")):
+        run_job("dashboard_refresh", _rebuild_dashboard, td)
+    return {"status": "SUCCESS", "rows": len(plan), "ran": plan}
 
 
 def _run_portfolio_sync(td):
@@ -569,16 +722,47 @@ def run_midday_news():
     if not is_market_day(): return
     from data.news import run_news_pipeline
     run_job("news_midday", run_news_pipeline, 5)
+    _news_summary()
+    _announcements("announcements_midday")          # W28b (NS-06)
+
+
+def _announcements(job):
+    """W28b (NS-06): NSE corporate announcements of the day; documents of tracked stocks to
+    the news model when news.ai_enabled (same daily cost cap)."""
+    try:
+        from data.announcements import run_announcements
+        run_job(job, run_announcements, 1)
+    except Exception as e:
+        log.warning(f"  Announcements: {e}")
+
+
+def _news_summary():
+    """W28 (NS-04): market brief over the last news.summary_hours of headlines --
+    Claude Haiku 4.5 when news.ai_enabled and under the daily cap, else rule-based."""
+    try:
+        from data.news_ai import run_summary_job
+        run_job("news_summary", run_summary_job)
+    except Exception as e:
+        log.warning(f"  News summary: {e}")
+
+
+def run_intraday_scan_job():
+    """W28 (SG-08): intraday scans on live quotes + today's closed 15-min bars against
+    the previous session's scores (strategy/intraday_scan.py)."""
+    if not is_market_hours(): return
+    try:
+        from strategy.intraday_scan import run_intraday_scans
+        run_job("intraday_scans", run_intraday_scans)
+    except Exception as e:
+        log.warning(f"  Intraday scans: {e}")
 
 
 def run_midday_zpi_scan():
-    """12:30 PM — ZPI buy-zone alert scan on live prices."""
+    """12:30 PM — intraday scans (W28). This used to call check_zpi_alerts(today),
+    which reads TODAY's ai_scores -- rows written only by the 16:05 post-market run
+    -- so it could never find a candidate. The zpi_pullback scan replaces it."""
     if not is_market_day(): return
-    try:
-        from alerts.telegram import check_zpi_alerts
-        check_zpi_alerts(date.today())
-    except Exception as e:
-        log.warning(f"  ZPI scan: {e}")
+    run_intraday_scan_job()
 
 
 def run_preclose_scan():
@@ -586,6 +770,7 @@ def run_preclose_scan():
     if not is_market_hours(): return
     log.info(f"  [{now_ist()}] Pre-close scan")
     _run_dhan_quotes(date.today(), "preclose")
+    run_intraday_scan_job()                          # W28: scans on the fresh quotes
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -636,6 +821,20 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # component -- see scores/engine.py). Best-effort: NSE only
     # publishes each day's CSV for that trading day.
     run_job("bulk_block_deals", run_bulk_deals_pipeline, td)
+
+    # W27 (DP-08 partial / SC-06): NSE F&O bhavcopy -> per-underlying OI / PCR /
+    # max pain, and the session's NIFTY PCR that compute_msi's Options reads.
+    try:
+        from data.derivatives import run_fo_pipeline
+        run_job("fo_bhavcopy", run_fo_pipeline, td, 5)
+    except Exception as e:
+        log.warning(f"  F&O bhavcopy: {e}")
+    # W30 (QR-05): close paper futures shorts whose contract has expired, at the final close
+    try:
+        from execution.futures_paper import settle_expired
+        run_job("futures_expiry_settlement", settle_expired, td)
+    except Exception as e:
+        log.warning(f"  Futures settlement: {e}")
 
     # Corporate actions -- NSE's calendar, then any split or bonus whose ex-date
     # has arrived is applied to the stored history. Before the Dhan re-sync,
@@ -744,6 +943,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 5:00 PM — Run all 9 AI scoring indexes
     # (this also writes today's predictions — entry/SL/targets/size — which is
     # what makes the accuracy tracker below able to measure anything at all)
+    # W28b (NS-05): source weights + per-stock weighted news scores, read by get_ns()
+    try:
+        from data.news_weighting import run_scheduled as run_news_weights
+        run_job("news_weights", run_news_weights, td)
+    except Exception as e:
+        log.warning(f"  News weights: {e}")
     from scores.engine import run_scoring_pipeline
     run_job("ai_scoring_engine", run_scoring_pipeline, td)
 
@@ -811,6 +1016,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("quant_factors", run_quant, td)
         except Exception as e:
             log.warning(f"  Quant factors: {e}")
+        # W30: research data that strategies read (ms_* / ev_*), prepared whether or not
+        # quant scoring is on -- bar microstructure (AF-07) and event sources (QR-09)
+        try:
+            from quant.w30 import run_postmarket as run_w30
+            run_job("research_data", run_w30, td)
+        except Exception as e:
+            log.warning(f"  Research data: {e}")
         try:
             from strategy_engine.engine import run_scheduled_decisions
             from strategy_engine.health import run_health_all
@@ -826,6 +1038,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("execution_cycle", run_execution_cycle, td)
         except Exception as e:
             log.warning(f"  Execution cycle: {e}")
+        # W29 (BR-05): OMS vs broker book; a break raises an alert
+        try:
+            from execution.reconcile import run_reconciliation
+            run_job("execution_reconciliation", run_reconciliation, td)
+        except Exception as e:
+            log.warning(f"  Reconciliation: {e}")
         # W7: workspace alert rules + tenant usage metering. SKIPPED unless
         # config enterprise.enabled.
         try:
@@ -1060,6 +1278,7 @@ def run_eod_late():
     """
     from data.bhavcopy import run_delivery_pipeline
     run_job("delivery", run_delivery_pipeline, None, CATCHUP_LOOKBACK_SESSIONS)
+    _announcements("announcements_eod")             # W28b (NS-06): results land in the evening
 
 
 def run_overnight():
@@ -1087,30 +1306,33 @@ def run_weekly():
     except Exception as e:
         log.warning(f"  Accuracy audit: {e}")
 
-    # Fundamental data refresh (top 100 ATIP stocks)
+    # W27: fundamentals (DP-15) and ownership (DP-16) from NSE filings, for the
+    # whole tracked universe. Incremental -- only XBRLs not stored yet are fetched.
+    # The first run downloads ~12 filings per symbol (about an hour); run it once
+    # by hand off-hours:  python -m data.nse_filings
     if not fundamentals_enabled():
         log.info(f"  ⏸  Fundamentals refresh held off — {FUNDAMENTALS_HOLD_REASON}")
     else:
         try:
-            from db.schema import get_connection
             from data.fundamentals import run_fundamentals_pipeline
-            conn = get_connection()
-            # The last session, not "yesterday": on a Saturday run yesterday is
-            # a Friday only by luck, and after a Monday holiday it is a day with
-            # no scores at all, which silently selected no symbols.
-            prev = str(last_trading_day(date.today()))
-            rows = conn.execute(
-                "SELECT symbol FROM ai_scores WHERE date=? ORDER BY atip_score DESC LIMIT 100",
-                (prev,)
-            ).fetchall()
-            conn.close()
-            top_syms = [r["symbol"] for r in rows]
-            if top_syms:
-                run_job("fundamentals_weekly", run_fundamentals_pipeline, top_syms)
-            else:
-                log.warning(f"  Weekly fundamentals: no scored symbols for {prev} — skipped")
+            run_job("fundamentals_weekly", run_fundamentals_pipeline)
         except Exception as e:
             log.warning(f"  Weekly fundamentals: {e}")
+    try:
+        from data.institutional import run_institutional_pipeline
+        run_job("institutional_weekly", run_institutional_pipeline)
+    except Exception as e:
+        log.warning(f"  Weekly institutional: {e}")
+    try:
+        from quant.deal_signal import run_scheduled as run_deal_signal
+        run_job("deal_signal_study", run_deal_signal)
+    except Exception as e:
+        log.warning(f"  Deal-signal study: {e}")
+    try:                                             # W30 (QR-09): weekly event studies
+        from quant.w30 import run_weekly_studies
+        run_job("event_studies", run_weekly_studies)
+    except Exception as e:
+        log.warning(f"  Event studies: {e}")
 
     # Refresh Dhan security list (in case of new listings/delistings)
     try:
@@ -1232,6 +1454,205 @@ def _schedule_ops_jobs():
         schedule.every().day.at(str(cfg.get("backup_time") or "19:15")).do(run_job, "ops_backup",
                                                                              run_scheduled_backup)
     schedule.every(5).minutes.do(_ops_webhook_tick)
+    if cfg.get("restore_drill_enabled", True):               # W31 (OPS-06): weekly restore drill
+        from ops.backup import restore_drill
+        schedule.every().sunday.at(str(cfg.get("restore_drill_time") or "10:00")).do(run_job, "restore_drill",
+                                                                                    restore_drill)
+    _schedule_w29_jobs()
+
+
+def _schedule_w29_jobs():
+    """W29 execution jobs. Market-hours guards inside each tick keep pipeline_log quiet
+    outside the session."""
+    schedule.every(2).minutes.do(_w29_paper_match_tick)
+    schedule.every(5).minutes.do(_w29_broker_health_tick)
+    schedule.every(15).minutes.do(_w29_pnl_tick)
+    schedule.every().day.at("08:45").do(run_job, "broker_health", _broker_health_now)
+    schedule.every().day.at("19:30").do(_w29_audit_export)
+    _schedule_w32_jobs()
+    _schedule_w34_jobs()
+    _schedule_w35_jobs()
+
+
+def _schedule_w35_jobs():
+    """W35 data platform. Depth and option-chain ticks are no-ops unless enabled in config.json."""
+    schedule.every(1).minutes.do(_w35_depth_tick)
+    schedule.every(15).minutes.do(_w35_chain_tick)
+    schedule.every().day.at("15:50").do(_w35_ticks_eod)
+    schedule.every().day.at("07:15").do(_w35_guard, "macro_data", "data.macro", "run_macro")
+    schedule.every().day.at("19:45").do(_w35_guard, "alt_data", "altdata.framework", "run_enabled")
+    schedule.every().day.at("23:30").do(_w35_guard, "multi_asset", "data.multi_asset", "run_multi_asset")
+
+
+def _w35_guard(name, module, fn):
+    try:
+        import importlib
+        run_job(name, getattr(importlib.import_module(module), fn))
+    except Exception as e:
+        log.warning(f"  {name}: {e}")
+
+
+def _w35_depth_tick():
+    try:
+        from data.depth import settings as depth_settings
+        if depth_settings()["enabled"] and is_market_hours():
+            from data.depth import run_tick
+            run_tick()                               # once a minute: not a pipeline_log row each time
+    except Exception as e:
+        log.warning(f"  Depth snapshot: {e}")
+
+
+def _w35_chain_tick():
+    try:
+        from data.derivatives_store import settings as dsettings
+        if dsettings()["option_chain_enabled"] and is_market_hours():
+            from data.derivatives_store import run_chain_tick
+            run_job("option_chain", run_chain_tick)
+    except Exception as e:
+        log.warning(f"  Option chain: {e}")
+
+
+def _w35_ticks_eod():
+    try:
+        from data.ticks import enabled
+        if enabled() and is_market_day():
+            from data.ticks import run_eod
+            run_job("ticks_minute_bars", run_eod)
+    except Exception as e:
+        log.warning(f"  Tick minute bars: {e}")
+
+
+def _schedule_w34_jobs():
+    """W34 execution microstructure: algo ticks + event delivery each minute in session (logged only
+    when there is work), latency rollups every 5 minutes, impact re-calibration weekly."""
+    schedule.every(1).minutes.do(_w34_algo_tick)
+    schedule.every(5).minutes.do(_w34_latency_flush)
+    schedule.every().saturday.at("09:00").do(_w34_impact_calibration)
+
+
+def _w34_algo_tick():
+    if not is_market_hours():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            busy = c.execute("SELECT (SELECT COUNT(*) FROM exec_algo_parent WHERE status IN ('WAITING','WORKING')) + "
+                             "(SELECT COUNT(*) FROM oms_event_outbox WHERE dispatched_at IS NULL AND attempts<5)"
+                             ).fetchone()[0]
+        finally:
+            c.close()
+        if busy:
+            from execution.algos import run_scheduled as run_algos
+            run_job("execution_algos", run_algos)
+    except Exception as e:
+        log.warning(f"  Execution algos: {e}")
+
+
+def _w34_latency_flush():
+    try:
+        from ops.latency import flush
+        flush()                                  # not a run_job: it would add a pipeline_log row every 5 min
+    except Exception as e:
+        log.warning(f"  Latency flush: {e}")
+
+
+def _w34_impact_calibration():
+    try:
+        from execution.impact import run_scheduled as run_impact
+        run_job("impact_calibration", run_impact)
+    except Exception as e:
+        log.warning(f"  Impact calibration: {e}")
+
+
+def _schedule_w32_jobs():
+    """W32 SaaS jobs; each is a no-op (no pipeline_log row) while enterprise.enabled is false."""
+    schedule.every(5).minutes.do(_w32_saas_tick)
+    schedule.every(15).minutes.do(_w32_alerts_tick)
+    schedule.every().day.at("06:30").do(_w32_guard, "saas_daily", "saas_daily")
+    schedule.every().day.at("19:00").do(_w32_guard, "saas_digest", "saas_digest")
+
+
+def _w32_on():
+    try:
+        from enterprise.config import enabled
+        return enabled()
+    except Exception:
+        return False
+
+
+def _w32_guard(name, fn):
+    if _w32_on():
+        from enterprise import w32
+        run_job(name, getattr(w32, fn))
+
+
+def _w32_saas_tick():
+    """Queued deliveries whose quiet hours ended; logged only when some are queued."""
+    if not _w32_on():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM enterprise_notification_delivery WHERE status='QUEUED'").fetchone()[0]
+        finally:
+            c.close()
+        if n:
+            _w32_guard("saas_tick", "saas_tick")
+    except Exception as e:
+        log.warning(f"  SaaS tick: {e}")
+
+
+def _w32_alerts_tick():
+    if is_market_hours():
+        _w32_guard("alerts_intraday", "alerts_intraday")
+
+
+def _broker_health_now():
+    from execution.broker_health import run_scheduled
+    return run_scheduled()
+
+
+def _w29_paper_match_tick():
+    """EX-02 / W4-R4: fill resting paper LIMIT / SL / SL-M orders that have crossed. Logged only
+    when something is pending."""
+    if not is_market_hours():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM paper_order WHERE status='PENDING'").fetchone()[0]
+        finally:
+            c.close()
+        if n:
+            from execution.paper_matching import run_matching
+            run_job("paper_matching", run_matching)
+    except Exception as e:
+        log.warning(f"  Paper matching: {e}")
+
+
+def _w29_broker_health_tick():
+    if is_market_hours():
+        run_job("broker_health", _broker_health_now)
+
+
+def _w29_pnl_tick():
+    if is_market_hours():
+        try:
+            from portfolio.live_pnl import snapshot
+            run_job("live_pnl_snapshot", snapshot)
+        except Exception as e:
+            log.warning(f"  Live P&L snapshot: {e}")
+
+
+def _w29_audit_export():
+    try:
+        from enterprise.audit_export import run_scheduled
+        run_job("audit_export", run_scheduled)
+    except Exception as e:
+        log.warning(f"  Audit export: {e}")
 
 
 def _ops_webhook_tick():
@@ -1300,6 +1721,13 @@ def start_scheduler():
     # ── Midday ──────────────────────────────────────────────────────────
     schedule.every().day.at("12:00").do(run_midday_news)
     schedule.every().day.at("12:30").do(run_midday_zpi_scan)
+    try:                                             # W28: extra scan times (12:30 / 14:45 above)
+        from strategy.intraday_scan import settings as _scan_settings
+        for _t in _scan_settings().get("times") or []:
+            if _t not in ("12:30", "14:45"):
+                schedule.every().day.at(_t).do(run_intraday_scan_job)
+    except Exception as e:
+        log.warning(f"  intraday scan schedule: {e}")
     schedule.every().day.at("14:45").do(run_preclose_scan)
 
     # ── Post-market ─────────────────────────────────────────────────────
@@ -1331,12 +1759,28 @@ def start_scheduler():
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)
 
+    # Market indicators whose slots passed while the PC was off (global markets,
+    # indexes / VIX / GIFT Nifty, quotes, FII/DII, delivery, overnight) -- first,
+    # because they are quick and the dashboard should be current while scoring catches up.
+    try:
+        run_startup_market_catchup()
+    except Exception as e:
+        log.warning(f"  Market-indicator catch-up failed: {e}")
+
     # A missed post-market (machine off or asleep at run time, or started late)
     # is recovered here rather than silently skipped until tomorrow.
     try:
         run_postmarket_if_missing()
     except Exception as e:
         log.warning(f"  Post-market catch-up failed: {e}")
+    # The FII/DII settle only acts once post-market has held the session's signals, so it
+    # is retried after the post-market catch-up -- started after the 21:30 watch window, it
+    # would otherwise never run for the day.
+    try:
+        if is_market_day() and datetime.now().strftime("%H:%M") >= FII_DII_WATCH_START:
+            run_fii_dii_watch()
+    except Exception as e:
+        log.warning(f"  FII/DII catch-up failed: {e}")
     try:
         run_morning_catchup()
     except Exception as e:
@@ -1344,8 +1788,21 @@ def start_scheduler():
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
-    from ops.jobs import beat
+    from ops.jobs import beat, leader_lease
+    # W9: leader election -- with several scheduler processes only the lease holder runs jobs
+    while not leader_lease():
+        log.warning("  another scheduler holds the leader lease — standing by (checking every 30 s)")
+        beat("scheduler_standby", detail="waiting for the leader lease")
+        time.sleep(30)
+    last_lease = time.monotonic()
     while True:
+        if time.monotonic() - last_lease >= 60:
+            if not leader_lease():
+                log.warning("  scheduler leader lease lost — standing by")
+                while not leader_lease():
+                    time.sleep(30)
+                log.info("  scheduler leader lease re-acquired")
+            last_lease = time.monotonic()
         schedule.run_pending()
         beat("scheduler", detail=f"{len(schedule.get_jobs())} jobs")   # W8: throttled to one write / 60 s
         nxt = schedule.next_run()

@@ -90,3 +90,22 @@ Each of these reverts a W8 behaviour through configuration. A restart is require
 | Migrate-once | `ATIP_MIGRATE_EVERY_CONNECTION=1` restores migrations on every connection |
 
 The ops middleware and health routes have no switch. They are removed by the code rollback.
+
+## Rehearsing a rollback (W31)
+
+> ⚠ `deploy\rollback_release.ps1` and `deploy\deploy_release.ps1` stop **every** python process whose command line is `main.py`. Production runs as a bare `python main.py`, so the scripts cannot tell it apart from a test copy. **Never run them "to try" while the live ATIP is up.**
+
+To rehearse, use the drill:
+
+```bash
+python -m ops rollback-drill --from HEAD --to <release tag> [--port 8078] [--keep]
+```
+
+What the drill does:
+
+- runs a scratch clone of the repository;
+- uses a verified backup as the database;
+- runs the dashboard only on its own port (no scheduler, no broker feed beside production);
+- stops nothing but its own process.
+
+When the target release predates W31, the clone's single-instance mutex is renamed **in the clone only**. The result, with the measured RTO, is in `ops_rollback_drill` and `atip_data\releases\history.jsonl`.

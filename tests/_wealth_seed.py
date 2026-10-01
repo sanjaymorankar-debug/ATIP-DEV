@@ -61,4 +61,6 @@ def fresh(temp_db):
     from db.schema import get_connection, init_db
     init_db()
     conn = get_connection()
+    from scores.signal_log import ensure_tables      # created lazily in production by the first post-market run
+    ensure_tables(conn)
     return conn, seed_market(conn)

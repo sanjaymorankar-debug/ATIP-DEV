@@ -38,11 +38,11 @@ Last updated: 2026-09-26 (W20 wealth track).
 | Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
 |---|---|---|---|---|---|
 | W4-R1 | Live execution: `DhanBrokerAdapter` refuses every call. There is no live order path in W4 | execution/adapters.py | — (by design) | NOT BUILT | Later wave, only with explicit authorisation |
-| W4-R2 | Order **modify** is not implemented; cancel is | execution/order_manager.py | Low | NOT BUILT | W4 follow-up |
-| W4-R3 | Stop-loss and stop-limit order types are not implemented. The paper broker supports MARKET and LIMIT only; intents carry stop and target prices, but no bracket is placed | execution/ | Medium | NOT BUILT | W4 follow-up (reuse orders/rules.py brackets) |
-| W4-R4 | Resting paper LIMIT orders are never filled later, because the paper broker has no matching loop. Such an order stays ACKNOWLEDGED until cancelled | orders/paper.py | Low | OPEN | W4 follow-up |
+| W4-R2 | Order **modify** is not implemented; cancel is | execution/order_manager.py | Low | FIXED in W29 (EX-08) | — |
+| W4-R3 | (FIXED in W29, EX-02) Stop-loss and stop-limit order types are not implemented. The paper broker supports MARKET and LIMIT only; intents carry stop and target prices, but no bracket is placed | execution/ | Medium | NOT BUILT | W4 follow-up (reuse orders/rules.py brackets) |
+| W4-R4 | (FIXED in W29: execution/paper_matching.py) Resting paper LIMIT orders are never filled later, because the paper broker has no matching loop. Such an order stays ACKNOWLEDGED until cancelled | orders/paper.py | Low | OPEN | W4 follow-up |
 | W4-R5 | These risk controls are not built: volatility limits (RK-09), liquidity limits (RK-10), correlation risk (RK-11), VaR/ES (RK-12) and emergency exit (RK-16) | execution/risk_engine.py | Medium | NOT BUILT | W4 follow-up / W6 |
-| W4-R6 | Broker reconciliation (OMS vs broker book) is not built. The paper broker is the book of record | execution/ | Medium | NOT BUILT | W4 follow-up |
+| W4-R6 | Broker reconciliation (OMS vs broker book) is not built. The paper broker is the book of record | execution/ | Medium | FIXED in W29 (BR-05) | W4 follow-up |
 | W4-R7 | Per-strategy attribution comes only from W4 fills. Positions opened outside W4 (order rules, aggressive exit, manual paper orders) belong to no strategy, but they do count in portfolio, sector and position limits | execution/positions.py | Low | OPEN (by design) | — |
 | W4-R8 | The sector map is read from the cached Nifty 500 list. When the cache is missing, sector exposure cannot be measured and every BUY is REJECTED (fail closed) | execution/positions.py | Low | OPEN | Defect-resolution phase if it occurs |
 | W4-R9 | The post-market cycle runs after the close. With `paper_fill_price` "live", an auto-executed order fills at the Dhan LTP at that time (the day's last price), not the next open | execution/pipeline.py | Low | OPEN (by design) | Scheduling decision for the owner |
@@ -137,6 +137,76 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W7-R5/R6/R9 | P3 | No e-mail sender, no payment gateway, no report rendering | OPEN |
 | W9-M1 | P3 | `orders/broker.py` has an unused `PAPER` import (pyflakes); `atip.db.bak-before-w8-*` has `-wal` / `-shm` side files from its verification open | OPEN (cosmetic) |
 
+## W27 data & scores: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W27-1 | First full NSE fundamentals / ownership backfill not run (about an hour; run off-hours) | data/nse_filings.py, data/institutional.py | Medium | OPEN | Owner, before enabling the score switches |
+| W27-2 | The bulk / block deal study contradicts INS BulkDeals' direction (net SELL deals outperform, 5d t=4.1) on 4 weeks of data | scores/engine.compute_ins, quant/deal_signal.py | Medium | OPEN (needs owner decision) | Re-check as history grows |
+| W27-3 | Stock live feed never exercised in a live session (compiled only; off by default) | data/stock_feed.py | Low | OPEN | First enabled session |
+| W27-4 | MSI Options now reads the real NIFTY PCR (was a constant 1.0); this changes MSI / ATIP scores on deploy without a switch | scores/engine.compute_msi | Low | BY DESIGN (defect fix) | — |
+| W27-5 | No India 10Y G-sec yield, no per-stock daily MF flow, no IV / Greeks | data/markets.py, data/institutional.py, data/derivatives.py | Low | OPEN (no free source / later DP-08) | Data-source wave |
+| W27-6 | Bank FS / SPI exclude D/E, coverage, ROCE by design and do not use GNPA / NNPA yet | data/nse_filings.py | Low | OPEN | Fundamentals follow-up |
+
+## W28 strategy & AI: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W28-1 | News AI never succeeded end to end: the .env Anthropic key returns 401 (KD-001); rule path in use | data/news_ai.py | Medium | OPEN (owner: key) | Owner |
+| W28-2 | Intraday scan thresholds are first guesses | strategy/intraday_scan.py | Low | OPEN | Tune after a few sessions |
+| W28-3 | SE-05 cannot complete without an ML model with demonstrated edge (none registered; W24 NO_EDGE) | ml/ai_strategy.py | Medium | BLOCKED (model) | ML research |
+| W28-4 | Strategy performance / model monitoring panels are empty until strategies run in PAPER and ml.enabled | dashboard | Low | OPEN (by data) | — |
+
+## W29 execution: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W29-1 | Sandbox path verified only up to "credentials": no Dhan sandbox token | orders/sandbox_check.py | Medium | BLOCKED (owner: token) | Owner |
+| W29-2 | audit.offbox_dir unset: audit exports stay on this machine | enterprise/audit_export.py | Medium | OPEN (owner) | Owner |
+| W29-3 | Broker health / live P&L / stock feed not yet observed in a live session | execution/broker_health.py, portfolio/live_pnl.py | Low | OPEN | First live session |
+| W29-4 | A paper LIMIT could fill worse than its limit (slippage after the limit check) | orders/paper.py | Medium | FIXED in W29 | — |
+| W29-5 | Kite order placement not built (owner decision required) | portfolio/zerodha.py | — | NOT BUILT (by design) | Owner |
+
+## W30 advanced quant: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W30-1 | The backtest engine does not simulate futures short legs (SHORT / COVER); pairs / long-short backtests still treat shorts as unexecutable | backtest/ | Medium | NOT BUILT | Backtest follow-up |
+| W30-2 | No automatic futures roll: a short is settled at expiry and re-entered only on the next signal | execution/futures_paper.py | Low | BY DESIGN | — |
+| W30-3 | IV history is 25 sessions in the scratch run; iv_rank needs >= 20 and is only meaningful with ~250 (backfill) | data/derivatives.py | Low | OPEN (owner: backfill) | Owner |
+| W30-4 | Non-tracked symbols' prices (bhavcopy dump) have gaps and unadjusted corporate actions; event studies now guard day 0 and gaps, but market-wide studies stay noisy | quant/event_study.py | Low | MITIGATED | — |
+| W30-5 | Microstructure spreads are estimates (Roll, Corwin-Schultz), not quoted spreads | quant/microstructure.py | Low | BY DESIGN until DP-04/05 | Data-source wave |
+
+## W31 production hardening: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W31-1 | Inbound signed webhooks never received the request object (from __future__ annotations + closure-typed Req) since W8 | dashboard/ops_routes.py | High | FIXED in W31 | — |
+| W31-2 | deploy/*.ps1 stop every `python main.py` on the machine: never run them beside a live instance; rehearse with `python -m ops rollback-drill` | deploy/ | Medium | DOCUMENTED | — |
+| W31-3 | Credentials still in config.json until the owner runs vault-migrate --apply | ops/vault.py | Medium | OPEN (owner) | Owner |
+| W31-4 | Off-site backups need ops.backup_offsite_dir and a data key kept outside the machine | ops/backup.py | Medium | OPEN (owner) | Owner |
+
+## W32 enterprise SaaS: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W32-1 | `oms_order` appeared twice in W3_W4_COLUMNS since W29, so fresh installs lost `oms_order.tenant_id` | db/schema.py | High | FIXED in W32 | — |
+| W32-2 | Tables added in W10-W31 were unclassified for tenant scoping (failed closed for tenants) | enterprise/scoping.py | Medium | FIXED in W32 (186/186) | — |
+| W32-3 | Web app reachable only on 127.0.0.1; any exposure needs TLS / security review | dashboard | High | BLOCKED (ENT-07, owner) | Owner |
+| W32-4 | No real payment gateway; provider is sandbox / noop | enterprise/payments.py | Medium | OPEN (owner decision) | Owner |
+| W32-5 | Webhook consumers use ATIP's own payload shape; real provider / broker postback formats need a mapping layer | enterprise/w32.py | Low | OPEN | When a provider is chosen |
+| W32-6 | Capital accounting values open positions at the latest close (oms_fill based); intraday it lags live prices | enterprise/w32.py | Low | BY DESIGN | — |
+| W32-7 | WebAuthn not built (needs an HTTPS origin and a library) | enterprise/mfa.py | Low | DEFERRED | ENT-07 |
+
+## W33 QA preparation: findings
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| S-W33-1 | Login `next` accepted protocol-relative `//host` (open redirect) | dashboard/enterprise_page.py | Medium | FIXED in W33 | — |
+| S-W33-2 | Sign-in redirect dropped the query string, breaking `/app?verify=` links for signed-out users | enterprise/authz.py | Medium | FIXED in W33 | — |
+| S-W33-3 | Two NSE-sourced strings rendered without escaping on /market | dashboard/market_page.py | Low | FIXED in W33 | — |
+| S-W33-4 | API reference showed public / self-service routes with the fallback permission | ops/api_docs.py | Low | FIXED in W33 | — |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:
@@ -147,3 +217,5 @@ All W3 to W7 functionality. The test scenarios are listed in:
 - `W7_ENTERPRISE_HANDOFF.md` section 9
 - `W8_PRODUCTION_HARDENING_HANDOFF.md` section 9
 - `W9_FINAL_RELEASE.md` (the QA handoff checklist)
+- `W32_ENTERPRISE_SAAS_HANDOFF.md` (testing scenarios)
+- `W33_QA_UAT_HANDOFF.md` (QA matrix for W25-W32, security / performance / UAT gate)

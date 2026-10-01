@@ -233,7 +233,7 @@ def transactions(conn, owner, portfolio=None, start=None, end=None, include_void
         args.append(str(end))
     if not include_void:
         q += " AND v.txn_id IS NULL"
-    q += " ORDER BY l.trade_date, l.ts, l.txn_id LIMIT ?"
+    q += " ORDER BY l.trade_date, l.ts, l.rowid LIMIT ?"
     args.append(int(limit))
     return [dict(r) for r in conn.execute(q, args)]
 

@@ -1,0 +1,31 @@
+{
+  "strategy_id": "vrp_trend_filter",
+  "name": "Trend with a volatility-risk-premium filter",
+  "version": "1.0.0",
+  "description": "QR-10 (W30). Medium-term trend entries (close above the 50-session average, positive 60-session return) taken only while the options market is calm: the volatility risk premium is non-negative (implied >= realised) and ATM IV rank is below the parameter. Exits when the trend breaks, or when realised volatility overtakes implied (negative VRP -- stress) or IV rank spikes. F&O stocks only.",
+  "kind": "rule",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "max_iv_rank", "type": "float", "default": 60, "min": 0, "max": 100, "description": "Entry only while ATM IV rank is at most"},
+    {"name": "min_vrp", "type": "float", "default": 0, "min": -20, "max": 20, "description": "Entry only while IV - RV20 (vol points) is at least"},
+    {"name": "exit_vrp", "type": "float", "default": -5, "min": -30, "max": 0, "description": "Exit when IV - RV20 falls below"},
+    {"name": "stop_pct", "type": "float", "default": 7, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "max_hold", "type": "int", "default": 40, "min": 1, "max": 120, "description": "Maximum holding sessions"}
+  ],
+  "entry": {"all": [
+    {"feature": "close", "op": ">", "value": {"feature": "sma_50"}},
+    {"feature": "ret_60", "op": ">", "value": 0},
+    {"feature": "dv_iv_rank", "op": "<=", "value": {"param": "max_iv_rank"}},
+    {"feature": "dv_vrp", "op": ">=", "value": {"param": "min_vrp"}}
+  ]},
+  "exit": {"any": [
+    {"feature": "close", "op": "<", "value": {"feature": "sma_50"}},
+    {"feature": "dv_vrp", "op": "<", "value": {"param": "exit_vrp"}},
+    {"feature": "dv_iv_rank", "op": ">=", "value": 90}
+  ]},
+  "rank_by": "ret_60",
+  "position": {"target_position_pct": 7, "max_positions": 10, "max_new_per_day": 3,
+               "stop_pct": {"param": "stop_pct"}, "max_hold_sessions": {"param": "max_hold"}},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["HIGH_RISK"]}
+}

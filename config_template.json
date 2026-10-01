@@ -82,7 +82,8 @@
     "order_type":            "MARKET",
     "product_type":          "CNC",
     "max_intent_age_days":   5,
-    "paper_fill_price":      "live"
+    "paper_fill_price":      "live",
+    "algo": {"enabled": false, "default_algo": "TWAP", "min_order_value": 500000, "min_participation": 0.02, "duration_min": 60, "interval_min": 5, "pov_rate": 0.1, "iceberg_display_pct": 10, "complete_at_end": true, "min_child_qty": 1}
   },
   "_execution_note": "LIVE needs mode LIVE AND live_trading_enabled true, and even then the W4 Dhan adapter refuses: live execution is not built. auto_execute_paper false = the post-market cycle evaluates risk only. paper_fill_price: live (Dhan LTP) | reference (decision close).",
   "w4_risk_limits": {
@@ -160,5 +161,12 @@
     "features":                       {}
   },
   "_ops_note": "environment: development | test | staging | production (ATIP_ENV overrides; config.<env>.json overlays; ATIP__SECTION__KEY env vars override single keys). Production refuses to start on a configuration error (enterprise on, no legacy token, backups on, encryption key present). Live execution additionally requires environment production. Secrets belong in the environment, .env or atip_data/secrets/<NAME>, not in this file.",
-  "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model)."
+  "_ml_note": "enabled: post-market predictions with every ACTIVE model version. default_model: whose ACTIVE predictions strategies see as ml_score / ml_prediction / ml_confidence / ml_prob_up. regime_source: deterministic | ml | hybrid (hybrid = the more defensive of Market Health and the regime model).",
+
+  "_SECTION_16": "W35 data platform (all off / safe by default)",
+  "depth": {"enabled": false, "symbols": [], "max_symbols": 25, "interval_seconds": 60},
+  "derivatives": {"option_chain_enabled": false, "chain_symbols": ["NIFTY", "BANKNIFTY"], "chain_minutes": 15, "nearest_expiries": 2},
+  "altdata": {"enabled": ["news_attention", "announcement_intensity"], "max_entities": 500, "sources": {"wiki_pageviews": {"max_entities": 100, "map": {}}}},
+  "multi_asset": {"add": {}},
+  "_w35_note": "Tick capture: live_feed.capture_ticks true (needs live_feed.stocks_enabled). Lake files are Parquet when pyarrow is installed, else csv.gz; pip install pyarrow duckdb for Parquet + SQL queries."
 }

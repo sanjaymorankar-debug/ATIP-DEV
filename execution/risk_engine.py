@@ -23,6 +23,9 @@ value and limit, so a decision can be read back without re-deriving it.
     live_gate            a LIVE-book intent needs execution.mode LIVE and
                          live_trading_enabled; both default off
   VALIDITY (-> REJECTED)
+    broker_health        (W29, RK-17) a BUY is REJECTED while the latest broker health check
+                         (execution/broker_health.py, <= broker_health_max_age_minutes old)
+                         is DOWN or STALE; SKIP with no recent check; exits never blocked
     intent_valid         side, symbol, action, quantity sane
     intent_fresh         as_of within max_intent_age_days
     market_data          a reference price (the decision close, else the latest close)
@@ -61,7 +64,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from execution import positions as P
 from execution.config import LIVE, PAPER, execution_settings, limit_values, live_gate
@@ -91,7 +94,10 @@ def load_intent(conn, intent_id: str) -> dict:
 
 
 def _orders_today(conn) -> int:
-    return conn.execute("SELECT COUNT(*) FROM oms_order WHERE DATE(created_at)=?", (str(date.today()),)).fetchone()[0]
+    """Trades created today: an algo parent (W34, EX-11) counts once, not once per child slice."""
+    d = str(date.today())
+    return conn.execute("SELECT (SELECT COUNT(*) FROM oms_order WHERE DATE(created_at)=? AND algo_parent_id IS NULL) + "
+                        "(SELECT COUNT(*) FROM exec_algo_parent WHERE DATE(created_at)=?)", (d, d)).fetchone()[0]
 
 
 def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = True) -> RiskDecision:
@@ -144,6 +150,15 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         add("strategy_enabled", FAIL, f"intent is for version {it['version']}, current is {s[1]}")
         return finish(REJECTED, f"superseded strategy version {it['version']} (current {s[1]})")
     add("strategy_enabled", PASS, f"{s[0]}, version {s[1]}")
+
+    from execution import tenant_books as TB
+    tenant = TB.tenant_of_strategy(conn, it["strategy_id"])
+    own_book = TB.is_default(tenant)          # W9: the owner's W1 paper book, else the tenant's own book
+    if not own_book and (it["book"] == LIVE or settings["mode"] == LIVE):
+        add("tenant_book", FAIL, f"tenant {tenant}: LIVE execution is owner-only")
+        return finish(BLOCKED, f"tenant {tenant}: only PAPER execution exists for tenants")
+    add("tenant_book", PASS if not own_book else SKIP,
+        f"tenant {tenant} paper book" if not own_book else "owner's paper book")
 
     tp = _tenant_profile(conn, it)
     if tp is not None:
@@ -212,10 +227,25 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
             add("market_data_fresh", FAIL, f"last daily bar {behind} session(s) behind", behind, max_behind)
             return finish(REJECTED, f"stale market data for {it['symbol']} ({behind} sessions behind)")
         add("market_data_fresh", PASS, f"last daily bar {behind} session(s) behind", behind, max_behind)
+    # W29 (RK-17): broker / operational risk -- no new BUY while the latest broker health
+    # check (execution/broker_health.py) says DOWN or STALE. Exits are never blocked here.
+    try:
+        from execution.broker_health import gate as _bh_gate
+        bst, bmsg = _bh_gate(conn, it["side"])
+    except Exception as e:
+        bst, bmsg = SKIP, f"broker health unreadable ({e})"
+    if bst == FAIL:
+        add("broker_health", FAIL, bmsg)
+        return finish(REJECTED, f"broker / data health: {bmsg}")
+    add("broker_health", PASS if bst == "PASS" else SKIP, bmsg)
+
+    # -- W30 (QR-05 / QR-06): short legs through the paper stock-futures book --------
+    if it.get("action") in ("SHORT", "COVER"):
+        return _futures_leg(conn, it, rd, settings, add, finish)
 
     # -- reducing risk ----------------------------------------------------------
     if it["side"] == "SELL":
-        held = P.held_quantity(conn, it["symbol"])
+        held = P.held_quantity(conn, it["symbol"]) if own_book else TB.held_quantity(conn, tenant, it["symbol"])
         if held <= 0:
             add("position_held", FAIL, "nothing held in the paper book", 0)
             return finish(REJECTED, f"no {it['symbol']} position to sell")
@@ -229,7 +259,7 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
 
     # -- adding risk ------------------------------------------------------------
     try:
-        bk = P.book(conn)
+        bk = P.book(conn) if own_book else TB.book(conn, tenant)
     except Exception as e:
         bk = {"equity": None, "cash": None, "positions": [], "error": str(e)}
     equity, cash = bk.get("equity"), bk.get("cash")
@@ -271,6 +301,16 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         caps[name] = (q, f"{what} (limit {limit})")
 
     cap("max_order_quantity", lim["max_order_quantity"], qty=lim["max_order_quantity"], what="shares per order")
+    try:                                                        # W32 (ENT-03): profile max_capital
+        from enterprise.w32 import capital_usage
+        cu = capital_usage(conn, it["strategy_id"])
+    except Exception:
+        cu = None
+    if cu is not None:
+        used = [f"tenant {cu['tenant']} Rs {cu['tenant_used']:,.0f}/{cu['tenant_max']:,.0f}"] if cu["tenant_max"] is not None else []
+        used += [f"user {cu['user_id']} Rs {cu['user_used']:,.0f}/{cu['user_max']:,.0f}"] if cu["user_max"] is not None else []
+        cap("profile_max_capital", cu["tenant_max"] if cu["tenant_max"] is not None else cu["user_max"], cu["room"],
+            what="deployed " + "; ".join(used))
     if tp is not None and tp.get("max_order_value"):
         cap("tenant_max_order_value", tp["max_order_value"], tp["max_order_value"],
             what=f"tenant {tp['_tenant']} max order value Rs")
@@ -336,15 +376,18 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
             return finish(REJECTED, f"max_open_positions {lim['max_open_positions']} reached")
         add("max_open_positions", PASS, f"{n_pos} open", n_pos + 1, lim["max_open_positions"])
     if lim["max_daily_trades"] is not None:
-        n = _orders_today(conn)
+        n = _orders_today(conn) if own_book else TB.orders_today(conn, tenant)
         if n + 1 > lim["max_daily_trades"]:
             add("max_daily_trades", FAIL, f"{n} orders today", n + 1, lim["max_daily_trades"])
             return finish(REJECTED, f"max_daily_trades {lim['max_daily_trades']} reached")
         add("max_daily_trades", PASS, f"{n} orders today", n + 1, lim["max_daily_trades"])
     if lim["daily_loss_limit_pct"] is not None or lim["portfolio_drawdown_limit_pct"] is not None:
         try:
-            from portfolio.pnl import risk_state
-            st = risk_state(conn, PAPER)
+            if own_book:
+                from portfolio.pnl import risk_state
+                st = risk_state(conn, PAPER)
+            else:
+                st = TB.risk_state(conn, tenant)
         except Exception as e:
             st = {"day_pnl": None, "drawdown_pct": None, "error": str(e)}
         if lim["daily_loss_limit_pct"] is not None:
@@ -381,7 +424,11 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
     if blocked:
         return finish(REJECTED, blocked)
 
-    # W1 limits (config.json risk_limits), unchanged
+    # W1 limits (config.json risk_limits), unchanged -- they measure the owner's book only
+    if not own_book:
+        add("w1_pretrade", SKIP, f"W1 limits apply to the owner's book; tenant {tenant} uses W4 limits + profile")
+        rd.est_value = round(qty * px, 2)
+        return _review(finish, settings, it, add, qty)
     try:
         from orders.risk import pretrade_check
         w1 = pretrade_check(conn, it["symbol"], "BUY", qty, qty * px, env=PAPER)
@@ -479,6 +526,94 @@ def _ml_provenance(conn, it) -> dict | None:
                 "model_id": model_id, "version": p[0]}
     return {"ok": True, "model_id": model_id, "version": p[0], "score": p[1],
             "message": f"model {model_id} {p[0]} ACTIVE; ml_score {p[1]}, confidence {p[2]}"}
+
+
+def _futures_leg(conn, it, rd, settings, add, finish):
+    """
+    W30 (QR-05 / QR-06). SHORT opens / adds a short in the paper stock-futures book;
+    COVER buys it back. LIVE futures do not exist (BLOCKED). Sizing is in whole lots:
+    lots = floor(target_position_pct% x equity / (future price x lot size)); fewer than one
+    lot is REJECTED rather than rounded up. The margin (futures.margin_pct of notional)
+    must fit the paper cash under max_capital_allocation_pct, and the notional must fit
+    max_position_pct -- the same limits a long position meets.
+    """
+    from execution import futures_paper as FP
+    from execution.tenant_books import is_default, tenant_of_strategy
+    tenant = tenant_of_strategy(conn, it["strategy_id"])
+    if not is_default(tenant):
+        add("instrument", FAIL, f"tenant {tenant} has no futures book")
+        return finish(BLOCKED, "futures short legs are owner-book only")
+    if it["book"] != "PAPER" or settings["mode"] != "PAPER":
+        add("instrument", FAIL, "futures short legs exist only in the PAPER book")
+        return finish(BLOCKED, "LIVE futures are not built")
+    if it["action"] == "COVER":
+        pos = FP.position(conn, it["strategy_id"], it["symbol"])
+        if not pos or pos["lots"] >= 0:
+            add("position_held", FAIL, "no futures short held by this strategy")
+            return finish(REJECTED, f"no {it['symbol']} futures short to cover")
+        qty = -pos["lots"] * pos["lot_size"]
+        rd.reference_price = pos["avg_price"]
+        add("position_held", PASS, f"short {-pos['lots']} lot(s) x {pos['lot_size']} ({pos['expiry']}); covering all",
+            -pos["lots"])
+        rd.est_value = round(qty * pos["avg_price"], 2)
+        return _review(finish, settings, it, add, qty)
+    # SHORT opens risk: the broker / data health gate applies as it does to a BUY
+    try:
+        from execution.broker_health import gate as _bh_gate
+        bst, bmsg = _bh_gate(conn, "BUY")
+    except Exception as e:
+        bst, bmsg = SKIP, f"broker health unreadable ({e})"
+    if bst == FAIL:
+        add("broker_health_short", FAIL, bmsg)
+        return finish(REJECTED, f"broker / data health: {bmsg}")
+    ok, c, why = FP.shortable(conn, it["symbol"], it["as_of"])
+    if not ok:
+        add("shortable", FAIL, why)
+        return finish(REJECTED, f"not shortable: {why}")
+    from utils.trading_calendar import is_trading_day
+    behind, d = 0, _d(c["session"])
+    probe = _d(it["as_of"])
+    while probe > d and behind < 10:
+        if is_trading_day(probe):
+            behind += 1
+        probe = probe - timedelta(days=1)
+    if behind > 2:
+        add("shortable", FAIL, f"futures data is {behind} sessions old ({c['session']})")
+        return finish(REJECTED, "stale futures data")
+    add("shortable", PASS, why)
+    rd.reference_price = c["price"]
+    try:
+        bk = P.book(conn)
+    except Exception as e:
+        bk = {"equity": None, "cash": None, "error": str(e)}
+    equity, cash = bk.get("equity"), bk.get("cash")
+    rd.equity = equity
+    if not equity or equity <= 0:
+        add("equity", FAIL, "paper equity unknown")
+        return finish(REJECTED, "equity cannot be measured")
+    lim = rd.limits or {}
+    target = float(it.get("target_position_pct") or 0) or float(lim.get("max_position_pct") or 10)
+    target = min(target, float(lim.get("max_position_pct") or target))
+    lot_val = c["price"] * c["lot_size"]
+    lots = int(equity * target / 100 // lot_val)
+    if lots < 1:
+        add("lot_sizing", FAIL, f"one lot is {lot_val:,.0f} > {target}% of equity ({equity * target / 100:,.0f})",
+            lot_val, equity * target / 100)
+        return finish(REJECTED, "one futures lot exceeds the position target")
+    fs = FP.settings()
+    margin = lots * lot_val * float(fs["margin_pct"]) / 100
+    cap = (cash or 0) * float(lim.get("max_capital_allocation_pct") or 95) / 100
+    while lots > 0 and margin > cap:
+        lots -= 1
+        margin = lots * lot_val * float(fs["margin_pct"]) / 100
+    if lots < 1:
+        add("margin", FAIL, f"margin for one lot exceeds available cash allocation ({cap:,.0f})")
+        return finish(REJECTED, "insufficient cash for futures margin")
+    add("lot_sizing", PASS, f"{lots} lot(s) x {c['lot_size']} @ {c['price']} = {lots * lot_val:,.0f} notional "
+                            f"({lots * lot_val / equity * 100:.1f}% of equity)", lots * lot_val, equity * target / 100)
+    add("margin", PASS, f"margin {margin:,.0f} ({fs['margin_pct']}%) of cash allocation {cap:,.0f}", margin, cap)
+    rd.est_value = round(lots * lot_val, 2)
+    return _review(finish, settings, it, add, lots * c["lot_size"])
 
 
 def _review(finish, settings, it, add, qty):

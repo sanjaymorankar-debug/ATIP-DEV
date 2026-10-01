@@ -43,3 +43,33 @@ Market data is largely re-derivable. Bhavcopy and Dhan history can be re-fetched
    ```
 
 3. Record the time taken; that is the measured RTO.
+
+## W31: off-site copies and automated drills
+
+**Encrypted off-site copy (OPS-06)**
+
+- **Setup:** set `ops.backup_offsite_dir` (a second drive, NAS share or synced cloud folder). After each VERIFIED backup:
+  - the database is encrypted (AES-256-GCM, 4 MiB authenticated chunks, the ATIP data key);
+  - it is copied there with a `.sha256` sidecar, and re-hashed at the destination;
+  - only `ops.backup_offsite_keep` (14) copies are kept.
+- **No plaintext off-site:** without a data key nothing is copied unless `ops.backup_offsite_plaintext` is `true`.
+- **Restoring from it:**
+
+  ```bash
+  python -m ops decrypt-backup <file.db.enc> --target atip_data\restore\from-offsite.db
+  ```
+
+  Then follow the restore steps above.
+- **The key must survive the machine:** keep a copy of `atip_data\secrets\ATIP_ENCRYPTION_KEY` somewhere that is **not** the off-site folder. Without it the copies are unreadable.
+
+**Restore drill (weekly, Sunday 10:00)**
+
+- **What it does:** restores the newest backup, preferring its encrypted off-site copy, into a drill file. It checks integrity and compares key-table row counts with those recorded at backup time, times the run, then deletes the file.
+- **Where results go:** `ops_restore_drill`. A failure alerts.
+- **Run now:** `python -m ops restore-drill`.
+
+**Rollback drill (OPS-11)**
+
+- **Run:** `python -m ops rollback-drill --from HEAD --to <release tag>`.
+- **What it does:** rehearses the documented rollback end to end on a **scratch clone** in the temp folder: dashboard-only on port 8078, the database restored from the newest backup, code reset to the tag, the database re-restored, postchecks before and after. It measures the RTO and records it in `ops_rollback_drill` and the release history.
+- **Isolation:** it only stops the process it started. `deploy\rollback_release.ps1` cannot be rehearsed beside a live ATIP, because it stops *every* `python main.py` on the machine.

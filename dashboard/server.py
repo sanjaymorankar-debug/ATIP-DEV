@@ -420,7 +420,7 @@ def alerts_panel_html():
 
 def generate_state(td=None):
     if td is None: td=latest_scored_date()
-    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history(),"orders_book":get_order_book()}
+    state={"generated_at":str(datetime.now()),"trade_date":str(td),"scores":get_scores(td,limit=2000),"mh":get_mh(td),"indexes":get_indexes(td),"global":get_global(td),"tod":get_tod(td),"news":get_news(),"portfolio":get_portfolio(td),"top25":get_top25(td),"fii_dii":get_fii_dii(td),"phs":get_phs(td),"sighist":get_signal_history(),"orders_book":get_order_book()}
     STATE_PATH.parent.mkdir(exist_ok=True); STATE_PATH.write_text(json.dumps(state,default=str))
     return state
 
@@ -495,6 +495,9 @@ def _check_js(html):
 
 
 def build_html(state):
+    from dashboard.stock_view import ASSETS as _stock_assets      # W26 stock panel + table filters
+    from dashboard.w28_assets import ASSETS as _w28_assets         # W28 news brief, lists & scans tab
+    from dashboard.w28b_assets import ASSETS as _w28b_assets       # W28b news weights, announcements
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
     scores=state.get("scores",[]); news=state.get("news",[]); port=state.get("portfolio",[]); top25=state.get("top25",{})
     # A session whose inputs covered under half the MH weight has no score
@@ -509,7 +512,10 @@ def build_html(state):
     def cname(sym):
         n=names.get((sym or "").upper())
         return f'<div style="font-size:9.5px;color:#64748b;font-weight:400;white-space:normal">{n}</div>' if n else ""
-    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores[:50])
+    import html as _html
+    def _srch(sym):
+        return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
+    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores)
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
     port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
@@ -785,7 +791,7 @@ def build_html(state):
         mae = next((o.get("max_adverse_pct") for o in outs if o.get("max_adverse_pct") is not None), None)
         sig_c = "#059669" if r.get("signal") == "BUY" else "#dc2626"
         hist_rows += (
-            f'<tr data-sym="{r.get("symbol")}"><td>{r.get("signal_date")}</td>'
+            f'<tr data-sym="{r.get("symbol")}" data-signal="{r.get("signal") or ""}"><td>{r.get("signal_date")}</td>'
             f'<td><b>{r.get("symbol")}</b>{"*" if r.get("is_tod") else ""}</td>'
             f'<td style="color:{sig_c};font-weight:600">{r.get("signal")}</td>'
             f'<td>Rs{r.get("entry_price") or "-"}</td>'
@@ -871,7 +877,7 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
@@ -907,7 +913,7 @@ def build_html(state):
   </div>
   <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div></div>
   <div id="scores" class="tc active section">
-    <div style="display:flex;gap:6px;margin-bottom:8px"><input id="srch" placeholder="Search…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select></div>
+    <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history</span></div>
     <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
   </div>
   <div id="port" class="tc section">
@@ -948,6 +954,7 @@ def build_html(state):
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input id="hsrch" placeholder="Filter by symbol..." oninput="hft()">
       <select id="hsf" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
+      <span id="hcnt" style="font-size:11px;color:#64748b;align-self:center"></span>
     </div>
     <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
       {th_heads}<th title="Date the first target was reached">Target hit</th><th>Best</th><th>Worst</th><th>Model</th></tr></thead>
@@ -1064,25 +1071,10 @@ function makeSortable(){{
 }}
 document.addEventListener('DOMContentLoaded',makeSortable);
 makeSortable();
-function ft(){{
-  var q=(document.getElementById('srch')||{{value:''}}).value.toLowerCase();
-  var s=(document.getElementById('sf')||{{value:''}}).value.toLowerCase();
-  var rows=document.querySelectorAll('#st tbody tr');
-  for(var i=0;i<rows.length;i++){{
-    var txt=rows[i].innerText.toLowerCase();
-    rows[i].style.display=(txt.indexOf(q)>=0&&(s===''||txt.indexOf(s)>=0))?'':'none';
-  }}
-}}
-
-function hft(){{
-  var q=(document.getElementById('hsrch')||{{value:''}}).value.toLowerCase();
-  var s=(document.getElementById('hsf')||{{value:''}}).value.toLowerCase();
-  var rows=document.querySelectorAll('#ht tbody tr');
-  for(var i=0;i<rows.length;i++){{
-    var t=rows[i].innerText.toLowerCase();
-    rows[i].style.display=(t.indexOf(q)>=0&&(s===''||t.indexOf(s)>=0))?'':'none';
-  }}
-}}
+// ft() / hft() (ATIP Scores / Signal History filters) live in dashboard/stock_view.py:
+// they match the signal exactly -- matching the row text hit every row through its
+// Buy / Sell buttons -- and search symbol + company only.
+function ft(){{}} function hft(){{}}
 
 // ── Live clock + auto page refresh (topbar, right side) ────────────────
 var AUTO_REFRESH_SECONDS=300, _secsLeft=AUTO_REFRESH_SECONDS;
@@ -1306,7 +1298,7 @@ async function pollLiveQuotes(){{
   }}catch(e){{}}
 }}
 setInterval(pollLiveQuotes,15000); pollLiveQuotes();
-</script></body></html>"""
+</script>{_stock_assets}{_w28_assets}{_w28b_assets}</body></html>"""
     # Catch a broken inline script before it silently disables every tab.
     _check_js(html)
     return html
@@ -1573,6 +1565,20 @@ if HAS_FASTAPI:
     _register_execution_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.portfolio_risk_routes import register as _register_portfolio_risk     # W25
     _register_portfolio_risk(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.stock_view import register as _register_stock_view                   # W26
+    _register_stock_view(app, get_connection, json_safe)
+    from dashboard.market_routes import register as _register_market_routes             # W27
+    _register_market_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w28_routes import register as _register_w28_routes                   # W28
+    _register_w28_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w28b_routes import register as _register_w28b_routes                 # W28b
+    _register_w28b_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w29_routes import register as _register_w29_routes                   # W29
+    _register_w29_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w34_routes import register as _register_w34_routes                   # W34
+    _register_w34_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w35_routes import register as _register_w35_routes                   # W35
+    _register_w35_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes
@@ -1595,6 +1601,8 @@ if HAS_FASTAPI:
     # ── Enterprise: users, tenants, RBAC, account, admin (W7) ─────────────
     from dashboard.enterprise_routes import register as _register_enterprise_routes
     _register_enterprise_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.saas_routes import register as _register_saas_routes                 # W9 SaaS, wired in W32
+    _register_saas_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── Operations (W8): health, metrics, backups, monitoring, webhooks ─
     from dashboard.ops_routes import register as _register_ops_routes

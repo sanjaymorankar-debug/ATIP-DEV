@@ -32,6 +32,8 @@ button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:3px 8
 <h2>Feature sets</h2><div id="fs" class="scroll"></div>
 <h2>Datasets</h2><div id="ds" class="scroll"></div>
 <h2>Training runs</h2><div id="tr" class="scroll"></div>
+<h2>AI-driven strategies <span class="muted">(W28 SE-05: the first gate each ML strategy is blocked at)</span></h2><div id="aist"></div>
+<h2>Model monitoring <select id="monm" onchange="loadMon()"></select> <span class="muted">(W28 DB-18: feature drift PSI, realised metrics, health checks)</span></h2><div id="mon"></div>
 </div>
 <script>
 const TOKEN=__TOKEN__;
@@ -60,7 +62,19 @@ async function load(){
   document.getElementById('tr').innerHTML=table(['Run','Model','Version','Dataset','Status','Started','Finished','Error'],T.map(t=>`<tr><td>${t.run_id}</td><td>${esc(t.model_id)}</td><td>${t.version||''}</td><td>${esc(t.dataset_id)}</td><td>${pill(t.status)}</td><td>${esc(t.started_at)}</td><td>${esc(t.finished_at||'')}</td><td class="note">${esc(t.error||'')}</td></tr>`));
 }
 async function move(m,v,to){const reason=prompt(`Reason for ${m} ${v} → ${to}?`);if(reason===null)return;try{await post(`/api/ml/models/${m}/lifecycle`,{version:v,to_state:to,reason});load()}catch(e){alert(e.message)}}
-load();
+function chart(pts,key,label,w=560,h=120){const v=pts.filter(p=>p[key]!=null);if(v.length<2)return `<div class="muted">${label}: not enough points</div>`;
+  const ys=v.map(p=>p[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=mx-mn||1;
+  const d=v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-10)+5).toFixed(1)},${(h-14-(p[key]-mn)/r*(h-24)).toFixed(1)}`).join('');
+  return `<div class="muted" style="margin-top:6px">${label} · ${v[0].as_of||v[0].period_end} → ${v[v.length-1].as_of||v[v.length-1].period_end}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--panel);border-radius:6px"><path d="${d}" fill="none" stroke="#38bdf8" stroke-width="1.6"/><text x="6" y="12" fill="#94a3b8" font-size="10">${num(mx)}</text><text x="6" y="${h-3}" fill="#94a3b8" font-size="10">${num(mn)}</text></svg>`}
+async function loadAI(){try{const R=await j('/api/ml/ai-strategy-readiness');
+  document.getElementById('aist').innerHTML=table(['Strategy','Status','ML features','Ready','Blocked at','Next step','Gates'],R.strategies.map(s=>`<tr><td><b>${esc(s.strategy_id)}</b> ${esc(s.version)}</td><td>${pill(s.status)}</td><td class="muted">${esc(s.ml_features.join(', '))}</td><td>${s.ready?'yes':'no'}</td><td>${esc(s.blocked_at||'—')}</td><td>${esc(s.next_step)}</td><td>${s.gates.map(g=>`<span title="${esc(g.detail)}">${g.ok?'✓':'✗'} ${esc(g.gate)}</span>`).join('<br>')}</td></tr>`))}catch(e){document.getElementById('aist').textContent=e.message}}
+async function loadMon(){const sel=document.getElementById('monm');try{const M=await j('/api/ml/monitoring-series'+(sel.value?'?model_id='+encodeURIComponent(sel.value):''));
+  if(!sel.options.length&&M.models)sel.innerHTML=M.models.map(m=>`<option>${esc(m)}</option>`).join('');
+  if(M.note){document.getElementById('mon').innerHTML=`<span class="muted">${esc(M.note)}</span>`;return}
+  const met=M.metrics||[];const k=met.length?Object.keys(met[met.length-1]).find(x=>['auc','ic','accuracy','hit_rate','rank_ic'].includes(x)):null;
+  document.getElementById('mon').innerHTML=chart(M.drift,'max_psi','Max feature PSI (drift; > 0.25 = shifted)')+chart(M.drift,'n_shifted','Features shifted')+(k?chart(met,k,'Realised '+k):'<div class="muted">no realised metrics yet</div>')
+   +`<div class="muted" style="margin-top:6px">Health checks: ${(M.health||[]).slice(-10).map(h=>esc(h.status)).join(' · ')||'none'}</div>`}catch(e){document.getElementById('mon').textContent=e.message}}
+load();loadAI();loadMon();
 </script></body></html>"""
 
 

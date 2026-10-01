@@ -59,9 +59,9 @@ KIND_KEYS = {
     "composite": {"members", "mode", "min_agree", "min_agree_exit", "entry_threshold", "exit_threshold",
                   "regime_map", "regime_key", "exit_on_unmapped_regime"},
     "python": {"python_class"},
-    "pairs": {"pairs", "allow_single_leg"},
+    "pairs": {"pairs", "allow_single_leg", "short_via_futures"},          # W30: short leg via stock futures
     "portfolio": {"score", "top_n", "bottom_n", "method", "vol_feature", "constraints", "long_short",
-                  "rebalance_every", "filter", "allow_long_only"},
+                  "rebalance_every", "filter", "allow_long_only", "short_via_futures"},
 }
 _SLUG = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")

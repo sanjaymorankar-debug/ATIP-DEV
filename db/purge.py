@@ -44,6 +44,10 @@ LONG_RETENTION_TABLES = {
     "sector_breadth":       "date",      # W21
     "score_components":     "date",      # W22
     "ml_anomaly":           "as_of",     # W24
+    "fo_underlying_daily":  "date",      # W27
+    "intraday_scan_hit":    "session",   # W28
+    "news_symbol_score":    "date",      # W28b (NS-05)
+    "corporate_announcement": "broadcast_at",   # W28b (NS-06)
 }
 
 SHORT_RETENTION_TABLES = {
@@ -54,6 +58,13 @@ SHORT_RETENTION_TABLES = {
     "live_quotes":    "timestamp",
     "live_ticks":     "received_at",
     "intraday_bars":  "ts",              # W21 (DP-03)
+    "broker_health_check": "checked_at",  # W29
+    "live_pnl_snapshot": "ts",            # W29
+    "latency_rollup": "minute",          # W34 (EX-15)
+    "oms_event_delivery": "at",          # W34 (EX-16); the outbox itself is kept (audit)
+    "order_book_snapshot": "ts",         # W35 (DP-05); history stays in lake "depth"
+    "option_chain_snapshot": "ts",       # W35 (DP-08); history stays in lake "option_chain"
+    "fo_contract_daily": "date",         # W35 (DP-08); every contract stays in lake "fo_bhavcopy"
 }
 
 DEFAULT_LONG_DAYS  = 600

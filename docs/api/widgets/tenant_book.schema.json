@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tenant_book",
+  "type": "object",
+  "required": [
+    "equity",
+    "cash",
+    "positions"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "equity": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "cash": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "positions_value": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "realised_cum": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "integer"
+          },
+          "avg_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mark": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unrealised": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

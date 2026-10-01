@@ -519,17 +519,30 @@ class PairsEvaluator(Evaluator):
                 for s in (a, b):
                     if s not in held:
                         continue
+                    close_act = "COVER" if held[s].get("short") else EXIT          # W30: a futures short leg
                     if abs(z) >= sz:
-                        out.append(self._coded(self.intent(s, as_of, EXIT, conf, why + " -> stop", legs[s]), "PAIR_STOP"))
+                        out.append(self._coded(self.intent(s, as_of, close_act, conf, why + " -> stop", legs[s]),
+                                               "PAIR_STOP"))
                     elif abs(z) <= xz:
-                        out.append(self._coded(self.intent(s, as_of, EXIT, conf, why + " -> converged", legs[s]),
-                                               "PAIR_EXIT"))
+                        out.append(self._coded(self.intent(s, as_of, close_act, conf, why + " -> converged",
+                                                           legs[s]), "PAIR_EXIT"))
                     else:
                         out.append(self.intent(s, as_of, HOLD, conf, why, legs[s]))
                 continue
             if abs(z) < ez or abs(z) >= sz:
                 continue
             long_s, short_s = (b, a) if z > 0 else (a, b)
+            # W30 (QR-05): with short_via_futures, an F&O short leg (dv_fno) is a SHORT intent the
+            # risk engine sizes in whole lots on the paper futures book; the long leg then trades.
+            if bool(pval(self.defn.get("short_via_futures", False), p)) and legs[short_s].get("dv_fno"):
+                sh = self._coded(self.intent(short_s, as_of, "SHORT", conf, why + " -> short leg via stock futures",
+                                             legs[short_s]), "PAIR_ENTRY")
+                sh.target_position_pct = alloc
+                lg = self._coded(self.intent(long_s, as_of, BUY, conf, why + " -> long leg", legs[long_s],
+                                             entry=True), "PAIR_ENTRY")
+                lg.target_position_pct = alloc
+                out.extend([sh, lg])
+                continue
             short = self._coded(self.intent(short_s, as_of, SELL, conf, why + " -> short leg (needs a shortable "
                                             "instrument; not executable in the cash book)", legs[short_s]), "SHORT_LEG")
             out.append(short)
@@ -607,8 +620,16 @@ class PortfolioEvaluator(Evaluator):
         band = None if band is None else float(pval(band, p))
         drift = self._drift(held, w, ctxs) if band else {}
         out, cands = [], []
+        via_fut = bool(pval(d.get("short_via_futures", False), p))
         for s in held:
             if s not in ctxs:
+                continue
+            if held[s].get("short"):                                  # W30: a held futures short
+                if w.get(s, 0) < 0:
+                    out.append(self.intent(s, as_of, HOLD, None, f"short in portfolio, weight {w[s]:.4f}", ctxs[s]))
+                else:
+                    out.append(self._coded(self.intent(s, as_of, "COVER", None, "no longer a short in the target "
+                                                       "portfolio", ctxs[s]), "PORTFOLIO_DROP"))
                 continue
             if w.get(s, 0) > 0:
                 dq = drift.get(s)
@@ -627,10 +648,15 @@ class PortfolioEvaluator(Evaluator):
         for s, wt in sorted(w.items(), key=lambda kv: -abs(kv[1])):
             if s in held:
                 continue
-            if wt < 0:
+            if wt < 0 and via_fut and ctxs[s].get("dv_fno"):
+                it = self._coded(self.intent(s, as_of, "SHORT", None, f"short weight {wt:.4f} via stock futures",
+                                             ctxs[s]), "PORTFOLIO_SHORT")
+                it.target_position_pct = round(abs(wt) * 100, 4)
+                out.append(it)
+            elif wt < 0:
                 out.append(self._coded(self.intent(s, as_of, SELL, None, f"short weight {wt:.4f} (needs a shortable "
                                                    f"instrument)", ctxs[s]), "SHORT_LEG"))
-            elif d.get("long_short") and not allow_lo:
+            elif d.get("long_short") and not allow_lo and not via_fut:
                 out.append(self._coded(self.intent(s, as_of, NO_ACTION, None, f"long weight {wt:.4f} held back: "
                                                    f"{d['long_short']}-neutral book needs its short side", ctxs[s]),
                                        "NEUTRALITY_UNAVAILABLE"))

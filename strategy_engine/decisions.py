@@ -50,13 +50,16 @@ DECISIONS = (BUY, SELL, HOLD, WAIT, EXIT, NO_TRADE)
 # actions
 A_BUY, A_ADD, A_HOLD, A_REDUCE, A_EXIT, A_SELL, A_NONE, A_BLOCKED = (
     "BUY", "ADD", "HOLD", "REDUCE", "EXIT", "SELL", "NO_ACTION", "BLOCKED_BY_RISK")
-ACTIONS = (A_BUY, A_ADD, A_HOLD, A_REDUCE, A_EXIT, A_SELL, A_NONE, A_BLOCKED)
+# W30 (QR-05 / QR-06): a short leg through stock futures (execution/futures_paper.py)
+A_SHORT, A_COVER = "SHORT", "COVER"
+ACTIONS = (A_BUY, A_ADD, A_HOLD, A_REDUCE, A_EXIT, A_SELL, A_NONE, A_BLOCKED, A_SHORT, A_COVER)
 ACTION_TO_DECISION = {A_BUY: BUY, A_ADD: BUY, A_HOLD: HOLD, A_REDUCE: SELL, A_EXIT: EXIT, A_SELL: SELL,
-                      A_NONE: WAIT, A_BLOCKED: NO_TRADE}
+                      A_NONE: WAIT, A_BLOCKED: NO_TRADE, A_SHORT: SELL, A_COVER: EXIT}
 BASE_REASON_CODE = {A_BUY: "ENTRY_RULES_MET", A_ADD: "ADD_THRESHOLD_MET", A_HOLD: "HOLDING",
                     A_REDUCE: "REDUCE_THRESHOLD_MET", A_EXIT: "EXIT_RULES_MET", A_SELL: "SELL_SIGNAL",
-                    A_NONE: "NO_SIGNAL", A_BLOCKED: "RISK_BLOCKED"}
-INTENT_ACTIONS = (A_BUY, A_ADD, A_REDUCE, A_EXIT)
+                    A_NONE: "NO_SIGNAL", A_BLOCKED: "RISK_BLOCKED", A_SHORT: "SHORT_VIA_FUTURES",
+                    A_COVER: "COVER_SHORT"}
+INTENT_ACTIONS = (A_BUY, A_ADD, A_REDUCE, A_EXIT, A_SHORT, A_COVER)
 SIGNAL_ENGINE_EQUIVALENT = {"BUY": BUY, "SELL": SELL, "HOLD": HOLD, "WAIT": WAIT}
 
 RISK_REQUIREMENTS = ("STANDARD", "REDUCED", "STRICT")
@@ -165,8 +168,8 @@ def intent_for(dec: StrategyDecision, quantity: int | None = None) -> PositionIn
     """The PositionIntent for a decision that changes a position, else None."""
     if dec.action not in INTENT_ACTIONS:
         return None
-    side = "BUY" if dec.action in (A_BUY, A_ADD) else "SELL"
-    target = 0.0 if dec.action == A_EXIT else dec.target_position_pct
+    side = "BUY" if dec.action in (A_BUY, A_ADD, A_COVER) else "SELL"
+    target = 0.0 if dec.action in (A_EXIT, A_COVER) else dec.target_position_pct
     return PositionIntent(symbol=dec.symbol, side=side, target_position_pct=target, quantity=quantity,
                           strategy_id=dec.strategy_id, strategy_version=dec.strategy_version,
                           decision_id=dec.decision_id, timestamp=dec.timestamp, confidence=dec.confidence,

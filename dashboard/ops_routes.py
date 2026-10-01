@@ -25,6 +25,7 @@ W8 operations routes (ops/).
 
 from __future__ import annotations
 
+from fastapi import Request    # W31: a module-level name, so the string annotation resolves
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 
@@ -65,12 +66,16 @@ def register(app, guard, Req, get_connection, json_safe):
 
     # -- inbound webhooks ----------------------------------------------------------------
     @app.post("/api/webhooks/{source}")
-    async def webhook_in(source: str, request: Req):
+    async def webhook_in(source: str, request: Request):
         from ops.webhooks import verify_inbound
         raw = await request.body()
         c = get_connection()
         try:
             code, payload = verify_inbound(c, source, {k.lower(): v for k, v in request.headers.items()}, raw)
+            if code == 200 and not payload.get("duplicate"):        # W32 (API-04): business consumers
+                import json as _json
+                from enterprise.w32 import consume
+                payload["status"] = consume(c, source, payload["event_id"], _json.loads(raw or b"{}"))
         finally:
             c.close()
         return ok(payload, code)
@@ -183,7 +188,7 @@ def register(app, guard, Req, get_connection, json_safe):
             c.close()
 
     @app.post("/api/ops/webhooks", dependencies=guard)
-    async def ops_webhook_add(request: Req):
+    async def ops_webhook_add(request: Request):
         from ops.webhooks import add_endpoint
         b = await body(request)
         c = get_connection()

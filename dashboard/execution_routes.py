@@ -196,11 +196,18 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.post("/api/oms/orders", dependencies=guard)
     async def api_oms_create(request: Req):
-        """{risk_decision_id, submit?: true}. PAPER only in W4."""
+        """{risk_decision_id, submit?: true, order_type?: MARKET|LIMIT|SL|SL-M, limit_price?,
+        trigger_price?} (W29 EX-02). PAPER only."""
         b = await body(request)
         conn = get_connection()
         try:
-            o = OM.create_order(conn, b.get("risk_decision_id"))
+            def _f(v):
+                return None if v in (None, "") else float(v)
+            try:
+                o = OM.create_order(conn, b.get("risk_decision_id"), order_type=b.get("order_type"),
+                                    limit_price=_f(b.get("limit_price")), trigger_price=_f(b.get("trigger_price")))
+            except ValueError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
             if b.get("submit", True):
                 o = OM.submit_order(conn, o["order_id"])
             return JSONResponse(json_safe(o))

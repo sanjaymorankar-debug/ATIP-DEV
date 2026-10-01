@@ -202,7 +202,8 @@ def login(conn, username, password, tenant_id=None, ip=None, user_agent=None, ot
         if not otp:
             audit.record(conn, "auth.mfa_required", user_id=u["user_id"], ip=ip)
             raise AuthError("mfa_required")
-        if not mfa.verify(conn, u["user_id"], otp):
+        from enterprise.w32 import use_recovery_code
+        if not mfa.verify(conn, u["user_id"], otp) and not use_recovery_code(conn, u["user_id"], otp):
             fails = (u["failed_logins"] or 0) + 1
             lock = fails >= int(s["max_failed_logins"])
             conn.execute("UPDATE enterprise_user SET failed_logins=?, status=?, locked_until=? WHERE user_id=?",
@@ -226,9 +227,15 @@ def login(conn, username, password, tenant_id=None, ip=None, user_agent=None, ot
     audit.record(conn, "auth.login", tenant_id=tid, user_id=u["user_id"], actor=u["username"], ip=ip,
                  details={"mfa": bool(u.get("mfa_enabled"))}, commit=False)
     conn.commit()
+    try:
+        from enterprise.privacy import has_consent
+        consent_required = not has_consent(conn, u["user_id"], "terms")
+    except Exception:
+        consent_required = False
     return {"token": token, "expires_at": exp.isoformat(), "tenant_id": tid, "user_id": u["user_id"],
             "must_change_password": bool(u["must_change_password"]), "refresh_token": refresh_token,
-            "refresh_expires_at": rexp.isoformat()}
+            "refresh_expires_at": rexp.isoformat(), "consent_required": consent_required,
+            "tenants": sorted(mem)}
 
 
 def _new_session(conn, user_id, tid, ip, user_agent):
@@ -289,6 +296,53 @@ def session_principal(conn, token) -> dict | None:
     conn.execute("UPDATE enterprise_session SET last_seen_at=? WHERE token_hash=?", (_now(), r["token_hash"]))
     conn.commit()
     return {"user_id": r["user_id"], "tenant_id": r["tenant_id"], "via": "session"}
+
+
+def list_sessions(conn, user_id, current_token=None) -> list:
+    """W9 multi-device login: the user's live sessions (id = first 16 hex chars of the digest)."""
+    cur = S.digest(current_token) if current_token else None
+    out = []
+    for r in conn.execute("SELECT token_hash, tenant_id, created_at, expires_at, last_seen_at, ip, user_agent FROM "
+                          "enterprise_session WHERE user_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY "
+                          "last_seen_at DESC", (user_id, _now())):
+        out.append({"session_id": r[0][:16], "tenant_id": r[1], "created_at": r[2], "expires_at": r[3],
+                    "last_seen_at": r[4], "ip": r[5], "user_agent": r[6], "current": r[0] == cur})
+    return out
+
+
+def revoke_session(conn, user_id, session_id, actor=None) -> dict:
+    if not re.match(r"^[0-9a-f]{16}$", session_id or ""):
+        raise ValueError("bad session id")
+    n = conn.execute("UPDATE enterprise_session SET revoked_at=? WHERE user_id=? AND token_hash LIKE ? AND "
+                     "revoked_at IS NULL", (_now(), user_id, session_id + "%")).rowcount
+    if not n:
+        raise ValueError(f"no active session {session_id}")
+    audit.record(conn, "auth.session_revoked", user_id=user_id, actor=actor or user_id, resource=session_id,
+                 commit=False)
+    conn.commit()
+    return {"revoked": session_id}
+
+
+def switch_tenant(conn, token, tenant_id, ip=None, user_agent=None) -> dict:
+    """W9 tenant switcher: a new session bound to another of the user's tenants; the old
+    session is revoked."""
+    p = session_principal(conn, token)
+    if not p:
+        raise AuthError("not signed in")
+    mem = memberships(conn, p["user_id"])
+    if tenant_id not in mem:
+        raise AuthError(f"not a member of tenant {tenant_id}")
+    t = conn.execute("SELECT status FROM enterprise_tenant WHERE tenant_id=?", (tenant_id,)).fetchone()
+    if not t or t[0] in ("DISABLED", "ARCHIVED"):
+        raise AuthError(f"tenant {tenant_id} is {t[0] if t else 'missing'}")
+    new, exp = _new_session(conn, p["user_id"], tenant_id, ip, user_agent)
+    rt, rexp = _new_refresh(conn, p["user_id"], tenant_id, uuid.uuid4().hex, ip)
+    conn.execute("UPDATE enterprise_session SET revoked_at=? WHERE token_hash=?", (_now(), S.digest(token)))
+    audit.record(conn, "auth.switch_tenant", tenant_id=tenant_id, user_id=p["user_id"], ip=ip,
+                 details={"from": p["tenant_id"]}, commit=False)
+    conn.commit()
+    return {"token": new, "expires_at": exp.isoformat(), "tenant_id": tenant_id, "user_id": p["user_id"],
+            "refresh_token": rt, "refresh_expires_at": rexp.isoformat()}
 
 
 def logout(conn, token) -> None:

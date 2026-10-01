@@ -57,6 +57,15 @@ EXECUTION_DEFAULTS = {
     # W8: a BUY is REJECTED when the symbol's last daily bar is more than this many
     # sessions behind the last completed session (null disables)
     "max_market_data_age_sessions": 2,
+    # W29 (EX-02): after a PAPER BUY fills, place a child SL-M SELL at the intent's stop
+    # (SL with this % below the trigger when protective_stop_limit_offset_pct is set)
+    "protective_stops": False,
+    "protective_stop_limit_offset_pct": None,
+    # W29 (RK-17): refuse new BUYs while the last broker health check says DOWN or STALE
+    "block_on_broker_health": True,
+    "broker_health_max_age_minutes": 30,
+    # W34 (EX-11): large PAPER orders worked by an execution algo; keys in execution/algos.py DEFAULTS
+    "algo": {"enabled": False},
 }
 
 # (default, description). Percentages are of current equity unless stated.

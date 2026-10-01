@@ -66,6 +66,46 @@ def describe() -> str:
     }[env]
 
 
+def sandbox_credentials() -> tuple:
+    """W29 (BR-08): the sandbox has its own token namespace, so it gets its own
+    credentials: config.json dhan_sandbox_client_id / dhan_sandbox_access_token
+    (or DHAN_SANDBOX_CLIENT_ID / DHAN_SANDBOX_ACCESS_TOKEN). Never the production ones."""
+    import os
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+    return (cfg.get("dhan_sandbox_client_id") or os.getenv("DHAN_SANDBOX_CLIENT_ID", ""),
+            cfg.get("dhan_sandbox_access_token") or os.getenv("DHAN_SANDBOX_ACCESS_TOKEN", ""))
+
+
+def redirect_to_sandbox(dhan) -> bool:
+    """Point THIS client instance at SANDBOX_BASE_URL. True only when verified."""
+    for attr in ("dhan_http", "_dhan_http", "http"):
+        target = getattr(dhan, attr, None)
+        if target is not None and hasattr(target, "base_url"):
+            target.base_url = SANDBOX_BASE_URL
+            return str(getattr(target, "base_url", "")).startswith(SANDBOX_BASE_URL)
+    return False
+
+
+def sandbox_client():
+    """A dhanhq client on the sandbox host with the sandbox credentials. Raises rather than
+    return anything that could reach the LIVE endpoint."""
+    cid, tok = sandbox_credentials()
+    if not cid or not tok:
+        raise RuntimeError("SANDBOX needs dhan_sandbox_client_id and dhan_sandbox_access_token in "
+                           "atip_data/config.json (a Dhan-issued sandbox token; the production token is rejected)")
+    from dhanhq import DhanContext
+    from data.dhan import DhanHQ
+    dhan = DhanHQ(DhanContext(cid, tok))
+    if not redirect_to_sandbox(dhan):
+        raise RuntimeError("Could not point the Dhan client at the sandbox: this SDK build exposes no reachable "
+                           "http object with a base_url. Refusing -- falling through would reach the LIVE endpoint.")
+    log.warning(f"  Broker environment: SANDBOX ({SANDBOX_BASE_URL})")
+    return dhan
+
+
 def get_execution_client(quote_source=None):
     """
     Return (client, env). The client always exposes the dhanhq order surface,
@@ -80,10 +120,15 @@ def get_execution_client(quote_source=None):
         from orders.paper import PaperBroker
         return PaperBroker(quote_source=quote_source), env
 
+    if env == SANDBOX:
+        dhan = sandbox_client()
+        return dhan, env
+
     from data.dhan import get_dhan_client
     dhan, _ = get_dhan_client()
 
-    if env == SANDBOX:
+    if False:  # pre-W29 SANDBOX path kept for reference: it reused the PRODUCTION token,
+               # which the sandbox rejects (DH-906) -- see sandbox_client()
         # DhanHTTP sets self.base_url from a class constant, per instance, so
         # this redirects only this client and never leaks into the market-data
         # client used elsewhere.

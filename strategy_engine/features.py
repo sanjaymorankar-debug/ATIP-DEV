@@ -77,13 +77,25 @@ MARKET_FEATURES = ("regime", "mh_score", "vix", "vol_regime", "market_trend", "b
                    "fii_net_cr", "dii_net_cr")
 ML_FEATURES = ("ml_score", "ml_prediction", "ml_confidence", "ml_prob_up")
 _QUANT = re.compile(r"^(qf|qc)_[a-z][a-z0-9_]*$")
-EVENT_FEATURES = ("ev_days_since_split", "ev_days_since_bonus", "ev_days_since_rights", "ev_days_since_demerger",
+EVENT_FEATURES = ("ev_days_since_earnings", "ev_days_since_dividend", "ev_days_since_insider_buy",
+                  "ev_earnings_growth", "ev_insider_net_90d",            # W30 (QR-09)
+                  "ev_days_since_split", "ev_days_since_bonus", "ev_days_since_rights", "ev_days_since_demerger",
                   "ev_days_since_bulk_deal", "ev_bulk_net_5d")
 
 
+# W30 (QR-10): derivatives features from the NSE F&O bhavcopy (quant/derivatives_features.py)
+DERIV_FEATURES = ("dv_iv_atm", "dv_iv_rank", "dv_iv_pct", "dv_vrp", "dv_iv_skew", "dv_pcr_oi", "dv_basis_ann",
+                  "dv_fut_oi_chg_pct", "dv_fno")
+
+
+# W30 (AF-07): microstructure features from the stored 15-min bars (quant/microstructure.py)
+MS_FEATURES = ("ms_bar_rv", "ms_roll_spread_bps", "ms_cs_spread_bps", "ms_vwap_dev_pct", "ms_close_location",
+               "ms_last_hour_share", "ms_order_imbalance", "ms_spread_20")
+
+
 def is_quant(name: str) -> bool:
-    """qf_<registered factor>, qc_<composite name>, or an event feature."""
-    if name in EVENT_FEATURES:
+    """qf_<registered factor>, qc_<composite name>, an event, derivatives or microstructure feature."""
+    if name in EVENT_FEATURES or name in DERIV_FEATURES or name in MS_FEATURES:
         return True
     if not _QUANT.match(name or ""):
         return False
@@ -161,7 +173,8 @@ def inputs_of(name: str) -> tuple:
 
 def catalogue() -> dict:
     return {"bars": list(BAR_FEATURES), "scores": list(SCORE_FEATURES), "market": list(MARKET_FEATURES),
-            "ml": list(ML_FEATURES), "quant": ["qf_<factor_id>", "qc_<composite>"] + list(EVENT_FEATURES),
+            "ml": list(ML_FEATURES), "quant": ["qf_<factor_id>", "qc_<composite>"] + list(EVENT_FEATURES)
+            + list(DERIV_FEATURES) + list(MS_FEATURES),
             "parametric": sorted({"sma_N", "ema_N", "rsi_N", "atr_pct_N", "ret_N", "vol_ratio_N", "zscore_N",
                                   "range_pos_N", "prior_high_N", "prior_low_N", "volatility_N", "rel_strength_N",
                                   "adx_N", "vwap_N", "bb_pctb_N", "bb_width_N", "nifty_ret_N"}),
@@ -274,7 +287,7 @@ def compute(name, ctx):
         return ctx.market.get(name)
     if name in ML_FEATURES:
         return ctx.ml.get(name)
-    if name in EVENT_FEATURES or _QUANT.match(name):
+    if name in EVENT_FEATURES or name in DERIV_FEATURES or name in MS_FEATURES or _QUANT.match(name):
         return ctx.quant.get(name)
     bars = ctx.bars
     if not bars:

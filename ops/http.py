@@ -45,7 +45,6 @@ from ops.errors import envelope
 _ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 _CFG = {"at": 0.0, "v": None}
-_BUCKETS = {}
 
 
 def _cfg():
@@ -80,16 +79,9 @@ def _caller(headers) -> str:
 
 
 def _rate_ok(key, per_minute) -> tuple:
-    now = time.monotonic()
-    tokens, last = _BUCKETS.get(key, (per_minute, now))
-    tokens = min(per_minute, tokens + (now - last) * per_minute / 60.0)
-    if tokens < 1:
-        _BUCKETS[key] = (tokens, now)
-        return False, int((1 - tokens) * 60 / per_minute) + 1
-    _BUCKETS[key] = (tokens - 1, now)
-    if len(_BUCKETS) > 50000:
-        _BUCKETS.clear()
-    return True, 0
+    """W9: the bucket lives in the shared-state store (in-process by default, Redis-ready)."""
+    from ops.shared_state import store
+    return store().bucket(f"http:{key}", per_minute)
 
 
 def _paginate(data, qs):
@@ -139,6 +131,11 @@ class OpsMiddleware:
             path, version = scope["path"], "v1"
         extra = [(b"x-request-id", rid.encode()), (b"x-correlation-id", corr.encode())] + \
             _security_headers(path, cfg) + ([(b"api-version", b"v1")] if path.startswith("/api/") else [])
+        if version is None and path.startswith("/api/") and \
+                (headers.get("authorization") or "").lower().startswith("apikey "):
+            # W9: API-key clients should call the frozen /api/v1 contract
+            extra += [(b"deprecation", b"true"),
+                      (b"link", f'</api/v1/{path[len("/api/"):]}>; rel="successor-version"'.encode())]
         t0 = time.perf_counter()
         state = {"status": 500}
 

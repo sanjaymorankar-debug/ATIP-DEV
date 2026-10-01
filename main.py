@@ -188,7 +188,9 @@ def _acquire_single_instance_lock():
     if sys.platform != "win32":
         return   # only Windows has been observed to double-launch this way
     import ctypes
-    mutex_name = "ATIP_SingleInstance_D_Projects_ATIP"
+    # W31 (OPS-11): ATIP_INSTANCE_NAME lets an isolated drill instance (ops/rollback_drill.py,
+    # a scratch clone on another port) run beside production; unset = the production name
+    mutex_name = os.environ.get("ATIP_INSTANCE_NAME") or "ATIP_SingleInstance_D_Projects_ATIP"
     handle = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     ERROR_ALREADY_EXISTS = 183
     if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
@@ -427,6 +429,13 @@ def _start_index_feed():
     except Exception as e:
         log.warning(f"  Index WebSocket feed did not start ({e}) — "
                     f"falling back to 15-min REST index polling only")
+    # W27 (DP-01): stock-level live feed with REST failover -- only when
+    # config.json live_feed.stocks_enabled is true (off by default)
+    try:
+        from data.stock_feed import start_stock_feed
+        start_stock_feed()
+    except Exception as e:
+        log.warning(f"  Stock live feed did not start ({e})")
 
 
 def _start_dashboard(port: int = 8000):

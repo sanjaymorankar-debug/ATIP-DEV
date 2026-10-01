@@ -63,6 +63,16 @@ def encrypt(plaintext: str, context: str) -> str:
     return f"enc:v1:{key_id(k)}:{base64.b64encode(nonce + ct).decode()}"
 
 
+def _previous_key():
+    """W31: during / after a rotation the old key stays readable as ATIP_ENCRYPTION_KEY.previous."""
+    p = Path("atip_data") / "secrets" / "ATIP_ENCRYPTION_KEY.previous"
+    try:
+        k = base64.b64decode(p.read_text(encoding="utf-8").strip())
+        return k if len(k) == 32 else None
+    except Exception:
+        return None
+
+
 def decrypt(token: str, context: str) -> str:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     if not token or not token.startswith("enc:v1:"):
@@ -70,9 +80,83 @@ def decrypt(token: str, context: str) -> str:
     _, _, kid, b = token.split(":", 3)
     k = _key()
     if kid != key_id(k):
-        raise CryptoUnavailable(f"ciphertext was made with key {kid}; current key is {key_id(k)}")
+        prev = _previous_key()
+        if prev is not None and kid == key_id(prev):
+            k = prev
+        else:
+            raise CryptoUnavailable(f"ciphertext was made with key {kid}; current key is {key_id(k)}")
     raw = base64.b64decode(b)
     return AESGCM(k).decrypt(raw[:12], raw[12:], context.encode("utf-8")).decode("utf-8")
+
+
+def _enc_with(k: bytes, plaintext: str, context: str) -> str:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = os.urandom(12)
+    ct = AESGCM(k).encrypt(nonce, plaintext.encode("utf-8"), context.encode("utf-8"))
+    return f"enc:v1:{key_id(k)}:{base64.b64encode(nonce + ct).decode()}"
+
+
+def rotate_key(conn, apply: bool = False) -> dict:
+    """
+    W31 (SEC-04): re-encrypt every protected value under a NEW key.
+
+    Covered: enterprise_user.mfa_secret_enc / mfa_pending_enc (context
+    "enterprise_user.mfa:<user_id>") and every vault entry ("vault:<NAME>").
+    Steps (apply=True): decrypt all with the current key -> encrypt with the new key ->
+    verify each new value decrypts -> one DB transaction + the vault file written ->
+    the old key file is kept as ATIP_ENCRYPTION_KEY.previous (still readable) and the new
+    key takes its place. Delete the .previous file only after a verified backup taken
+    under the new key. Dry run (default) reports what would be re-encrypted.
+    """
+    from ops import vault as V
+    from ops.secrets import _resolve
+    src = _resolve("ATIP_ENCRYPTION_KEY")[1]
+    if apply and src != "file":
+        raise CryptoUnavailable(f"ATIP_ENCRYPTION_KEY comes from {src}; rotation rewrites the key FILE, which that "
+                                f"source would override -- move the key to atip_data/secrets/ATIP_ENCRYPTION_KEY "
+                                f"first (and remove it from {src})")
+    k_old = _key()
+    items = []
+    for uid, s, p in conn.execute("SELECT user_id, mfa_secret_enc, mfa_pending_enc FROM enterprise_user WHERE "
+                                  "mfa_secret_enc IS NOT NULL OR mfa_pending_enc IS NOT NULL").fetchall():
+        for col, tok in (("mfa_secret_enc", s), ("mfa_pending_enc", p)):
+            if tok:
+                items.append(("db", uid, col, tok, f"enterprise_user.mfa:{uid}"))
+    entries = V._load()["entries"]
+    for n, tok in entries.items():
+        items.append(("vault", n, None, tok, f"vault:{n}"))
+    if not apply:
+        return {"dry_run": True, "current_key_id": key_id(k_old), "values": len(items),
+                "fields": sorted({f"{i[0]}:{i[2] or 'entry'}" for i in items})}
+    k_new = os.urandom(32)
+    plain = [(it, decrypt(it[3], it[4])) for it in items]            # fails before anything is written
+    new = [(it, _enc_with(k_new, pt, it[4])) for it, pt in plain]
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    for (it, tok), (_, pt) in zip(new, plain):                         # verify with the new key
+        raw = base64.b64decode(tok.split(":", 3)[3])
+        if AESGCM(k_new).decrypt(raw[:12], raw[12:], it[4].encode()).decode() != pt:
+            raise RuntimeError("re-encryption verification failed; nothing changed")
+    keyp = Path("atip_data") / "secrets" / "ATIP_ENCRYPTION_KEY"
+    prevp = keyp.with_name("ATIP_ENCRYPTION_KEY.previous")
+    try:
+        for it, tok in new:
+            if it[0] == "db":
+                conn.execute(f"UPDATE enterprise_user SET {it[2]}=? WHERE user_id=?", (tok, it[1]))
+        vd = V._load()
+        for it, tok in new:
+            if it[0] == "vault":
+                vd["entries"][it[1]] = tok
+        keyp.parent.mkdir(parents=True, exist_ok=True)
+        prevp.write_text(base64.b64encode(k_old).decode(), encoding="utf-8")
+        V._save(vd)
+        keyp.write_text(base64.b64encode(k_new).decode(), encoding="utf-8")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return {"dry_run": False, "old_key_id": key_id(k_old), "new_key_id": key_id(k_new), "re_encrypted": len(new),
+            "note": "if ATIP_ENCRYPTION_KEY is also set in the environment or .env, update it there too -- the "
+                    "environment value wins over the key file"}
 
 
 def keygen(path: Path | None = None) -> str:

@@ -30,9 +30,11 @@ from enterprise.config import settings
 STATUSES = ("ACTIVE", "SUSPENDED", "DISABLED", "ARCHIVED")
 TRANSITIONS = {"ACTIVE": {"SUSPENDED", "DISABLED", "ARCHIVED"}, "SUSPENDED": {"ACTIVE", "DISABLED", "ARCHIVED"},
                "DISABLED": {"ACTIVE", "ARCHIVED"}, "ARCHIVED": set()}
-LIMIT_KEYS = ("max_users", "max_strategies", "max_models", "max_backtests_per_day", "max_api_keys")
+LIMIT_KEYS = ("max_users", "max_strategies", "max_models", "max_backtests_per_day", "max_api_keys",
+              "max_api_calls_per_day", "max_alert_rules", "max_watchlists", "max_reports")      # last four: W9
 DEFAULT_LIMITS = {"max_users": 25, "max_strategies": 50, "max_models": 20, "max_backtests_per_day": 50,
-                  "max_api_keys": 5}
+                  "max_api_keys": 5, "max_api_calls_per_day": 100000, "max_alert_rules": 200, "max_watchlists": 50,
+                  "max_reports": 50}
 
 
 def _limits(v):
@@ -133,7 +135,10 @@ def usage(conn, tenant_id) -> dict:
     return {"users": n("SELECT COUNT(DISTINCT user_id) FROM enterprise_user_role WHERE tenant_id=?", tenant_id),
             "strategies": n("SELECT COUNT(*) FROM strategy WHERE COALESCE(tenant_id,'default')=?", tenant_id),
             "models": n("SELECT COUNT(*) FROM ml_model WHERE COALESCE(tenant_id,'default')=?", tenant_id),
-            "api_keys": n("SELECT COUNT(*) FROM enterprise_api_key WHERE tenant_id=? AND revoked_at IS NULL", tenant_id)}
+            "api_keys": n("SELECT COUNT(*) FROM enterprise_api_key WHERE tenant_id=? AND revoked_at IS NULL", tenant_id),
+            "alert_rules": n("SELECT COUNT(*) FROM enterprise_alert_rule WHERE tenant_id=?", tenant_id),
+            "watchlists": n("SELECT COUNT(*) FROM enterprise_watchlist WHERE tenant_id=?", tenant_id),
+            "reports": n("SELECT COUNT(*) FROM enterprise_report WHERE tenant_id=?", tenant_id)}
 
 
 def check_limit(conn, tenant_id, key, adding=1):

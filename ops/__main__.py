@@ -19,6 +19,18 @@ python -m ops <command>
     scan                   secret / config scan of tracked files (+ pip-audit if installed)
     backup --kind pre-release   (W9) verified backup labelled for a deployment
     release preflight|manifest|postcheck|record ...   (W9) see ops/release.py
+    W31:
+    offsite-copy [<backup id>] encrypted off-site copy of a VERIFIED backup (default: the newest)
+    restore-drill          restore the newest backup (off-site encrypted copy when present) into
+                           a drill file, verify, time it, delete it
+    decrypt-backup <enc> --target FILE   decrypt an encrypted backup copy
+    vault-migrate [--apply] move config.json secrets into the encrypted vault (dry run default)
+    vault-set <NAME>       store a secret in the vault (value read from stdin, never argv)
+    vault-list             vault names and key ids (never values)
+    rotate-key [--apply]   re-encrypt everything under a new ATIP_ENCRYPTION_KEY (dry run default)
+    api-docs               regenerate docs/API_REFERENCE.md + docs/openapi.json
+    rollback-drill [--from REF] [--to REF] [--port 8078] [--keep]
+                           executed rollback drill on a scratch clone (never production)
 Exit code 1 when the command found a problem.
 """
 
@@ -43,6 +55,11 @@ def main(argv=None) -> int:
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--target")
     ap.add_argument("--kind", default="manual", choices=["manual", "pre-release"])
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--from", dest="from_ref", default="HEAD")
+    ap.add_argument("--to", dest="to_ref")
+    ap.add_argument("--port", type=int, default=8078)
+    ap.add_argument("--keep", action="store_true")
     a = ap.parse_args(argv)
     from db.schema import get_connection
     if a.cmd == "status":
@@ -97,6 +114,70 @@ def main(argv=None) -> int:
         r = verify(a.arg)
         _p(r)
         return 0 if r["ok"] else 1
+    if a.cmd == "offsite-copy":
+        from ops.backup import offsite_copy
+        bid = a.arg
+        if not bid:
+            c = get_connection()
+            try:
+                r = c.execute("SELECT backup_id FROM ops_backup WHERE status='VERIFIED' AND pruned_at IS NULL ORDER BY "
+                              "finished_at DESC LIMIT 1").fetchone()
+            finally:
+                c.close()
+            bid = r[0] if r else None
+        if not bid:
+            print("no VERIFIED backup")
+            return 1
+        r = offsite_copy(bid)
+        _p(r)
+        return 0 if r["status"].startswith("COPIED") else 1
+    if a.cmd == "restore-drill":
+        from ops.backup import restore_drill
+        r = restore_drill(notify=False)
+        _p(r)
+        return 0 if r.get("status") == "SUCCESS" else 1
+    if a.cmd == "decrypt-backup":
+        from pathlib import Path
+        from ops.backup import decrypt_file, verify
+        if not a.target:
+            print("--target FILE is required")
+            return 2
+        r = decrypt_file(Path(a.arg), Path(a.target))
+        v = verify(a.target)
+        _p({**r, "verified": v["ok"], "integrity": v.get("integrity")})
+        return 0 if v["ok"] else 1
+    if a.cmd == "vault-migrate":
+        from ops.vault import migrate_from_config
+        _p(migrate_from_config(apply=a.apply))
+        return 0
+    if a.cmd == "vault-set":
+        from ops.vault import set_secret
+        value = sys.stdin.readline().rstrip("\r\n")
+        _p(set_secret(a.arg, value))
+        return 0
+    if a.cmd == "vault-list":
+        from ops.vault import names
+        _p(names())
+        return 0
+    if a.cmd == "rotate-key":
+        from ops.crypto import rotate_key
+        c = get_connection()
+        try:
+            _p(rotate_key(c, apply=a.apply))
+        finally:
+            c.close()
+        return 0
+    if a.cmd == "api-docs":
+        from ops.api_docs import write
+        from dashboard.server import app as _app
+        from enterprise.public_api import write_docs
+        _p({"reference": write(_app), "v1": write_docs(_app)})
+        return 0
+    if a.cmd == "rollback-drill":
+        from ops.rollback_drill import run
+        r = run(a.from_ref, a.to_ref, a.port, a.keep)
+        _p(r)
+        return 0 if r["status"] == "PASSED" else 1
     if a.cmd == "keygen":
         from ops.crypto import keygen
         print(f"key written to {keygen()} (not printed). Back it up securely: encrypted fields are unreadable "

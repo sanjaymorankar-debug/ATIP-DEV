@@ -23,7 +23,25 @@ GLOBAL_TICKERS = {
     "sp500":"^GSPC","dow":"^DJI","nasdaq":"^IXIC","nikkei":"^N225","hangseng":"^HSI",
     "ftse100":"^FTSE","dax":"^GDAXI","crude_wti":"CL=F","crude_brent":"BZ=F",
     "gold":"GC=F","silver":"SI=F","usd_inr":"INR=X","usd_index":"DX-Y.NYB","us_10y":"^TNX",
+    # W27 (DP-12): the rest of the US Treasury curve -- 13-week, 5-year, 30-year yields
+    "us_3m":"^IRX","us_5y":"^FVX","us_30y":"^TYX",
 }
+# No free, reliable daily India 10-year G-sec series is available through yfinance;
+# it is left out rather than approximated (see docs/W27 handoff).
+YIELD_SERIES = ("us_3m","us_5y","us_10y","us_30y")
+
+def _yf_download(*a, **k):
+    """W31 (OPS-10): yfinance through a breaker and a short retry (Yahoo throttles bursts)."""
+    from ops.resilience import breaker, retry
+
+    @retry(attempts=3, base=2.0, cap=20.0, retry_on=(Exception,))
+    def _once():
+        df = yf.download(*a, **k)
+        if df is None or getattr(df, "empty", True):
+            raise ConnectionError("yfinance returned no data")
+        return df
+    return breaker("yfinance", failure_threshold=4, reset_seconds=300).call(_once)
+
 
 def safe_float(val):
     try: f = float(val); return None if f!=f else round(f,4)
@@ -107,7 +125,7 @@ def fetch_global_markets(trade_date=None, mode="premarket"):
     if trade_date is None: trade_date = date.today()
     log.info(f"🌍 Global markets ({mode})")
     tickers = list(GLOBAL_TICKERS.values())
-    try: data = yf.download(tickers, period="3d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
+    try: data = _yf_download(tickers, period="3d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
     except Exception as e: log.error(f"  Failed: {e}"); return {}
     record={"date":str(trade_date),"time":mode}; changes={}
     for col, ticker in GLOBAL_TICKERS.items():
@@ -119,6 +137,10 @@ def fetch_global_markets(trade_date=None, mode="premarket"):
             record[col]=latest; record[f"{col}_chg"]=chg; changes[col]=chg
         except: pass
     gs,us,asia,cmd,sent = compute_global_score(changes)
+    try:
+        _hc = get_connection(); store_history(_hc, data, GLOBAL_TICKERS); _hc.close()   # DP-12 history
+    except Exception as e:
+        log.warning(f"  global history append: {e}")
     record.update({"global_score":gs,"us_score":us,"asia_score":asia,"commodity_score":cmd,"global_sentiment":sent})
     conn=get_connection()
     try:
@@ -133,9 +155,50 @@ def fetch_global_markets(trade_date=None, mode="premarket"):
     finally: conn.close()
     return record
 
+def store_history(conn, data, tickers_by_col, source="yfinance") -> int:
+    """Every close in a yf.download frame -> global_market_history (series, date, close)."""
+    n = 0
+    for col, ticker in tickers_by_col.items():
+        try:
+            closes = (data[ticker]["Close"] if len(tickers_by_col) > 1 else data["Close"]).dropna()
+        except Exception:
+            continue
+        rows = [(col, str(idx.date()), safe_float(v), source) for idx, v in closes.items() if safe_float(v) is not None]
+        conn.executemany("INSERT OR REPLACE INTO global_market_history (series,date,close,source) VALUES (?,?,?,?)", rows)
+        n += len(rows)
+    conn.commit()
+    return n
+
+
+def backfill_global_history(period="5y", series=None) -> dict:
+    """DP-12 history depth: daily closes of every GLOBAL_TICKERS series for `period`
+    (yfinance period string: 1y / 5y / max). Idempotent."""
+    cols = {c: t for c, t in GLOBAL_TICKERS.items() if not series or c in series}
+    try:
+        data = _yf_download(list(cols.values()), period=period, interval="1d", group_by="ticker",
+                           progress=False, auto_adjust=True)
+    except Exception as e:
+        log.error(f"  Global history failed: {e}"); return {"status": "FAILED", "error": str(e)}
+    conn = get_connection()
+    try:
+        n = store_history(conn, data, cols)
+        log_job("global_history", "SUCCESS", n)
+        return {"status": "SUCCESS", "rows": n, "series": len(cols), "period": period}
+    finally:
+        conn.close()
+
+
+def global_history(conn, series, days=365) -> list:
+    return [dict(r) for r in conn.execute(
+        "SELECT date, close FROM global_market_history WHERE series=? ORDER BY date DESC LIMIT ?",
+        (series, int(days))).fetchall()][::-1]
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     ap=argparse.ArgumentParser(); ap.add_argument("--mode",default="intraday")
+    ap.add_argument("--period",default="5y")
     args=ap.parse_args()
     if args.mode=="intraday": fetch_intraday_indexes()
+    elif args.mode=="history": print(backfill_global_history(args.period))
     else: fetch_global_markets(mode=args.mode)

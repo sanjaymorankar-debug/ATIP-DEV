@@ -42,9 +42,9 @@ select{background:var(--panel);color:var(--text);border:1px solid var(--line);bo
 button.danger{background:var(--bad)}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Trading — risk &amp; execution (W4)</span></div>
-<div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
+<div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/execution-lab">Execution lab</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a></div>
+<div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a><a href="#livepnl">Live P&amp;L</a><a href="#ops">Execution ops</a></div>
 <h2 id="status">Status</h2><div id="st"></div>
 <div class="row"><button class="ghost" onclick="run(false)">Evaluate risk on pending intents</button>
 <button onclick="run(true)">Run paper cycle (risk + paper orders)</button><span id="msg" class="note"></span></div>
@@ -63,6 +63,15 @@ button.danger{background:var(--bad)}
 <h3>Correlation</h3><div id="pcorr" class="scroll"></div>
 <h3>Performance attribution</h3><div id="pperf" class="scroll"></div>
 <h3>Emergency exit</h3><div id="pemx"></div>
+<h2 id="livepnl">Live P&amp;L <span class="muted">(W29 MON-04: newest live quote per symbol; refreshes every 60 s)</span></h2>
+<div id="lp"></div><div id="lps"></div>
+<h2 id="ops">Execution operations (W29)</h2>
+<div class="row"><button class="ghost" onclick="w29Run('/api/execution/broker-health/check',{})">Check broker health</button>
+<button class="ghost" onclick="w29Run('/api/execution/paper-match',{})">Match resting paper orders</button>
+<button class="ghost" onclick="w29Run('/api/execution/reconciliation/run',{})">Reconcile now</button>
+<select id="andays" onchange="loadOps()"><option>7</option><option selected>30</option><option>90</option></select><span id="w29msg" class="muted"></span></div>
+<div id="bh"></div><div id="rec" style="margin-top:8px"></div><div id="rest" style="margin-top:8px"></div>
+<div id="an" style="margin-top:8px"></div><div id="kz" style="margin-top:8px"></div>
 <h2 id="execution">Orders</h2><div id="ord" class="scroll"></div>
 <h2>Fills</h2><div id="fil" class="scroll"></div>
 <h2>Positions</h2><div id="pos" class="scroll"></div>
@@ -129,7 +138,31 @@ async function loadRisk(){
 }
 async function flatten(b,code){const t=prompt(`EMERGENCY EXIT (${b}): halts all trading, cancels open orders`+(b==='PAPER'?' and sells every paper position.':'. LIVE: no order is sent; you get the sell list.')+`\nType ${code} to confirm:`);if(t!==code)return;
  const reason=prompt('Reason (recorded):')||'';try{const r=await send('POST','/api/risk/emergency-exit',{book:b,confirm:code,reason},`emx-${code}`);alert(`${r.status}: sold ${r.sold.length}, failed ${r.failed.length}, cancelled ${r.cancelled_orders.length}`+(r.manual_sells.length?`\nSell at broker: `+r.manual_sells.map(x=>x.symbol+' '+x.qty).join(', '):''));load();loadRisk()}catch(e){alert(e.message)}}
-load();loadRisk();
+async function w29Run(u,b){const m=document.getElementById('w29msg');m.textContent=' running…';
+  try{const r=await send('POST',u,b||{},'w29-'+Date.now());m.textContent=' '+(r.overall||r.result||r.status||'done');loadOps();load()}catch(e){m.textContent=' '+e.message}}
+async function loadPnl(){try{const P=await j('/api/pnl/live');const card=(b,t)=>`<div class="kpi" style="display:inline-block;min-width:200px;margin:0 10px 8px 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px"><div class="muted">${t}</div><div style="font-size:18px;font-weight:700" class="${(b.day_pnl||0)>=0?'pos':'neg'}">₹${num(b.day_pnl,0)} today</div><div class="muted">value ₹${num(b.value,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} pos</div></div>`;
+  const rows=[...P.LIVE.rows.map(r=>({...r,book:'LIVE'})),...P.PAPER.rows.map(r=>({...r,book:'PAPER'}))];
+  document.getElementById('lp').innerHTML=card(P.LIVE,'LIVE holdings')+card(P.PAPER,'PAPER book')+`<span class="muted">${P.PAPER.cash!=null?'paper cash ₹'+num(P.PAPER.cash,0)+' · realised ₹'+num(P.PAPER.realized_to_date,0):''} ${P.stale_prices.length?'· stale prices: '+esc(P.stale_prices.slice(0,8).join(', ')):''}</span>`
+   +table(['Book','Symbol','Qty','Avg','Price','Day %','Day P&L','Unrealised','Price source'],rows.map(r=>`<tr><td>${r.book}</td><td><b>${esc(r.symbol)}</b></td><td>${r.qty}</td><td>${num(r.avg)}</td><td>${num(r.price)}</td><td class="${(r.day_pct||0)>=0?'pos':'neg'}">${num(r.day_pct)}%</td><td class="${(r.day_pnl||0)>=0?'pos':'neg'}">${num(r.day_pnl,0)}</td><td class="${(r.unrealized||0)>=0?'pos':'neg'}">${num(r.unrealized,0)}</td><td class="muted">${esc(r.price_source||'')}${r.quote_age_min!=null?' · '+r.quote_age_min+'m':''}</td></tr>`))
+   +Object.entries(P.strategies).map(([s,b])=>`<div class="muted">strategy ${esc(s)}: day ₹${num(b.day_pnl,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} open</div>`).join('');
+  const S=await j('/api/pnl/live/series');const pts=(S.series.PAPER||[]).concat([]);const l=(S.series.LIVE||[]);
+  const spark=(v,lbl)=>{if(v.length<2)return '';const ys=v.map(p=>p.day_pnl||0),mn=Math.min(...ys,0),mx=Math.max(...ys,0),rg=mx-mn||1,w=420,h=70;
+   return `<div class="muted">${lbl} day P&L ${v[0].ts}→${v[v.length-1].ts}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px"><line x1="0" x2="${w}" y1="${h-4-(0-mn)/rg*(h-8)}" y2="${h-4-(0-mn)/rg*(h-8)}" stroke="#475569" stroke-dasharray="3 3"/><path d="${v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-4)+2).toFixed(1)},${(h-4-((p.day_pnl||0)-mn)/rg*(h-8)).toFixed(1)}`).join('')}" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg>`};
+  document.getElementById('lps').innerHTML=spark(l,'LIVE')+spark(pts,'PAPER')}catch(e){document.getElementById('lp').textContent=e.message}}
+async function loadOps(){
+  try{const B=await j('/api/execution/broker-health');const L=B.latest;document.getElementById('bh').innerHTML=L?`<b>Broker health ${pill(L.overall)}</b> <span class="muted">${esc(String(L.checked_at).slice(0,16))}${L.in_session?'':' (outside session)'}</span>`+table(['Check','Status','Detail'],L.checks.map(c=>`<tr><td>${esc(c.check)}</td><td>${pill(c.status)}</td><td class="muted">${esc(c.detail)}${c.latency_ms!=null?' · '+c.latency_ms+' ms':''}</td></tr>`)):'<span class="muted">no broker health check yet</span>'}catch(e){document.getElementById('bh').textContent=e.message}
+  try{const R=await j('/api/execution/reconciliation?limit=1');const r=R[0];document.getElementById('rec').innerHTML=r?`<b>Reconciliation ${pill(r.status)}</b> <span class="muted">${esc(r.trade_date)} · ${r.breaks} breaks · ${r.explained} explained</span>`+table(['Book','Kind','Symbol / order','Detail'],Object.entries(r.details).flatMap(([bk,d])=>[...d.breaks.map(x=>[bk,'BREAK',x]),...d.explained.map(x=>[bk,'explained',x])]).map(([bk,k,x])=>`<tr><td>${bk}</td><td>${k}</td><td>${esc(x.symbol||x.order_id)}</td><td class="muted">${esc(JSON.stringify(x))}</td></tr>`)):'<span class="muted">no reconciliation yet</span>'}catch(e){document.getElementById('rec').textContent=e.message}
+  try{const O=await j('/api/oms/orders?limit=200');const rest=(Array.isArray(O)?O:O.orders||[]).filter(o=>['ACKNOWLEDGED','CREATED','VALIDATED'].includes(o.status));
+   document.getElementById('rest').innerHTML=`<b>Resting / open orders</b>`+table(['Order','Symbol','Side','Qty','Type','Limit','Trigger','Status','Actions'],rest.map(o=>`<tr><td>${esc(o.order_id)}</td><td>${esc(o.symbol)}</td><td>${o.side}</td><td>${o.quantity}</td><td>${esc(o.order_type)}</td><td>${num(o.limit_price)}</td><td>${num(o.trigger_price)}</td><td>${pill(o.status)}</td><td><button class="ghost" onclick="w29Modify('${o.order_id}')">Modify</button></td></tr>`))}catch(e){document.getElementById('rest').textContent=e.message}
+  try{const d=document.getElementById('andays').value;const A=await j('/api/execution/analytics?days='+d);const o=A.overall;
+   document.getElementById('an').innerHTML=`<b>Execution analytics</b> <span class="muted">${esc(A.period)}${A.note?' · '+esc(A.note):''}</span>`+table(['Orders','Fill rate (qty)','Fill rate (orders)','Rejected','Cancelled','Failed','Time to fill p50 / p90','Slippage bps mean / p90 / worst','Slippage cost','Fees'],[`<tr><td>${o.orders}</td><td>${o.fill_rate_qty==null?'—':num(o.fill_rate_qty*100,1)+'%'}</td><td>${o.fill_rate_orders==null?'—':num(o.fill_rate_orders*100,1)+'%'}</td><td>${o.rejected}</td><td>${o.cancelled}</td><td>${o.failed}</td><td>${num(o.time_to_fill_s.median,1)}s / ${num(o.time_to_fill_s.p90,1)}s</td><td>${num(o.slippage_bps.mean)} / ${num(o.slippage_bps.p90)} / ${num(o.slippage_bps.worst)}</td><td>₹${num(o.slippage_cost_rs,0)}</td><td>₹${num(o.fees_rs,0)}</td></tr>`])
+    +(o.rejection_reasons.length?`<div class="muted">rejections: ${o.rejection_reasons.map(r=>esc(r.reason)+' ×'+r.count).join(' · ')}</div>`:'')}catch(e){document.getElementById('an').textContent=e.message}
+  try{const K=await j('/api/zerodha/status');document.getElementById('kz').innerHTML=`<b>Zerodha session</b> ${pill(K.state)} <span class="muted">${esc(K.detail)}</span> ${K.state!=='VALID'&&K.configured?'<button class="ghost" onclick="w29Kite()">Log in to Zerodha</button>':''}`}catch(e){}
+}
+async function w29Modify(oid){const q=prompt('New quantity (blank = keep):','');if(q===null)return;const l=prompt('New limit price (blank = keep):','');if(l===null)return;const t=prompt('New trigger price (blank = keep):','');if(t===null)return;
+  try{await send('POST',`/api/oms/orders/${oid}/modify`,{quantity:q||null,limit_price:l||null,trigger_price:t||null},'mod-'+oid+'-'+Date.now());loadOps();load()}catch(e){alert(e.message)}}
+async function w29Kite(){try{const r=await j('/api/zerodha/login-url');window.open(r.login_url,'_blank')}catch(e){alert(e.message)}}
+load();loadRisk();loadPnl();loadOps();setInterval(loadPnl,60000);
 </script></body></html>"""
 
 
