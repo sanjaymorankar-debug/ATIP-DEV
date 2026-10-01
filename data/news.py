@@ -3,10 +3,15 @@ import json, logging, argparse, re, time, os
 import requests
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from dotenv import load_dotenv
 from db.schema import get_connection, log_job
 
-load_dotenv()
+# Optional: ops/secrets already reads .env. A hard import here made every news run fail
+# ("No module named 'dotenv'") in the task-launched process on 2026-09-30 / 10-01.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 log = logging.getLogger(__name__)
 try: import feedparser; HAS_FP=True

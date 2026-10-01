@@ -1249,17 +1249,18 @@ def run_morning_digest():
 
 
 def run_health_check():
-    """Compare what ran with what should have (pipeline/health.py) and alert on
-    each problem -- once a day per problem, on the dashboard and Telegram."""
+    """Compare what ran with what should have (pipeline/health.py), RE-RUN what was
+    missed or failed (pipeline/recover.py: current global markets, news, portfolio,
+    unscored sessions, the brief), then alert only on what is still wrong -- once a
+    day per problem, on the dashboard and Telegram."""
     try:
-        from db.schema import get_connection
-        from pipeline.health import check_job_health, format_problems
-        from alerts.telegram import send_job_health_alerts
-        conn = get_connection()
-        try:
-            problems = check_job_health(conn)
-        finally:
-            conn.close()
+        from pipeline.health import format_problems
+        from pipeline.recover import check_and_recover
+        from alerts.telegram import send_job_health_alerts, send_recovery_notice
+        out = check_and_recover()
+        if out["ran"]:
+            send_recovery_notice(out)
+        problems = out["problems"]
         if problems:
             log.warning("  🩺 Job health:\n" + format_problems(problems))
             send_job_health_alerts(problems)
@@ -1818,7 +1819,10 @@ def start_scheduler():
     try:
         run_morning_catchup()
     except Exception as e:
-        log.warning(f"  Morning catch-up failed: {e}")
+        log.warning(f"  Morning catch-up failed: {e}", exc_info=True)
+    # Anything still missed or failing (earlier sessions included) is re-run now
+    # rather than reported as MISSED until tomorrow's slot.
+    run_health_check()
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
@@ -1829,6 +1833,7 @@ def start_scheduler():
         beat("scheduler_standby", detail="waiting for the leader lease")
         time.sleep(30)
     last_lease = time.monotonic()
+    slept_from = None
     while True:
         if time.monotonic() - last_lease >= 60:
             if not leader_lease():
@@ -1838,6 +1843,11 @@ def start_scheduler():
                 log.info("  scheduler leader lease re-acquired")
             last_lease = time.monotonic()
         schedule.run_pending()
+        if slept_from:
+            # After run_pending has fired the overdue slots once: whatever is still
+            # missing gets the same catch-up + recovery a restart would.
+            _on_wake(slept_from)
+            slept_from = None
         beat("scheduler", detail=f"{len(schedule.get_jobs())} jobs")   # W8: throttled to one write / 60 s
         nxt = schedule.next_run()
         if nxt:
@@ -1848,7 +1858,27 @@ def start_scheduler():
                   f"({h:02d}h {m:02d}m {s:02d}s)  "
                   f"Market: {'OPEN 🟢' if is_market_hours() else 'CLOSED ⚫'}",
                   end="", flush=True)
+        before_sleep = datetime.now()
         time.sleep(15)
+        if datetime.now() - before_sleep > WAKE_GAP:        # the PC slept through this tick
+            slept_from = before_sleep
+
+
+WAKE_GAP = timedelta(minutes=10)
+
+
+def _on_wake(slept_from):
+    """The PC slept from `slept_from` until now. `schedule` fires each overdue slot once
+    on wake, but jobs whose own guards skip late runs (morning brief, pre-market) and
+    anything that failed meanwhile stay missed -- 2026-10-01 had the PC asleep 01:33-09:03.
+    Run the start-up market catch-up, the morning catch-up and recovery."""
+    log.warning(f"\n  ⏰ Woke after {datetime.now() - slept_from} asleep (since {slept_from:%H:%M}) — catching up")
+    for fn in (run_startup_market_catchup, run_morning_catchup, run_postmarket_if_missing):
+        try:
+            fn()
+        except Exception as e:
+            log.warning(f"  Wake catch-up {fn.__name__}: {e}", exc_info=True)
+    run_health_check()
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ ROUTE_RULES = [
     ("*", r"^/api/admin/users/[^/]+/mfa-reset$", "admin:users"),
     # W8 operations: metrics, status, backups, config, secrets status, webhooks
     ("*", r"^/api/ops", "system:operate"),
+    ("POST", r"^/api/health/recover$", "system:operate"),          # re-run missed jobs (pipeline/recover.py)
     ("*", r"^/api/admin/(users|password-reset)", "admin:users"),
     ("*", r"^/api/admin/tenants", "admin:tenants"),
     ("*", r"^/api/admin/(roles|permissions)", "admin:roles"),

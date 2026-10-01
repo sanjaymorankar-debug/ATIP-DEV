@@ -47,19 +47,24 @@ class Expect:
     weekly_by: tuple | None = None
     need_rows: bool = False
     need_success: bool = False   # only SUCCESS / EMPTY count (SKIPPED does not)
+    from_time: time | None = None  # a run on the due day counts only from this time (midday news)
 
 
 # Deadlines are the scheduled time plus a margin for the job to finish; for the
-# post-market chain, after the 18:30 catch-up.
+# post-market chain, after the 18:30 catch-up. The *_catchup / *_recover names are
+# the start-up catch-up and pipeline/recover.py re-runs of the same work.
 EXPECTATIONS = (
-    Expect("Global markets (pre-market)", ("global_premarket",), daily_by=time(7, 30), need_rows=True),
-    Expect("News (morning)", ("news_premarket", "news_catchup"), daily_by=time(8, 30), need_rows=True),
+    Expect("Global markets (pre-market)", ("global_premarket", "global_catchup", "global_recover"),
+           daily_by=time(7, 30), need_rows=True),
+    Expect("News (morning)", ("news_premarket", "news_catchup", "news_recover"), daily_by=time(8, 30),
+           need_rows=True),
     # Zerodha reports SKIPPED when it is not connected; that must not make a
     # failed Dhan sync look like a working portfolio sync.
     Expect("Portfolio sync", ("dhan_portfolio", "zerodha_portfolio"), daily_by=time(8, 30), need_success=True),
     Expect("Morning brief", ("morning_digest",), daily_by=time(8, 45)),
     Expect("Index levels (intraday)", ("intraday_indexes",), every_min=45, need_rows=True),
-    Expect("News (midday)", ("news_midday",), daily_by=time(12, 30)),
+    Expect("News (midday)", ("news_midday", "news_catchup", "news_recover"), daily_by=time(12, 30),
+           from_time=time(11, 30)),
     Expect("Bhavcopy (EOD prices)", ("bhavcopy_eod",), daily_by=time(18, 45), need_rows=True),
     Expect("Technical indicators", ("technical_indicators",), daily_by=time(18, 45), need_rows=True),
     Expect("AI scoring", ("ai_scoring_engine",), daily_by=time(18, 45), need_rows=True),
@@ -146,8 +151,9 @@ def check_job_health(conn, now: datetime | None = None) -> list[Problem]:
             day = _last_due_day(e.daily_by, now)
             if day is None or since > datetime.combine(day, time(0, 0)):
                 continue
-            runs = [r for r in _runs(conn, e.jobs, since=datetime.combine(day, time(0, 0)))
-                    if str(r["start_time"])[:10] == str(day)]
+            # Runs on the due day (from from_time), or any later run: a slot missed on the
+            # day but re-run since (start-up catch-up, pipeline/recover.py) has current data.
+            runs = _runs(conn, e.jobs, since=datetime.combine(day, e.from_time or time(0, 0)))
             if not runs:
                 problems.append(Problem(e.label, "MISSED",
                                         f"no run on {day} by {e.daily_by:%H:%M}", e.jobs))
