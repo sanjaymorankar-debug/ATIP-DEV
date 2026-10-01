@@ -67,6 +67,7 @@ ROUTE_RULES = [
     ("*", r"^/api/strategies/[^/]+/(activate|pause|disable|retire|archive|lifecycle|current-version)$",
      "strategy:lifecycle"),
     ("PUT", r"^/api/strategies/regime-mapping", "strategy:lifecycle"),
+    ("POST", r"^/api/strategies/[^/]+/ml-activate$", "strategy:lifecycle"),          # W28 SE-05
     ("GET", r"^/api/(strategies|strategy-decisions)", "strategy:read"),
     ("*", r"^/api/strategies", "strategy:write"),
     # W2 backtests

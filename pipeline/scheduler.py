@@ -414,6 +414,7 @@ def run_premarket(force=False):
     # run_morning_catchup() also fetches it if it is still missing.
     from data.news import run_news_pipeline
     run_job("news_premarket", run_news_pipeline, 14)
+    _news_summary()
 
     # Global markets (S&P, Dow, Nasdaq, Nikkei, Gold, Crude, USD/INR)
     from data.markets import fetch_global_markets
@@ -573,16 +574,36 @@ def run_midday_news():
     if not is_market_day(): return
     from data.news import run_news_pipeline
     run_job("news_midday", run_news_pipeline, 5)
+    _news_summary()
+
+
+def _news_summary():
+    """W28 (NS-04): market brief over the last news.summary_hours of headlines --
+    Claude Haiku 4.5 when news.ai_enabled and under the daily cap, else rule-based."""
+    try:
+        from data.news_ai import run_summary_job
+        run_job("news_summary", run_summary_job)
+    except Exception as e:
+        log.warning(f"  News summary: {e}")
+
+
+def run_intraday_scan_job():
+    """W28 (SG-08): intraday scans on live quotes + today's closed 15-min bars against
+    the previous session's scores (strategy/intraday_scan.py)."""
+    if not is_market_hours(): return
+    try:
+        from strategy.intraday_scan import run_intraday_scans
+        run_job("intraday_scans", run_intraday_scans)
+    except Exception as e:
+        log.warning(f"  Intraday scans: {e}")
 
 
 def run_midday_zpi_scan():
-    """12:30 PM — ZPI buy-zone alert scan on live prices."""
+    """12:30 PM — intraday scans (W28). This used to call check_zpi_alerts(today),
+    which reads TODAY's ai_scores -- rows written only by the 16:05 post-market run
+    -- so it could never find a candidate. The zpi_pullback scan replaces it."""
     if not is_market_day(): return
-    try:
-        from alerts.telegram import check_zpi_alerts
-        check_zpi_alerts(date.today())
-    except Exception as e:
-        log.warning(f"  ZPI scan: {e}")
+    run_intraday_scan_job()
 
 
 def run_preclose_scan():
@@ -590,6 +611,7 @@ def run_preclose_scan():
     if not is_market_hours(): return
     log.info(f"  [{now_ist()}] Pre-close scan")
     _run_dhan_quotes(date.today(), "preclose")
+    run_intraday_scan_job()                          # W28: scans on the fresh quotes
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1310,6 +1332,13 @@ def start_scheduler():
     # ── Midday ──────────────────────────────────────────────────────────
     schedule.every().day.at("12:00").do(run_midday_news)
     schedule.every().day.at("12:30").do(run_midday_zpi_scan)
+    try:                                             # W28: extra scan times (12:30 / 14:45 above)
+        from strategy.intraday_scan import settings as _scan_settings
+        for _t in _scan_settings().get("times") or []:
+            if _t not in ("12:30", "14:45"):
+                schedule.every().day.at(_t).do(run_intraday_scan_job)
+    except Exception as e:
+        log.warning(f"  intraday scan schedule: {e}")
     schedule.every().day.at("14:45").do(run_preclose_scan)
 
     # ── Post-market ─────────────────────────────────────────────────────

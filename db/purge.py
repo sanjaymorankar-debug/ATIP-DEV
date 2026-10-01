@@ -45,6 +45,7 @@ LONG_RETENTION_TABLES = {
     "score_components":     "date",      # W22
     "ml_anomaly":           "as_of",     # W24
     "fo_underlying_daily":  "date",      # W27
+    "intraday_scan_hit":    "session",   # W28
 }
 
 SHORT_RETENTION_TABLES = {

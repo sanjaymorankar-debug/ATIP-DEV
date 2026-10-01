@@ -36,6 +36,8 @@ pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;bord
 <p class="muted">Strategies produce decisions and position intents, not orders: every intent here is <b>NOT_AUTHORIZED</b> (the risk and execution path is W4).</p>
 <h2>Strategies</h2>
 <div class="scroll"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Latest signals (score)</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
+<h2>Performance <span class="muted">(W28 DB-16: W4 fills per strategy, average cost; decisions last <select id="pdays" onchange="loadPerf()"><option>7</option><option selected>30</option><option>90</option></select> days)</span></h2>
+<div class="scroll"><table><thead><tr><th>Strategy</th><th>Status</th><th>Health</th><th>Backtest (current version)</th><th>Decisions</th><th>PAPER book</th><th>LIVE book</th></tr></thead><tbody id="perf"></tbody></table></div>
 <h2>Regime mapping <span class="muted">(Market Health regime → strategies in play; edit via PUT /api/strategies/regime-mapping/{regime})</span></h2>
 <div id="regimes"></div>
 <div id="detail"></div>
@@ -93,7 +95,17 @@ async function health(id){try{const r=await j(`/api/strategies/${id}/health`);do
 async function bt(id){const m=document.getElementById('msg');m.textContent='';
   const b={start:document.getElementById('bs').value,end:document.getElementById('be').value};const c=document.getElementById('bc').value;if(c)b.initial_capital=Number(c);
   try{const r=await post(`/api/strategies/${id}/backtest`,b);m.textContent='started '+r.run_id+' (see Backtests)'}catch(e){m.textContent=e.message}}
-load();loadRegimes();
+function book(b){if(!b)return '<span class="muted">no fills</span>';const t=(b.realized||0)+(b.unrealized||0);
+  return `<span class="${t>=0?'pos':'neg'}">₹${num(t,0)}</span><br><span class="muted">real ${num(b.realized,0)} · unreal ${num(b.unrealized,0)} · ${b.open_positions} open · ${b.fills} fills</span>`}
+async function loadPerf(){try{const d=document.getElementById('pdays').value;const P=await j('/api/strategy-performance?days='+d);
+  document.getElementById('perf').innerHTML=P.map(p=>{const bt=p.backtest,h=p.health,dc=p.decisions;
+   const acts=Object.entries(dc.by_action||{}).map(([k,v])=>`${esc(k)} ${v}`).join(', ')||'<span class="muted">none</span>';
+   return `<tr><td><b>${esc(p.strategy_id)}</b> <span class="muted">${esc(p.version)}</span></td><td>${p.status}</td>
+   <td>${h?`<span class="pill ${h.status}">${h.status}</span> <span class="muted">${esc((h.issues||[]).join(', '))}</span>`:'—'}</td>
+   <td>${bt?`${pct(bt.total_return)} · Sharpe ${num(bt.sharpe)} · DD ${pct(bt.max_drawdown)} · win ${pct(bt.win_rate)} · ${bt.trades??'—'} trades<br><span class="muted">${esc(bt.period)}</span>`:'<span class="muted">never backtested</span>'}</td>
+   <td>${acts}${dc.blocked?` <span class="neg">(${dc.blocked} blocked)</span>`:''}</td><td>${book(p.books.PAPER)}</td><td>${book(p.books.LIVE)}</td></tr>`}).join('')}
+  catch(e){document.getElementById('perf').innerHTML=`<tr><td colspan=7 class="neg">${esc(e.message)}</td></tr>`}}
+load();loadRegimes();loadPerf();
 </script></body></html>"""
 
 

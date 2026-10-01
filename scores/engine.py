@@ -723,7 +723,13 @@ def compute_msi(td,conn,weights):
     c["Global"]=glb.get("global_score",50) or 50
     vix=get_vix(td,conn)
     if vix is not None: c["VIX"]=minmax(vix,8,35,invert=True)
+    global LAST_MSI
+    LAST_MSI={"components":{k:float(v) for k,v in c.items() if v is not None},"weights":dict(weights)}
     return round(weighted_score(c,weights),2)
+
+# W28 (DB-11): the market-level MSI's components, kept from the last compute_msi so
+# run_scoring_pipeline can store them in score_components under symbol __MARKET__
+LAST_MSI={}
 
 def compute_acs(sym,td,all_scores,mh,conn,weights,liquidity=None,news_conf=None):
     """
@@ -809,6 +815,11 @@ def run_scoring_pipeline(trade_date=None):
         w_ins=load_weights(conn,"INS")
         mh=compute_mh(trade_date,conn,w_mh)
         msi=compute_msi(trade_date,conn,w_msi)
+        try:
+            from scores.formulas import store_components as _sc
+            if LAST_MSI: _sc(conn,"__MARKET__",trade_date,{"MSI":LAST_MSI})
+        except Exception as e:
+            log.debug(f"  MSI components: {e}")
         fii=get_fii(trade_date,conn)  # market-wide FII/DII 5-day avg — shared input to compute_ins() for every symbol
         # Score the curated tracked universe (Nifty High Beta 50 + portfolio
         # holdings), NOT "every symbol that happens to be in prices_daily

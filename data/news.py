@@ -171,6 +171,13 @@ def classify_rule_based(art):
     return art
 
 def classify_with_claude(articles, batch_size=10):
+    """W28: delegates to data/news_ai.classify -- batched Claude Haiku 4.5 with a
+    daily cost cap and a measured rule fallback (config.json "news"). The per-
+    headline implementation below is kept only for reference and is unused."""
+    from data.news_ai import classify
+    return classify(articles)
+
+def _classify_with_claude_legacy(articles, batch_size=10):
     if not HAS_CLAUDE: return [classify_rule_based(a) for a in articles]
     api_key=os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -216,6 +223,8 @@ def store_articles(articles, conn):
             known_urls.add(art.get("url")); known_keys.add(headline_key(art["headline"]))
             pub=art.get("published",now); recency=(now-pub).total_seconds()/3600
             syms=detect_symbols(art["headline"]+" "+art.get("summary",""))
+            for s in art.get("ai_symbols") or []:          # W28: symbols the model named
+                if s not in syms: syms.append(s)
             ns=compute_news_score(art.get("sentiment",0),art.get("importance","MEDIUM"),art.get("confidence",0.5),recency)
             conn.execute("INSERT OR IGNORE INTO news_articles (fetched_at,headline,source,url,category,symbols_mentioned,sentiment,importance,confidence,news_score,ai_summary,processed,classifier) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?)",
                 (pub.strftime("%Y-%m-%d %H:%M:%S"),art["headline"],art.get("source",""),art.get("url",""),

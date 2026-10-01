@@ -496,6 +496,7 @@ def _check_js(html):
 
 def build_html(state):
     from dashboard.stock_view import ASSETS as _stock_assets      # W26 stock panel + table filters
+    from dashboard.w28_assets import ASSETS as _w28_assets         # W28 news brief, lists & scans tab
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
     scores=state.get("scores",[]); news=state.get("news",[]); port=state.get("portfolio",[]); top25=state.get("top25",{})
     # A session whose inputs covered under half the MH weight has no score
@@ -1296,7 +1297,7 @@ async function pollLiveQuotes(){{
   }}catch(e){{}}
 }}
 setInterval(pollLiveQuotes,15000); pollLiveQuotes();
-</script>{_stock_assets}</body></html>"""
+</script>{_stock_assets}{_w28_assets}</body></html>"""
     # Catch a broken inline script before it silently disables every tab.
     _check_js(html)
     return html
@@ -1567,6 +1568,8 @@ if HAS_FASTAPI:
     _register_stock_view(app, get_connection, json_safe)
     from dashboard.market_routes import register as _register_market_routes             # W27
     _register_market_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w28_routes import register as _register_w28_routes                   # W28
+    _register_w28_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

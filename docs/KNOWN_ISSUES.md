@@ -148,6 +148,15 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W27-5 | No India 10Y G-sec yield, no per-stock daily MF flow, no IV / Greeks | data/markets.py, data/institutional.py, data/derivatives.py | Low | OPEN (no free source / later DP-08) | Data-source wave |
 | W27-6 | Bank FS / SPI exclude D/E, coverage, ROCE by design and do not use GNPA / NNPA yet | data/nse_filings.py | Low | OPEN | Fundamentals follow-up |
 
+## W28 strategy & AI: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W28-1 | News AI never succeeded end to end: the .env Anthropic key returns 401 (KD-001); rule path in use | data/news_ai.py | Medium | OPEN (owner: key) | Owner |
+| W28-2 | Intraday scan thresholds are first guesses | strategy/intraday_scan.py | Low | OPEN | Tune after a few sessions |
+| W28-3 | SE-05 cannot complete without an ML model with demonstrated edge (none registered; W24 NO_EDGE) | ml/ai_strategy.py | Medium | BLOCKED (model) | ML research |
+| W28-4 | Strategy performance / model monitoring panels are empty until strategies run in PAPER and ml.enabled | dashboard | Low | OPEN (by data) | — |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:

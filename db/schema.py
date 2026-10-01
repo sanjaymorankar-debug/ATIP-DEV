@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -1056,6 +1056,28 @@ W27_TABLES = {
         """CREATE TABLE IF NOT EXISTS live_feed_status (
             feed TEXT PRIMARY KEY, mode TEXT, subscribed INTEGER, ticks INTEGER, last_tick_at TIMESTAMP,
             last_flush_at TIMESTAMP, detail TEXT, updated_at TIMESTAMP)""",
+    ),
+}
+
+# ── Tables added in W28 (strategy & AI) ───────────────────────────────────
+W28_TABLES = {
+    "ai_usage_log": (                  # NS-02..04: every Anthropic request, tokens + cost (daily cap)
+        """CREATE TABLE IF NOT EXISTS ai_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, day DATE NOT NULL, created_at TIMESTAMP, purpose TEXT, model TEXT,
+            input_tokens INTEGER, output_tokens INTEGER, cache_write_tokens INTEGER, cache_read_tokens INTEGER,
+            cost_usd REAL, ok INTEGER, error TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage_log(day)",
+    ),
+    "news_summary": (                  # NS-04 / DB-06
+        """CREATE TABLE IF NOT EXISTS news_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP, window_hours INTEGER, article_count INTEGER,
+            classifier TEXT, model TEXT, summary_json TEXT, fallback_reason TEXT)""",
+    ),
+    "intraday_scan_hit": (             # SG-08
+        """CREATE TABLE IF NOT EXISTS intraday_scan_hit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, run_at TIMESTAMP, session DATE, scan TEXT,
+            symbol TEXT, price REAL, score REAL, details_json TEXT)""",
+        "CREATE INDEX IF NOT EXISTS idx_scan_hit_session ON intraday_scan_hit(session, scan)",
     ),
 }
 
