@@ -580,6 +580,17 @@ def run_midday_news():
     from data.news import run_news_pipeline
     run_job("news_midday", run_news_pipeline, 5)
     _news_summary()
+    _announcements("announcements_midday")          # W28b (NS-06)
+
+
+def _announcements(job):
+    """W28b (NS-06): NSE corporate announcements of the day; documents of tracked stocks to
+    the news model when news.ai_enabled (same daily cost cap)."""
+    try:
+        from data.announcements import run_announcements
+        run_job(job, run_announcements, 1)
+    except Exception as e:
+        log.warning(f"  Announcements: {e}")
 
 
 def _news_summary():
@@ -789,6 +800,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 5:00 PM — Run all 9 AI scoring indexes
     # (this also writes today's predictions — entry/SL/targets/size — which is
     # what makes the accuracy tracker below able to measure anything at all)
+    # W28b (NS-05): source weights + per-stock weighted news scores, read by get_ns()
+    try:
+        from data.news_weighting import run_scheduled as run_news_weights
+        run_job("news_weights", run_news_weights, td)
+    except Exception as e:
+        log.warning(f"  News weights: {e}")
     from scores.engine import run_scoring_pipeline
     run_job("ai_scoring_engine", run_scoring_pipeline, td)
 
@@ -1118,6 +1135,7 @@ def run_eod_late():
     """
     from data.bhavcopy import run_delivery_pipeline
     run_job("delivery", run_delivery_pipeline, None, CATCHUP_LOOKBACK_SESSIONS)
+    _announcements("announcements_eod")             # W28b (NS-06): results land in the evening
 
 
 def run_overnight():

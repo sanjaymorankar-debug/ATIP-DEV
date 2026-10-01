@@ -126,6 +126,11 @@ def _run_additive_migrations(conn):
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
+    from db.schema_w28b import W28B_TABLES, W28B_COLUMNS   # W28b: NS-05 / NS-06
+    for name, ddls in W28B_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in W28B_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing

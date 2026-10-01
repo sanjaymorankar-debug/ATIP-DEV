@@ -113,6 +113,8 @@ ROUTE_RULES = [
     ("*", r"^/api/orders", "orders:manage"),
     ("GET", r"^/api/(portfolio|holdings|pnl|positions)", "portfolio:read"),
     ("*", r"^/api/(portfolio|holdings|pnl|positions)", "portfolio:manage"),
+    # W28b: fetching announcements now (and sending documents to the news model) is a research run
+    ("POST", r"^/api/news/announcements/run$", "research:run"),
     # everything else
     ("GET", r"^/api/", "dashboard:read"),
     ("*", r"^/api/", "system:operate"),

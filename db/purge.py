@@ -46,6 +46,8 @@ LONG_RETENTION_TABLES = {
     "ml_anomaly":           "as_of",     # W24
     "fo_underlying_daily":  "date",      # W27
     "intraday_scan_hit":    "session",   # W28
+    "news_symbol_score":    "date",      # W28b (NS-05)
+    "corporate_announcement": "broadcast_at",   # W28b (NS-06)
 }
 
 SHORT_RETENTION_TABLES = {
