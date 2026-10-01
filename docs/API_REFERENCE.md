@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running application (402 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running application (402 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -121,17 +121,17 @@ Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| POST | `/api/auth/consent` | system:operate |  |  |  |
-| POST | `/api/auth/forgot` | system:operate |  |  |  |
-| POST | `/api/auth/login` | system:operate |  |  | {username, password, tenant_id?} -> token + HttpOnly cookie |
-| POST | `/api/auth/logout` | system:operate |  |  |  |
-| GET | `/api/auth/me` | dashboard:read |  |  |  |
-| POST | `/api/auth/password` | system:operate |  |  |  |
-| POST | `/api/auth/refresh` | system:operate |  |  | W8: exchange a refresh token (body refresh_token or the atip_refresh cookie) for a new session + a new refresh token. Reuse of a used token revokes everything. |
-| POST | `/api/auth/register` | system:operate |  |  | {username, password, email, tenant_name}  (allow_self_registration) |
-| POST | `/api/auth/reset` | system:operate |  |  | {reset_token, new_password} |
-| POST | `/api/auth/switch-tenant` | system:operate |  |  |  |
-| POST | `/api/auth/verify-email` | system:operate |  |  |  |
+| POST | `/api/auth/consent` | signed-in |  |  |  |
+| POST | `/api/auth/forgot` | public |  |  |  |
+| POST | `/api/auth/login` | public |  |  | {username, password, tenant_id?} -> token + HttpOnly cookie |
+| POST | `/api/auth/logout` | signed-in |  |  |  |
+| GET | `/api/auth/me` | signed-in |  |  |  |
+| POST | `/api/auth/password` | signed-in |  |  |  |
+| POST | `/api/auth/refresh` | public |  |  | W8: exchange a refresh token (body refresh_token or the atip_refresh cookie) for a new session + a new refresh token. Reuse of a used token revokes everything. |
+| POST | `/api/auth/register` | public |  |  | {username, password, email, tenant_name}  (allow_self_registration) |
+| POST | `/api/auth/reset` | public |  |  | {reset_token, new_password} |
+| POST | `/api/auth/switch-tenant` | signed-in |  |  |  |
+| POST | `/api/auth/verify-email` | public |  |  |  |
 
 ## `/api/backtests`
 
@@ -171,7 +171,7 @@ Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/api/enterprise/status` | dashboard:read |  |  |  |
+| GET | `/api/enterprise/status` | public |  |  |  |
 
 ## `/api/execution`
 
@@ -284,7 +284,7 @@ Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/api/notifications/unsubscribe` | dashboard:read |  |  |  |
+| GET | `/api/notifications/unsubscribe` | public |  |  |  |
 
 ## `/api/oms`
 
@@ -606,7 +606,7 @@ Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| POST | `/api/webhooks/{source}` | system:operate |  | `source` |  |
+| POST | `/api/webhooks/{source}` | public |  | `source` |  |
 
 ## `/api/zerodha`
 
@@ -631,16 +631,16 @@ Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/health` | dashboard:read |  |  | /health/live  /health/ready  /health/{database\|broker\|data\|scheduler\|ml\|storage\|market_data\|wealth} |
-| GET | `/health/live` | dashboard:read |  |  |  |
-| GET | `/health/ready` | dashboard:read |  |  |  |
+| GET | `/health` | public |  |  | /health/live  /health/ready  /health/{database\|broker\|data\|scheduler\|ml\|storage\|market_data\|wealth} |
+| GET | `/health/live` | public |  |  |  |
+| GET | `/health/ready` | public |  |  |  |
 | GET | `/health/{component}` | dashboard:read |  | `component` |  |
 
 ## `/login`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/login` | dashboard:read |  |  |  |
+| GET | `/login` | public |  |  |  |
 
 ## `/market`
 

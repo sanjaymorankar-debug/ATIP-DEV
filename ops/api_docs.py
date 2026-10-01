@@ -80,7 +80,7 @@ def collect(app=None) -> list:
         for m in methods:
             if m == "HEAD":
                 continue
-            out.append({"method": m, "path": path, "permission": permission_for(m, path), "token": _guarded(r),
+            out.append({"method": m, "path": path, "permission": _perm(m, path, permission_for), "token": _guarded(r),
                         "params": params, "summary": doc.split("\n\n")[0].replace("\n", " ")[:300],
                         "handler": getattr(fn, "__module__", "") + "." + getattr(fn, "__name__", "")})
     descs = _module_descriptions({r["handler"].rsplit(".", 1)[0] for r in out})
@@ -88,6 +88,17 @@ def collect(app=None) -> list:
         if not r["summary"]:
             r["summary"] = descs.get((r["method"], r["path"]), "")[:300]
     return sorted(out, key=lambda x: (x["path"], x["method"]))
+
+
+def _perm(method, path, permission_for):
+    """What authz really requires: public routes and self-service auth routes need no permission."""
+    import re
+    from enterprise.authz import SELF, _public
+    if _public(method, re.sub(r"\{[^}]+\}", "x", path)):
+        return "public"
+    if re.match(SELF, path):
+        return "signed-in"
+    return permission_for(method, path)
 
 
 def write(app=None, out_dir: str = "docs") -> dict:

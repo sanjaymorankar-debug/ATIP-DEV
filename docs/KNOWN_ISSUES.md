@@ -198,6 +198,15 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W32-6 | Capital accounting values open positions at the latest close (oms_fill based); intraday it lags live prices | enterprise/w32.py | Low | BY DESIGN | — |
 | W32-7 | WebAuthn not built (needs an HTTPS origin and a library) | enterprise/mfa.py | Low | DEFERRED | ENT-07 |
 
+## W33 QA preparation: findings
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| S-W33-1 | Login `next` accepted protocol-relative `//host` (open redirect) | dashboard/enterprise_page.py | Medium | FIXED in W33 | — |
+| S-W33-2 | Sign-in redirect dropped the query string, breaking `/app?verify=` links for signed-out users | enterprise/authz.py | Medium | FIXED in W33 | — |
+| S-W33-3 | Two NSE-sourced strings rendered without escaping on /market | dashboard/market_page.py | Low | FIXED in W33 | — |
+| S-W33-4 | API reference showed public / self-service routes with the fallback permission | ops/api_docs.py | Low | FIXED in W33 | — |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:
@@ -208,3 +217,5 @@ All W3 to W7 functionality. The test scenarios are listed in:
 - `W7_ENTERPRISE_HANDOFF.md` section 9
 - `W8_PRODUCTION_HARDENING_HANDOFF.md` section 9
 - `W9_FINAL_RELEASE.md` (the QA handoff checklist)
+- `W32_ENTERPRISE_SAAS_HANDOFF.md` (testing scenarios)
+- `W33_QA_UAT_HANDOFF.md` (QA matrix for W25-W32, security / performance / UAT gate)

@@ -232,7 +232,10 @@ def install(app):
             if p is None:
                 if path.startswith("/api/"):
                     return JSONResponse({"error": "authentication required"}, status_code=401)
-                return RedirectResponse(f"/login?next={path}", status_code=302)
+                from urllib.parse import quote               # W33: keep the query (e.g. /app?verify=)
+                q = request.url.query
+                return RedirectResponse("/login?next=" + quote(path + (f"?{q}" if q else ""), safe="/"),
+                                        status_code=302)
 
             def deny(code, msg):
                 audit.record(conn, "authz.denied", tenant_id=p["tenant_id"], user_id=p.get("user_id"),
