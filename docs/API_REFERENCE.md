@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running application (362 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-01 21:57 by `python -m ops api-docs` from the running application (402 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -24,6 +24,7 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/admin` | dashboard:read |  |  |  |
+| GET | `/admin/console` | dashboard:read |  |  |  |
 
 ## `/api/account`
 
@@ -35,18 +36,32 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/account/api-keys` | workspace:write |  |  |  |
 | POST | `/api/account/api-keys` | workspace:write |  |  |  |
 | DELETE | `/api/account/api-keys/{key_id}` | workspace:write |  | `key_id` |  |
+| GET | `/api/account/consents` | workspace:write |  |  |  |
+| GET | `/api/account/deliveries` | workspace:write |  |  |  |
+| POST | `/api/account/email/verify` | workspace:write |  |  | GET /api/account/consents |
 | GET | `/api/account/mfa` | workspace:write |  |  |  |
 | POST | `/api/account/mfa/confirm` | workspace:write |  |  |  |
 | POST | `/api/account/mfa/disable` | workspace:write |  |  |  |
 | POST | `/api/account/mfa/enroll` | workspace:write |  |  |  |
+| GET | `/api/account/mfa/recovery` | workspace:write |  |  |  |
+| POST | `/api/account/mfa/recovery` | workspace:write |  |  |  |
+| GET | `/api/account/notification-preferences` | workspace:write |  |  | GET /api/account/deliveries |
+| PUT | `/api/account/notification-preferences` | workspace:write |  |  | GET /api/account/deliveries |
 | GET | `/api/account/notifications` | notifications:read |  | `unread`=False | POST /api/account/notifications/read {ids?} |
 | POST | `/api/account/notifications/read` | workspace:write |  |  |  |
+| GET | `/api/account/privacy` | workspace:write |  |  | {kind, reason} |
+| POST | `/api/account/privacy` | workspace:write |  |  | {kind, reason} |
 | GET | `/api/account/profile` | workspace:write |  |  |  |
 | PUT | `/api/account/profile` | workspace:write |  |  |  |
 | GET | `/api/account/reports` | workspace:write |  |  |  |
 | POST | `/api/account/reports` | workspace:write |  |  |  |
 | DELETE | `/api/account/reports/{item_id}` | workspace:write |  | `item_id` |  |
 | GET | `/api/account/risk-profile` | workspace:write |  |  |  |
+| GET | `/api/account/sessions` | workspace:write |  |  |  |
+| DELETE | `/api/account/sessions/{session_id}` | workspace:write |  | `session_id` |  |
+| GET | `/api/account/vault` | workspace:write |  |  | DELETE /api/account/vault/{credential_id} |
+| POST | `/api/account/vault` | workspace:write |  |  | DELETE /api/account/vault/{credential_id} |
+| DELETE | `/api/account/vault/{credential_id}` | workspace:write |  | `credential_id` |  |
 | GET | `/api/account/watchlists` | workspace:write |  |  |  |
 | POST | `/api/account/watchlists` | workspace:write |  |  |  |
 | DELETE | `/api/account/watchlists/{item_id}` | workspace:write |  | `item_id` |  |
@@ -55,11 +70,20 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| PUT | `/api/admin/api-keys/{key_id}/limits` | system:operate |  | `key_id` |  |
 | GET | `/api/admin/audit` | audit:read |  | `tenant_id`, `user_id`, `action`, `limit`=200 |  |
+| POST | `/api/admin/billing-cycle/run` | admin:billing |  |  |  |
+| GET | `/api/admin/console` | admin:tenants |  |  |  |
+| POST | `/api/admin/dunning/run` | admin:billing |  |  | POST /api/admin/billing-cycle/run   (platform admin) |
 | POST | `/api/admin/invoices` | admin:billing |  |  |  |
+| GET | `/api/admin/isolation` | admin:tenants |  |  |  |
+| GET | `/api/admin/onboarding` | admin:users |  |  | GET /api/admin/payments |
+| GET | `/api/admin/payments` | admin:billing |  |  |  |
 | GET | `/api/admin/permissions` | admin:roles |  |  |  |
 | GET | `/api/admin/plans` | admin:billing |  |  | PUT /api/admin/plans/{id}   GET/PUT /api/admin/subscriptions/{tenant} |
 | PUT | `/api/admin/plans/{pid}` | admin:billing |  | `pid` |  |
+| GET | `/api/admin/privacy` | admin:users |  |  | POST /api/admin/privacy/{request_id}/decision |
+| POST | `/api/admin/privacy/{request_id}/decision` | admin:users |  | `request_id` |  |
 | GET | `/api/admin/risk-profiles/{scope}/{sid}` | risk:configure |  | `scope`, `sid` |  |
 | PUT | `/api/admin/risk-profiles/{scope}/{sid}` | risk:configure |  | `scope`, `sid` |  |
 | GET | `/api/admin/roles` | admin:roles |  |  | PUT /api/admin/roles/{role}   GET /api/admin/permissions |
@@ -97,6 +121,8 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| POST | `/api/auth/consent` | system:operate |  |  |  |
+| POST | `/api/auth/forgot` | system:operate |  |  |  |
 | POST | `/api/auth/login` | system:operate |  |  | {username, password, tenant_id?} -> token + HttpOnly cookie |
 | POST | `/api/auth/logout` | system:operate |  |  |  |
 | GET | `/api/auth/me` | dashboard:read |  |  |  |
@@ -104,6 +130,8 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/auth/refresh` | system:operate |  |  | W8: exchange a refresh token (body refresh_token or the atip_refresh cookie) for a new session + a new refresh token. Reuse of a used token revokes everything. |
 | POST | `/api/auth/register` | system:operate |  |  | {username, password, email, tenant_name}  (allow_self_registration) |
 | POST | `/api/auth/reset` | system:operate |  |  | {reset_token, new_password} |
+| POST | `/api/auth/switch-tenant` | system:operate |  |  |  |
+| POST | `/api/auth/verify-email` | system:operate |  |  |  |
 
 ## `/api/backtests`
 
@@ -124,6 +152,14 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/backtests/{run_id}/montecarlo` | research:read |  | `run_id` |  |
 | POST | `/api/backtests/{run_id}/montecarlo` | research:run | token | `run_id` | Body: {method: trade_shuffle\|return_bootstrap, n_sims, seed, block_size}. |
 | GET | `/api/backtests/{run_id}/trades` | research:read |  | `run_id` |  |
+
+## `/api/billing`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/billing` | admin:billing |  |  | POST /api/billing/plan {plan_id} |
+| POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` |  |
+| POST | `/api/billing/plan` | admin:billing |  |  |  |
 
 ## `/api/data-quality`
 
@@ -147,7 +183,7 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/execution/paper-match` | execution:trade | token |  | fill resting paper orders that have crossed              EX-02 |
 | GET | `/api/execution/reconciliation` | execution:read |  | `limit`=5 | ?limit=5                                                 BR-05 |
 | POST | `/api/execution/reconciliation/run` | execution:trade | token |  |  |
-| POST | `/api/execution/run` | execution:trade | token |  | {execute?: bool, as_of?}. execute false = risk only; true = also send APPROVED orders to the PAPER adapter. |
+| POST | `/api/execution/run` | system:operate | token |  | {execute?: bool, as_of?}. execute false = risk only; true = also send APPROVED orders to the PAPER adapter. |
 | GET | `/api/execution/sandbox-check` | execution:read |  |  | read-only steps                                          BR-08 |
 | GET | `/api/execution/slippage` | execution:read |  | `days`=30, `strategy_id` | ?days=30&strategy_id=                                    EX-09 |
 | GET | `/api/execution/status` | execution:read |  |  | mode, live gate, auto-execute, adapter |
@@ -244,6 +280,12 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/news/summary` | dashboard:read |  |  | latest market brief (Claude or rule-based, labelled) |
 | POST | `/api/news/summary` | system:operate | token |  | (token) regenerate now; body {hours?} |
 
+## `/api/notifications`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/notifications/unsubscribe` | dashboard:read |  |  |  |
+
 ## `/api/oms`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -259,6 +301,13 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/oms/orders/{oid}/refresh` | execution:trade | token | `oid` |  |
 | POST | `/api/oms/orders/{oid}/submit` | execution:trade | token | `oid` |  |
 | GET | `/api/oms/positions` | execution:read |  |  |  |
+
+## `/api/onboarding`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/onboarding` | workspace:write |  |  |  |
+| POST | `/api/onboarding/setup` | workspace:write |  |  |  |
 
 ## `/api/ops`
 
@@ -358,6 +407,15 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | POST | `/api/refresh` | system:operate | token |  |  |
 
+## `/api/reports`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/reports/{report_id}/outputs` | workspace:write |  | `report_id` | GET /api/reports/{report_id}/outputs/{output_id} |
+| GET | `/api/reports/{report_id}/outputs/{output_id}` | workspace:write |  | `report_id`, `output_id` |  |
+| POST | `/api/reports/{report_id}/run` | workspace:write |  | `report_id` | {format}   PUT /api/reports/{report_id}/schedule |
+| PUT | `/api/reports/{report_id}/schedule` | workspace:write |  | `report_id` |  |
+
 ## `/api/research`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -380,7 +438,7 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/risk/emergency-exit` | risk:approve | token |  | (token, risk:approve) {book, confirm, reason?, last_close?} |
 | GET | `/api/risk/emergency-exit/history` | risk:read |  | `limit`=20 |  |
 | POST | `/api/risk/evaluate` | risk:configure | token |  | {intent_ids?: [...], as_of?} -- risk only, never orders. |
-| GET | `/api/risk/exposure` | risk:read |  |  | equity, positions, sector, strategy exposure |
+| GET | `/api/risk/exposure` | portfolio:read |  |  | equity, positions, sector, strategy exposure |
 | POST | `/api/risk/frontier` | risk:configure | token |  | (token) {symbols? \| book?, points?, ...} |
 | GET | `/api/risk/limits` | risk:read |  |  | effective limits + source |
 | PUT | `/api/risk/limits` | risk:configure | token |  | {key: value \| null \| "default"} |
@@ -451,6 +509,12 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/strategy-performance` | dashboard:read |  | `days`=30 | ?days=30 |
+
+## `/api/tenant`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/tenant/book` | execution:read |  |  |  |
 
 ## `/api/tod`
 
@@ -550,6 +614,12 @@ Generated 2026-10-01 21:28 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/zerodha/login-url` | dashboard:read |  |  |  |
 | GET | `/api/zerodha/status` | dashboard:read |  |  | \| /api/zerodha/login-url ; GET /zerodha/callback?request_token=           BR-02 |
+
+## `/app`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/app` | dashboard:read |  |  |  |
 
 ## `/backtests`
 

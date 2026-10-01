@@ -1594,6 +1594,8 @@ if HAS_FASTAPI:
     # ── Enterprise: users, tenants, RBAC, account, admin (W7) ─────────────
     from dashboard.enterprise_routes import register as _register_enterprise_routes
     _register_enterprise_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.saas_routes import register as _register_saas_routes                 # W9 SaaS, wired in W32
+    _register_saas_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── Operations (W8): health, metrics, backups, monitoring, webhooks ─
     from dashboard.ops_routes import register as _register_ops_routes

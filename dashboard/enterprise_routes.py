@@ -229,6 +229,20 @@ def register(app, guard, Req, get_connection, json_safe):
             return mfa.disable(c, me(req)["user_id"], (await body(req)).get("code"))
         return await run(f)(request)
 
+    @app.get("/api/account/mfa/recovery")
+    async def acc_mfa_recovery_status(request: Req):
+        async def f(req, c):
+            from enterprise.w32 import recovery_status
+            return recovery_status(c, me(req)["user_id"])
+        return await run(f)(request)
+
+    @app.post("/api/account/mfa/recovery")
+    async def acc_mfa_recovery_generate(request: Req):
+        async def f(req, c):
+            from enterprise.w32 import generate_recovery_codes
+            return generate_recovery_codes(c, me(req)["user_id"], (await body(req)).get("code"))
+        return await run(f)(request)
+
     @app.post("/api/auth/password")
     async def ent_password(request: Req):
         async def f(req, c):

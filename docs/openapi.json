@@ -8414,6 +8414,36 @@
     }
    }
   },
+  "/api/account/mfa/recovery": {
+   "get": {
+    "summary": "Acc Mfa Recovery Status",
+    "operationId": "acc_mfa_recovery_status_api_account_mfa_recovery_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Acc Mfa Recovery Generate",
+    "operationId": "acc_mfa_recovery_generate_api_account_mfa_recovery_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/auth/password": {
    "post": {
     "summary": "Ent Password",
@@ -9553,6 +9583,810 @@
    "get": {
     "summary": "Admin Page",
     "operationId": "admin_page_admin_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/forgot": {
+   "post": {
+    "summary": "Saas Forgot",
+    "operationId": "saas_forgot_api_auth_forgot_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/verify-email": {
+   "post": {
+    "summary": "Saas Verify Email",
+    "operationId": "saas_verify_email_api_auth_verify_email_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/notifications/unsubscribe": {
+   "get": {
+    "summary": "Saas Unsubscribe",
+    "operationId": "saas_unsubscribe_api_notifications_unsubscribe_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/switch-tenant": {
+   "post": {
+    "summary": "Saas Switch",
+    "operationId": "saas_switch_api_auth_switch_tenant_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/consent": {
+   "post": {
+    "summary": "Saas Consent",
+    "operationId": "saas_consent_api_auth_consent_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/sessions": {
+   "get": {
+    "summary": "Acc Sessions",
+    "operationId": "acc_sessions_api_account_sessions_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/sessions/{session_id}": {
+   "delete": {
+    "summary": "Acc Session Revoke",
+    "operationId": "acc_session_revoke_api_account_sessions__session_id__delete",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/email/verify": {
+   "post": {
+    "summary": "Acc Email Verify",
+    "operationId": "acc_email_verify_api_account_email_verify_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/consents": {
+   "get": {
+    "summary": "Acc Consents",
+    "operationId": "acc_consents_api_account_consents_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/notification-preferences": {
+   "get": {
+    "summary": "Acc Prefs",
+    "operationId": "acc_prefs_api_account_notification_preferences_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Acc Prefs Set",
+    "operationId": "acc_prefs_set_api_account_notification_preferences_put",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/deliveries": {
+   "get": {
+    "summary": "Acc Deliveries",
+    "operationId": "acc_deliveries_api_account_deliveries_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/vault": {
+   "get": {
+    "summary": "Acc Vault",
+    "operationId": "acc_vault_api_account_vault_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Acc Vault Store",
+    "operationId": "acc_vault_store_api_account_vault_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/vault/{credential_id}": {
+   "delete": {
+    "summary": "Acc Vault Revoke",
+    "operationId": "acc_vault_revoke_api_account_vault__credential_id__delete",
+    "parameters": [
+     {
+      "name": "credential_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Credential Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/account/privacy": {
+   "get": {
+    "summary": "Acc Privacy",
+    "operationId": "acc_privacy_api_account_privacy_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Acc Privacy New",
+    "operationId": "acc_privacy_new_api_account_privacy_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/tenant/book": {
+   "get": {
+    "summary": "Tenant Book",
+    "operationId": "tenant_book_api_tenant_book_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/onboarding": {
+   "get": {
+    "summary": "Onb Status",
+    "operationId": "onb_status_api_onboarding_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/onboarding/setup": {
+   "post": {
+    "summary": "Onb Setup",
+    "operationId": "onb_setup_api_onboarding_setup_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{report_id}/run": {
+   "post": {
+    "summary": "Rep Run",
+    "operationId": "rep_run_api_reports__report_id__run_post",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Report Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{report_id}/schedule": {
+   "put": {
+    "summary": "Rep Schedule",
+    "operationId": "rep_schedule_api_reports__report_id__schedule_put",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Report Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{report_id}/outputs": {
+   "get": {
+    "summary": "Rep Outputs",
+    "operationId": "rep_outputs_api_reports__report_id__outputs_get",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Report Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{report_id}/outputs/{output_id}": {
+   "get": {
+    "summary": "Rep Output",
+    "operationId": "rep_output_api_reports__report_id__outputs__output_id__get",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Report Id"
+      }
+     },
+     {
+      "name": "output_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Output Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/billing": {
+   "get": {
+    "summary": "Bill Overview",
+    "operationId": "bill_overview_api_billing_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/billing/plan": {
+   "post": {
+    "summary": "Bill Plan",
+    "operationId": "bill_plan_api_billing_plan_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/billing/invoices/{invoice_id}/pay": {
+   "post": {
+    "summary": "Bill Pay",
+    "operationId": "bill_pay_api_billing_invoices__invoice_id__pay_post",
+    "parameters": [
+     {
+      "name": "invoice_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Invoice Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/console": {
+   "get": {
+    "summary": "Adm Console",
+    "operationId": "adm_console_api_admin_console_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/isolation": {
+   "get": {
+    "summary": "Adm Isolation",
+    "operationId": "adm_isolation_api_admin_isolation_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/privacy": {
+   "get": {
+    "summary": "Adm Privacy",
+    "operationId": "adm_privacy_api_admin_privacy_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/privacy/{request_id}/decision": {
+   "post": {
+    "summary": "Adm Privacy Decide",
+    "operationId": "adm_privacy_decide_api_admin_privacy__request_id__decision_post",
+    "parameters": [
+     {
+      "name": "request_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Request Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/onboarding": {
+   "get": {
+    "summary": "Adm Onboarding",
+    "operationId": "adm_onboarding_api_admin_onboarding_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/payments": {
+   "get": {
+    "summary": "Adm Payments",
+    "operationId": "adm_payments_api_admin_payments_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/dunning/run": {
+   "post": {
+    "summary": "Adm Dunning",
+    "operationId": "adm_dunning_api_admin_dunning_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/billing-cycle/run": {
+   "post": {
+    "summary": "Adm Cycle",
+    "operationId": "adm_cycle_api_admin_billing_cycle_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/api-keys/{key_id}/limits": {
+   "put": {
+    "summary": "Adm Key Limits",
+    "operationId": "adm_key_limits_api_admin_api_keys__key_id__limits_put",
+    "parameters": [
+     {
+      "name": "key_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Key Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/app": {
+   "get": {
+    "summary": "Page App",
+    "operationId": "page_app_app_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/console": {
+   "get": {
+    "summary": "Page Console",
+    "operationId": "page_console_admin_console_get",
     "responses": {
      "200": {
       "description": "Successful Response",

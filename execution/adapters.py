@@ -170,6 +170,43 @@ class FuturesPaperAdapter(BrokerAdapter):
                             order.get("avg_fill_price"), order.get("fees") or 0, "EOD futures close")
 
 
+class TenantPaperAdapter(BrokerAdapter):
+    """W9: a non-owner tenant's own simulated book (execution/tenant_books.py).
+    Fills immediately at the reference price (else the latest close) or rejects;
+    never touches the owner's paper book, order_log or any broker."""
+    name, mode = "tenant_paper", PAPER
+
+    def __init__(self, conn, tenant_id):
+        self.conn, self.tenant_id = conn, tenant_id
+
+    def submit(self, order: dict) -> BrokerResult:
+        from execution import tenant_books as TB
+        from execution.positions import latest_close
+        px = order.get("reference_price") or latest_close(self.conn, order["symbol"])[0]
+        if not px:
+            return BrokerResult("REJECTED", None, message=f"no price for {order['symbol']}")
+        px = float(px)
+        lim = order.get("limit_price")
+        if order.get("order_type") == "LIMIT" and lim:
+            if (order["side"] == "BUY" and px > lim) or (order["side"] == "SELL" and px < lim):
+                return BrokerResult("REJECTED", None, message=f"limit {lim} not marketable at {px} "
+                                                              f"(tenant books fill immediately or reject)")
+            px = float(lim)
+        try:
+            f = TB.apply_fill(self.conn, self.tenant_id, order["order_id"], order["symbol"], order["side"],
+                              int(order["quantity"]), px)
+        except ValueError as e:
+            return BrokerResult("REJECTED", None, message=str(e))
+        return BrokerResult("FILLED", f["fill_id"], int(order["quantity"]), px, f["fees"],
+                            f"tenant {self.tenant_id} book", raw={"tenant_id": self.tenant_id})
+
+    def cancel(self, order: dict) -> BrokerResult:
+        return BrokerResult("ERROR", order.get("broker_order_id"), message="tenant book orders fill immediately")
+
+    def status(self, order: dict) -> BrokerResult:
+        return BrokerResult("FILLED", order.get("broker_order_id"), int(order.get("quantity") or 0))
+
+
 class DhanBrokerAdapter(BrokerAdapter):
     """LIVE placeholder. Refuses every call in W4 -- no order can reach Dhan
     through the W4 execution layer."""
@@ -193,7 +230,17 @@ class DhanBrokerAdapter(BrokerAdapter):
         self._refuse("modify")
 
 
-def get_adapter(conn, mode: str, instrument: str | None = None) -> BrokerAdapter:
+def get_adapter(conn, mode: str, instrument: str | None = None, tenant_id: str | None = None) -> BrokerAdapter:
+    """W9: orders of a tenant other than the owner's go to that tenant's own paper book;
+    LIVE is owner-only (and still refused by DhanBrokerAdapter). W30: the owner's FUT
+    orders (futures short legs) go to the paper futures book -- tenants have none."""
+    from execution.tenant_books import is_default
+    if not is_default(tenant_id):
+        if mode != PAPER:
+            raise LiveTradingDisabled(f"tenant {tenant_id}: only PAPER execution exists for tenants")
+        if (instrument or "CASH") == "FUT":
+            raise BrokerError(f"tenant {tenant_id}: futures short legs are owner-book only")
+        return TenantPaperAdapter(conn, tenant_id)
     if mode == PAPER and (instrument or "CASH") == "FUT":
         return FuturesPaperAdapter(conn)
     if mode == PAPER:

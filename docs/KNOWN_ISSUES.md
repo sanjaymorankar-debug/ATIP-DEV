@@ -186,6 +186,18 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W31-3 | Credentials still in config.json until the owner runs vault-migrate --apply | ops/vault.py | Medium | OPEN (owner) | Owner |
 | W31-4 | Off-site backups need ops.backup_offsite_dir and a data key kept outside the machine | ops/backup.py | Medium | OPEN (owner) | Owner |
 
+## W32 enterprise SaaS: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W32-1 | `oms_order` appeared twice in W3_W4_COLUMNS since W29, so fresh installs lost `oms_order.tenant_id` | db/schema.py | High | FIXED in W32 | — |
+| W32-2 | Tables added in W10-W31 were unclassified for tenant scoping (failed closed for tenants) | enterprise/scoping.py | Medium | FIXED in W32 (186/186) | — |
+| W32-3 | Web app reachable only on 127.0.0.1; any exposure needs TLS / security review | dashboard | High | BLOCKED (ENT-07, owner) | Owner |
+| W32-4 | No real payment gateway; provider is sandbox / noop | enterprise/payments.py | Medium | OPEN (owner decision) | Owner |
+| W32-5 | Webhook consumers use ATIP's own payload shape; real provider / broker postback formats need a mapping layer | enterprise/w32.py | Low | OPEN | When a provider is chosen |
+| W32-6 | Capital accounting values open positions at the latest close (oms_fill based); intraday it lags live prices | enterprise/w32.py | Low | BY DESIGN | — |
+| W32-7 | WebAuthn not built (needs an HTTPS origin and a library) | enterprise/mfa.py | Low | DEFERRED | ENT-07 |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:

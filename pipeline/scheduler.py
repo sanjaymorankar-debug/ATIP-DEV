@@ -1308,6 +1308,51 @@ def _schedule_w29_jobs():
     schedule.every(15).minutes.do(_w29_pnl_tick)
     schedule.every().day.at("08:45").do(run_job, "broker_health", _broker_health_now)
     schedule.every().day.at("19:30").do(_w29_audit_export)
+    _schedule_w32_jobs()
+
+
+def _schedule_w32_jobs():
+    """W32 SaaS jobs; each is a no-op (no pipeline_log row) while enterprise.enabled is false."""
+    schedule.every(5).minutes.do(_w32_saas_tick)
+    schedule.every(15).minutes.do(_w32_alerts_tick)
+    schedule.every().day.at("06:30").do(_w32_guard, "saas_daily", "saas_daily")
+    schedule.every().day.at("19:00").do(_w32_guard, "saas_digest", "saas_digest")
+
+
+def _w32_on():
+    try:
+        from enterprise.config import enabled
+        return enabled()
+    except Exception:
+        return False
+
+
+def _w32_guard(name, fn):
+    if _w32_on():
+        from enterprise import w32
+        run_job(name, getattr(w32, fn))
+
+
+def _w32_saas_tick():
+    """Queued deliveries whose quiet hours ended; logged only when some are queued."""
+    if not _w32_on():
+        return
+    try:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM enterprise_notification_delivery WHERE status='QUEUED'").fetchone()[0]
+        finally:
+            c.close()
+        if n:
+            _w32_guard("saas_tick", "saas_tick")
+    except Exception as e:
+        log.warning(f"  SaaS tick: {e}")
+
+
+def _w32_alerts_tick():
+    if is_market_hours():
+        _w32_guard("alerts_intraday", "alerts_intraday")
 
 
 def _broker_health_now():
@@ -1473,8 +1518,21 @@ def start_scheduler():
 
     log.info(f"  Waiting for next scheduled job... (Ctrl+C to stop)\n")
 
-    from ops.jobs import beat
+    from ops.jobs import beat, leader_lease
+    # W9: leader election -- with several scheduler processes only the lease holder runs jobs
+    while not leader_lease():
+        log.warning("  another scheduler holds the leader lease — standing by (checking every 30 s)")
+        beat("scheduler_standby", detail="waiting for the leader lease")
+        time.sleep(30)
+    last_lease = time.monotonic()
     while True:
+        if time.monotonic() - last_lease >= 60:
+            if not leader_lease():
+                log.warning("  scheduler leader lease lost — standing by")
+                while not leader_lease():
+                    time.sleep(30)
+                log.info("  scheduler leader lease re-acquired")
+            last_lease = time.monotonic()
         schedule.run_pending()
         beat("scheduler", detail=f"{len(schedule.get_jobs())} jobs")   # W8: throttled to one write / 60 s
         nxt = schedule.next_run()

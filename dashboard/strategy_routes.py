@@ -124,7 +124,9 @@ def register(app, guard, Req, get_connection, json_safe):
         defn = await body(request)
         conn = conn_synced()
         try:
-            return JSONResponse(json_safe(REG.create_strategy(conn, defn)))
+            p = getattr(request.state, "principal", None) or {}
+            actor = p.get("user_id") if p.get("user_id") and p.get("user_id") != "legacy" else "owner"
+            return JSONResponse(json_safe(REG.create_strategy(conn, defn, actor=actor)))
         except BAD as e:
             return err(e)
         finally:

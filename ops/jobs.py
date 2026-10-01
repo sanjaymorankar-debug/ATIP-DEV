@@ -107,6 +107,31 @@ def job_lock(job, ttl=DEFAULT_TTL):
                 pass
 
 
+LEADER = "scheduler_leader"
+
+
+def leader_lease(ttl=None) -> bool:
+    """W9: acquire / renew the scheduler leader lease (ops_job_lock row LEADER). Only the
+    leader runs scheduled jobs, so several scheduler processes (multi-process deployment)
+    never double-run. Storage failure keeps the current process leading -- a single
+    ATIP process must not stop scheduling because the lease table is briefly locked."""
+    from db.schema import get_connection
+    if ttl is None:
+        try:
+            from ops.config import ops
+            ttl = int(ops().get("scheduler_leader_lease_s") or 180)
+        except Exception:
+            ttl = 180
+    try:
+        c = get_connection()
+        try:
+            return acquire(c, LEADER, ttl)
+        finally:
+            c.close()
+    except Exception:
+        return True
+
+
 def locks(conn) -> list:
     return [dict(r) for r in conn.execute("SELECT job, owner, pid, acquired_at, expires_at FROM ops_job_lock "
                                           "ORDER BY acquired_at").fetchall()]

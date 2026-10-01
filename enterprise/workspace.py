@@ -22,28 +22,33 @@ from datetime import date, datetime, timedelta
 
 OPS = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b, ">": lambda a, b: a > b, ">=": lambda a, b: a >= b,
        "==": lambda a, b: a == b}
-REPORT_KINDS = ("strategy_performance", "risk_exposure", "factor_ranking", "backtest_summary", "custom")
+REPORT_KINDS = ("strategy_performance", "risk_exposure", "factor_ranking", "backtest_summary", "custom",
+                "portfolio", "pnl", "ml_summary", "quant_summary")             # W9: rendered by enterprise/reports.py
 
 
 def _id(p):
     return p + uuid.uuid4().hex[:12].upper()
 
 
-def _must_own(conn, table, key, value, tenant_id, user_id):
-    """W9 fix (KNOWN_ISSUES W9-S1): the upserts below take an id from the request; an id
-    that exists but belongs to another user / tenant must not be overwritten."""
-    if not value:
-        return
-    r = conn.execute(f"SELECT tenant_id, user_id FROM {table} WHERE {key}=?", (value,)).fetchone()
-    if r and (r[0] != tenant_id or r[1] != user_id):
-        raise ValueError(f"no {table.replace('enterprise_', '')} {value} owned by you")
+def _claim(conn, table, key, value, tenant_id, user_id, limit_key):
+    """W9 fix: an id supplied by the client must be one the caller owns (the upsert
+    below used to overwrite another user's / tenant's row); a new row checks the
+    tenant's plan limit."""
+    if value:
+        r = conn.execute(f"SELECT tenant_id, user_id FROM {table} WHERE {key}=?", (value,)).fetchone()
+        if r and (r[0] != tenant_id or r[1] != user_id):
+            raise ValueError(f"no {table.replace('enterprise_', '')} {value} owned by you")
+        if r:
+            return
+    from enterprise.tenants import check_limit
+    check_limit(conn, tenant_id, limit_key)
 
 
 def save_watchlist(conn, tenant_id, user_id, name, symbols, shared=False, watchlist_id=None) -> dict:
     syms = sorted({s.strip().upper() for s in symbols or [] if s and s.strip()})
     if not name or len(syms) > 500:
         raise ValueError("name required; at most 500 symbols")
-    _must_own(conn, "enterprise_watchlist", "watchlist_id", watchlist_id, tenant_id, user_id)
+    _claim(conn, "enterprise_watchlist", "watchlist_id", watchlist_id, tenant_id, user_id, "watchlists")
     wid = watchlist_id or _id("W")
     conn.execute("INSERT INTO enterprise_watchlist (watchlist_id,tenant_id,user_id,name,symbols_json,shared,created_at,"
                  "updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(watchlist_id) DO UPDATE SET name=excluded.name,"
@@ -59,7 +64,7 @@ def save_alert(conn, tenant_id, user_id, name, symbol, feature, op, value, rule_
         raise ValueError(f"unknown feature {feature!r}")
     if op not in OPS:
         raise ValueError(f"op must be one of {sorted(OPS)}")
-    _must_own(conn, "enterprise_alert_rule", "rule_id", rule_id, tenant_id, user_id)
+    _claim(conn, "enterprise_alert_rule", "rule_id", rule_id, tenant_id, user_id, "alert_rules")
     rid = rule_id or _id("A")
     conn.execute("INSERT INTO enterprise_alert_rule (rule_id,tenant_id,user_id,name,symbol,feature,op,value,status,"
                  "created_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(rule_id) DO UPDATE SET name=excluded.name,"
@@ -73,7 +78,7 @@ def save_alert(conn, tenant_id, user_id, name, symbol, feature, op, value, rule_
 def save_report(conn, tenant_id, user_id, name, kind, params=None, shared=False, report_id=None) -> dict:
     if kind not in REPORT_KINDS:
         raise ValueError(f"kind must be one of {REPORT_KINDS}")
-    _must_own(conn, "enterprise_report", "report_id", report_id, tenant_id, user_id)
+    _claim(conn, "enterprise_report", "report_id", report_id, tenant_id, user_id, "reports")
     rid = report_id or _id("R")
     conn.execute("INSERT INTO enterprise_report (report_id,tenant_id,user_id,name,kind,params_json,shared,created_at) "
                  "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(report_id) DO UPDATE SET name=excluded.name,kind=excluded.kind,"

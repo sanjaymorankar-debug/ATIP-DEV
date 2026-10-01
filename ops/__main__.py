@@ -169,7 +169,9 @@ def main(argv=None) -> int:
         return 0
     if a.cmd == "api-docs":
         from ops.api_docs import write
-        _p(write())
+        from dashboard.server import app as _app
+        from enterprise.public_api import write_docs
+        _p({"reference": write(_app), "v1": write_docs(_app)})
         return 0
     if a.cmd == "rollback-drill":
         from ops.rollback_drill import run

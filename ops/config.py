@@ -55,6 +55,8 @@ OPS_DEFAULTS = {
     # W31 (OPS-06): encrypted off-site backup copies + weekly restore drill
     "backup_offsite_dir": None, "backup_offsite_plaintext": False, "backup_offsite_keep": 14,
     "restore_drill_enabled": True, "restore_drill_time": "10:00",
+    # W9: shared state for multi-process deployments ("memory" | "redis://..."), scheduler leader lease
+    "shared_state_url": "memory", "scheduler_leader_lease_s": 180,
 }
 SECRET_WORDS = ("token", "secret", "password", "passwd", "api_key", "apikey", "private", "pin", "key_id",
                 "client_secret", "access_key")
@@ -175,6 +177,34 @@ def validate(cfg: dict | None = None) -> list:
         if secret_status("ATIP_ENCRYPTION_KEY")["present"] is False:
             add("error", "ATIP_ENCRYPTION_KEY", "production requires an encryption key (python -m ops keygen)")
     # required for the data platform
+    # W9 SaaS: nothing may reach real people / money outside production
+    saas = cfg.get("saas") or {}
+    email_mode = str(((saas.get("notifications") or {}).get("email") or {}).get("mode") or "sandbox").lower()
+    tg_mode = str(((saas.get("notifications") or {}).get("telegram") or {}).get("mode") or "sandbox").lower()
+    pay = str((saas.get("payments") or {}).get("provider") or "sandbox").lower()
+    if email_mode not in ("sandbox", "smtp"):
+        add("error", "saas.notifications.email.mode", "must be sandbox or smtp")
+    elif email_mode == "smtp" and env != "production":
+        add("error", "saas.notifications.email.mode", f"real e-mail (smtp) in {env}; only production may send")
+    if tg_mode not in ("sandbox", "live"):
+        add("error", "saas.notifications.telegram.mode", "must be sandbox or live")
+    elif tg_mode == "live" and env != "production":
+        add("error", "saas.notifications.telegram.mode", f"live per-user Telegram in {env}; only production may send")
+    if pay not in ("sandbox", "noop", "razorpay", "stripe"):
+        add("error", "saas.payments.provider", "must be sandbox, noop, razorpay or stripe")
+    elif pay not in ("sandbox", "noop"):
+        add("error" if env != "production" else "warning", "saas.payments.provider",
+            f"{pay} is not enabled in W9 (the adapter refuses); real charges need an owner decision")
+    import importlib.util as _ilu
+    if str(o.get("shared_state_url") or "memory").startswith("redis://") and not _ilu.find_spec("redis"):
+        add("error", "ops.shared_state_url", "redis:// configured but the redis package is not installed")
+    try:
+        from db.backend import backend as _db_backend
+        if _db_backend() == "postgresql":
+            add("error", "DATABASE_URL", "the ATIP runtime runs on SQLite in W9; PostgreSQL is for "
+                                         "tools/sqlite_to_postgres.py only (docs/POSTGRESQL_MIGRATION.md)")
+    except ValueError as e:
+        add("error", "DATABASE_URL", str(e))
     from ops.secrets import status as _secret_status
     if not cfg.get("dhan_client_id") and not _secret_status("DHAN_CLIENT_ID")["present"]:
         add("warning", "dhan_client_id", "Dhan client id missing: market data jobs will fail")

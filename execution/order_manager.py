@@ -57,6 +57,13 @@ def _now():
     return datetime.now()
 
 
+def _adapter(conn, o):
+    """The adapter for an order: tenant (W9 per-tenant paper books) and instrument (W30 FUT)."""
+    from execution.tenant_books import tenant_of_strategy
+    return get_adapter(conn, o["mode"], instrument=o.get("instrument"),
+                       tenant_id=tenant_of_strategy(conn, o["strategy_id"]))
+
+
 def get_order(conn, order_id: str) -> dict:
     r = conn.execute("SELECT * FROM oms_order WHERE order_id=?", (order_id,)).fetchone()
     if not r:
@@ -204,7 +211,7 @@ def submit_order(conn, order_id: str) -> dict:
     request = {k: o.get(k) for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
                                      "trigger_price", "product_type", "reference_price")}
     try:
-        adapter = get_adapter(conn, o["mode"], o.get("instrument"))
+        adapter = _adapter(conn, o)
         r = adapter.submit(o)
     except (LiveTradingDisabled, BrokerError) as e:
         eid = _record_execution(conn, o, "submit", request, error=str(e))
@@ -229,7 +236,7 @@ def cancel_order(conn, order_id: str, reason: str = "cancelled by owner") -> dic
         raise ExecutionError(f"order {order_id} is SUBMITTED with no broker acknowledgement yet; refresh it first")
     o = transition(conn, order_id, CANCEL_PENDING, reason)
     try:
-        r = get_adapter(conn, o["mode"], o.get("instrument")).cancel(o)
+        r = _adapter(conn, o).cancel(o)
     except Exception as e:
         eid = _record_execution(conn, o, "cancel", {"order_id": order_id}, error=str(e))
         return transition(conn, order_id, FAILED, f"cancel failed: {e}", {"execution_id": eid}, reason=str(e))
@@ -244,7 +251,7 @@ def refresh_order(conn, order_id: str) -> dict:
     if o["status"] in TERMINAL or not o["broker_order_id"]:
         return o
     try:
-        r = get_adapter(conn, o["mode"], o.get("instrument")).status(o)
+        r = _adapter(conn, o).status(o)
     except Exception as e:
         eid = _record_execution(conn, o, "status", {"order_id": order_id}, error=str(e))
         log.warning(f"  order {order_id}: status poll failed: {e}")
@@ -297,7 +304,7 @@ def modify_order(conn, order_id: str, quantity: int | None = None, limit_price: 
     try:
         if o.get("instrument") == "FUT":
             raise ExecutionError("futures paper orders fill at once; nothing to modify")
-        r = get_adapter(conn, o["mode"], o.get("instrument")).modify(o, new)
+        r = _adapter(conn, o).modify(o, new)
     except Exception as e:
         eid = _record_execution(conn, o, "modify", {"order_id": order_id, **new}, error=str(e))
         _event(conn, o, f"modify failed: {e}", {"execution_id": eid, "to": new}, actor)

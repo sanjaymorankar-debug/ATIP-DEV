@@ -43,15 +43,26 @@ import re
 
 from enterprise.config import COOKIE, settings
 
-PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh)$"), ("GET", r"^/login$"),
+PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh|forgot|verify-email)$"), ("GET", r"^/login$"),
+          ("GET", r"^/api/notifications/unsubscribe$"),                  # W9: signed one-click link
           ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"),
           # W8: health probes (no sensitive data) and signed inbound webhooks (HMAC-verified)
-          ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml|storage|market_data|wealth))?$"),
+          ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml|storage|market_data|wealth|notifications|billing))?$"),
           ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$")]
-SELF = r"^/api/auth/(me|logout|password)$"      # any signed-in principal
+SELF = r"^/api/auth/(me|logout|password|switch-tenant|consent)$"      # any signed-in principal
 
 ROUTE_RULES = [
     ("GET", r"^/api/admin/audit", "audit:read"),
+    # W9
+    ("*", r"^/api/admin/(privacy|onboarding)", "admin:users"),
+    ("*", r"^/api/admin/(payments|dunning|billing-cycle)", "admin:billing"),
+    ("*", r"^/api/admin/(isolation|console)", "admin:tenants"),
+    ("*", r"^/api/billing", "admin:billing"),
+    ("*", r"^/api/onboarding", "workspace:write"),
+    ("*", r"^/api/reports", "workspace:write"),
+    ("GET", r"^/api/tenant/book", "execution:read"),
+    ("GET", r"^/api/risk/exposure", "portfolio:read"),          # the owner's W1 book
+    ("POST", r"^/api/execution/run$", "system:operate"),       # runs the cycle for every tenant
     ("*", r"^/api/admin/users/[^/]+/mfa-reset$", "admin:users"),
     # W8 operations: metrics, status, backups, config, secrets status, webhooks
     ("*", r"^/api/ops", "system:operate"),
@@ -108,14 +119,19 @@ ROUTE_RULES = [
     ("GET", r"^/", "dashboard:read"),
     ("*", r"^/", "system:operate"),
 ]
-PAPER_BOOK = {"execution:read", "execution:trade", "orders:manage", "portfolio:read", "portfolio:manage"}
+# W9: execution:read / execution:trade act on the caller's OWN book (per-tenant paper books,
+# execution/tenant_books.py); W1 order rules and the portfolio are the owner's broker account.
+PAPER_BOOK = {"orders:manage", "portfolio:read", "portfolio:manage"}
 
 OWNERS = {"strategy_id": ("strategy", "strategy_id"), "model_id": ("ml_model", "model_id"),
+          "run_id": ("backtest_run", "run_id"), "report_id": ("enterprise_report", "report_id"),
           "experiment_id": ("quant_experiment", "experiment_id"), "pair_id": ("quant_pair", "pair_id"),
           "portfolio_id": ("quant_portfolio", "portfolio_id"), "order_id": ("oms_order", "order_id"),
           "intent_id": ("strategy_position_intent", "intent_id"),
           "risk_decision_id": ("risk_decision", "risk_decision_id")}
 RESOURCES = [(r"^/api/strategies/([^/]+)", "strategy_id", {"regime-mapping", "combined", "catalog"}),
+             (r"^/api/backtests/([^/]+)", "run_id", {"walkforward", "montecarlo", "compare", "strategies"}),
+             (r"^/api/reports/([^/]+)", "report_id", set()),
              (r"^/api/ml/models/([^/]+)", "model_id", set()),
              (r"^/api/quant/pairs/([^/]+)", "pair_id", {"screen"}),
              (r"^/api/quant/experiments/([^/]+)", "experiment_id", set()),
@@ -127,6 +143,7 @@ CREATES = {r"^/api/strategies$": ("strategy_id", "strategies"), r"^/api/ml/model
            r"^/api/quant/pairs$": ("pair_id", None), r"^/api/quant/experiments$": ("experiment_id", None),
            r"^/api/quant/portfolios$": ("portfolio_id", None)}
 BACKTEST_CREATE = r"^/api/(backtests|strategies/[^/]+/backtest)$"
+CREATES[BACKTEST_CREATE] = ("run_id", None)          # W9: stamp new backtest runs with the caller's tenant
 FILTER_PREFIX = r"^/api/(strategies|strategy-decisions|position-intents|risk|oms|ml|quant|backtests|audit)"
 
 
@@ -265,6 +282,32 @@ def install(app):
                                  "'backtests'", (p["tenant_id"], str(date.today()))).fetchone()
                 if lim is not None and (r[0] if r else 0) >= lim:
                     return deny(403, f"max_backtests_per_day {lim} reached")
+            # W9: per-API-key rate limit + daily quota, and the tenant plan's daily API calls
+            if p.get("via") == "api_key":
+                from enterprise.public_api import key_limits
+                from ops.shared_state import store
+                kl = key_limits(conn, p["key_id"])
+                ok, wait = store().bucket(f"apikey:{p['key_id']}", kl["per_minute"])
+                if not ok:
+                    return JSONResponse({"error": {"code": "RATE_LIMITED", "message": "API key rate limit",
+                                                   "retryable": True}}, status_code=429,
+                                        headers={"Retry-After": str(wait)})
+                from datetime import date as _d
+                used = conn.execute("SELECT calls FROM enterprise_api_usage WHERE key_id=? AND date=?",
+                                    (p["key_id"], str(_d.today()))).fetchone()
+                if used and used[0] >= kl["daily_quota"]:
+                    return deny(429, f"API key daily quota {kl['daily_quota']} reached")
+                conn.execute("INSERT INTO enterprise_api_usage (key_id,tenant_id,date,calls) VALUES (?,?,?,1) ON "
+                             "CONFLICT(key_id,date) DO UPDATE SET calls=calls+1", (p["key_id"], p["tenant_id"],
+                                                                                    str(_d.today())))
+                conn.commit()
+            lim_calls = tenants.effective_limits(conn, p["tenant_id"]).get("max_api_calls_per_day")
+            if lim_calls is not None and path.startswith("/api/"):
+                from datetime import date as _d
+                r = conn.execute("SELECT value FROM enterprise_usage WHERE tenant_id=? AND date=? AND "
+                                 "metric='api_requests'", (p["tenant_id"], str(_d.today()))).fetchone()
+                if r and r[0] >= lim_calls:
+                    return deny(429, f"plan limit max_api_calls_per_day {lim_calls} reached")
             request.state.principal = {k: v for k, v in p.items() if k != "permissions"}
         finally:
             conn.close()

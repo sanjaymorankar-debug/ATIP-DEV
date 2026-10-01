@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scores_table",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "symbol"
+    ],
+    "properties": {
+      "symbol": {
+        "type": "string"
+      },
+      "acs": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "vpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "mri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "rri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "zpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "cri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "signal": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  }
+}
