@@ -62,6 +62,9 @@ SHORT_RETENTION_TABLES = {
     "live_pnl_snapshot": "ts",            # W29
     "latency_rollup": "minute",          # W34 (EX-15)
     "oms_event_delivery": "at",          # W34 (EX-16); the outbox itself is kept (audit)
+    "order_book_snapshot": "ts",         # W35 (DP-05); history stays in lake "depth"
+    "option_chain_snapshot": "ts",       # W35 (DP-08); history stays in lake "option_chain"
+    "fo_contract_daily": "date",         # W35 (DP-08); every contract stays in lake "fo_bhavcopy"
 }
 
 DEFAULT_LONG_DAYS  = 600

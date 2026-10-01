@@ -1328,6 +1328,55 @@ def _schedule_w29_jobs():
     schedule.every().day.at("19:30").do(_w29_audit_export)
     _schedule_w32_jobs()
     _schedule_w34_jobs()
+    _schedule_w35_jobs()
+
+
+def _schedule_w35_jobs():
+    """W35 data platform. Depth and option-chain ticks are no-ops unless enabled in config.json."""
+    schedule.every(1).minutes.do(_w35_depth_tick)
+    schedule.every(15).minutes.do(_w35_chain_tick)
+    schedule.every().day.at("15:50").do(_w35_ticks_eod)
+    schedule.every().day.at("07:15").do(_w35_guard, "macro_data", "data.macro", "run_macro")
+    schedule.every().day.at("19:45").do(_w35_guard, "alt_data", "altdata.framework", "run_enabled")
+    schedule.every().day.at("23:30").do(_w35_guard, "multi_asset", "data.multi_asset", "run_multi_asset")
+
+
+def _w35_guard(name, module, fn):
+    try:
+        import importlib
+        run_job(name, getattr(importlib.import_module(module), fn))
+    except Exception as e:
+        log.warning(f"  {name}: {e}")
+
+
+def _w35_depth_tick():
+    try:
+        from data.depth import settings as depth_settings
+        if depth_settings()["enabled"] and is_market_hours():
+            from data.depth import run_tick
+            run_tick()                               # once a minute: not a pipeline_log row each time
+    except Exception as e:
+        log.warning(f"  Depth snapshot: {e}")
+
+
+def _w35_chain_tick():
+    try:
+        from data.derivatives_store import settings as dsettings
+        if dsettings()["option_chain_enabled"] and is_market_hours():
+            from data.derivatives_store import run_chain_tick
+            run_job("option_chain", run_chain_tick)
+    except Exception as e:
+        log.warning(f"  Option chain: {e}")
+
+
+def _w35_ticks_eod():
+    try:
+        from data.ticks import enabled
+        if enabled() and is_market_day():
+            from data.ticks import run_eod
+            run_job("ticks_minute_bars", run_eod)
+    except Exception as e:
+        log.warning(f"  Tick minute bars: {e}")
 
 
 def _schedule_w34_jobs():

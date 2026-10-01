@@ -214,6 +214,11 @@ def run_fo_pipeline(trade_date=None, lookback: int = 5, recompute: bool = False)
                 missing += 1
                 continue
             stored += store(conn, summarise(df, d))
+            try:                                       # W35 (DP-08): the contracts too, from the same file
+                from data.derivatives_store import store_contracts
+                store_contracts(conn, df, d)
+            except Exception as e:
+                log.warning(f"  F&O contracts {d}: {e}")
         log_job("fo_bhavcopy", "SUCCESS", stored, start_time=started)
         return {"status": "SUCCESS", "rows": stored, "sessions_checked": len(days), "not_published": missing}
     finally:

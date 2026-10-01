@@ -25,7 +25,7 @@ button{cursor:pointer}svg{display:block}
 @media(max-width:600px){.wrap{padding:12px}}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📈 ATIP</b> <span class="muted">Market data (W27)</span></div>
-<div><a href="/quant">Quant</a><a href="/trading">Trading</a><a href="/">← Dashboard</a></div></div>
+<div><a href="/quant">Quant</a><a href="/trading">Trading</a><a href="/data-platform">Data platform</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
 <h2>Pre-open · GIFT Nifty</h2><div id="pre" class="grid"></div><div id="preNote" class="muted" style="margin-top:6px"></div>
 <div id="giftChart" style="margin-top:8px"></div>

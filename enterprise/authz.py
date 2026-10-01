@@ -84,6 +84,9 @@ ROUTE_RULES = [
     # W2 backtests
     ("GET", r"^/api/backtests", "research:read"),
     ("*", r"^/api/backtests", "research:run"),
+    # W35 data platform: reads are dashboard data; fetching / archiving / snapshots are research runs
+    ("GET", r"^/api/data/", "dashboard:read"),
+    ("POST", r"^/api/data/", "research:run"),
     # W5 ML
     ("POST", r"^/api/ml/models/[^/]+/(activate|pause|lifecycle)$", "ml:lifecycle"),
     ("GET", r"^/api/ml", "ml:read"),

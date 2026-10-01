@@ -40,7 +40,8 @@ from data.dhan_ws import (BACKOFF_MAX, BACKOFF_START, ERROR_BURST, ERROR_WINDOW,
 
 log = logging.getLogger(__name__)
 
-DEFAULTS = {"stocks_enabled": False, "max_symbols": 100, "flush_seconds": 60, "rest_seconds": 60, "symbols": []}
+DEFAULTS = {"stocks_enabled": False, "max_symbols": 100, "flush_seconds": 60, "rest_seconds": 60, "symbols": [],
+            "capture_ticks": False}          # W35 (DP-04): every Quote packet to the tick store (data/ticks.py)
 TICK_FROM, TICK_TO = _time(9, 16), _time(15, 30)
 STALL_SECONDS = 300.0
 
@@ -274,6 +275,9 @@ class StockFeedManager:
                     self._last_tick = datetime.now()
                 except (KeyError, TypeError, ValueError):
                     pass
+        if data.get("type") == "Quote Data" and self.cfg.get("capture_ticks") is True:
+            from data.ticks import capture          # W35 (DP-04): every packet to the tick store
+            capture(sym, data)
 
     # ── flush ──
     def snapshot(self) -> dict:
@@ -290,6 +294,12 @@ class StockFeedManager:
 
     def _flush(self):
         from db.schema import get_connection
+        if self.cfg.get("capture_ticks") is True:
+            try:
+                from data.ticks import flush as _flush_ticks     # W35 (DP-04)
+                _flush_ticks()
+            except Exception as e:
+                log.error(f"  tick flush: {e}")
         snap = self.snapshot() if feed_window_open() else {}
         conn = get_connection()
         try:
