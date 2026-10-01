@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES, **W29_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES, **W28_TABLES, **W29_TABLES, **W30_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -1106,6 +1106,27 @@ W29_TABLES = {
     ),
 }
 
+# ── Tables added in W30 (advanced quant) ──────────────────────────────────
+W30_TABLES = {
+    "paper_futures_position": (        # QR-05 / QR-06: short legs via stock futures (paper)
+        """CREATE TABLE IF NOT EXISTS paper_futures_position (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id TEXT NOT NULL DEFAULT '', underlying TEXT NOT NULL,
+            expiry DATE NOT NULL, lots INTEGER NOT NULL, lot_size INTEGER NOT NULL, avg_price REAL NOT NULL,
+            realized_pnl REAL NOT NULL DEFAULT 0, margin_blocked REAL NOT NULL DEFAULT 0, opened_at TIMESTAMP,
+            updated_at TIMESTAMP, UNIQUE(strategy_id, underlying, expiry))""",
+    ),
+    "paper_futures_trade": (
+        """CREATE TABLE IF NOT EXISTS paper_futures_trade (
+            trade_id TEXT PRIMARY KEY, order_id TEXT, strategy_id TEXT, underlying TEXT, expiry DATE, side TEXT,
+            lots INTEGER, lot_size INTEGER, price REAL, fees REAL, reason TEXT, at TIMESTAMP)""",
+    ),
+    "event_study": (                   # QR-09: stored event-study results
+        """CREATE TABLE IF NOT EXISTS event_study (
+            study_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, period TEXT, params_json TEXT, result_json TEXT,
+            created_at TIMESTAMP)""",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
@@ -1132,7 +1153,12 @@ W3_W4_COLUMNS = {
                          "profit_fy_cr": "REAL"},
     "institutional_data": {"ins_components": "TEXT"},
     # W29: per-order type (EX-02), modify (EX-08), protective child stops
-    "oms_order": {"trigger_price": "REAL", "parent_order_id": "TEXT", "modified_count": "INTEGER DEFAULT 0"},
+    "oms_order": {"trigger_price": "REAL", "parent_order_id": "TEXT", "modified_count": "INTEGER DEFAULT 0",
+                  "instrument": "TEXT DEFAULT 'CASH'"},
+    # W30 (QR-10 / QR-05): implied volatility from option settle prices; lot size for futures shorts
+    "live_quotes": {"buy_qty": "REAL", "sell_qty": "REAL"},        # W30 (AF-07): stock-feed order imbalance
+    "fo_underlying_daily": {"atm_iv": "REAL", "iv_call_atm": "REAL", "iv_put_atm": "REAL", "iv_skew": "REAL",
+                            "iv_expiry": "DATE", "iv_dte": "INTEGER", "lot_size": "INTEGER"},
     "global_markets": {"us_3m": "REAL", "us_3m_chg": "REAL", "us_5y": "REAL", "us_5y_chg": "REAL",
                        "us_30y": "REAL", "us_30y_chg": "REAL"},
 }

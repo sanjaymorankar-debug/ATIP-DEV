@@ -31,7 +31,7 @@ CATEGORY = {"SPLIT": "CORPORATE_ACTION", "BONUS": "CORPORATE_ACTION", "RIGHTS": 
             "BULK_DEAL": "FLOW", "EARNINGS": "FUNDAMENTAL", "DIVIDEND": "CORPORATE_ACTION",
             "ANNOUNCEMENT": "FUNDAMENTAL", "MACRO": "MACRO", "INDEX_CHANGE": "INDEX"}
 PENDING_TYPES = ("EARNINGS", "DIVIDEND", "ANNOUNCEMENT", "MACRO", "INDEX_CHANGE")
-FEATURE_TYPES = ("split", "bonus", "rights", "demerger", "bulk_deal")
+FEATURE_TYPES = ("split", "bonus", "rights", "demerger", "bulk_deal", "earnings", "dividend", "insider_buy")
 
 
 def sync_events(conn) -> dict:
@@ -94,4 +94,9 @@ class EventHistory:
             out[f"ev_days_since_{t}"] = (as_of - last[-1]).days if last else None
         out["ev_bulk_net_5d"] = sum((e[2] or 0) for e in ev if e[1] == "BULK_DEAL" and (as_of - e[0]).days <= 5) \
             if ev else None
+        # W30 (QR-09): earnings / insider features (quant/event_sources.py)
+        er = [e for e in ev if e[1] == "EARNINGS"]
+        out["ev_earnings_growth"] = er[-1][2] if er else None
+        ins = [e for e in ev if e[1] in ("INSIDER_BUY", "INSIDER_SELL") and (as_of - e[0]).days <= 90]
+        out["ev_insider_net_90d"] = round(sum(e[2] or 0 for e in ins), 4) if ins else None
         return out

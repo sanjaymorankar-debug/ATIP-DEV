@@ -143,6 +143,33 @@ class PaperBrokerAdapter(BrokerAdapter):
                             data.get("averageTradedPrice") or data.get("fill_price"), raw=resp)
 
 
+class FuturesPaperAdapter(BrokerAdapter):
+    """W30 (QR-05 / QR-06): short legs on the paper stock-futures book
+    (execution/futures_paper.py). Fills at the latest end-of-day futures close."""
+    name, mode = "paper_fut", PAPER
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def submit(self, order: dict) -> BrokerResult:
+        from execution.futures_paper import fill
+        try:
+            r = fill(self.conn, order)
+        except Exception as e:
+            raise BrokerError(f"paper futures book raised: {e}") from e
+        if r["status"] != "FILLED":
+            return BrokerResult("REJECTED", None, message=r.get("message"), raw=r)
+        return BrokerResult("FILLED", "FUT-" + order["order_id"], int(r["filled_qty"]), r["price"], r["fees"],
+                            "EOD futures close", message=r.get("message"), raw=r)
+
+    def cancel(self, order: dict) -> BrokerResult:
+        return BrokerResult("ERROR", order.get("broker_order_id"), message="futures paper orders fill at once")
+
+    def status(self, order: dict) -> BrokerResult:
+        return BrokerResult("FILLED", order.get("broker_order_id"), int(order.get("filled_quantity") or 0),
+                            order.get("avg_fill_price"), order.get("fees") or 0, "EOD futures close")
+
+
 class DhanBrokerAdapter(BrokerAdapter):
     """LIVE placeholder. Refuses every call in W4 -- no order can reach Dhan
     through the W4 execution layer."""
@@ -166,7 +193,9 @@ class DhanBrokerAdapter(BrokerAdapter):
         self._refuse("modify")
 
 
-def get_adapter(conn, mode: str) -> BrokerAdapter:
+def get_adapter(conn, mode: str, instrument: str | None = None) -> BrokerAdapter:
+    if mode == PAPER and (instrument or "CASH") == "FUT":
+        return FuturesPaperAdapter(conn)
     if mode == PAPER:
         return PaperBrokerAdapter(conn)
     if mode == LIVE:

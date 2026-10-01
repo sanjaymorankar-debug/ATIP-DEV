@@ -675,6 +675,12 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         run_job("fo_bhavcopy", run_fo_pipeline, td, 5)
     except Exception as e:
         log.warning(f"  F&O bhavcopy: {e}")
+    # W30 (QR-05): close paper futures shorts whose contract has expired, at the final close
+    try:
+        from execution.futures_paper import settle_expired
+        run_job("futures_expiry_settlement", settle_expired, td)
+    except Exception as e:
+        log.warning(f"  Futures settlement: {e}")
 
     # Corporate actions -- NSE's calendar, then any split or bonus whose ex-date
     # has arrived is applied to the stored history. Before the Dhan re-sync,
@@ -850,6 +856,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
             run_job("quant_factors", run_quant, td)
         except Exception as e:
             log.warning(f"  Quant factors: {e}")
+        # W30: research data that strategies read (ms_* / ev_*), prepared whether or not
+        # quant scoring is on -- bar microstructure (AF-07) and event sources (QR-09)
+        try:
+            from quant.w30 import run_postmarket as run_w30
+            run_job("research_data", run_w30, td)
+        except Exception as e:
+            log.warning(f"  Research data: {e}")
         try:
             from strategy_engine.engine import run_scheduled_decisions
             from strategy_engine.health import run_health_all
@@ -1154,6 +1167,11 @@ def run_weekly():
         run_job("deal_signal_study", run_deal_signal)
     except Exception as e:
         log.warning(f"  Deal-signal study: {e}")
+    try:                                             # W30 (QR-09): weekly event studies
+        from quant.w30 import run_weekly_studies
+        run_job("event_studies", run_weekly_studies)
+    except Exception as e:
+        log.warning(f"  Event studies: {e}")
 
     # Refresh Dhan security list (in case of new listings/delistings)
     try:

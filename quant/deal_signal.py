@@ -72,6 +72,9 @@ def event_study(conn, start=None, end=None, horizons=(1, 5, 10, 20), min_cr=1.0,
         bars = closes.get(sym, [])
         if idx is None or idx + k >= len(bars):
             return None
+        span = (date.fromisoformat(bars[idx + k][0]) - date.fromisoformat(bars[idx][0])).days
+        if span > k * 1.6 + 5:            # a data gap, not k sessions
+            return None
         return (bars[idx + k][1] / bars[idx][1] - 1) * 100
 
     res = {"key": KEY, "period": f"{start}..{end}", "min_cr": min_cr, "events": len(ev), "horizons": {}}

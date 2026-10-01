@@ -13,7 +13,17 @@ compute_msi's Options component reads. Before W27 nothing wrote it, so the compo
 read a constant 1.0 every day; compute_msi now drops the component when no PCR exists
 instead of assuming one.
 
-Not built here (rest of DP-08): IV / Greeks, intraday OI, option-chain snapshots.
+W30 (QR-10): implied volatility from the bhavcopy's option closes (Black-Scholes, NSE
+options are European; r = RISK_FREE, q = 0), on the nearest expiry at least
+MIN_IV_DTE days out (expiry-week IVs are noise):
+    iv_call_atm / iv_put_atm   the strike nearest the underlying
+    atm_iv                     their mean (or whichever exists), in %
+    iv_skew                    IV of the ~95% put minus IV of the ~105% call, vol points
+    iv_expiry, iv_dte          the expiry used
+Strikes with no trade and no open interest are skipped; an option price outside the
+no-arbitrage bounds gives no IV (quant.derivatives.implied_vol returns None), never a
+made-up one. lot_size (NewBrdLotQty) is stored for the futures short leg (QR-05).
+Not built here: intraday OI, option-chain snapshots.
 
     run_fo_pipeline(trade_date=None, lookback=5)   fetch any of the last `lookback`
         sessions not stored yet
@@ -32,6 +42,53 @@ log = logging.getLogger(__name__)
 
 FO_URL = "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{d}_F_0000.csv.zip"
 PCR_INDEX = "NIFTY"
+RISK_FREE = 0.065
+MIN_IV_DTE = 4
+
+
+def _opt_price(r):
+    for k in ("ClsPric", "SttlmPric", "LastPric"):
+        v = r.get(k)
+        if v is not None and v == v and float(v) > 0:
+            return float(v)
+    return None
+
+
+def _iv_block(opt, spot, trade_date):
+    """IV fields for one underlying, or {} when nothing prices cleanly."""
+    from datetime import date as _date
+    from quant.derivatives import implied_vol
+    if opt.empty or not spot:
+        return {}
+    exps = sorted(e for e in opt["XpryDt"].unique() if e and e != "nan")
+    td = trade_date if isinstance(trade_date, _date) else _date.fromisoformat(str(trade_date)[:10])
+    chosen = None
+    for e in exps:
+        dte = (_date.fromisoformat(str(e)[:10]) - td).days
+        if dte >= MIN_IV_DTE:
+            chosen, days = e, dte
+            break
+    if chosen is None:
+        return {}
+    o = opt[(opt["XpryDt"] == chosen) & ((opt["TtlTradgVol"] > 0) | (opt["OpnIntrst"] > 0))]
+    if o.empty:
+        return {}
+    T = days / 365.0
+
+    def iv_at(target, kind):
+        side = o[o["OptnTp"] == ("CE" if kind == "call" else "PE")]
+        if side.empty:
+            return None
+        row = side.iloc[(side["StrkPric"] - target).abs().argsort().iloc[0]]
+        px = _opt_price(row)
+        v = implied_vol(px, spot, float(row["StrkPric"]), T, RISK_FREE, kind) if px else None
+        return round(v * 100, 2) if v else None
+    c, p = iv_at(spot, "call"), iv_at(spot, "put")
+    atm = round((c + p) / 2, 2) if c and p else (c or p)
+    put95, call105 = iv_at(spot * 0.95, "put"), iv_at(spot * 1.05, "call")
+    return {"atm_iv": atm, "iv_call_atm": c, "iv_put_atm": p,
+            "iv_skew": round(put95 - call105, 2) if put95 and call105 else None,
+            "iv_expiry": str(chosen)[:10], "iv_dte": days}
 
 
 def download(trade_date, nse=None):
@@ -78,6 +135,12 @@ def summarise(df, trade_date) -> list:
         call_oi, put_oi = float(ce["OpnIntrst"].sum()), float(pe["OpnIntrst"].sum())
         call_v, put_v = float(ce["TtlTradgVol"].sum()), float(pe["TtlTradgVol"].sum())
         und = g["UndrlygPric"].dropna()
+        spot = float(und.iloc[0]) if len(und) else None
+        try:
+            ivb = _iv_block(opt, spot, trade_date)
+        except Exception:
+            ivb = {}
+        lots = g["NewBrdLotQty"].dropna() if "NewBrdLotQty" in g else []
         out.append({
             "date": str(trade_date), "symbol": sym, "kind": kind,
             "underlying_price": float(und.iloc[0]) if len(und) else None,
@@ -93,6 +156,9 @@ def summarise(df, trade_date) -> list:
             "pcr_volume": round(put_v / call_v, 4) if call_v else None,
             "max_pain": _max_pain(opt[opt["XpryDt"] == near]) if near is not None and not opt.empty else None,
             "near_expiry": str(near)[:10] if near is not None else None,
+            "atm_iv": ivb.get("atm_iv"), "iv_call_atm": ivb.get("iv_call_atm"), "iv_put_atm": ivb.get("iv_put_atm"),
+            "iv_skew": ivb.get("iv_skew"), "iv_expiry": ivb.get("iv_expiry"), "iv_dte": ivb.get("iv_dte"),
+            "lot_size": int(lots.iloc[0]) if len(lots) else None,
         })
     return out
 
@@ -125,7 +191,7 @@ def get_pcr(conn, td, symbol=PCR_INDEX):
     return None
 
 
-def run_fo_pipeline(trade_date=None, lookback: int = 5) -> dict:
+def run_fo_pipeline(trade_date=None, lookback: int = 5, recompute: bool = False) -> dict:
     from db.schema import get_connection, log_job
     from utils.trading_calendar import is_trading_day
     conn = get_connection()
@@ -140,7 +206,8 @@ def run_fo_pipeline(trade_date=None, lookback: int = 5) -> dict:
             d -= timedelta(days=1)
         stored = missing = 0
         for d in days:
-            if conn.execute("SELECT 1 FROM fo_underlying_daily WHERE date=? LIMIT 1", (str(d),)).fetchone():
+            if not recompute and conn.execute("SELECT 1 FROM fo_underlying_daily WHERE date=? LIMIT 1",
+                                              (str(d),)).fetchone():
                 continue
             df = download(d)
             if df is None or df.empty:
@@ -158,5 +225,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--date")
     ap.add_argument("--backfill", type=int, default=5)
+    ap.add_argument("--recompute", action="store_true", help="re-download and re-summarise stored sessions (IV)")
     a = ap.parse_args()
-    print(run_fo_pipeline(a.date, a.backfill))
+    print(run_fo_pipeline(a.date, a.backfill, a.recompute))

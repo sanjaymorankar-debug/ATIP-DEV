@@ -267,7 +267,9 @@ class StockFeedManager:
             elif data.get("type") == "Quote Data":
                 try:
                     q.update(ltp=float(data["LTP"]), open=float(data["open"]), high=float(data["high"]),
-                             low=float(data["low"]), volume=int(data["volume"]), src="ws")
+                             low=float(data["low"]), volume=int(data["volume"]), src="ws",
+                             buy_qty=float(data.get("total_buy_quantity") or 0),       # W30 (AF-07)
+                             sell_qty=float(data.get("total_sell_quantity") or 0))
                     self._ticks += 1
                     self._last_tick = datetime.now()
                 except (KeyError, TypeError, ValueError):
@@ -296,9 +298,9 @@ class StockFeedManager:
                 prev = q.get("prev_close")
                 chg = round((q["ltp"] - prev) / prev * 100, 2) if prev else None
                 conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
-                             "timestamp,source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                             "timestamp,source,buy_qty,sell_qty) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                              (s, q["ltp"], q.get("open"), q.get("high"), q.get("low"), prev, q.get("volume"), chg, ts,
-                              f"dhan_{q.get('src', 'ws')}"))
+                              f"dhan_{q.get('src', 'ws')}", q.get("buy_qty"), q.get("sell_qty")))
             if snap:
                 self._last_flush = datetime.now()
             conn.execute("INSERT OR REPLACE INTO live_feed_status (feed,mode,subscribed,ticks,last_tick_at,last_flush_at,"

@@ -30,7 +30,8 @@ def book_pnl(conn, strategy_id) -> dict:
     out = {}
     pos = {}
     for mode, sym, side, qty, px, fees in conn.execute(
-            "SELECT mode, symbol, side, quantity, price, COALESCE(fees,0) FROM oms_fill WHERE strategy_id=? "
+            "SELECT mode, symbol, side, quantity, price, COALESCE(fees,0) FROM oms_fill WHERE strategy_id=? AND "
+            "order_id NOT IN (SELECT order_id FROM oms_order WHERE COALESCE(instrument,'CASH')='FUT') "
             "ORDER BY filled_at", (strategy_id,)):
         b = out.setdefault(mode or "PAPER", {"realized": 0.0, "fees": 0.0, "fills": 0, "unrealized": 0.0,
                                              "open_positions": 0, "cost_basis": 0.0})
@@ -68,6 +69,22 @@ def book_pnl(conn, strategy_id) -> dict:
     return out
 
 
+def _futures(conn, sid) -> dict:
+    """W30: the strategy's paper stock-futures short legs, as a FUTURES book."""
+    try:
+        rows = conn.execute("SELECT COUNT(*), COALESCE(SUM(realized_pnl),0), SUM(CASE WHEN lots<>0 THEN 1 ELSE 0 END) "
+                            "FROM paper_futures_position WHERE strategy_id=?", (sid,)).fetchone()
+    except Exception:
+        return {}
+    if not rows or not rows[0]:
+        return {}
+    from execution.futures_paper import book
+    unreal = sum(p["unrealized"] or 0 for p in book(conn)["positions"] if p["strategy_id"] == sid)
+    return {"FUTURES": {"realized": round(rows[1], 2), "unrealized": round(unreal, 2), "open_positions": rows[2] or 0,
+                        "fills": conn.execute("SELECT COUNT(*) FROM paper_futures_trade WHERE strategy_id=?",
+                                              (sid,)).fetchone()[0], "fees": None, "cost_basis": None}}
+
+
 def performance(conn, days: int = 30) -> list:
     since = str(date.today() - timedelta(days=int(days)))
     rows = []
@@ -92,5 +109,5 @@ def performance(conn, days: int = 30) -> list:
                          **{k: m.get(k) for k in ("total_return", "cagr", "sharpe", "max_drawdown", "win_rate",
                                                   "profit_factor", "trades")}} if bt else None,
             "decisions": {"days": int(days), "by_action": dec, "blocked": blocked},
-            "books": book_pnl(conn, sid)})
+            "books": {**book_pnl(conn, sid), **_futures(conn, sid)}})
     return rows

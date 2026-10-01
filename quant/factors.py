@@ -182,7 +182,58 @@ def _pending(c):
     return None
 
 
+# -- W30 (AF-05): valuation at the factor date from NSE filings ---------------------
+# fundamental_data (data/nse_filings.py) carries per-quarter eps_ttm, book_value_ps,
+# shares_out, fcf_cr and revenue_cr, available from the filing's broadcast time. Value
+# is therefore computed with THIS date's close, never a P/E frozen when the row was built.
+def _px(c):
+    return c.bars[-1].close if c.bars and c.bars[-1].close else None
+
+
+def _mcap_cr(c):
+    sh, px = c.f("shares_out"), _px(c)
+    return sh * px / 1e7 if sh and px else None
+
+
+def _ey_v2(c):
+    e, px = c.f("eps_ttm"), _px(c)
+    return 100.0 * e / px if e is not None and px else None          # loss makers are negative, not missing
+
+
+def _btm_v2(c):
+    b, px = c.f("book_value_ps"), _px(c)
+    return 100.0 * b / px if b is not None and px else None
+
+
+def _fcf_yield_v2(c):
+    f, m = c.f("fcf_cr"), _mcap_cr(c)
+    return 100.0 * f / m if f is not None and m else None
+
+
+def _revenue_ttm(c):
+    h = [r.get("revenue_cr") for r in c.fund_history[-4:]]
+    return sum(h) if len(h) == 4 and all(x is not None for x in h) else None
+
+
+def _ps_v2(c):
+    m, r = _mcap_cr(c), _revenue_ttm(c)
+    return m / r if m and r and r > 0 else None
+
+
+def _turnover_v2(c, n=20):
+    sh = c.f("shares_out")
+    b = c.bars[-n:]
+    return sum(x.volume for x in b) / n / sh * 100 if sh and len(b) == n else None
+
+
+def _size_log_v2(c):
+    m = _mcap_cr(c)
+    return math.log(m) if m and m > 0 else None
+
+
 FUND = "fundamental_data (empty today; filled by the weekly fundamentals job)"
+# W30: NSE filings (data/nse_filings.py) -- None for a symbol until it is ingested
+FUND_NSE = "fundamental_data from NSE filings (data/nse_filings.py); None for symbols not yet ingested"
 SHARES = "shares outstanding / market capitalisation (not collected by ATIP)"
 SPREAD = "bid-ask quotes (live_quotes has LTP only; live_ticks is empty)"
 
@@ -222,31 +273,34 @@ FACTORS = [
               "mean(|r|/value)", ("bars",), 21, _amihud, direction=-1),
     FactorDef("delivery_pct_20", "delivery share", "liquidity", "mean delivery %, 20 sessions",
               "mean(delivery_pct)", ("bars",), 20, _delivery),
-    FactorDef("turnover", "share turnover", "liquidity", "volume / shares outstanding", "volume/shares",
-              ("shares",), 20, _pending, data_dependency=SHARES),
+    FactorDef("turnover", "share turnover", "liquidity", "mean daily volume / shares outstanding, 20 sessions, %",
+              "mean(volume)/shares_out*100", ("bars", "fundamentals"), 20, _turnover_v2, version="2",
+              data_dependency=FUND_NSE),
     FactorDef("bid_ask_spread", "bid-ask spread", "liquidity", "mean quoted spread", "(ask-bid)/mid",
               ("quotes",), 1, _pending, direction=-1, data_dependency=SPREAD),
     # size
-    FactorDef("market_cap", "market capitalisation", "size", "price x shares outstanding", "close*shares",
-              ("shares",), 1, _pending, data_dependency=SHARES),
+    FactorDef("market_cap", "market capitalisation", "size", "close x shares outstanding (filed), Rs crore",
+              "close*shares_out/1e7", ("bars", "fundamentals"), 1, _mcap_cr, version="2", data_dependency=FUND_NSE),
     FactorDef("size_log", "log size", "size", "ln(market cap); rank / buckets from normalization", "ln(mcap)",
-              ("shares",), 1, _pending, direction=-1, data_dependency=SHARES),
+              ("bars", "fundamentals"), 1, _size_log_v2, direction=-1, version="2", data_dependency=FUND_NSE),
     # value
-    FactorDef("earnings_yield", "earnings yield", "value", "100 / PE", "100/pe_ratio", ("fundamentals",), 1,
-              _inv("pe_ratio"), data_dependency=FUND),
-    FactorDef("book_to_market", "book-to-market", "value", "100 / PB", "100/pb_ratio", ("fundamentals",), 1,
-              _inv("pb_ratio"), data_dependency=FUND),
+    FactorDef("earnings_yield", "earnings yield", "value", "TTM EPS / close (point in time; negative for losses)",
+              "100*eps_ttm/close", ("bars", "fundamentals"), 1, _ey_v2, version="2", data_dependency=FUND_NSE),
+    FactorDef("book_to_market", "book-to-market", "value", "book value per share / close", "100*book_value_ps/close",
+              ("bars", "fundamentals"), 1, _btm_v2, version="2", data_dependency=FUND_NSE),
     FactorDef("ebitda_ev_yield", "EBITDA/EV yield", "value", "100 / (EV/EBITDA)", "100/ev_ebitda",
               ("fundamentals",), 1, _inv("ev_ebitda"), data_dependency=FUND),
     FactorDef("dividend_yield", "dividend yield", "value", "dividend yield %", "dividend_yield", ("fundamentals",),
               1, _fund("dividend_yield"), data_dependency=FUND),
     FactorDef("rel_earnings_yield", "relative valuation", "value", "earnings yield vs the stock's industry",
-              "100/pe_ratio, sector-relative z-score", ("fundamentals",), 1, _inv("pe_ratio"),
-              normalization={"method": "zscore", "winsorize": 1.0, "relative_to": "sector"}, data_dependency=FUND),
-    FactorDef("fcf_yield", "cash-flow yield", "value", "FCF / market cap", "fcf_cr/mcap", ("fundamentals", "shares"),
-              1, _pending, data_dependency=SHARES),
-    FactorDef("price_to_sales", "price-to-sales", "value", "market cap / revenue", "mcap/revenue_ttm",
-              ("fundamentals", "shares"), 1, _pending, direction=-1, data_dependency=SHARES),
+              "100*eps_ttm/close, sector-relative z-score", ("bars", "fundamentals"), 1, _ey_v2,
+              normalization={"method": "zscore", "winsorize": 1.0, "relative_to": "sector"}, version="2",
+              data_dependency=FUND_NSE),
+    FactorDef("fcf_yield", "cash-flow yield", "value", "last FY free cash flow / market cap, %", "100*fcf_cr/mcap",
+              ("bars", "fundamentals"), 1, _fcf_yield_v2, version="2", data_dependency=FUND_NSE),
+    FactorDef("price_to_sales", "price-to-sales", "value", "market cap / TTM revenue (4 filed quarters)",
+              "mcap/revenue_ttm", ("bars", "fundamentals"), 4, _ps_v2, direction=-1, version="2",
+              data_dependency=FUND_NSE),
     # quality
     FactorDef("roe", "return on equity", "quality", "ROE %", "roe", ("fundamentals",), 1, _fund("roe"),
               data_dependency=FUND),
@@ -309,7 +363,7 @@ FACTORS += [
 ]
 REGISTRY = {f.factor_id: f for f in FACTORS}
 CATEGORIES = sorted({f.category for f in FACTORS})
-BUILTIN_SET = [f.factor_id for f in FACTORS if not f.data_dependency or f.data_dependency == FUND]
+BUILTIN_SET = [f.factor_id for f in FACTORS if not f.data_dependency or f.data_dependency in (FUND, FUND_NSE)]
 
 
 def get(factor_id: str) -> FactorDef:
@@ -340,11 +394,13 @@ def sync(conn) -> int:
 
 
 def fundamentals_as_of(conn, symbols, as_of) -> dict:
-    """{symbol: [rows known by as_of, oldest first]} -- knowledge date =
+    """{symbol: [rows known by as_of, oldest first]} -- knowledge date = the filing's
+    broadcast time (available_from, W27 NSE filings) when stored, else
     report_date + FUNDAMENTAL_LAG_DAYS, else created_at."""
     out = {s: [] for s in symbols}
     try:
-        rows = conn.execute("SELECT * FROM fundamental_data ORDER BY report_date, created_at").fetchall()
+        rows = conn.execute("SELECT * FROM fundamental_data ORDER BY COALESCE(period_end, report_date), "
+                        "created_at").fetchall()
     except Exception:
         return out
     for r in rows:
@@ -352,7 +408,12 @@ def fundamentals_as_of(conn, symbols, as_of) -> dict:
         if d["symbol"] not in out:
             continue
         known = None
-        if d.get("report_date"):
+        if d.get("available_from"):
+            try:
+                known = datetime.fromisoformat(str(d["available_from"])[:19].replace(" ", "T")).date()
+            except ValueError:
+                known = None
+        if known is None and d.get("report_date"):
             try:
                 known = datetime.fromisoformat(str(d["report_date"])[:10]).date() + timedelta(days=FUNDAMENTAL_LAG_DAYS)
             except ValueError:

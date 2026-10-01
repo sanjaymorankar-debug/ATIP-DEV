@@ -94,6 +94,11 @@ def create_order(conn, risk_decision_id: str, actor: str = "oms", order_type: st
     if ex:
         raise DuplicateOrderError(f"intent {rd['intent_id']} already has order {ex[0]}")
     s = execution_settings()
+    instrument = "FUT" if rd.get("action") in ("SHORT", "COVER") else "CASH"     # W30: futures short legs
+    if instrument == "FUT":
+        if s["mode"] == LIVE:
+            raise InvalidIntentError("LIVE futures are not built")
+        order_type, limit_price, trigger_price = "MARKET", None, None           # filled at the EOD futures close
     otype = (order_type or s["order_type"]).upper()
     if otype == "LIMIT" and limit_price is None:
         limit_price = rd["reference_price"]
@@ -102,12 +107,14 @@ def create_order(conn, risk_decision_id: str, actor: str = "oms", order_type: st
     now = _now()
     conn.execute("INSERT INTO oms_order (order_id,intent_id,risk_decision_id,decision_id,strategy_id,strategy_version,"
                  "symbol,side,quantity,order_type,limit_price,trigger_price,product_type,mode,adapter,status,"
-                 "reference_price,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                 "reference_price,instrument,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  (oid, rd["intent_id"], risk_decision_id, rd["decision_id"], rd["strategy_id"], rd["strategy_version"],
                   rd["symbol"], rd["side"], int(rd["approved_quantity"]), otype,
                   limit_price if otype in ("LIMIT", "SL") else None,
-                  trigger_price if otype in ("SL", "SL-M") else None, s["product_type"], s["mode"],
-                  "paper" if s["mode"] != LIVE else "dhan", CREATED, rd["reference_price"], now, now))
+                  trigger_price if otype in ("SL", "SL-M") else None,
+                  "NRML" if instrument == "FUT" else s["product_type"], s["mode"],
+                  ("paper_fut" if instrument == "FUT" else "paper") if s["mode"] != LIVE else "dhan", CREATED,
+                  rd["reference_price"], instrument, now, now))
     conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
                  "VALUES (?,?,?,?,?,?,?)", (oid, None, CREATED, f"from risk decision {risk_decision_id}",
                                             json.dumps({"risk_decision_id": risk_decision_id}), actor, now))
@@ -197,7 +204,7 @@ def submit_order(conn, order_id: str) -> dict:
     request = {k: o.get(k) for k in ("order_id", "symbol", "side", "quantity", "order_type", "limit_price",
                                      "trigger_price", "product_type", "reference_price")}
     try:
-        adapter = get_adapter(conn, o["mode"])
+        adapter = get_adapter(conn, o["mode"], o.get("instrument"))
         r = adapter.submit(o)
     except (LiveTradingDisabled, BrokerError) as e:
         eid = _record_execution(conn, o, "submit", request, error=str(e))
@@ -222,7 +229,7 @@ def cancel_order(conn, order_id: str, reason: str = "cancelled by owner") -> dic
         raise ExecutionError(f"order {order_id} is SUBMITTED with no broker acknowledgement yet; refresh it first")
     o = transition(conn, order_id, CANCEL_PENDING, reason)
     try:
-        r = get_adapter(conn, o["mode"]).cancel(o)
+        r = get_adapter(conn, o["mode"], o.get("instrument")).cancel(o)
     except Exception as e:
         eid = _record_execution(conn, o, "cancel", {"order_id": order_id}, error=str(e))
         return transition(conn, order_id, FAILED, f"cancel failed: {e}", {"execution_id": eid}, reason=str(e))
@@ -237,7 +244,7 @@ def refresh_order(conn, order_id: str) -> dict:
     if o["status"] in TERMINAL or not o["broker_order_id"]:
         return o
     try:
-        r = get_adapter(conn, o["mode"]).status(o)
+        r = get_adapter(conn, o["mode"], o.get("instrument")).status(o)
     except Exception as e:
         eid = _record_execution(conn, o, "status", {"order_id": order_id}, error=str(e))
         log.warning(f"  order {order_id}: status poll failed: {e}")
@@ -288,7 +295,9 @@ def modify_order(conn, order_id: str, quantity: int | None = None, limit_price: 
         conn.commit()
         return get_order(conn, order_id)
     try:
-        r = get_adapter(conn, o["mode"]).modify(o, new)
+        if o.get("instrument") == "FUT":
+            raise ExecutionError("futures paper orders fill at once; nothing to modify")
+        r = get_adapter(conn, o["mode"], o.get("instrument")).modify(o, new)
     except Exception as e:
         eid = _record_execution(conn, o, "modify", {"order_id": order_id, **new}, error=str(e))
         _event(conn, o, f"modify failed: {e}", {"execution_id": eid, "to": new}, actor)

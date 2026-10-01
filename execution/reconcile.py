@@ -46,7 +46,8 @@ def _net(rows):
 def reconcile_paper(conn) -> dict:
     breaks, explained, info = [], [], []
     oms_ids = {r[0] for r in conn.execute("SELECT order_id FROM oms_order")}
-    oms_net = _net(conn.execute("SELECT symbol, side, quantity FROM oms_fill WHERE mode='PAPER'").fetchall())
+    oms_net = _net(conn.execute("SELECT symbol, side, quantity FROM oms_fill WHERE mode='PAPER' AND order_id NOT IN "
+                                "(SELECT order_id FROM oms_order WHERE COALESCE(instrument,'CASH')='FUT')").fetchall())
     other_net = _net([(s, t, q) for s, t, q, tag in conn.execute(
         "SELECT symbol, transaction_type, filled_qty, tag FROM paper_order WHERE status IN ('TRADED',"
         "'PARTIALLY_FILLED') AND filled_qty>0").fetchall() if tag not in oms_ids])
@@ -60,7 +61,7 @@ def reconcile_paper(conn) -> dict:
     for r in conn.execute("SELECT o.order_id, o.symbol, o.status, o.filled_quantity, o.broker_order_id, "
                           "p.status, p.filled_qty FROM oms_order o LEFT JOIN paper_order p ON "
                           "p.order_id=o.broker_order_id WHERE o.mode='PAPER' AND o.status NOT IN ('CREATED',"
-                          "'VALIDATED') ").fetchall():
+                          "'VALIDATED') AND COALESCE(o.instrument,'CASH')<>'FUT'").fetchall():
         oid, sym, st, fq, boid, pst, pfq = r
         if st == "FAILED" and not boid:
             continue

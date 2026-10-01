@@ -76,7 +76,8 @@ def live_pnl(conn) -> dict:
         paper, cash = [], None
     strat = {}
     for sid, sym, side, qty, px in conn.execute("SELECT strategy_id, symbol, side, quantity, price FROM oms_fill "
-                                                "ORDER BY filled_at"):
+                                                "WHERE order_id NOT IN (SELECT order_id FROM oms_order WHERE "
+                                                "COALESCE(instrument,'CASH')='FUT') ORDER BY filled_at"):
         q, avg = strat.get((sid, sym), (0, 0.0))
         if side == "BUY":
             avg = (avg * q + px * qty) / (q + qty) if q + qty else 0.0
@@ -94,12 +95,20 @@ def live_pnl(conn) -> dict:
         if q:
             by_strat.setdefault(sid or "(none)", []).append(_row(sym, int(q), a, px))
     stale = [s for s, p in px.items() if p.get("source") != "live" or (p.get("age_min") or 0) > 20]
+    try:                                               # W30: paper futures short legs, marked at the EOD close
+        from execution.futures_paper import book as _fbook
+        fut = _fbook(conn)
+        fut = {"positions": len(fut["positions"]), "unrealized": fut["unrealized"], "realized": fut["realized"],
+               "margin_blocked": fut["margin_blocked"], "rows": fut["positions"], "price_source": "EOD futures close"}
+    except Exception:
+        fut = None
     return {"as_of": datetime.now().isoformat(timespec="seconds"),
             "LIVE": {**_tot(live_rows), "rows": live_rows},
             "PAPER": {**_tot(paper_rows), "rows": paper_rows,
                       "realized_to_date": round(sum(float(p[3] or 0) for p in paper), 2),
                       "cash": round(float(cash[0]), 2) if cash else None},
             "strategies": {sid: {**_tot(rows), "rows": rows} for sid, rows in sorted(by_strat.items())},
+            "FUTURES": fut,
             "stale_prices": sorted(stale)}
 
 

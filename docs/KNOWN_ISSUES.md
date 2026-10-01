@@ -167,6 +167,16 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W29-4 | A paper LIMIT could fill worse than its limit (slippage after the limit check) | orders/paper.py | Medium | FIXED in W29 | — |
 | W29-5 | Kite order placement not built (owner decision required) | portfolio/zerodha.py | — | NOT BUILT (by design) | Owner |
 
+## W30 advanced quant: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W30-1 | The backtest engine does not simulate futures short legs (SHORT / COVER); pairs / long-short backtests still treat shorts as unexecutable | backtest/ | Medium | NOT BUILT | Backtest follow-up |
+| W30-2 | No automatic futures roll: a short is settled at expiry and re-entered only on the next signal | execution/futures_paper.py | Low | BY DESIGN | — |
+| W30-3 | IV history is 25 sessions in the scratch run; iv_rank needs >= 20 and is only meaningful with ~250 (backfill) | data/derivatives.py | Low | OPEN (owner: backfill) | Owner |
+| W30-4 | Non-tracked symbols' prices (bhavcopy dump) have gaps and unadjusted corporate actions; event studies now guard day 0 and gaps, but market-wide studies stay noisy | quant/event_study.py | Low | MITIGATED | — |
+| W30-5 | Microstructure spreads are estimates (Roll, Corwin-Schultz), not quoted spreads | quant/microstructure.py | Low | BY DESIGN until DP-04/05 | Data-source wave |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:

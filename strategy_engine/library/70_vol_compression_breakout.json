@@ -1,0 +1,30 @@
+{
+  "strategy_id": "vol_compression_breakout",
+  "name": "Volatility compression breakout (IV-confirmed)",
+  "version": "1.0.0",
+  "description": "QR-10 (W30). Realised volatility has compressed (20-session below 60-session) and the stock breaks its prior 20-session high on volume, while its options price the move as calm (ATM IV rank below the parameter) -- breakouts out of quiet ranges before the options market reprices. Only F&O stocks qualify (dv_iv_rank is None otherwise). Exit on a close below the prior 10-session low or when IV rank spikes.",
+  "kind": "rule",
+  "universe": {"type": "tracked_current"},
+  "timeframe": "1d",
+  "parameters": [
+    {"name": "max_iv_rank", "type": "float", "default": 50, "min": 0, "max": 100, "description": "Entry only while ATM IV rank is at most"},
+    {"name": "exit_iv_rank", "type": "float", "default": 90, "min": 50, "max": 100, "description": "Exit when ATM IV rank reaches"},
+    {"name": "volume_mult", "type": "float", "default": 1.5, "min": 1, "max": 10, "description": "Volume vs its 20-day mean"},
+    {"name": "stop_pct", "type": "float", "default": 6, "min": 0.5, "max": 20, "description": "Protective stop, %"},
+    {"name": "max_hold", "type": "int", "default": 25, "min": 1, "max": 120, "description": "Maximum holding sessions"}
+  ],
+  "entry": {"all": [
+    {"feature": "volatility_20", "op": "<", "value": {"feature": "volatility_60"}},
+    {"feature": "close", "op": ">", "value": {"feature": "prior_high_20"}},
+    {"feature": "vol_ratio_20", "op": ">=", "value": {"param": "volume_mult"}},
+    {"feature": "dv_iv_rank", "op": "<=", "value": {"param": "max_iv_rank"}}
+  ]},
+  "exit": {"any": [
+    {"feature": "close", "op": "<", "value": {"feature": "prior_low_10"}},
+    {"feature": "dv_iv_rank", "op": ">=", "value": {"param": "exit_iv_rank"}}
+  ]},
+  "rank_by": "vol_ratio_20",
+  "position": {"target_position_pct": 7, "max_positions": 8, "max_new_per_day": 3,
+               "stop_pct": {"param": "stop_pct"}, "max_hold_sessions": {"param": "max_hold"}},
+  "risk": {"requirement": "STANDARD", "blocked_regimes": ["BEAR", "HIGH_RISK"]}
+}
