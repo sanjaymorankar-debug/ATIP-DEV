@@ -427,6 +427,13 @@ def _start_index_feed():
     except Exception as e:
         log.warning(f"  Index WebSocket feed did not start ({e}) — "
                     f"falling back to 15-min REST index polling only")
+    # W27 (DP-01): stock-level live feed with REST failover -- only when
+    # config.json live_feed.stocks_enabled is true (off by default)
+    try:
+        from data.stock_feed import start_stock_feed
+        start_stock_feed()
+    except Exception as e:
+        log.warning(f"  Stock live feed did not start ({e})")
 
 
 def _start_dashboard(port: int = 8000):

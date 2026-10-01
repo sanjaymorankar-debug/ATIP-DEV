@@ -137,6 +137,17 @@ Only P0 blocks the release. **Open P0 items: none.**
 | W7-R5/R6/R9 | P3 | No e-mail sender, no payment gateway, no report rendering | OPEN |
 | W9-M1 | P3 | `orders/broker.py` has an unused `PAPER` import (pyflakes); `atip.db.bak-before-w8-*` has `-wal` / `-shm` side files from its verification open | OPEN (cosmetic) |
 
+## W27 data & scores: open items
+
+| Issue ID | Description | Affected Module | Severity | Current Status | Deferred To |
+|---|---|---|---|---|---|
+| W27-1 | First full NSE fundamentals / ownership backfill not run (about an hour; run off-hours) | data/nse_filings.py, data/institutional.py | Medium | OPEN | Owner, before enabling the score switches |
+| W27-2 | The bulk / block deal study contradicts INS BulkDeals' direction (net SELL deals outperform, 5d t=4.1) on 4 weeks of data | scores/engine.compute_ins, quant/deal_signal.py | Medium | OPEN (needs owner decision) | Re-check as history grows |
+| W27-3 | Stock live feed never exercised in a live session (compiled only; off by default) | data/stock_feed.py | Low | OPEN | First enabled session |
+| W27-4 | MSI Options now reads the real NIFTY PCR (was a constant 1.0); this changes MSI / ATIP scores on deploy without a switch | scores/engine.compute_msi | Low | BY DESIGN (defect fix) | — |
+| W27-5 | No India 10Y G-sec yield, no per-stock daily MF flow, no IV / Greeks | data/markets.py, data/institutional.py, data/derivatives.py | Low | OPEN (no free source / later DP-08) | Data-source wave |
+| W27-6 | Bank FS / SPI exclude D/E, coverage, ROCE by design and do not use GNPA / NNPA yet | data/nse_filings.py | Low | OPEN | Fundamentals follow-up |
+
 ## Deferred testing items (for ChatGPT)
 
 All W3 to W7 functionality. The test scenarios are listed in:

@@ -122,7 +122,7 @@ def _run_additive_migrations(conn):
     _migrate_alert_log_table(conn)
     for name, ddls in {**W1_TABLES, **W2_TABLES, **W3_TABLES, **W4_TABLES, **W5_TABLES,
                        **W6_TABLES, **W7_TABLES, **W8_TABLES, **WEALTH_TABLES,
-                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES}.items():
+                       **W21_TABLES, **W22_TABLES, **W24_TABLES, **W25_TABLES, **W27_TABLES}.items():
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W3_W4_COLUMNS.items():       # additive columns on tables created earlier
         _add_missing_columns(conn, table, cols)
@@ -1009,6 +1009,56 @@ W25_TABLES = {
     ),
 }
 
+# ── Tables added in W27 (data & scores) ───────────────────────────────────
+W27_TABLES = {
+    "fundamental_filing": (            # DP-15: one NSE integrated-filing XBRL, parsed (point in time)
+        """CREATE TABLE IF NOT EXISTS fundamental_filing (
+            xbrl_url TEXT PRIMARY KEY, symbol TEXT NOT NULL, period_end DATE NOT NULL, nature TEXT NOT NULL,
+            audited TEXT, broadcast_at TIMESTAMP, facts_json TEXT, status TEXT NOT NULL DEFAULT 'PARSED',
+            error TEXT, fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_ff_symbol_period ON fundamental_filing(symbol, period_end)",
+    ),
+    "shareholding_pattern": (          # DP-16: quarterly shareholding pattern (NSE SHP XBRL)
+        """CREATE TABLE IF NOT EXISTS shareholding_pattern (
+            symbol TEXT NOT NULL, as_of DATE NOT NULL, promoter_pct REAL, public_pct REAL, mf_pct REAL,
+            fpi_pct REAL, insurance_pct REAL, dii_pct REAL, retail_pct REAL, pledged_pct REAL,
+            submitted_at TIMESTAMP, xbrl_url TEXT, source TEXT DEFAULT 'nse_shp', fetched_at TIMESTAMP,
+            PRIMARY KEY (symbol, as_of))""",
+    ),
+    "insider_trade": (                 # DP-16: SEBI PIT disclosures (NSE corporates-pit)
+        """CREATE TABLE IF NOT EXISTS insider_trade (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, person TEXT, person_category TEXT,
+            txn_type TEXT, security_type TEXT, qty REAL, value_rs REAL, mode TEXT, txn_from DATE, txn_to DATE,
+            disclosed_at TIMESTAMP, post_pct REAL, fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_insider_symbol ON insider_trade(symbol, disclosed_at)",
+    ),
+    "sast_disclosure": (               # DP-16: SAST Reg 29 acquisitions / disposals
+        """CREATE TABLE IF NOT EXISTS sast_disclosure (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, acquirer TEXT, is_promoter INTEGER,
+            txn_type TEXT, shares_acq REAL, shares_sold REAL, post_pct REAL, disclosed_at TIMESTAMP,
+            fetched_at TIMESTAMP)""",
+        "CREATE INDEX IF NOT EXISTS idx_sast_symbol ON sast_disclosure(symbol, disclosed_at)",
+    ),
+    "fo_underlying_daily": (           # DP-08 (partial) / SC-06: per-underlying F&O summary from NSE F&O bhavcopy
+        """CREATE TABLE IF NOT EXISTS fo_underlying_daily (
+            date DATE NOT NULL, symbol TEXT NOT NULL, kind TEXT NOT NULL, underlying_price REAL,
+            fut_close REAL, fut_oi REAL, fut_oi_chg REAL, fut_volume REAL,
+            call_oi REAL, put_oi REAL, call_oi_chg REAL, put_oi_chg REAL, call_volume REAL, put_volume REAL,
+            pcr_oi REAL, pcr_volume REAL, max_pain REAL, near_expiry DATE, created_at TIMESTAMP,
+            PRIMARY KEY (date, symbol))""",
+    ),
+    "global_market_history": (         # DP-12: daily close history of every global series (incl. yields)
+        """CREATE TABLE IF NOT EXISTS global_market_history (
+            series TEXT NOT NULL, date DATE NOT NULL, close REAL, source TEXT DEFAULT 'yfinance',
+            PRIMARY KEY (series, date))""",
+    ),
+    "live_feed_status": (              # DP-01: stock feed health (one row per feed, overwritten)
+        """CREATE TABLE IF NOT EXISTS live_feed_status (
+            feed TEXT PRIMARY KEY, mode TEXT, subscribed INTEGER, ticks INTEGER, last_tick_at TIMESTAMP,
+            last_flush_at TIMESTAMP, detail TEXT, updated_at TIMESTAMP)""",
+    ),
+}
+
 # Columns added after a table first shipped (applied by get_connection with
 # _add_missing_columns; fresh installs get them from the CREATE above).
 W3_W4_COLUMNS = {
@@ -1027,6 +1077,15 @@ W3_W4_COLUMNS = {
     "enterprise_user": {"mfa_enabled": "INTEGER NOT NULL DEFAULT 0", "mfa_secret_enc": "TEXT",
                         "mfa_pending_enc": "TEXT"},
     "enterprise_audit": {"prev_hash": "TEXT", "row_hash": "TEXT"},
+    # W27: fundamentals from NSE filings -- point-in-time availability, SPI stored beside FS,
+    # and which inputs each score actually used
+    "fundamental_data": {"period_end": "DATE", "available_from": "TIMESTAMP", "nature": "TEXT",
+                         "eps_q": "REAL", "spi_score": "REAL", "score_inputs": "TEXT", "mf_hold": "REAL",
+                         "fpi_hold": "REAL", "shares_out": "REAL", "equity_cr": "REAL", "debt_cr": "REAL",
+                         "profit_fy_cr": "REAL"},
+    "institutional_data": {"ins_components": "TEXT"},
+    "global_markets": {"us_3m": "REAL", "us_3m_chg": "REAL", "us_5y": "REAL", "us_5y_chg": "REAL",
+                       "us_30y": "REAL", "us_30y_chg": "REAL"},
 }
 
 # Every alert ATIP raises, whether or not Telegram delivered it: the dashboard

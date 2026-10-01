@@ -35,9 +35,36 @@ def get_prices(sym,td,conn,n=260):
     return pd.read_sql("SELECT * FROM prices_daily WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT ?"
                        ,conn,params=(sym,str(td),n))
 
-def get_fund(sym,conn):
-    r=conn.execute("SELECT * FROM fundamental_data WHERE symbol=? ORDER BY report_date DESC LIMIT 1",(sym,)).fetchone()
+def get_fund(sym,conn,td=None):
+    """
+    The latest fundamental_data row for sym. With td (W27): only rows whose
+    filing was broadcast on or before that session (available_from), so a
+    re-score of a past session never reads results published after it. Rows
+    from the pre-W27 sources carry no available_from and stay eligible.
+    """
+    if td is None:
+        r=conn.execute("SELECT * FROM fundamental_data WHERE symbol=? ORDER BY report_date DESC LIMIT 1",(sym,)).fetchone()
+    else:
+        r=conn.execute("SELECT * FROM fundamental_data WHERE symbol=? AND (available_from IS NULL OR "
+                       "DATE(available_from)<=?) ORDER BY report_date DESC LIMIT 1",(sym,str(td))).fetchone()
     return dict(r) if r else {}
+
+# W27 switches (config.json), both OFF by default until validated:
+#   "fundamentals": {"score_enabled": true}   SPI (SC-02) and FS (SC-13) enter the
+#       ATIP composite, and VPI's FG / CRI's Debt read the NSE fundamentals. Off:
+#       every scorer gets an empty fundamentals dict -- exactly today's behaviour,
+#       where fundamental_data was empty -- even though ingestion (DP-15) runs.
+#   "institutional": {"score_enabled": true}  INS (SC-14) adds MutualFund, Insider
+#       and promoter trend / pledge from the NSE ownership tables (DP-16).
+def w27_flags():
+    try:
+        import json
+        from pathlib import Path
+        cfg=json.loads(Path("atip_data/config.json").read_text(encoding="utf-8"))
+    except Exception:
+        cfg={}
+    return {"fundamentals":bool((cfg.get("fundamentals") or {}).get("score_enabled",False)),
+            "institutional":bool((cfg.get("institutional") or {}).get("score_enabled",False))}
 
 def get_inst(sym,td,conn):
     return pd.read_sql("SELECT * FROM institutional_data WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 30",conn,params=(sym,str(td)))
@@ -351,7 +378,17 @@ def sector_score(rank,n):
     pct=rank/n
     return 90.0 if pct<=0.25 else 60.0 if pct<=0.5 else 35.0
 
-def compute_ins(fii,fund,bulk,weights):
+INS_W27_WEIGHTS = (("MutualFund",0.15,"MF holding change QoQ (SHP)"),
+                   ("Insider",0.10,"Net insider (PIT) value 90d"))
+
+def ensure_ins_weights(conn):
+    """W27: seed the two new INS components on existing databases (INSERT OR IGNORE)."""
+    for var,wt,desc in INS_W27_WEIGHTS:
+        conn.execute("INSERT OR IGNORE INTO weight_config (index_name,variable,weight,description,regime) "
+                     "VALUES ('INS',?,?,?,'ALL')",(var,wt,desc))
+    conn.commit()
+
+def compute_ins(fii,fund,bulk,weights,own=None):
     """
     Institutional Score -- was always None in run_scoring_pipeline() before
     this fix, so it silently dropped out of the ATIP Master Score despite
@@ -366,6 +403,9 @@ def compute_ins(fii,fund,bulk,weights):
                   days (bulk_deals, via the new
                   data.bhavcopy.download_bulk_block_deals())
 
+    W27 (SC-14): with institutional.score_enabled, MutualFund (SHP MF %
+    change), Insider (90-day net PIT value) and a promoter trend / pledge
+    adjustment are added from NSE filings via `own`. Without it, as before:
     MutualFund and Insider from the original doc formula (E17) are
     intentionally omitted rather than faked with a constant -- NSE does
     not publish free per-stock mutual-fund-flow or insider-trade data, so
@@ -379,6 +419,18 @@ def compute_ins(fii,fund,bulk,weights):
     if fii_5d is not None: c["FII"]=minmax(fii_5d,-2000,2000)
     if dii_5d is not None: c["DII"]=minmax(dii_5d,-500,1500)
     ph=fund.get("promoter_hold")
+    if own:
+        # W27 (SC-14): ownership from NSE filings (data/institutional.features), point in
+        # time. Promoter = level, nudged by its QoQ trend and cut by pledging.
+        ph=own.get("promoter_pct",ph)
+        if ph is not None:
+            p=minmax(ph,0,75)
+            if own.get("promoter_chg") is not None: p=0.7*p+0.3*minmax(own["promoter_chg"],-2,2)
+            if own.get("pledged_pct"): p=p*(1-min(own["pledged_pct"],100)/100)
+            c["Promoter"]=round(p,2); ph=None
+        if own.get("mf_chg") is not None: c["MutualFund"]=minmax(own["mf_chg"],-1,1)
+        elif own.get("mf_pct") is not None: c["MutualFund"]=minmax(own["mf_pct"],0,25)
+        if own.get("insider_net_cr_90d") is not None: c["Insider"]=minmax(own["insider_net_cr_90d"],-10,10)
     if ph is not None: c["Promoter"]=minmax(ph,0,75)
     bulk_net=bulk.get("net_value_cr") if bulk else None
     if bulk_net is not None: c["BulkDeals"]=minmax(bulk_net,-50,50)
@@ -661,7 +713,13 @@ def compute_msi(td,conn,weights):
     c["DII"]=minmax(fii.get("dii_5d_avg",0) or 0,-500,1500)
     chgs=[idx.get(k,0) or 0 for k in ["nifty50_chg","banknifty_chg","midcap150_chg","smallcap250_chg"]]
     c["Sector"]=sum(1 for x in chgs if x>0)/len(chgs)*100 if chgs else 50
-    c["Options"]=minmax(fii.get("pcr",1.0) or 1.0,0.5,1.8,invert=True)
+    # W27 (SC-06): the session's real NIFTY PCR (OI) from the F&O bhavcopy
+    # (data/derivatives.py). Nothing wrote fii_dii_market.pcr before, so this read
+    # a constant 1.0; a session without a PCR now leaves the component out.
+    # High PCR = heavy put writing / hedging; read contrarian (inverted), as seeded.
+    from data.derivatives import get_pcr
+    pcr=get_pcr(conn,td)
+    if pcr is not None: c["Options"]=minmax(pcr,0.5,1.8,invert=True)
     c["Global"]=glb.get("global_score",50) or 50
     vix=get_vix(td,conn)
     if vix is not None: c["VIX"]=minmax(vix,8,35,invert=True)
@@ -742,6 +800,12 @@ def run_scoring_pipeline(trade_date=None):
         w_zpi=load_weights(conn,"ZPI"); w_acs=load_weights(conn,"ACS")
         w_atip=load_weights(conn,"ATIP"); w_tod=load_weights(conn,"TOD")
         w_mh=load_weights(conn,"MH"); w_msi=load_weights(conn,"MSI")
+        flags=w27_flags(); result["w27_flags"]=flags
+        if flags["institutional"]:
+            ensure_ins_weights(conn)
+        if flags["fundamentals"]:
+            from scores.fundamental import ensure_weights as _ensure_fs
+            _ensure_fs(conn)
         w_ins=load_weights(conn,"INS")
         mh=compute_mh(trade_date,conn,w_mh)
         msi=compute_msi(trade_date,conn,w_msi)
@@ -778,7 +842,8 @@ def run_scoring_pipeline(trade_date=None):
             _CAPTURE={}
             try:
                 tech=get_tech(sym,trade_date,conn); prices=get_prices(sym,trade_date,conn)
-                fund=get_fund(sym,conn); inst=get_inst(sym,trade_date,conn)
+                fund=get_fund(sym,conn,trade_date) if flags["fundamentals"] else {}
+                inst=get_inst(sym,trade_date,conn)
                 ns=get_ns(sym,trade_date,conn)
                 rs=compute_relative_strength(prices,bench_prices)
                 liquidity=compute_liquidity(prices)
@@ -792,12 +857,23 @@ def run_scoring_pipeline(trade_date=None):
                 cri=compute_cri(tech,fund,ns,mh,w_cri)
                 zpi=compute_zpi(tech,inst,ns,sector_val,w_zpi,
                                 accumulation=compute_delivery_accumulation(prices))
-                spi=fund.get("fundamental_score"); ts=tech.get("tech_score")
-                ins=compute_ins(fii,fund,bulk,w_ins)
+                # SC-02 / SC-13: two different formulas (scores/fundamental.py), valued at
+                # this session's close -- no longer one number counted twice
+                spi=fs=None
+                if fund:
+                    from scores.fundamental import score_row
+                    _close=float(prices["close"].iloc[0]) if not prices.empty and prices["close"].iloc[0] else None
+                    _fsr=score_row(conn,fund,_close,trade_date); spi,fs=_fsr["spi"],_fsr["fs"]
+                ts=tech.get("tech_score")
+                own=None
+                if flags["institutional"]:
+                    from data.institutional import features as _own
+                    own=_own(conn,sym,trade_date)
+                ins=compute_ins(fii,fund,bulk,w_ins,own=own)
                 all_s={"vpi":vpi,"spi":spi,"rri":rri,"mri":mri,"cri":cri,"msi":msi,"zpi":zpi,"tech_score":ts}
                 acs=compute_acs(sym,trade_date,all_s,mh,conn,w_acs,liquidity=liquidity,news_conf=news_conf)
                 all_s["acs"]=acs
-                atip_comp={"VPI":vpi,"SPI":spi,"RRI":rri,"MRI":mri,"MSI":msi,"ZPI":zpi,"TS":ts,"FS":fund.get("fundamental_score"),"INS":ins}
+                atip_comp={"VPI":vpi,"SPI":spi,"RRI":rri,"MRI":mri,"MSI":msi,"ZPI":zpi,"TS":ts,"FS":fs,"INS":ins}
                 atip_score=round(weighted_score({k:v for k,v in atip_comp.items() if v is not None},w_atip,"ATIP"),2)
                 all_s["atip_score"]=atip_score
                 tod_comp={"VPI":vpi,"ZPI":zpi,"MRI":mri,"MSI":msi,"Volume":min((tech.get("volume_ratio",1) or 1)*40,100),"Breakout":breakout,"Sector":sector_val,"ACS":acs}
@@ -819,7 +895,7 @@ def run_scoring_pipeline(trade_date=None):
                     # confidence that no longer matched their acs, and ai_scores
                     # saying NEUTRAL/59.9 for that date while market_health --
                     # rewritten by the same run -- said BULL/60.01.
-                    (sym,str(trade_date),vpi,spi,rri,mri,cri,msi,zpi,acs,ts,fund.get("fundamental_score"),ins,ns,atip_score,tod_score,signal,acs,beta_1y,mh.get("mh_score"),mh.get("regime"),
+                    (sym,str(trade_date),vpi,spi,rri,mri,cri,msi,zpi,acs,ts,fs,ins,ns,atip_score,tod_score,signal,acs,beta_1y,mh.get("mh_score"),mh.get("regime"),
                      factors[0] if len(factors)>0 else None,factors[1] if len(factors)>1 else None,factors[2] if len(factors)>2 else None))
                 all_scores_list.append({"symbol":sym,"atip_score":atip_score,"cri":cri,"acs":acs,"zpi":zpi,"tod_score":tod_score})
                 try:

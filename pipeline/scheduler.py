@@ -99,9 +99,13 @@ EOD_COVERAGE_MIN = 0.5
 # the (now working) Screener fetch back on would move the BUY gate for reasons
 # unrelated to price. Flip this, or set "fundamentals_enabled": true in
 # atip_data/config.json, once the weighting is settled.
-FUNDAMENTALS_ENABLED = False
-FUNDAMENTALS_HOLD_REASON = ("fundamental_score is weighted twice (SPI 0.15 + FS 0.10) and "
-                            "defaults to 50.0 when nothing parses; see FUNDAMENTALS_ENABLED")
+FUNDAMENTALS_ENABLED = True
+# W27: the hold above is resolved -- SPI and FS are now two different formulas
+# (scores/fundamental.py), nothing defaults to 50.0, and whether fundamentals
+# reach the scores at all is a separate switch (fundamentals.score_enabled,
+# off by default; scores/engine.w27_flags). This flag now only gates INGESTION
+# from NSE filings (data/nse_filings.py), which is safe to run.
+FUNDAMENTALS_HOLD_REASON = "fundamentals_enabled is false in atip_data/config.json"
 
 
 def fundamentals_enabled() -> bool:
@@ -637,6 +641,14 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # publishes each day's CSV for that trading day.
     run_job("bulk_block_deals", run_bulk_deals_pipeline, td)
 
+    # W27 (DP-08 partial / SC-06): NSE F&O bhavcopy -> per-underlying OI / PCR /
+    # max pain, and the session's NIFTY PCR that compute_msi's Options reads.
+    try:
+        from data.derivatives import run_fo_pipeline
+        run_job("fo_bhavcopy", run_fo_pipeline, td, 5)
+    except Exception as e:
+        log.warning(f"  F&O bhavcopy: {e}")
+
     # Corporate actions -- NSE's calendar, then any split or bonus whose ex-date
     # has arrived is applied to the stored history. Before the Dhan re-sync,
     # which must find the rows before an ex-date still on the old basis.
@@ -1087,30 +1099,28 @@ def run_weekly():
     except Exception as e:
         log.warning(f"  Accuracy audit: {e}")
 
-    # Fundamental data refresh (top 100 ATIP stocks)
+    # W27: fundamentals (DP-15) and ownership (DP-16) from NSE filings, for the
+    # whole tracked universe. Incremental -- only XBRLs not stored yet are fetched.
+    # The first run downloads ~12 filings per symbol (about an hour); run it once
+    # by hand off-hours:  python -m data.nse_filings
     if not fundamentals_enabled():
         log.info(f"  ⏸  Fundamentals refresh held off — {FUNDAMENTALS_HOLD_REASON}")
     else:
         try:
-            from db.schema import get_connection
             from data.fundamentals import run_fundamentals_pipeline
-            conn = get_connection()
-            # The last session, not "yesterday": on a Saturday run yesterday is
-            # a Friday only by luck, and after a Monday holiday it is a day with
-            # no scores at all, which silently selected no symbols.
-            prev = str(last_trading_day(date.today()))
-            rows = conn.execute(
-                "SELECT symbol FROM ai_scores WHERE date=? ORDER BY atip_score DESC LIMIT 100",
-                (prev,)
-            ).fetchall()
-            conn.close()
-            top_syms = [r["symbol"] for r in rows]
-            if top_syms:
-                run_job("fundamentals_weekly", run_fundamentals_pipeline, top_syms)
-            else:
-                log.warning(f"  Weekly fundamentals: no scored symbols for {prev} — skipped")
+            run_job("fundamentals_weekly", run_fundamentals_pipeline)
         except Exception as e:
             log.warning(f"  Weekly fundamentals: {e}")
+    try:
+        from data.institutional import run_institutional_pipeline
+        run_job("institutional_weekly", run_institutional_pipeline)
+    except Exception as e:
+        log.warning(f"  Weekly institutional: {e}")
+    try:
+        from quant.deal_signal import run_scheduled as run_deal_signal
+        run_job("deal_signal_study", run_deal_signal)
+    except Exception as e:
+        log.warning(f"  Deal-signal study: {e}")
 
     # Refresh Dhan security list (in case of new listings/delistings)
     try:
