@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import math
 
-DATA_STATUS = "PENDING: no futures/options data source is integrated; derivatives_quote is empty"
+DATA_STATUS = ("NSE F&O bhavcopy integrated (W27 data/derivatives.py summary, W35 data/derivatives_store.py contracts + "
+               "option chains); derivatives factors in quant/factors.py (W36, AF-06)")
 
 
 def _N(x):

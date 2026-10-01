@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/trade_of_day.json",
+  "title": "Trade of the day",
+  "description": "The top TOD pick with its scores. Endpoint: GET /api/tod.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "symbol": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "date": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vpi": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "spi": {},
+    "rri": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mri": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "cri": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "msi": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "zpi": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "acs": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tech_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "fund_score": {},
+    "inst_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "news_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "atip_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "atip_rank": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "signal": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confidence": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tod_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "is_tod": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mh_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "regime": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "top_factor_1": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "top_factor_2": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "top_factor_3": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "beta_1y": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "cmp": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "prev_close": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "atr_14": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sl": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "t1": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "t2": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "acs",
+    "atip_rank",
+    "atip_score",
+    "atr_14",
+    "beta_1y",
+    "cmp",
+    "confidence",
+    "created_at",
+    "cri",
+    "date",
+    "fund_score",
+    "id",
+    "inst_score",
+    "is_tod",
+    "mh_score",
+    "mri",
+    "msi",
+    "news_score",
+    "prev_close",
+    "regime",
+    "rri",
+    "signal",
+    "sl",
+    "spi",
+    "symbol",
+    "t1",
+    "t2",
+    "tech_score",
+    "tod_score",
+    "top_factor_1",
+    "top_factor_2",
+    "top_factor_3",
+    "vpi",
+    "zpi"
+  ]
+}

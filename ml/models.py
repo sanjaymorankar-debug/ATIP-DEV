@@ -21,7 +21,7 @@ Families (MODEL_TYPES):
                           (W24, ml/trees.py) -- usable without any extra package
     random_forest, gradient_boosting   scikit-learn adapters
     xgboost, lightgbm                  adapters for those packages
-    neural_network                     placeholder for a future wave
+    neural_network                     W36: native NumPy MLP (ml/deep.py), gated by benefit_check
 The adapters import their library lazily: without it, training raises
 ModelDependencyError naming the missing package. ATIP ships none of these
 libraries (numpy-only by design); nothing is installed automatically.
@@ -317,20 +317,17 @@ class LightGBMAdapter(_PickledAdapter):
         return (lightgbm.LGBMClassifier if self.task == "classification" else lightgbm.LGBMRegressor)(**self.params)
 
 
-class NeuralNetworkAdapter(BaseModel):
-    model_type = "neural_network"
-
-    def fit(self, X, y):
-        raise ModelDependencyError("neural_network is a placeholder for a future wave; no implementation in W5")
-
-
 MODEL_TYPES = {c.model_type: c for c in (LogisticModel, RidgeModel, RandomForestAdapter, GradientBoostingAdapter,
-                                         XGBoostAdapter, LightGBMAdapter, NeuralNetworkAdapter)}
+                                         XGBoostAdapter, LightGBMAdapter)}
 
 
 from ml.trees import EnsembleModel, NativeGBM, NativeRandomForest   # noqa: E402  (W24; needs BaseModel above)
 
 MODEL_TYPES.update({c.model_type: c for c in (NativeGBM, NativeRandomForest, EnsembleModel)})
+
+from ml.deep import NeuralNetwork   # noqa: E402  (W36, ML-02; needs BaseModel above)
+
+MODEL_TYPES[NeuralNetwork.model_type] = NeuralNetwork
 
 
 def make_model(model_type: str, task: str, params=None, columns=None, classes=None) -> BaseModel:
@@ -344,7 +341,7 @@ def availability() -> dict:
     for t, c in MODEL_TYPES.items():
         pkg = getattr(c, "package", None)
         if t == "neural_network":
-            out[t] = "placeholder (future wave)"
+            out[t] = "available (numpy MLP; adoption needs an ADOPTABLE benefit check)"
         elif not pkg:
             out[t] = "available (numpy)"
         else:

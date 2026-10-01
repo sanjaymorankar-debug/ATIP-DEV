@@ -75,6 +75,11 @@ ROUTE_RULES = [
     ("*", r"^/api/account", "workspace:write"),
     # W3 strategies
     ("POST", r"^/api/strategies/[^/]+/backtest$", "research:run"),
+    # W36: saving a builder strategy writes a strategy; compiling / previewing and asking the assistant are research
+    ("POST", r"^/api/strategy-builder/save$", "strategy:write"),
+    ("POST", r"^/api/strategy-builder/", "research:run"),
+    ("POST", r"^/api/assistant/", "research:run"),
+    ("GET", r"^/api/schemas", "dashboard:read"),
     ("*", r"^/api/strategies/[^/]+/(activate|pause|disable|retire|archive|lifecycle|current-version)$",
      "strategy:lifecycle"),
     ("PUT", r"^/api/strategies/regime-mapping", "strategy:lifecycle"),

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/intraday_scans.json",
+  "title": "Intraday scans",
+  "description": "Latest intraday scan hits. Endpoint: GET /api/scans/intraday.",
+  "type": "object",
+  "properties": {
+    "session": {},
+    "runs": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {}
+    },
+    "hits": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {}
+    }
+  },
+  "required": [
+    "hits",
+    "runs",
+    "session"
+  ]
+}

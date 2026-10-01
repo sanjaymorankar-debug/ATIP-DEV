@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/feed_status.json",
+  "title": "Live feed status",
+  "description": "Stock and index feed state. Endpoint: GET /api/market/feed-status.",
+  "type": "object",
+  "properties": {
+    "stocks": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "running": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "indexes": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "running": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "indexes_ticking": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "indexes",
+    "stocks"
+  ]
+}

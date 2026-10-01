@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/portfolio.json",
+  "title": "Portfolio tab",
+  "description": "Synced holdings with P&L and scores. Endpoint: GET /api/portfolio.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "date": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "symbol": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "qty": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "avg_price": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "cmp": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "current_val": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "pnl": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "pnl_pct": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atip_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "vpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "cri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "zpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "signal": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "weight_pct": {},
+      "sector": {},
+      "beta_1y": {},
+      "created_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "prev_close": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
+    }
+  }
+}

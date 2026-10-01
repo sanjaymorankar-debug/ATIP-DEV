@@ -71,13 +71,16 @@ def raw_factors(conn, as_of, factor_ids, symbols) -> dict:
             deliv.setdefault(s, []).append(p)
     fund = FX.fundamentals_as_of(conn, symbols, as_of) if any(
         "fundamentals" in FX.get(f).inputs for f in factor_ids) else {}
+    deriv = FX.derivatives_as_of(conn, symbols, as_of) if any(          # W36 (AF-06)
+        "derivatives" in FX.get(f).inputs for f in factor_ids) else {}
     out = {f: {} for f in factor_ids}
     for s in symbols:
         fc = env.context(s, as_of)
         if fc is None:
             continue
         fh = fund.get(s, [])
-        ctx = FX.FactorContext(s, as_of, fc.bars, fc, fh[-1] if fh else None, fh, deliv.get(s), bench)
+        ctx = FX.FactorContext(s, as_of, fc.bars, fc, fh[-1] if fh else None, fh, deliv.get(s), bench,
+                               deriv.get(s))
         for f in factor_ids:
             fd = FX.get(f)
             if fd.cross_sectional:

@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/live_pnl.json",
+  "title": "Live P&L",
+  "description": "LIVE and PAPER book P&L snapshot. Endpoint: GET /api/pnl/live.",
+  "type": "object",
+  "properties": {
+    "as_of": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "LIVE": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "positions": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unrealized": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "day_pnl": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rows": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "qty": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "avg": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "price": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "price_source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "quote_age_min": {},
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "unrealized": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "day_pnl": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "day_pct": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "PAPER": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "positions": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unrealized": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "day_pnl": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rows": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {}
+        },
+        "realized_to_date": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cash": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "strategies": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {}
+    },
+    "FUTURES": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "positions": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unrealized": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "realized": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "margin_blocked": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rows": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {}
+        },
+        "price_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "stale_prices": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  },
+  "required": [
+    "FUTURES",
+    "LIVE",
+    "PAPER",
+    "as_of",
+    "stale_prices",
+    "strategies"
+  ]
+}

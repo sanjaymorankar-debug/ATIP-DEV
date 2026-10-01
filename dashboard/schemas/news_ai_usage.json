@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/news_ai_usage.json",
+  "title": "News AI usage",
+  "description": "News-AI spend against the daily cap. Endpoint: GET /api/news/ai-usage.",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "daily_cap_usd": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "spent_today_usd": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "by_day": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {}
+    }
+  },
+  "required": [
+    "by_day",
+    "daily_cap_usd",
+    "enabled",
+    "model",
+    "spent_today_usd"
+  ]
+}

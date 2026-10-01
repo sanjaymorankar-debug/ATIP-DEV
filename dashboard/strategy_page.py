@@ -31,7 +31,7 @@ pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;bord
 @media (max-width:700px){.row{flex-direction:column;align-items:stretch}}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Strategies</span></div>
-<div><a href="/api/strategies/combined">Combined (JSON)</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
+<div><a href="/strategy-builder">+ Build a strategy</a><a href="/api/strategies/combined">Combined (JSON)</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
 <p class="muted">Strategies produce decisions and position intents, not orders: every intent here is <b>NOT_AUTHORIZED</b> (the risk and execution path is W4).</p>
 <h2>Strategies</h2>

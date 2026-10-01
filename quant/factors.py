@@ -77,11 +77,13 @@ class FactorDef:
 
 
 class FactorContext:
-    def __init__(self, symbol, as_of, bars, feature_ctx, fund=None, fund_history=None, delivery=None, bench=None):
+    def __init__(self, symbol, as_of, bars, feature_ctx, fund=None, fund_history=None, delivery=None, bench=None,
+                 deriv=None):
         self.symbol, self.as_of, self.bars = symbol, as_of, bars
         self._fc = feature_ctx
         self.fund, self.fund_history = fund or {}, fund_history or []
         self.delivery, self.bench = delivery or [], bench or {}
+        self.deriv = deriv or []          # W36 (AF-06): fo_underlying_daily rows <= as_of, oldest first
 
     def feat(self, name):
         return self._fc.get(name) if self._fc is not None else None
@@ -231,6 +233,72 @@ def _size_log_v2(c):
     return math.log(m) if m and m > 0 else None
 
 
+# ── W36 (AF-06): derivatives factors from the NSE F&O bhavcopy summary (fo_underlying_daily) ──
+# Stocks / indices in the F&O segment only (~200 of the Nifty 500); every other symbol computes None.
+# Known at the close of the session the bhavcopy is for (post-market), so as_of rows are point in time.
+def _dv(c, k=0):
+    """The k-th most recent derivatives row (0 = as_of's), or None."""
+    return c.deriv[-1 - k] if len(c.deriv) > k else None
+
+
+def _fut_basis_ann(c):
+    r = _dv(c)
+    if not r or not r.get("fut_close") or not r.get("underlying_price") or not r.get("near_expiry"):
+        return None
+    days = (datetime.fromisoformat(str(r["near_expiry"])[:10]).date() - c.as_of).days
+    if days <= 0:
+        return None
+    return (r["fut_close"] / r["underlying_price"] - 1) * 365.0 / days * 100
+
+
+def _oi_price_5(c):
+    """Futures OI change over 5 sessions, signed by the price move: + long build-up / short covering,
+    - short build-up / long unwinding."""
+    now, then = _dv(c), _dv(c, 5)
+    if not now or not then or not now.get("fut_oi") or not then.get("fut_oi") or not then.get("underlying_price"):
+        return None
+    oi = now["fut_oi"] / then["fut_oi"] - 1
+    px = now["underlying_price"] / then["underlying_price"] - 1
+    return (1 if px >= 0 else -1) * oi * 100
+
+
+def _pcr(c):
+    r = _dv(c)
+    return r.get("pcr_oi") if r else None
+
+
+def _pcr_chg_5(c):
+    now, then = _dv(c), _dv(c, 5)
+    if not now or not then or now.get("pcr_oi") is None or then.get("pcr_oi") is None:
+        return None
+    return now["pcr_oi"] - then["pcr_oi"]
+
+
+def _atm_iv(c):
+    r = _dv(c)
+    return r.get("atm_iv") if r else None
+
+
+def _iv_rank(c):
+    from quant.derivatives import iv_rank
+    hist = [r.get("atm_iv") for r in c.deriv[-252:] if r.get("atm_iv") is not None]
+    if len(hist) < 60:
+        return None
+    return iv_rank(hist[:-1], hist[-1])
+
+
+def _iv_skew(c):
+    r = _dv(c)
+    return r.get("iv_skew") if r else None
+
+
+def _max_pain_gap(c):
+    r = _dv(c)
+    if not r or not r.get("max_pain") or not r.get("underlying_price"):
+        return None
+    return (r["underlying_price"] / r["max_pain"] - 1) * 100
+
+
 FUND = "fundamental_data (empty today; filled by the weekly fundamentals job)"
 # W30: NSE filings (data/nse_filings.py) -- None for a symbol until it is ingested
 FUND_NSE = "fundamental_data from NSE filings (data/nse_filings.py); None for symbols not yet ingested"
@@ -361,6 +429,26 @@ FACTORS += [
     FactorDef("risk_bri", "Beta Risk Index", "risk", "W21 BRI 0-100 (higher = riskier)", "W21 bri",
               ("bars", "benchmark"), 250, lambda c: c.feat("bri"), direction=-1),
 ]
+FACTORS += [   # W36 (AF-06) derivatives -- research factors; F&O-segment symbols only
+    FactorDef("fut_basis_ann", "futures basis (annualised)", "derivatives",
+              "near-month future vs spot, annualised %: + contango / carry, - backwardation (stress or dividends)",
+              "(fut/spot-1)*365/days_to_expiry*100", ("derivatives",), 1, _fut_basis_ann),
+    FactorDef("oi_price_5", "OI build-up (5 sessions)", "derivatives",
+              "futures open-interest change over 5 sessions signed by the price move (+ long build-up / short covering)",
+              "sign(dP5)*(OI/OI_5-1)*100", ("derivatives",), 5, _oi_price_5),
+    FactorDef("pcr_oi", "put-call ratio (OI)", "derivatives", "put OI / call OI, all expiries (contrarian: high = "
+              "hedged / bearish crowd)", "put_oi/call_oi", ("derivatives",), 1, _pcr),
+    FactorDef("pcr_oi_chg_5", "PCR change (5 sessions)", "derivatives", "change in the OI put-call ratio over 5 sessions",
+              "pcr - pcr_5", ("derivatives",), 5, _pcr_chg_5),
+    FactorDef("atm_iv", "ATM implied volatility", "derivatives", "mean ATM call / put IV of the nearest expiry >= 7 "
+              "days out, %", "BS implied vol", ("derivatives",), 1, _atm_iv, direction=-1),
+    FactorDef("iv_rank_252", "IV rank (1y)", "derivatives", "where today's ATM IV sits in its last 252 sessions' "
+              "range, 0-100", "iv_rank(atm_iv)", ("derivatives",), 252, _iv_rank, direction=-1),
+    FactorDef("iv_skew", "IV skew", "derivatives", "IV of the ~95% put minus IV of the ~105% call, vol points "
+              "(fear premium)", "iv_put95 - iv_call105", ("derivatives",), 1, _iv_skew, direction=-1),
+    FactorDef("max_pain_gap", "distance from max pain", "derivatives", "spot vs the near-expiry max-pain strike, %",
+              "(spot/max_pain-1)*100", ("derivatives",), 1, _max_pain_gap, direction=-1),
+]
 REGISTRY = {f.factor_id: f for f in FACTORS}
 CATEGORIES = sorted({f.category for f in FACTORS})
 BUILTIN_SET = [f.factor_id for f in FACTORS if not f.data_dependency or f.data_dependency in (FUND, FUND_NSE)]
@@ -421,6 +509,21 @@ def fundamentals_as_of(conn, symbols, as_of) -> dict:
         if known is None and d.get("created_at"):
             known = datetime.fromisoformat(str(d["created_at"])[:10]).date()
         if known is not None and known <= as_of:
+            out[d["symbol"]].append(d)
+    return out
+
+
+def derivatives_as_of(conn, symbols, as_of, lookback_days: int = 400) -> dict:
+    """{symbol: [fo_underlying_daily rows with date <= as_of, oldest first]} (W36, AF-06)."""
+    out = {s: [] for s in symbols}
+    try:
+        rows = conn.execute("SELECT * FROM fo_underlying_daily WHERE date<=? AND date>=? ORDER BY date",
+                            (str(as_of), str(as_of - timedelta(days=lookback_days)))).fetchall()
+    except Exception:
+        return out
+    for r in rows:
+        d = dict(r)
+        if d["symbol"] in out:
             out[d["symbol"]].append(d)
     return out
 

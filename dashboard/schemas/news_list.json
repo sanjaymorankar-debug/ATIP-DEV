@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/news_list.json",
+  "title": "News tab",
+  "description": "Latest classified headlines. Endpoint: GET /api/news.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "headline": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "category": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "sentiment": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "importance": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "news_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "ai_summary": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "fetched_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  }
+}

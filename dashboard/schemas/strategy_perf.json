@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/strategy_perf.json",
+  "title": "Strategy performance",
+  "description": "Per-strategy decisions and book P&L. Endpoint: GET /api/strategy-performance.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "strategy_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "kind": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "status": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "version": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "health": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issues": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "backtest": {},
+      "decisions": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "days": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "by_action": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {}
+          },
+          "blocked": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      },
+      "books": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {}
+      }
+    }
+  }
+}

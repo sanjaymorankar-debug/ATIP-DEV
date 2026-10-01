@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/scores_table.json",
+  "title": "ATIP scores table",
+  "description": "Per-stock scores and signal for the latest session. Endpoint: GET /api/scores.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "symbol": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "date": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "vpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "spi": {},
+      "rri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "mri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "cri": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "msi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "zpi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "acs": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "tech_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "fund_score": {},
+      "inst_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "news_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atip_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atip_rank": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "signal": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "confidence": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "tod_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "is_tod": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "mh_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "regime": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_1": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_2": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_3": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "created_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "beta_1y": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "cmp": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "prev_close": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "rsi_14": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "adx_14": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atr_pct": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "volume_ratio": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
+    }
+  }
+}

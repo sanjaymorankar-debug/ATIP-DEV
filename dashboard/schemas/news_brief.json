@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/news_brief.json",
+  "title": "Market brief card",
+  "description": "AI or rule-based market brief (News tab). Endpoint: GET /api/news/summary.",
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "note"
+      ],
+      "properties": {
+        "note": {
+          "type": "string"
+        }
+      },
+      "description": "no brief stored yet"
+    },
+    {
+      "type": "object",
+      "required": [
+        "headline",
+        "tone",
+        "bullets",
+        "classifier",
+        "article_count"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "window_hours": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "article_count": {
+          "type": "number"
+        },
+        "classifier": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "rule"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fallback_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headline": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "RISK_ON",
+            "MIXED",
+            "RISK_OFF",
+            "QUIET"
+          ]
+        },
+        "bullets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "refs": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "key_risks": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "stocks_in_focus": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol": {
+                "type": "string"
+              },
+              "why": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "refs": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "description": "a stored brief (AI or rule-based, see classifier)"
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/market_health.json",
+  "title": "Market health card",
+  "description": "Regime, Market Health score and its inputs (main dashboard header). Endpoint: GET /api/mh.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "date": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mh_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "regime": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nifty_trend": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "banknifty": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "breadth": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "vix_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "fii_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "dii_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "global_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sector_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "adv_decline": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "nifty_close": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "vix_level": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "portfolio_health": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "advances": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "declines": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "pct_advancing": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "new_highs": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "new_lows": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "breadth_universe": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mh_coverage": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mh_inputs": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "backfilled": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "adv_decline",
+    "advances",
+    "backfilled",
+    "banknifty",
+    "breadth",
+    "breadth_universe",
+    "created_at",
+    "date",
+    "declines",
+    "dii_score",
+    "fii_score",
+    "global_score",
+    "id",
+    "mh_coverage",
+    "mh_inputs",
+    "mh_score",
+    "new_highs",
+    "new_lows",
+    "nifty_close",
+    "nifty_trend",
+    "pct_advancing",
+    "portfolio_health",
+    "regime",
+    "sector_score",
+    "vix_level",
+    "vix_score"
+  ]
+}

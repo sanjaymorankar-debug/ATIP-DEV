@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/msi_series.json",
+  "title": "MSI series",
+  "description": "Market Sentiment Index history and components. Endpoint: GET /api/lists/msi.",
+  "type": "object",
+  "properties": {
+    "series": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "msi": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mh": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "components": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {}
+    },
+    "note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "components",
+    "series",
+    "session"
+  ]
+}

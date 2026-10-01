@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atip/widgets/crash_risk.json",
+  "title": "Crash risk 25",
+  "description": "Highest-CRI stocks (Lists & scans tab). Endpoint: GET /api/lists/crash-risk.",
+  "type": "object",
+  "properties": {
+    "session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rows": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cri": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cri_5s_ago": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cri_change": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "atip": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "signal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "beta_1y": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "held": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "driver": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "components": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "Distribution": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "MarketWeakness": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "NegativeNews": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "Volatility": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "WeakTrend": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "rows",
+    "session"
+  ]
+}

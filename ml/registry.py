@@ -135,6 +135,14 @@ def transition(conn, model_id, version, to_state, reason="", actor="owner") -> d
         raise ModelRegistryError(f"{frm} -> {to_state} is not allowed; from {frm}: {sorted(TRANSITIONS[frm]) or 'none'}")
     if to_state in ("VALIDATION", "APPROVED", "ACTIVE") and not r[1]:
         raise ModelRegistryError(f"version {version} has no trained artifact")
+    if to_state in ("APPROVED", "ACTIVE"):                  # W36 (ML-02): deep learning only with validated benefit
+        mt = conn.execute("SELECT m.model_type, v.dataset_id FROM ml_model m JOIN ml_model_version v ON "
+                          "v.model_id=m.model_id WHERE m.model_id=? AND v.version=?", (model_id, version)).fetchone()
+        if mt and mt[0] == "neural_network":
+            from ml.deep import allowed_to_activate
+            ok, why = allowed_to_activate(conn, mt[1])
+            if not ok:
+                raise ModelRegistryError(f"neural_network {version} cannot be {to_state}: {why}")
     now = datetime.now()
     if to_state == "ACTIVE":
         prev = conn.execute("SELECT version FROM ml_model_version WHERE model_id=? AND status='ACTIVE'",
