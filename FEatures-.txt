@@ -1,0 +1,8 @@
+ATIP:-
+
+Zerodha & Dhan Algo trading compare and add features
+like any trading software history of stock to be showed 
+Last 7 years data to be pulled and stored
+amfi firm for Mutual fund data 
+
+Gokesari.com
