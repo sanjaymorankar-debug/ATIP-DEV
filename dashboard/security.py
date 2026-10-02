@@ -81,3 +81,22 @@ def dashboard_host() -> str:
                     f"from other machines; mutating routes still require the token in "
                     f"{TOKEN_PATH}")
     return host
+
+
+def dashboard_root_path() -> str:
+    """The URL prefix the dashboard is served under, "" when served at the root.
+
+    Set ATIP_ROOT_PATH=/ATIP (or config.json dashboard_root_path) when a reverse
+    proxy serves ATIP at https://<host>/ATIP/ and strips that prefix before
+    forwarding. FastAPI needs to know the prefix to build correct links and to
+    serve /ATIP/docs and /ATIP/openapi.json; without it every generated URL points
+    at the proxy's root and the dashboard's own fetch() calls 404.
+
+    Normalised to a leading slash and no trailing slash, which is the form
+    Starlette expects.
+    """
+    raw = (os.environ.get("ATIP_ROOT_PATH")
+           or str(_config().get("dashboard_root_path", ""))).strip()
+    if not raw or raw == "/":
+        return ""
+    return "/" + raw.strip("/")

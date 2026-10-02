@@ -33,74 +33,94 @@
 ## Project Structure
 
 ```
-D:\Projects\atip\                   ← RUN ALL COMMANDS FROM HERE
+/Users/agtci/Documents/Project_Documents/Projects/ATIP/        ← RUN ALL COMMANDS FROM HERE
 │
 ├── main.py                         ← SINGLE ENTRY POINT
 ├── requirements.txt
 ├── setup.py
-├── install.bat                     ← Double-click to install all packages
-├── start_atip.bat                  ← Double-click to start ATIP
+├── config_template.json            ← Copy to atip_data/config.json
+│
+│   macOS / Linux launchers
+├── start_atip.sh                   ← Start ATIP
+├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
+├── deploy/launchd/                 ← LaunchAgents: auto-start + 5-min snapshot
+│
+│   Windows launchers (kept for the old machine)
+├── install.bat                     ← Install all packages
+├── start_atip.bat                  ← Start ATIP
 ├── setup_atip.ps1                  ← PowerShell: full setup + Windows startup
 ├── ATIP_TaskScheduler.xml          ← Windows Task Scheduler import file
-├── config_template.json            ← Copy to atip_data\config.json
 │
-├── atip\
-│   ├── db\schema.py                ← 19 SQLite tables + 68 AI weight configs
-│   ├── data\
-│   │   ├── dhan.py                 ← Dhan API: live quotes, history, WebSocket
-│   │   ├── bhavcopy.py             ← NSE Bhavcopy official EOD
-│   │   ├── technical.py            ← 35 technical indicators (RSI, MACD, ADX…)
-│   │   ├── markets.py              ← NSE indexes + Global markets (yfinance)
-│   │   ├── news.py                 ← RSS fetch + Claude API sentiment
-│   │   └── fundamentals.py         ← Alpha Vantage + Screener.in
-│   ├── scores\
-│   │   ├── engine.py               ← VPI, MRI, RRI, CRI, ZPI, MSI, ACS, MH, ATIP
-│   │   └── accuracy.py             ← 5/10/20-day prediction tracking
-│   ├── pipeline\scheduler.py       ← Full daily schedule (all 3 windows)
-│   ├── dashboard\server.py         ← FastAPI HTML dashboard
-│   ├── alerts\telegram.py          ← 10 push alert types
-│   └── portfolio\zerodha.py        ← Zerodha Kite fallback
+│   Packages sit directly under the project root — there is deliberately NO
+│   nested atip/ package (see the note in main.py's docstring).
+├── db/schema.py                    ← the full schema (186 tables) + AI weight configs
+├── db/mysql.py                     ← MySQL / MariaDB backend
+├── db/postgres.py                  ← PostgreSQL backend
+├── data/
+│   ├── dhan.py                     ← Dhan API: live quotes, history, WebSocket
+│   ├── bhavcopy.py                 ← NSE Bhavcopy official EOD
+│   ├── technical.py                ← 37 technical indicators (RSI, MACD, ADX…)
+│   ├── markets.py                  ← NSE indexes + Global markets (yfinance)
+│   ├── news.py                     ← RSS fetch + Claude API sentiment
+│   └── fundamentals.py             ← Alpha Vantage + Screener.in
+├── scores/
+│   ├── engine.py                   ← VPI, MRI, RRI, CRI, ZPI, MSI, ACS, MH, ATIP
+│   └── accuracy.py                 ← 5/10/20-day prediction tracking
+├── pipeline/scheduler.py           ← Full daily schedule (all 3 windows)
+├── dashboard/server.py             ← FastAPI HTML dashboard
+├── alerts/telegram.py              ← 10 push alert types
+├── portfolio/zerodha.py            ← Zerodha Kite fallback
+├── strategy/ execution/ orders/    ← signals, routing, order lifecycle
+├── ml/ quant/ wealth/ enterprise/  ← models, factors, planning, tenancy
+├── brokers/ altdata/ backtest/     ← broker adapters, alt data, backtesting
+├── ops/ tools/ docs/ tests/
 │
-└── atip_data\                      ← Auto-created on first run
-    ├── db                     ← SQLite database (all data)
+└── atip_data/                      ← Auto-created on first run; NOT in git
+    ├── atip.db                     ← SQLite database (all data)
     ├── config.json                 ← YOUR API KEYS
     ├── atip.log                    ← Activity log
-    └── raw\dhan\                   ← Dhan security list + cache
+    ├── publish.json                ← Snapshot upload targets + tokens
+    └── raw/dhan/                   ← Dhan security list + cache
 ```
 
 ---
 
-## Quick Setup (Windows)
+## Quick Setup (macOS)
 
-### Option A — PowerShell (Recommended)
+The project lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP`.
+
+### Option A — one-time setup
+```bash
+cd /Users/agtci/Documents/Project_Documents/Projects/ATIP
+
+# Step 1: a virtualenv and the packages
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# Step 2: config
+mkdir -p atip_data
+cp config_template.json atip_data/config.json
+open -e atip_data/config.json        # add your API keys
+
+# Step 3: init DB + download the Dhan security list
+.venv/bin/python main.py --init
+.venv/bin/python main.py --dhan-securities
+
+# Step 4: first data run
+.venv/bin/python main.py --dhan-history
+
+# Step 5: start
+./start_atip.sh
+```
+
+`start_atip.sh` picks `.venv/bin/python` automatically when that virtualenv
+exists, so later runs are just `./start_atip.sh`.
+
+### Option B — Windows (the old machine)
 ```powershell
-cd D:\Projects\atip
+cd D:\Projects\ATIP
 # Right-click setup_atip.ps1 → Run with PowerShell as Administrator
 .\setup_atip.ps1 -All
-```
-This installs everything, creates config, inits DB, and registers Windows startup.
-
-### Option B — Manual
-```powershell
-cd D:\Projects\atip
-
-# Step 1: Install packages
-install.bat
-
-# Step 2: Create config
-mkdir atip_data
-copy config_template.json atip_data\config.json
-# Edit atip_data\config.json → add your API keys
-
-# Step 3: Init DB + download Dhan security list
-python main.py --init
-python main.py --dhan-securities
-
-# Step 4: First data run
-python main.py --dhan-history
-
-# Step 5: Start
-python main.py
 ```
 
 ---
@@ -163,7 +183,7 @@ python main.py --status                  # Show full pipeline status
 1. Go to [web.dhanhq.com](https://web.dhanhq.com)
 2. Login → **My Profile → Apps → Create App**
 3. Copy **Client ID** and **Access Token**
-4. Add to `atip_data\config.json`:
+4. Add to `atip_data/config.json`:
 ```json
 "dhan_client_id":    "1000000000",
 "dhan_access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9..."
@@ -206,29 +226,53 @@ python main.py --live-feed
 
 ---
 
-## Windows Startup Automation
+## Startup Automation
 
-### Method 1 — PowerShell (Easiest)
-```powershell
-# Run as Administrator
-.\setup_atip.ps1 -RegisterStartup
+### macOS — LaunchAgents (current machine)
+
+```bash
+deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload
+deploy/launchd/install.sh platform   # just the scheduler/dashboard
+deploy/launchd/install.sh snapshot   # just the snapshot upload
+deploy/launchd/install.sh --uninstall
 ```
-ATIP will auto-start 30 seconds after Windows login and also at 6:45 AM on weekdays.
 
-### Method 2 — Task Scheduler (Manual)
-1. Open **Task Scheduler** (search in Start menu)
-2. **Action → Import Task...**
-3. Browse to `D:\Projects\atip\ATIP_TaskScheduler.xml`
-4. Click **OK**
+The installer resolves the project's real location from its own path and writes
+the agents into `~/Library/LaunchAgents`, so nothing has a path baked in.
 
-### Method 3 — Startup Folder
-1. Press `Win + R` → type `shell:startup` → Enter
-2. Create shortcut to `D:\Projects\atip\start_atip.bat`
+| Agent | What it does |
+|---|---|
+| `com.atip.platform` | Starts ATIP at login and restarts it if it exits non-zero (`KeepAlive`), which is what the Windows Task Scheduler task provided and the Startup folder could not. |
+| `com.atip.publish-snapshot` | Runs `publish_snapshot.sh` every 5 minutes. Needs `atip_data/publish.json`. |
 
-### Verify Auto-Start is Working
-```powershell
-schtasks /query /tn "ATIP Platform" /fo LIST
+Both set `TZ=Asia/Kolkata` so scheduled job times match the market session
+regardless of the machine's locale.
+
+**Verify:**
+```bash
+launchctl list | grep com.atip          # a 0 in the second column = last run exited cleanly
+tail -f atip_data/launchd.err           # ATIP's own output
+tail -f atip_data/publish.log           # snapshot uploads
 ```
+
+**Stop:**
+```bash
+launchctl bootout gui/$UID/com.atip.platform
+```
+
+> ATIP refuses to start a second copy of itself: it takes an exclusive `flock` on
+> `atip_data/atip_single_instance.lock`, so a manual `./start_atip.sh` beside the
+> LaunchAgent exits with an error instead of running two schedulers against one
+> database. The lock is released by the OS on exit, crash or kill, so there is no
+> stale lock to clear.
+
+### Windows — Task Scheduler (the old machine)
+
+1. Open **Task Scheduler** → **Action → Import Task...**
+2. Browse to `D:\Projects\ATIP\ATIP_TaskScheduler.xml` → **OK**
+
+Or `.\setup_atip.ps1 -RegisterStartup` (as Administrator). Verify with
+`schtasks /query /tn "ATIP Platform" /fo LIST`.
 
 ---
 
@@ -255,8 +299,8 @@ Open **http://localhost:8000** after starting ATIP.
 
 | Error | Fix |
 |-------|-----|
-| `ModuleNotFoundError: No module named 'atip'` | Run from `D:\Projects\atip\` not from inside `atip\` |
-| `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data\config.json` |
+| `ModuleNotFoundError: No module named 'atip'` | Run from `/Users/agtci/Documents/Project_Documents/Projects/ATIP/` not from inside a package subfolder |
+| `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data/config.json` |
 | `security_id not found` | Run `python main.py --dhan-securities` first |
 | `pandas-ta` fails on Python 3.14 | Not needed — ATIP uses `ta` (`pip install ta`); see docs/DEV_SETUP.md |
 | Dashboard empty | Run `python main.py --run postmarket` first to populate data |

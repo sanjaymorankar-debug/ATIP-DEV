@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ATIP scheduler + dashboard + index feed, as a macOS LaunchAgent.
+
+  Replaces the Windows pair ATIP_TaskScheduler.xml + atip_autostart.vbs:
+    * RunAtLoad      = start at login, like the Startup-folder .vbs did
+    * KeepAlive      = the "Restart on failure" the Task Scheduler task had,
+                       which the Startup folder could not provide
+    * ProcessType Interactive + LowPriorityIO false keeps macOS from throttling
+      a long-running background job (App Nap would otherwise stall the feed)
+
+  Paths below are rewritten by deploy/launchd/install.sh for wherever the project
+  actually lives, so do not hand-edit __ATIP_DIR__.
+
+  Install:   deploy/launchd/install.sh
+  Logs:      atip_data/launchd.out / atip_data/launchd.err
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.atip.platform</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__ATIP_DIR__/start_atip.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__ATIP_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Do not hammer a broken install: wait 30s between restart attempts. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>__ATIP_DIR__/atip_data/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>__ATIP_DIR__/atip_data/launchd.err</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LowPriorityIO</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- IST, so scheduled job times match the market session regardless of
+             the machine's own locale. -->
+        <key>TZ</key>
+        <string>Asia/Kolkata</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

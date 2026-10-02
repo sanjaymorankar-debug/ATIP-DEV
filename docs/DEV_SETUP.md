@@ -8,7 +8,7 @@ Windows machine and is never exposed to the internet; nothing here deploys it.
 Python 3.11 or newer (the live install runs 3.14). Use a virtual environment:
 
 ```bat
-cd D:\Projects\ATIP
+cd /Users/agtci/Documents/Project_Documents/Projects/ATIP
 python -m venv .venv
 .venv\Scripts\activate
 ```

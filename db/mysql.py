@@ -1,0 +1,661 @@
+r"""
+MySQL / MariaDB support -- the path off SQLite for the hosted deployment.
+
+Sibling of db/postgres.py, built the same way and to the same contract: give the
+runtime what MySQL needs without forcing it.
+
+  translate(sql)        SQLite -> MySQL for the dialect ATIP actually uses
+  ddl(create, keyed)    a CREATE TABLE / INDEX statement in MySQL types
+  keyed_columns(stmts)  {table: {columns that take part in any key or index}} --
+                        needed by ddl(), see "TEXT cannot be indexed" below
+  trigger_ddl(sql)      ATIP's append-only guards as MySQL triggers
+  keys_from_ddl(stmts)  {table: [[key columns], ...]} (shared shape with db/postgres.py)
+  MySQLConnection       a sqlite3-shaped connection over PyMySQL (execute / executemany /
+                        fetchone / fetchall, rows readable by index and by name like
+                        sqlite3.Row), translating every statement on the way through.
+
+Activation (db/schema.get_connection): config.json "database": {"backend": "mysql",
+"allow_experimental": true} plus ATIP_DATABASE_URL=mysql://user:pass@host/db.
+Requires `pip install PyMySQL` (in requirements.txt as an extra, not a core dep).
+
+Why MySQL needs LESS translation than PostgreSQL
+------------------------------------------------
+Several SQLite habits are native MySQL and are deliberately left alone:
+  * GROUP_CONCAT(x)      -- MySQL has it, and its default separator is ',' too
+  * IFNULL(a, b)         -- native
+  * LIKE                 -- MySQL's default collation is case-insensitive, so plain
+                            LIKE already behaves the way SQLite's does. There is no
+                            ILIKE in MySQL; rewriting to it (as the Postgres path
+                            does) would be a syntax error.
+  * SUM(a > b)           -- MySQL comparisons yield 0/1 exactly like SQLite's, so the
+                            boolean-aggregate rewrite Postgres needs is not needed.
+  * BLOB, DATETIME       -- native type names
+
+...and where it needs MORE
+--------------------------
+1. TEXT cannot be indexed without a prefix length. ATIP's schema is full of
+   `run_id TEXT NOT NULL, ... PRIMARY KEY (run_id, seq)` and `strategy_id TEXT
+   PRIMARY KEY` (48 composite primary keys across the schema modules). MySQL
+   rejects every one of them. So ddl() takes the set of columns that take part in
+   any key or index for that table -- gathered across ALL statements first by
+   keyed_columns(), because a CREATE INDEX later in the list can key a column the
+   CREATE TABLE statement itself says nothing about -- and emits VARCHAR for those
+   instead of TEXT.
+
+   VARCHAR(191), not (255): InnoDB's index key limit is 3072 bytes and utf8mb4
+   costs 4 bytes per character, so 191 chars = 764 bytes leaves room for a
+   four-column composite key. 255 would overflow at three.
+
+2. TEXT cannot carry a DEFAULT at all ("BLOB, TEXT, GEOMETRY or JSON column 'x'
+   can't have a default value"). ATIP has `status TEXT NOT NULL DEFAULT 'DRAFT'`
+   and friends, so a defaulted TEXT column also becomes VARCHAR.
+
+3. Reserved words. `key`, `rank`, `interval`, `lead`, `lag` and others are column
+   names in ATIP's schema and reserved in MySQL 8 / MariaDB 10.11. Identifiers are
+   backtick-quoted in DDL.
+
+4. Upserts are keyed differently. MySQL has no `ON CONFLICT (a, b) DO UPDATE`; it
+   has `ON DUPLICATE KEY UPDATE`, which fires on ANY unique key. That is actually
+   closer to SQLite's `INSERT OR REPLACE` than PostgreSQL is -- so translate()
+   does not need pk_of() to pick a key the way the Postgres path does. `VALUES(col)`
+   is used rather than the 8.0.20+ `new.col` alias, because MariaDB and MySQL < 8.0.20
+   do not understand the newer form and Hostinger's MySQL version is not pinned.
+"""
+
+from __future__ import annotations
+
+import re
+
+
+class UnsupportedSQL(ValueError):
+    pass
+
+
+# Constructs with no safe automatic MySQL translation. Kept deliberately strict --
+# the Postgres path learned that silently mangling these is worse than refusing.
+# rowid: MySQL has no stable per-row physical identifier (no rowid, no ctid), so an
+# `ORDER BY rowid` entry-order tie-breaker cannot be reproduced at all.
+_UNSUPPORTED = [
+    (re.compile(r"\bsqlite_master\b", re.I), "sqlite_master"),   # handled below; left for the DML guard
+    (re.compile(r"\browid\b", re.I), "rowid"),
+    (re.compile(r"\bstrftime\s*\(", re.I), "strftime()"),
+]
+
+# sqlite_master as MySQL sees it (type, name, tbl_name, sql) -- catalog queries run unchanged.
+# MySQL's information_schema needs DATABASE() rather than current_schema().
+_SQLITE_MASTER = (
+    "(SELECT 'table' AS type, TABLE_NAME AS name, TABLE_NAME AS tbl_name, CAST(NULL AS CHAR) AS sql "
+    "FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' "
+    "UNION ALL SELECT 'view', TABLE_NAME, TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS "
+    "WHERE TABLE_SCHEMA=DATABASE() "
+    "UNION ALL SELECT DISTINCT 'index', INDEX_NAME, TABLE_NAME, CAST(NULL AS CHAR) "
+    "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() "
+    "UNION ALL SELECT 'trigger', TRIGGER_NAME, EVENT_OBJECT_TABLE, ACTION_STATEMENT "
+    "FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()) AS sqlite_master_my")
+
+# MySQL 8 / MariaDB 10.11 reserved words that ATIP uses, or could plausibly use, as
+# identifiers. Only consulted for DDL column/table names, never for free-form SQL.
+_RESERVED = {
+    "key", "keys", "rank", "interval", "lead", "lag", "order", "group", "index", "range",
+    "primary", "unique", "check", "default", "left", "right", "inner", "outer", "join",
+    "select", "insert", "update", "delete", "from", "where", "having", "limit", "offset",
+    "add", "all", "and", "as", "asc", "desc", "between", "by", "case", "cast", "column",
+    "condition", "current_date", "current_time", "current_timestamp", "cursor", "database",
+    "dec", "decimal", "declare", "distinct", "div", "double", "each", "else", "exists",
+    "exit", "explain", "false", "float", "for", "force", "foreign", "function", "if",
+    "ignore", "in", "int", "integer", "into", "is", "like", "lines", "load", "lock",
+    "long", "match", "mod", "not", "null", "on", "option", "or", "out", "partition",
+    "precision", "procedure", "real", "references", "regexp", "release", "rename",
+    "repeat", "replace", "require", "return", "revoke", "rlike", "schema", "separator",
+    "set", "show", "signal", "smallint", "specific", "sql", "ssl", "starting", "table",
+    "then", "to", "trigger", "true", "union", "usage", "use", "using", "values",
+    "varchar", "when", "with", "window", "write", "xor", "zerofill", "status", "system",
+    "position", "signed", "stored", "virtual", "call", "change", "cross", "describe",
+    "distinctrow", "elseif", "enclosed", "escaped", "fetch", "fulltext", "grant", "high_priority",
+    "hour_microsecond", "hour_minute", "hour_second", "infile", "inout", "insensitive",
+    "iterate", "leading", "leave", "localtime", "localtimestamp", "loop", "low_priority",
+    "mediumblob", "mediumint", "mediumtext", "middleint", "natural", "no_write_to_binlog",
+    "numeric", "optimize", "optionally", "outfile", "purge", "read", "reads", "recursive",
+    "sensitive", "spatial", "sqlexception", "sqlstate", "sqlwarning", "straight_join",
+    "terminated", "tinyblob", "tinyint", "tinytext", "trailing", "undo", "unlock",
+    "unsigned", "varbinary", "varcharacter", "varying", "while", "blob", "text",
+    # reserved in MariaDB 10.6+/MySQL 8 and used as column names in ATIP's schema
+    "rows", "format", "over", "filter", "groups", "within", "current_role", "except",
+    "intersect", "offset", "page_checksum", "slow", "statement", "returning", "body",
+}
+
+
+def reserved_columns(stmts) -> dict:
+    """{table: [columns whose name is a MySQL/MariaDB reserved word]}.
+
+    Generated DDL quotes every identifier, so these are safe to CREATE. Hand-written
+    queries elsewhere in the code base are not: `SELECT rows FROM audit_export` is a
+    syntax error on MySQL even though the table exists. This reports them so they can
+    be fixed, the same way db/dialect_scan.py reports SQLite-only constructs.
+    """
+    out: dict = {}
+    for s in stmts:
+        m = re.search(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$",
+                      s, re.I | re.S)
+        if not m:
+            continue
+        table, body = m.group(1), m.group(2)
+        for part in _split_top_level(body):
+            p = part.strip()
+            if re.match(r"(PRIMARY\s+KEY|UNIQUE|CONSTRAINT|FOREIGN\s+KEY|CHECK)\b", p, re.I):
+                continue
+            mm = re.match(r"([A-Za-z_]\w*)\s+\w", p)
+            if mm and mm.group(1).lower() in _RESERVED:
+                out.setdefault(table, []).append(mm.group(1))
+    return out
+
+# Length used for a TEXT column that MySQL will not accept as TEXT (see the module
+# docstring): 191 keeps a four-column composite key inside InnoDB's 3072-byte limit.
+KEYED_TEXT_LEN = 191
+# A TEXT column that only needs VARCHAR because it carries a DEFAULT is not in any
+# index, so it can be longer.
+DEFAULTED_TEXT_LEN = 255
+
+TABLE_SUFFIX = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+
+
+def quote(ident: str) -> str:
+    """Backtick-quote an identifier.
+
+    Every generated identifier is quoted unconditionally rather than only the ones
+    on a keyword list. ATIP's schema has columns called `rows`, `status`, `key`,
+    `rank` and `format`, and which of those are reserved differs between MySQL 8,
+    MariaDB 10.6 and MariaDB 10.11 -- a hand-maintained list silently rots into a
+    deployment failure on whatever version the host happens to run. Quoting
+    everything costs nothing and cannot rot. _RESERVED is kept only for
+    reserved_in_dml(), which reports the risk in hand-written queries.
+    """
+    i = ident.strip().strip("`\"[]")
+    return f"`{i}`"
+
+
+# ── PRAGMA / catalog ──────────────────────────────────────────────────────
+
+def _table_info(t):
+    """PRAGMA table_info(t) shaped as (cid, name, type, notnull, dflt_value, pk)."""
+    return ("SELECT ORDINAL_POSITION-1 AS cid, COLUMN_NAME AS name, UPPER(DATA_TYPE) AS type, "
+            "CASE WHEN IS_NULLABLE='NO' THEN 1 ELSE 0 END AS notnull, COLUMN_DEFAULT AS dflt_value, "
+            "CASE WHEN COLUMN_KEY='PRI' THEN 1 ELSE 0 END AS pk FROM information_schema.COLUMNS "
+            f"WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{t}' ORDER BY ORDINAL_POSITION")
+
+
+def _catalog(sql):
+    """PRAGMAs ATIP uses -> MySQL equivalents (or harmless no-ops); None if not one of them."""
+    m = re.match(r"\s*PRAGMA\s+table_info\s*\(\s*[\"']?(\w+)[\"']?\s*\)\s*;?\s*$", sql, re.I)
+    if m:
+        return _table_info(m.group(1))
+    # MySQL/InnoDB has no equivalent knob for these; they are advisory in SQLite.
+    if re.match(r"\s*PRAGMA\s+(busy_timeout|foreign_keys|synchronous|cache_size|journal_mode)\b", sql, re.I):
+        if re.match(r"\s*PRAGMA\s+journal_mode\b", sql, re.I):
+            return "SELECT 'wal' AS journal_mode"
+        return "SELECT 1"
+    if re.match(r"\s*PRAGMA\s+(integrity_check|quick_check)\s*;?\s*$", sql, re.I):
+        return "SELECT 'ok' AS integrity_check"
+    return None
+
+
+def _split_strings(sql):
+    """[(is_string_literal, text)] so rewrites never touch quoted text."""
+    out, i, buf = [], 0, []
+    while i < len(sql):
+        ch = sql[i]
+        if ch == "'":
+            if buf:
+                out.append((False, "".join(buf)))
+                buf = []
+            j = i + 1
+            while j < len(sql):
+                if sql[j] == "'" and (j + 1 >= len(sql) or sql[j + 1] != "'"):
+                    break
+                j += 2 if sql[j] in ("'", "\\") else 1
+            out.append((True, sql[i:j + 1]))
+            i = j + 1
+            continue
+        buf.append(ch)
+        i += 1
+    if buf:
+        out.append((False, "".join(buf)))
+    return out
+
+
+def _split_top_level(body, sep=","):
+    """Split on commas that are not inside parentheses."""
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(body):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == sep and depth == 0:
+            parts.append(body[start:i])
+            start = i + 1
+    parts.append(body[start:])
+    return parts
+
+
+_UNITS = {"day": "DAY", "days": "DAY", "month": "MONTH", "months": "MONTH", "year": "YEAR",
+          "years": "YEAR", "hour": "HOUR", "hours": "HOUR", "minute": "MINUTE", "minutes": "MINUTE"}
+
+
+def _date_mod(m):
+    """date(x, '+N days') -> DATE_ADD(x, INTERVAL N DAY) / DATE_SUB for '-'."""
+    arg, sign, n, unit = m.group(1).strip(), m.group(2), m.group(3), m.group(4).lower()
+    u = _UNITS.get(unit)
+    if not u:
+        raise UnsupportedSQL(f"date modifier unit {unit!r}")
+    base = "CURRENT_DATE" if arg.lower() == "'now'" else f"CAST({arg} AS DATE)"
+    fn = "DATE_ADD" if sign == "+" else "DATE_SUB"
+    return f"{fn}({base}, INTERVAL {n} {u})"
+
+
+def _greatest(sql):
+    """MAX(a, b) / MIN(a, b) with a top-level comma -> GREATEST / LEAST (aggregates untouched)."""
+    out, i = [], 0
+    pat = re.compile(r"\b(MAX|MIN)\s*\(", re.I)
+    while True:
+        m = pat.search(sql, i)
+        if not m:
+            out.append(sql[i:])
+            return "".join(out)
+        depth, j, comma = 1, m.end(), False
+        while j < len(sql) and depth:
+            c = sql[j]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            elif c == "," and depth == 1:
+                comma = True
+            j += 1
+        out.append(sql[i:m.start()])
+        out.append(("GREATEST(" if m.group(1).upper() == "MAX" else "LEAST(") if comma else m.group(0))
+        i = m.end()
+
+
+# ── DML translation ───────────────────────────────────────────────────────
+
+def translate(sql: str, pk_of=None) -> str:
+    """SQLite SQL -> MySQL.
+
+    pk_of is accepted for signature parity with db.postgres.translate and is not
+    needed: MySQL's ON DUPLICATE KEY UPDATE fires on any unique key, which is the
+    same rule SQLite's INSERT OR REPLACE follows, so no key has to be chosen.
+    """
+    cat = _catalog(sql)
+    if cat is not None:
+        return cat
+    if re.search(r"\bsqlite_master\b", sql, re.I):            # code parts only, never inside a literal
+        sql = "".join(p if s else re.sub(r"\bsqlite_master\b", _SQLITE_MASTER, p, flags=re.I)
+                      for s, p in _split_strings(sql))
+    code_only = "".join(p for s, p in _split_strings(sql) if not s)
+    for rx, name in _UNSUPPORTED:
+        if name == "sqlite_master":
+            continue                                           # already substituted above
+        if rx.search(code_only):
+            raise UnsupportedSQL(f"{name} has no automatic MySQL translation: {sql.strip()[:120]}")
+
+    parts = _split_strings(sql)
+    text = "\x00".join(p for s, p in parts if not s)           # code only, joined by markers
+    strings = [p for s, p in parts if s]
+
+    # INSERT OR REPLACE / OR IGNORE -> MySQL's own forms.
+    replace_target = None
+    m = re.search(r"\bINSERT\s+OR\s+REPLACE\s+INTO\s+([A-Za-z_]\w*)\s*\(([^)]*)\)", text, re.I)
+    if m:
+        replace_target = (m.group(1), [c.strip() for c in m.group(2).split(",")])
+        text = re.sub(r"\bINSERT\s+OR\s+REPLACE\s+INTO\b", "INSERT INTO", text, flags=re.I)
+    if re.search(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", text, re.I):
+        text = re.sub(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT IGNORE INTO", text, flags=re.I)
+
+    # ON CONFLICT -> ON DUPLICATE KEY UPDATE. Three shapes appear in ATIP:
+    #   ON CONFLICT DO NOTHING
+    #   ON CONFLICT (cols) DO NOTHING
+    #   ON CONFLICT (cols) DO UPDATE SET a=excluded.a, b=b+excluded.b
+    text = re.sub(r"\bON\s+CONFLICT\s*(\([^)]*\))?\s*DO\s+NOTHING\b", "\x01DUPNOTHING\x01", text, flags=re.I)
+    mcon = re.search(r"\bON\s+CONFLICT\s*(\([^)]*\))?\s*DO\s+UPDATE\s+SET\b", text, re.I)
+    if mcon:
+        text = text[:mcon.start()] + " ON DUPLICATE KEY UPDATE " + text[mcon.end():]
+    text = re.sub(r"\bexcluded\.(\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
+
+    text = _greatest(text)
+
+    # rejoin with the string literals back in place, then the date() modifiers (they contain literals)
+    chunks = text.split("\x00")
+    out = []
+    for i, ch in enumerate(chunks):
+        out.append(ch)
+        if i < len(strings):
+            out.append(strings[i])
+    sql2 = "".join(out)
+    sql2 = re.sub(r"\bdate\s*\(\s*([^,()]+?)\s*,\s*'([-+])\s*(\d+)\s+([a-z]+)'\s*\)", _date_mod, sql2, flags=re.I)
+    sql2 = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", sql2, flags=re.I)
+    sql2 = re.sub(r"\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", sql2, flags=re.I)
+
+    # ? -> %s outside literals; every % is doubled, INSIDE literals too (LIKE 'a%'):
+    # PyMySQL %-formats the whole statement when parameters are passed, and
+    # MySQLConnection always passes them.
+    sql2 = "".join(p.replace("%", "%%") if s else p.replace("%", "%%").replace("?", "%s")
+                   for s, p in _split_strings(sql2))
+
+    # An INSERT OR REPLACE with no explicit conflict clause becomes a full upsert of
+    # every inserted column. MySQL keys it on whichever unique key the row collides
+    # with, which is SQLite's rule too.
+    if replace_target and "\x01DUPNOTHING\x01" not in sql2 and "ON DUPLICATE KEY UPDATE" not in sql2.upper():
+        _, cols = replace_target
+        sets = ", ".join(f"{quote(c)}=VALUES({quote(c)})" for c in cols)
+        sql2 = sql2.rstrip().rstrip(";") + f" ON DUPLICATE KEY UPDATE {sets}"
+
+    # ON CONFLICT DO NOTHING -> INSERT IGNORE (set on the verb, not the tail).
+    if "\x01DUPNOTHING\x01" in sql2:
+        sql2 = sql2.replace("\x01DUPNOTHING\x01", "").rstrip().rstrip(";")
+        if not re.search(r"\bINSERT\s+IGNORE\b", sql2, re.I):
+            sql2 = re.sub(r"\bINSERT\s+INTO\b", "INSERT IGNORE INTO", sql2, count=1, flags=re.I)
+    return sql2.strip()
+
+
+# ── DDL translation ───────────────────────────────────────────────────────
+
+def keyed_columns(stmts) -> dict:
+    """{table: {columns taking part in any PRIMARY KEY / UNIQUE / INDEX}}.
+
+    Gathered across every statement before any of them is translated, because a
+    CREATE INDEX can key a column whose CREATE TABLE says nothing about it -- and
+    MySQL needs that column to be VARCHAR rather than TEXT.
+    """
+    keyed: dict = {}
+    for s in stmts:
+        m = re.search(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$",
+                      s, re.I | re.S)
+        if m:
+            t, body = m.group(1), m.group(2)
+            cols = keyed.setdefault(t, set())
+            for c in re.finditer(r"\b(?:PRIMARY\s+KEY|UNIQUE)\s*\(([^)]*)\)", body, re.I):
+                cols.update(x.strip().strip("`\"").split()[0] for x in c.group(1).split(",") if x.strip())
+            # inline `col TYPE ... PRIMARY KEY` / `... UNIQUE`
+            for part in _split_top_level(body):
+                p = part.strip()
+                mm = re.match(r"([A-Za-z_]\w*)\s+\w+", p)
+                if mm and re.search(r"\b(PRIMARY\s+KEY|UNIQUE)\b", p, re.I) \
+                        and not re.match(r"\s*(PRIMARY|UNIQUE|CONSTRAINT|FOREIGN|CHECK)\b", p, re.I):
+                    cols.add(mm.group(1))
+            continue
+        m = re.search(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?[\w{}.]+[`\"]?\s+ON\s+"
+                      r"([A-Za-z_]\w*)\s*\(([^)]*)\)", s, re.I)
+        if m:
+            keyed.setdefault(m.group(1), set()).update(
+                x.strip().strip("`\"").split()[0] for x in m.group(2).split(",") if x.strip())
+    return keyed
+
+
+_TYPE_RULES = [
+    (r"\bREAL\b", "DOUBLE"),
+    (r"\bDOUBLE\s+PRECISION\b", "DOUBLE"),
+    (r"\bBOOL(EAN)?\b", "TINYINT(1)"),       # SQLite stores 0/1 and the code compares with 1
+    (r"\bNUMERIC\b", "DECIMAL(20,6)"),
+]
+
+
+def _column_def(part: str, keyed: set) -> str:
+    """One column definition -> MySQL. Handles the TEXT restrictions and quoting."""
+    p = part.strip()
+    m = re.match(r"([A-Za-z_]\w*)\s+(.*)$", p, re.S)
+    if not m:
+        return p
+    name, rest = m.group(1), m.group(2)
+
+    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered either way.
+    if re.match(r"INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", rest, re.I):
+        tail = re.sub(r"^INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", "", rest, flags=re.I)
+        return f"{quote(name)} BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY{tail}"
+
+    rest = re.sub(r"\bAUTOINCREMENT\b", "", rest, flags=re.I)
+    rest = re.sub(r"\s+COLLATE\s+NOCASE\b", "", rest, flags=re.I)
+    # Expression defaults: MySQL wants CURRENT_TIMESTAMP bare, CURRENT_DATE parenthesised.
+    rest = re.sub(r"DEFAULT\s*\(?\s*datetime\s*\(\s*'now'\s*\)\s*\)?", "DEFAULT CURRENT_TIMESTAMP", rest, flags=re.I)
+    rest = re.sub(r"DEFAULT\s*\(?\s*date\s*\(\s*'now'\s*\)\s*\)?", "DEFAULT (CURRENT_DATE)", rest, flags=re.I)
+
+    # TEXT -> VARCHAR where MySQL will not take TEXT: in a key, or with a DEFAULT.
+    if re.search(r"\bTEXT\b", rest, re.I):
+        has_default = bool(re.search(r"\bDEFAULT\b", rest, re.I))
+        if name in keyed:
+            rest = re.sub(r"\bTEXT\b", f"VARCHAR({KEYED_TEXT_LEN})", rest, count=1, flags=re.I)
+        elif has_default:
+            rest = re.sub(r"\bTEXT\b", f"VARCHAR({DEFAULTED_TEXT_LEN})", rest, count=1, flags=re.I)
+
+    for rx, repl in _TYPE_RULES:
+        rest = re.sub(rx, repl, rest, flags=re.I)
+    rest = re.sub(r"\bINTEGER\b", "BIGINT", rest, flags=re.I)
+    return f"{quote(name)} {rest.strip()}"
+
+
+def ddl(stmt: str, keyed=None) -> str:
+    """A CREATE TABLE / CREATE INDEX / ALTER TABLE statement in MySQL's dialect.
+
+    `keyed` is the set of this table's columns that take part in any key or index
+    (keyed_columns() over the whole statement list). Without it, a TEXT primary key
+    is emitted as TEXT and MySQL rejects the statement -- so callers that create
+    tables should always pass it.
+    """
+    keyed = set(keyed or ())
+    s = stmt.strip().rstrip(";")
+    # WITHOUT ROWID is a table option AFTER the closing paren, so it has to go before
+    # the CREATE TABLE body is matched -- otherwise the statement fails to match at
+    # all and passes through as untranslated SQLite.
+    s = re.sub(r"\s*WITHOUT\s+ROWID\s*$", "", s, flags=re.I)
+
+    m = re.match(r"(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)([A-Za-z_]\w*)\s*\((.*)\)\s*$", s, re.I | re.S)
+    if m:
+        head, table, body = m.group(1), m.group(2), m.group(3)
+        out = []
+        for part in _split_top_level(body):
+            p = part.strip()
+            if not p:
+                continue
+            if re.match(r"(PRIMARY\s+KEY|UNIQUE|CONSTRAINT|FOREIGN\s+KEY|CHECK)\b", p, re.I):
+                # table-level constraint: quote the column list, leave the rest alone
+                def _q(mm):
+                    cols = ", ".join(quote(c) for c in mm.group(2).split(",") if c.strip())
+                    return f"{mm.group(1)}({cols})"
+                p = re.sub(r"\b(PRIMARY\s+KEY\s*|UNIQUE\s*)\(([^)]*)\)", _q, p, flags=re.I)
+                out.append(p)
+            else:
+                out.append(_column_def(p, keyed))
+        return f"{head}{quote(table)} (\n  " + ",\n  ".join(out) + "\n)" + TABLE_SUFFIX
+
+    m = re.match(r"(CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)([`\"]?[\w{}.]+[`\"]?)\s+ON\s+"
+                 r"([A-Za-z_]\w*)\s*\(([^)]*)\)\s*$", s, re.I | re.S)
+    if m:
+        head, name, table, cols = m.group(1), m.group(2).strip("`\""), m.group(3), m.group(4)
+        # MySQL has no "IF NOT EXISTS" for CREATE INDEX before 8.0.29 / MariaDB 10.5;
+        # the caller swallows a duplicate-key error instead.
+        head = re.sub(r"\s*IF\s+NOT\s+EXISTS\s*", " ", head, flags=re.I)
+        cl = ", ".join(quote(c.strip().split()[0]) + (" DESC" if re.search(r"\bDESC\b", c, re.I) else "")
+                       for c in cols.split(",") if c.strip())
+        return f"{head}{quote(name)} ON {quote(table)} ({cl})"
+
+    m = re.match(r"(ALTER\s+TABLE\s+)([A-Za-z_]\w*)(\s+ADD\s+(?:COLUMN\s+)?)(.*)$", s, re.I | re.S)
+    if m:
+        return f"{m.group(1)}{quote(m.group(2))}{m.group(3)}{_column_def(m.group(4), keyed)}"
+
+    return s
+
+
+# ── triggers ──────────────────────────────────────────────────────────────
+
+def trigger_ddl(sql: str) -> str:
+    """ATIP's SQLite triggers are all append-only guards:
+         BEFORE UPDATE|DELETE ON t [WHEN cond] BEGIN SELECT RAISE(ABORT, 'msg'); END
+    -> a MySQL row trigger raising SQLSTATE 45000 (the conventional user-defined error).
+    MySQL has no WHEN clause on triggers, so a conditional guard becomes an IF inside
+    the body. Anything else raises UnsupportedSQL rather than being dropped silently.
+    """
+    m = re.match(r"\s*CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+(BEFORE|AFTER)\s+(UPDATE|DELETE|INSERT)\s+"
+                 r"ON\s+(\w+)\s+(?:FOR\s+EACH\s+ROW\s+)?(?:WHEN\s+(.+?)\s+)?BEGIN\s+SELECT\s+RAISE\s*\(\s*ABORT\s*,\s*"
+                 r"'((?:[^']|'')*)'\s*\)\s*;\s*END\s*;?\s*$", sql, re.I | re.S)
+    if not m:
+        raise UnsupportedSQL(f"trigger is not an append-only guard: {' '.join(sql.split())[:120]}")
+    name, when, event, table, cond, msg = m.groups()
+    raise_stmt = f"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '{msg}';"
+    body = f"IF {cond} THEN {raise_stmt} END IF;" if cond else raise_stmt
+    return (f"CREATE TRIGGER {quote(name)} {when.upper()} {event.upper()} ON {quote(table)} "
+            f"FOR EACH ROW BEGIN {body} END")
+
+
+def keys_from_ddl(stmts) -> dict:
+    """{table: [[key columns], ...]} -- same shape as db.postgres.keys_from_ddl, so the
+    two backends can be used interchangeably by callers that need key information."""
+    from db.postgres import keys_from_ddl as _k
+    return _k(stmts)
+
+
+# ── a sqlite3-shaped connection over PyMySQL ──────────────────────────────
+
+class Row(tuple):
+    """Index and name access, like sqlite3.Row."""
+    def __new__(cls, values, names):
+        r = super().__new__(cls, values)
+        r._names = names
+        return r
+
+    def __getitem__(self, k):
+        if isinstance(k, str):
+            return super().__getitem__(self._names.index(k))
+        return super().__getitem__(k)
+
+    def keys(self):
+        return list(self._names)
+
+
+class _Cursor:
+    def __init__(self, cur):
+        self._cur = cur
+        self._names = [d[0] for d in cur.description] if cur.description else []
+
+    def _wrap(self, r):
+        return None if r is None else Row(r, self._names)
+
+    def fetchone(self):
+        return self._wrap(self._cur.fetchone())
+
+    def fetchall(self):
+        return [self._wrap(r) for r in self._cur.fetchall()]
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    @property
+    def lastrowid(self):
+        return self._cur.lastrowid
+
+    @property
+    def description(self):
+        return self._cur.description
+
+
+class MySQLConnection:
+    """sqlite3-shaped connection over PyMySQL, translating every statement."""
+
+    def __init__(self, dsn: str):
+        try:
+            import pymysql
+        except ImportError as e:
+            raise RuntimeError('MySQL backend needs: pip install PyMySQL') from e
+        from urllib.parse import urlparse, unquote
+        u = urlparse(dsn.replace("mysql+pymysql://", "mysql://"))
+        self._conn = pymysql.connect(
+            host=u.hostname or "localhost",
+            port=u.port or 3306,
+            user=unquote(u.username or ""),
+            password=unquote(u.password or ""),
+            database=(u.path or "").lstrip("/"),
+            charset="utf8mb4",
+            autocommit=False,
+            # keep DATE/DATETIME as returned types; ATIP's SQLite path uses
+            # PARSE_DECLTYPES and compares against date/datetime objects.
+        )
+        self.row_factory = None                       # accepted for sqlite3 compatibility
+        self._keys: dict = {}
+
+    def pk_of(self, table):
+        """[[key columns], ...] for `table`, primary key first -- read from
+        information_schema and cached. Kept for parity with PgConnection; MySQL's
+        upserts do not need it, but callers may."""
+        if table in self._keys:
+            return self._keys[table]
+        cur = self._conn.cursor()
+        cur.execute(
+            "SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS "
+            "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND NON_UNIQUE=0 "
+            "ORDER BY INDEX_NAME='PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX", (table,))
+        groups: dict = {}
+        for idx, col in cur.fetchall():
+            groups.setdefault(idx, []).append(col)
+        keys = ([groups.pop("PRIMARY")] if "PRIMARY" in groups else []) + list(groups.values())
+        self._keys[table] = keys
+        return keys
+
+    @staticmethod
+    def _is_ddl(sql):
+        return sql.lstrip().upper().startswith(("CREATE ", "ALTER ", "DROP "))
+
+    def _prepare(self, sql):
+        if self._is_ddl(sql):
+            if re.match(r"\s*CREATE\s+TRIGGER\b", sql, re.I):
+                return trigger_ddl(sql)
+            return ddl(sql, keyed_columns([sql]).get(_table_of(sql), set()))
+        return translate(sql, self.pk_of)
+
+    def execute(self, sql, params=()):
+        stmt = self._prepare(sql)
+        cur = self._conn.cursor()
+        cur.execute(stmt, tuple(params) if params else None)
+        return _Cursor(cur)
+
+    def executemany(self, sql, seq):
+        stmt = self._prepare(sql)
+        cur = self._conn.cursor()
+        cur.executemany(stmt, [tuple(p) for p in seq])
+        return _Cursor(cur)
+
+    def reset_identity(self, table, column="id"):
+        cur = self._conn.cursor()
+        cur.execute(f"SELECT COALESCE(MAX({quote(column)}), 0) + 1 FROM {quote(table)}")
+        nxt = cur.fetchone()[0]
+        cur.execute(f"ALTER TABLE {quote(table)} AUTO_INCREMENT = {int(nxt)}")
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def cursor(self):
+        """sqlite3 compatibility: a connection-level cursor that behaves like ours."""
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if exc and exc[0]:
+            self.rollback()
+        else:
+            self.commit()
+        return False
+
+
+def _table_of(sql):
+    m = re.search(r"\b(?:TABLE|INDEX\s+\S+\s+ON)\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?([A-Za-z_]\w*)", sql, re.I)
+    return m.group(1) if m else ""

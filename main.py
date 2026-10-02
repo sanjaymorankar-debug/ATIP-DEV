@@ -2,7 +2,7 @@ r"""
 ATIP — AI Trading Intelligence Platform  v0.2
 ================================================
 Run ALL commands from the project root — the folder containing this file
-(e.g. D:\Projects\ATIP\).
+(e.g. /Users/agtci/Documents/Project_Documents/Projects/ATIP/).
 
 Layout: every package sits directly under the project root, named for what
 it does — data/ db/ scores/ orders/ dashboard/ pipeline/ portfolio/
@@ -184,9 +184,38 @@ def _acquire_single_instance_lock():
     --dhan-quote, etc.) above this point in main() — those are meant to work
     alongside an already-running instance, and this session used them that way
     repeatedly.
+
+    On macOS and Linux the same guarantee comes from an exclusive flock() on a
+    file in atip_data/ rather than a named mutex: flock is likewise released by
+    the OS when the process exits for ANY reason (clean exit, crash, SIGKILL), so
+    it has no stale-lock problem either -- unlike a PID file, which does. This
+    matters as much here as on Windows: the double-launch races described above
+    corrupt state regardless of platform, and after the move to macOS a plain
+    `python main.py` beside a launchd job is exactly the pair that caused them.
     """
     if sys.platform != "win32":
-        return   # only Windows has been observed to double-launch this way
+        import fcntl
+        name = os.environ.get("ATIP_INSTANCE_NAME") or "atip_single_instance"
+        lock_dir = Path(os.environ.get("ATIP_DB_PATH", "atip_data/atip.db")).parent
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = lock_dir / f"{name}.lock"
+        fd = open(lock_path, "w")
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fd.close()
+            log.error("Another ATIP instance (scheduler/dashboard) is already running "
+                      f"-- refusing to start a second one. Its lock is {lock_path}. If you "
+                      "believe that instance is actually dead, check for a stray python "
+                      "process running main.py (`pgrep -fl 'python.*main.py'`) and stop it first.")
+            sys.exit(1)
+        fd.write(f"{os.getpid()}\n")
+        fd.flush()
+        # Keep the file object alive for the process lifetime: closing it, or letting
+        # it be garbage-collected, releases the flock.
+        global _SINGLE_INSTANCE_LOCK
+        _SINGLE_INSTANCE_LOCK = fd
+        return
     import ctypes
     # W31 (OPS-11): ATIP_INSTANCE_NAME lets an isolated drill instance (ops/rollback_drill.py,
     # a scratch clone on another port) run beside production; unset = the production name
@@ -207,7 +236,8 @@ def _acquire_single_instance_lock():
     _SINGLE_INSTANCE_MUTEX = handle
 
 
-_SINGLE_INSTANCE_MUTEX = None
+_SINGLE_INSTANCE_MUTEX = None   # Windows: the named mutex handle
+_SINGLE_INSTANCE_LOCK = None    # macOS / Linux: the flock'd file object
 
 
 def main():
@@ -442,9 +472,13 @@ def _start_dashboard(port: int = 8000):
     try:
         import uvicorn
         from dashboard.server import app
-        from dashboard.security import dashboard_host, token
+        from dashboard.security import dashboard_host, dashboard_root_path, token
         token()          # issue it before the first page is served
-        uvicorn.run(app, host=dashboard_host(), port=port, log_level="warning")
+        # root_path is also given to uvicorn (not just FastAPI) so that it is applied
+        # before the app is built when served via the import string, and so the
+        # startup banner shows the externally visible path.
+        uvicorn.run(app, host=dashboard_host(), port=port, log_level="warning",
+                    root_path=dashboard_root_path())
     except ImportError:
         log.error("FastAPI/uvicorn not installed.  Run:  pip install fastapi uvicorn")
     except Exception as e:
