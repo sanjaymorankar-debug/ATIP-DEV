@@ -66,7 +66,14 @@ def feed(monkeypatch):
     from data import dhan_ws
     _FakeFeed.instances = []
     monkeypatch.setattr(dhan_ws, "HAS_MARKETFEED", True)
-    monkeypatch.setattr(dhan_ws, "MarketFeed", _FakeFeed)
+    # raising=False because data.dhan_ws only defines MarketFeed when the dhanhq
+    # SDK imports, and CI deliberately leaves that SDK out so no job can reach a
+    # real brokerage account (.github/workflows/tests.yml). The fixture replaces
+    # MarketFeed with _FakeFeed and forces HAS_MARKETFEED anyway, so the real
+    # attribute never has to exist -- but monkeypatch.setattr defaults to
+    # requiring it, which turned all 26 tests in this file into setup errors
+    # instead of running them against the fake.
+    monkeypatch.setattr(dhan_ws, "MarketFeed", _FakeFeed, raising=False)
     monkeypatch.setattr(dhan_ws, "get_dhan_client", lambda: (None, None))
     return dhan_ws.IndexFeedManager(flush_interval=0.01)
 
