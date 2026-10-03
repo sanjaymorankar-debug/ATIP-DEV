@@ -1,0 +1,1249 @@
+-- =====================================================================
+-- ATIP — atip_schema.sqlite.sql   (production engine: SQLite)
+-- Complete schema of a fresh ATIP database on master @ 6896bea: what
+-- init_db() + seed_weights() + ops/migrations.apply() + the lazily-created
+-- order/paper/signal/strategy/recovery tables produce.
+-- 216 tables, 92 indexes, 16 triggers (append-only audit guards),
+-- plus seed rows: weight_config (105) and schema_migrations (0001-0005).
+--
+-- You normally DON'T need this: ATIP creates its own database on first
+-- start (python main.py). Use it to pre-build atip_data/atip.db:
+--     sqlite3 atip_data/atip.db < db/sql/atip_schema.sqlite.sql
+-- Only for a NEW, empty file. Never run against the live atip.db.
+-- =====================================================================
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+
+-- ---- tables ----
+CREATE TABLE accuracy_tracker (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, pred_date DATE NOT NULL, symbol TEXT NOT NULL,
+        signal TEXT, entry_price REAL,
+        price_5d REAL, return_5d REAL, correct_5d INTEGER,
+        price_10d REAL, return_10d REAL, correct_10d INTEGER,
+        price_20d REAL, return_20d REAL, correct_20d INTEGER,
+        hit_target_1 INTEGER DEFAULT 0, hit_stop_loss INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(pred_date,symbol));
+CREATE TABLE ai_scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        vpi REAL, spi REAL, rri REAL, mri REAL, cri REAL, msi REAL, zpi REAL, acs REAL,
+        tech_score REAL, fund_score REAL, inst_score REAL, news_score REAL,
+        atip_score REAL, atip_rank INTEGER, signal TEXT, confidence REAL,
+        beta_1y REAL,
+        tod_score REAL, is_tod INTEGER DEFAULT 0,
+        mh_score REAL, regime TEXT,
+        top_factor_1 TEXT, top_factor_2 TEXT, top_factor_3 TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,date));
+CREATE TABLE ai_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, day DATE NOT NULL, created_at TIMESTAMP, purpose TEXT, model TEXT,
+            input_tokens INTEGER, output_tokens INTEGER, cache_write_tokens INTEGER, cache_read_tokens INTEGER,
+            cost_usd REAL, ok INTEGER, error TEXT);
+CREATE TABLE alert_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP NOT NULL,
+        category TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info',
+        title TEXT, message TEXT NOT NULL, dedupe_key TEXT,
+        telegram_sent INTEGER NOT NULL DEFAULT 0, telegram_error TEXT);
+CREATE TABLE alt_dataset (
+            source_id TEXT PRIMARY KEY, name TEXT, description TEXT, entity TEXT, frequency TEXT, enabled INTEGER,
+            last_run TIMESTAMP, last_status TEXT, last_rows INTEGER, coverage REAL, stale_days INTEGER, error TEXT,
+            meta_json TEXT);
+CREATE TABLE alt_observation (
+            source_id TEXT NOT NULL, entity TEXT NOT NULL, date DATE NOT NULL, metric TEXT NOT NULL, value REAL,
+            available_from TIMESTAMP, meta_json TEXT, PRIMARY KEY (source_id, entity, date, metric));
+CREATE TABLE asset_price_daily (
+            asset_class TEXT NOT NULL, symbol TEXT NOT NULL, date DATE NOT NULL, open REAL, high REAL, low REAL,
+            close REAL, volume REAL, currency TEXT, source TEXT, PRIMARY KEY (asset_class, symbol, date));
+CREATE TABLE assistant_conversation (
+            conversation_id TEXT PRIMARY KEY, title TEXT, created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE assistant_message (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL, asked_at TIMESTAMP, question TEXT,
+            answer TEXT, mode TEXT, model TEXT, tools_json TEXT, cost_usd REAL);
+CREATE TABLE audit_export (
+            export_id TEXT PRIMARY KEY, source TEXT NOT NULL, first_id INTEGER, last_id INTEGER, rows INTEGER,
+            path TEXT, offbox_path TEXT, sha256 TEXT, chain_ok INTEGER, created_at TIMESTAMP);
+CREATE TABLE backtest_drawdown (
+            run_id TEXT NOT NULL, seq INTEGER NOT NULL, peak_date DATE, trough_date DATE,
+            recovery_date DATE, peak_equity REAL, trough_equity REAL, depth_pct REAL,
+            duration_sessions INTEGER, recovery_sessions INTEGER, PRIMARY KEY (run_id, seq));
+CREATE TABLE backtest_equity (
+            run_id TEXT NOT NULL, date DATE NOT NULL, cash REAL, positions_value REAL, equity REAL,
+            exposure_pct REAL, n_positions INTEGER, realized_cum REAL, unrealized REAL,
+            daily_return REAL, peak_equity REAL, drawdown_pct REAL, PRIMARY KEY (run_id, date));
+CREATE TABLE backtest_montecarlo (
+            mc_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, method TEXT NOT NULL, n_sims INTEGER,
+            seed INTEGER, params_json TEXT, results_json TEXT, created_at TIMESTAMP);
+CREATE TABLE backtest_run (
+            run_id TEXT PRIMARY KEY, parent_run_id TEXT, kind TEXT NOT NULL DEFAULT 'single',
+            window_index INTEGER, strategy_id TEXT NOT NULL, strategy_version TEXT,
+            period_label TEXT, start_date DATE, end_date DATE, data_source TEXT, timeframe TEXT,
+            initial_capital REAL, params_json TEXT, config_json TEXT NOT NULL, config_hash TEXT,
+            code_version TEXT, data_fingerprint_json TEXT, bias_report_json TEXT, metrics_json TEXT,
+            summary_json TEXT, status TEXT NOT NULL DEFAULT 'CREATED', error TEXT,
+            created_at TIMESTAMP, started_at TIMESTAMP, finished_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE backtest_trade (
+            run_id TEXT NOT NULL, seq INTEGER NOT NULL, symbol TEXT NOT NULL,
+            entry_date DATE, entry_price REAL, entry_ref_price REAL, qty INTEGER,
+            exit_date DATE, exit_price REAL, exit_ref_price REAL, exit_reason TEXT,
+            gross_pnl REAL, costs REAL, net_pnl REAL, return_pct REAL, holding_sessions INTEGER,
+            entry_reason TEXT, PRIMARY KEY (run_id, seq));
+CREATE TABLE broker_health_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP NOT NULL, overall TEXT NOT NULL,
+            in_session INTEGER, checks_json TEXT);
+CREATE TABLE broker_import_run (
+            run_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, broker TEXT, kind TEXT,
+            filename TEXT, rows_in INTEGER, added INTEGER, skipped INTEGER, errors INTEGER, created_at TIMESTAMP,
+            detail_json TEXT);
+CREATE TABLE bulk_deals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        net_value_cr REAL, deal_count INTEGER DEFAULT 0, source TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,date));
+CREATE TABLE compliance_result (
+        run_id TEXT NOT NULL, check_id TEXT NOT NULL, title TEXT, status TEXT NOT NULL, detail TEXT,
+        evidence_json TEXT, PRIMARY KEY (run_id, check_id));
+CREATE TABLE compliance_run (
+        run_id TEXT PRIMARY KEY, at TIMESTAMP NOT NULL, trigger TEXT, passed INTEGER, warned INTEGER,
+        failed INTEGER, summary TEXT);
+CREATE TABLE corporate_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, ex_date DATE NOT NULL,
+        subject TEXT NOT NULL, kind TEXT, factor REAL,
+        status TEXT NOT NULL DEFAULT 'pending', price_factor REAL,
+        price_rows INTEGER, volume_rows INTEGER, note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, reconciled_at TIMESTAMP,
+        UNIQUE(symbol, ex_date, subject));
+CREATE TABLE corporate_announcement (
+            ann_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, company TEXT, broadcast_at TIMESTAMP,
+            subject TEXT, detail TEXT, attachment_url TEXT, category TEXT, event_type TEXT, tone REAL,
+            importance TEXT, confidence REAL, summary TEXT, classifier TEXT, nlp_json TEXT, fetched_at TIMESTAMP);
+CREATE TABLE data_quality (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, check_name TEXT NOT NULL,
+            severity TEXT NOT NULL, failed INTEGER, checked INTEGER, score REAL,
+            detail TEXT, run_at TIMESTAMP, UNIQUE(date, check_name));
+CREATE TABLE derivatives_instrument (
+            instrument_id TEXT PRIMARY KEY, underlying TEXT NOT NULL, instrument_type TEXT NOT NULL,
+            expiry DATE, strike REAL, option_type TEXT, lot_size INTEGER, exchange TEXT, source TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE derivatives_quote (
+            instrument_id TEXT NOT NULL, date DATE NOT NULL, open REAL, high REAL, low REAL, close REAL,
+            settle REAL, volume INTEGER, open_interest INTEGER, oi_change INTEGER, underlying_close REAL,
+            source TEXT, created_at TIMESTAMP, PRIMARY KEY (instrument_id, date));
+CREATE TABLE enterprise_alert_rule (
+            rule_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT, symbol TEXT,
+            feature TEXT, op TEXT, value REAL, status TEXT, last_value REAL, last_triggered_at TIMESTAMP,
+            created_at TIMESTAMP);
+CREATE TABLE enterprise_api_key (
+            key_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, name TEXT,
+            key_hash TEXT NOT NULL UNIQUE, scopes_json TEXT, created_at TIMESTAMP, expires_at TIMESTAMP,
+            last_used_at TIMESTAMP, revoked_at TIMESTAMP, rate_limit_per_minute INTEGER, daily_quota INTEGER);
+CREATE TABLE enterprise_api_usage (
+            key_id TEXT NOT NULL, tenant_id TEXT NOT NULL, date DATE NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (key_id, date));
+CREATE TABLE enterprise_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at TIMESTAMP, tenant_id TEXT, user_id TEXT, actor TEXT,
+            action TEXT NOT NULL, resource TEXT, method TEXT, path TEXT, status_code INTEGER, ip TEXT,
+            details_json TEXT, prev_hash TEXT, row_hash TEXT);
+CREATE TABLE enterprise_consent (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, user_id TEXT NOT NULL, document TEXT NOT NULL,
+            version TEXT NOT NULL, accepted_at TIMESTAMP, ip TEXT, UNIQUE(user_id, document, version));
+CREATE TABLE enterprise_email_token (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, purpose TEXT NOT NULL, email TEXT,
+            expires_at TIMESTAMP, used_at TIMESTAMP, created_at TIMESTAMP);
+CREATE TABLE enterprise_invoice (
+            invoice_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, period_start DATE, period_end DATE,
+            plan_id TEXT, amount REAL, currency TEXT, status TEXT NOT NULL, lines_json TEXT, created_at TIMESTAMP, due_date DATE, paid_at TIMESTAMP, payment_id TEXT, finalized_at TIMESTAMP);
+CREATE TABLE enterprise_mfa_recovery (
+            code_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMP, used_at TIMESTAMP);
+CREATE TABLE enterprise_notification (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, user_id TEXT NOT NULL, category TEXT,
+            severity TEXT, title TEXT, body TEXT, created_at TIMESTAMP, read_at TIMESTAMP);
+CREATE TABLE enterprise_notification_delivery (
+            delivery_id TEXT PRIMARY KEY, tenant_id TEXT, notification_id INTEGER, user_id TEXT NOT NULL,
+            channel TEXT NOT NULL, destination_masked TEXT, subject TEXT, status TEXT NOT NULL, mode TEXT,
+            error TEXT, created_at TIMESTAMP, sent_at TIMESTAMP);
+CREATE TABLE enterprise_notification_pref (
+            tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, category TEXT NOT NULL, channels_json TEXT,
+            mode TEXT NOT NULL DEFAULT 'immediate', quiet_start TEXT, quiet_end TEXT,
+            unsubscribed INTEGER NOT NULL DEFAULT 0, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, user_id, category));
+CREATE TABLE enterprise_onboarding (
+            tenant_id TEXT PRIMARY KEY, steps_json TEXT, completed_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE enterprise_password_reset (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TIMESTAMP, created_by TEXT,
+            created_at TIMESTAMP, used_at TIMESTAMP);
+CREATE TABLE enterprise_payment (
+            payment_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, invoice_id TEXT, provider TEXT NOT NULL,
+            amount REAL, currency TEXT, status TEXT NOT NULL, provider_ref TEXT, idempotency_key TEXT UNIQUE,
+            error TEXT, created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE enterprise_permission (permission TEXT PRIMARY KEY, description TEXT);
+CREATE TABLE enterprise_plan (
+            plan_id TEXT PRIMARY KEY, name TEXT, price_month REAL, currency TEXT, limits_json TEXT,
+            features_json TEXT, status TEXT);
+CREATE TABLE enterprise_privacy_request (
+            request_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL,
+            status TEXT NOT NULL, reason TEXT, requested_at TIMESTAMP, decided_by TEXT, decided_at TIMESTAMP,
+            completed_at TIMESTAMP, result_json TEXT);
+CREATE TABLE enterprise_refresh_token (
+            token_hash TEXT PRIMARY KEY, family_id TEXT NOT NULL, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+            created_at TIMESTAMP, expires_at TIMESTAMP, used_at TIMESTAMP, revoked_at TIMESTAMP,
+            replaced_by TEXT, ip TEXT);
+CREATE TABLE enterprise_report (
+            report_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT, kind TEXT,
+            params_json TEXT, shared INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP, schedule TEXT, formats_json TEXT, last_run_at TIMESTAMP);
+CREATE TABLE enterprise_report_output (
+            output_id TEXT PRIMARY KEY, report_id TEXT NOT NULL, tenant_id TEXT NOT NULL, user_id TEXT,
+            format TEXT NOT NULL, content TEXT, rows INTEGER, created_at TIMESTAMP);
+CREATE TABLE enterprise_risk_profile (
+            scope TEXT NOT NULL, scope_id TEXT NOT NULL, profile_json TEXT, updated_at TIMESTAMP,
+            updated_by TEXT, PRIMARY KEY (scope, scope_id));
+CREATE TABLE enterprise_role (
+            role TEXT PRIMARY KEY, description TEXT, builtin INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMP);
+CREATE TABLE enterprise_role_permission (
+            role TEXT NOT NULL, permission TEXT NOT NULL, PRIMARY KEY (role, permission));
+CREATE TABLE enterprise_session (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, created_at TIMESTAMP,
+            expires_at TIMESTAMP, last_seen_at TIMESTAMP, ip TEXT, user_agent TEXT, revoked_at TIMESTAMP);
+CREATE TABLE enterprise_subscription (
+            tenant_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, status TEXT NOT NULL, started_at TIMESTAMP,
+            current_period_end TIMESTAMP, cancel_at TIMESTAMP, updated_at TIMESTAMP, dunning_state TEXT, grace_until TIMESTAMP, payment_provider TEXT);
+CREATE TABLE enterprise_tenant (
+            tenant_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, settings_json TEXT,
+            limits_json TEXT, created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE enterprise_usage (
+            tenant_id TEXT NOT NULL, date DATE NOT NULL, metric TEXT NOT NULL, value REAL,
+            PRIMARY KEY (tenant_id, date, metric));
+CREATE TABLE enterprise_user (
+            user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT, display_name TEXT,
+            password_hash TEXT NOT NULL, status TEXT NOT NULL, failed_logins INTEGER NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP, must_change_password INTEGER NOT NULL DEFAULT 0, preferences_json TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP, last_login_at TIMESTAMP, created_by TEXT, mfa_enabled INTEGER NOT NULL DEFAULT 0, mfa_secret_enc TEXT, mfa_pending_enc TEXT, email_verified_at TIMESTAMP, deleted_at TIMESTAMP);
+CREATE TABLE enterprise_user_role (
+            tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, granted_by TEXT,
+            granted_at TIMESTAMP, PRIMARY KEY (tenant_id, user_id, role));
+CREATE TABLE enterprise_vault_credential (
+            credential_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, broker TEXT NOT NULL,
+            label TEXT, secret_enc TEXT NOT NULL, field_names_json TEXT, key_id TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP, rotated_at TIMESTAMP, last_accessed_at TIMESTAMP,
+            access_count INTEGER NOT NULL DEFAULT 0, expires_at TIMESTAMP, last_verified_at TIMESTAMP, verify_status TEXT, verify_detail TEXT, UNIQUE(tenant_id, user_id, broker, label));
+CREATE TABLE enterprise_watchlist (
+            watchlist_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT,
+            symbols_json TEXT, shared INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE event_study (
+            study_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, period TEXT, params_json TEXT, result_json TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE exec_algo_parent (
+            parent_id TEXT PRIMARY KEY, risk_decision_id TEXT NOT NULL UNIQUE, intent_id TEXT, decision_id TEXT,
+            strategy_id TEXT, strategy_version TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL,
+            total_qty INTEGER NOT NULL, algo TEXT NOT NULL, params_json TEXT, start_at TIMESTAMP, end_at TIMESTAMP,
+            status TEXT NOT NULL, filled_qty INTEGER NOT NULL DEFAULT 0, avg_price REAL, child_count INTEGER NOT NULL
+            DEFAULT 0, reference_price REAL, impact_estimate_json TEXT, mode TEXT, reason TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE execution_impact_calibration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP, n_fills INTEGER, y REAL,
+            residual_bps REAL, adopted INTEGER, detail_json TEXT);
+CREATE TABLE fii_dii_market (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL UNIQUE,
+        fii_buy_cr REAL, fii_sell_cr REAL, fii_net_cr REAL,
+        dii_buy_cr REAL, dii_sell_cr REAL, dii_net_cr REAL,
+        fii_5d_avg REAL, dii_5d_avg REAL, pcr REAL, mwpl_pct REAL, adv_decline REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE fo_contract_daily (
+            date DATE NOT NULL, symbol TEXT NOT NULL, instrument TEXT NOT NULL, expiry DATE NOT NULL,
+            strike REAL NOT NULL DEFAULT 0, option_type TEXT NOT NULL DEFAULT 'XX', open REAL, high REAL, low REAL,
+            close REAL, settle REAL, prev_close REAL, oi REAL, oi_chg REAL, volume REAL, value REAL,
+            underlying REAL, lot_size INTEGER, iv REAL,
+            PRIMARY KEY (date, symbol, instrument, expiry, strike, option_type));
+CREATE TABLE fo_underlying_daily (
+            date DATE NOT NULL, symbol TEXT NOT NULL, kind TEXT NOT NULL, underlying_price REAL,
+            fut_close REAL, fut_oi REAL, fut_oi_chg REAL, fut_volume REAL,
+            call_oi REAL, put_oi REAL, call_oi_chg REAL, put_oi_chg REAL, call_volume REAL, put_volume REAL,
+            pcr_oi REAL, pcr_volume REAL, max_pain REAL, near_expiry DATE, created_at TIMESTAMP, atm_iv REAL, iv_call_atm REAL, iv_put_atm REAL, iv_skew REAL, iv_expiry DATE, iv_dte INTEGER, lot_size INTEGER,
+            PRIMARY KEY (date, symbol));
+CREATE TABLE formula_registry (
+            weights_hash TEXT PRIMARY KEY, weights_json TEXT NOT NULL, notes_json TEXT, code_version TEXT,
+            first_seen_at TIMESTAMP);
+CREATE TABLE fundamental_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, quarter TEXT NOT NULL,
+        report_date DATE, roe REAL, roce REAL, net_margin REAL, operating_margin REAL, roa REAL,
+        eps_ttm REAL, eps_growth_yoy REAL, revenue_cr REAL, revenue_growth_yoy REAL,
+        profit_cr REAL, profit_growth_yoy REAL, qoq_revenue_chg REAL, qoq_profit_chg REAL,
+        debt_equity REAL, current_ratio REAL, interest_coverage REAL, fcf_cr REAL, cash_cr REAL,
+        pe_ratio REAL, pb_ratio REAL, ev_ebitda REAL, peg_ratio REAL, dividend_yield REAL,
+        book_value_ps REAL, promoter_hold REAL, promoter_pledge REAL, inst_hold REAL,
+        fundamental_score REAL, source TEXT DEFAULT 'alpha_vantage',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, period_end DATE, available_from TIMESTAMP, nature TEXT, eps_q REAL, spi_score REAL, score_inputs TEXT, mf_hold REAL, fpi_hold REAL, shares_out REAL, equity_cr REAL, debt_cr REAL, profit_fy_cr REAL, UNIQUE(symbol,quarter));
+CREATE TABLE fundamental_filing (
+            xbrl_url TEXT PRIMARY KEY, symbol TEXT NOT NULL, period_end DATE NOT NULL, nature TEXT NOT NULL,
+            audited TEXT, broadcast_at TIMESTAMP, facts_json TEXT, status TEXT NOT NULL DEFAULT 'PARSED',
+            error TEXT, fetched_at TIMESTAMP);
+CREATE TABLE global_market_history (
+            series TEXT NOT NULL, date DATE NOT NULL, close REAL, source TEXT DEFAULT 'yfinance',
+            PRIMARY KEY (series, date));
+CREATE TABLE global_markets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, time TEXT DEFAULT 'overnight',
+        sp500 REAL, sp500_chg REAL, dow REAL, dow_chg REAL, nasdaq REAL, nasdaq_chg REAL,
+        nikkei REAL, nikkei_chg REAL, hangseng REAL, hangseng_chg REAL,
+        ftse100 REAL, ftse100_chg REAL, dax REAL, dax_chg REAL,
+        crude_wti REAL, crude_wti_chg REAL, crude_brent REAL, crude_brent_chg REAL,
+        gold REAL, gold_chg REAL, silver REAL, silver_chg REAL,
+        usd_inr REAL, usd_inr_chg REAL, usd_index REAL, usd_index_chg REAL,
+        us_10y REAL, us_10y_chg REAL,
+        global_score REAL, us_score REAL, asia_score REAL, commodity_score REAL,
+        global_sentiment TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, us_3m REAL, us_3m_chg REAL, us_5y REAL, us_5y_chg REAL, us_30y REAL, us_30y_chg REAL,
+        UNIQUE(date,time));
+CREATE TABLE index_levels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, time TEXT NOT NULL,
+        nifty50 REAL, nifty50_chg REAL, banknifty REAL, banknifty_chg REAL,
+        midcap150 REAL, midcap150_chg REAL, smallcap250 REAL, smallcap250_chg REAL,
+        nifty_it REAL, nifty_it_chg REAL, nifty_auto REAL, nifty_auto_chg REAL,
+        nifty_fmcg REAL, nifty_fmcg_chg REAL, nifty_metal REAL, nifty_metal_chg REAL,
+        nifty_realty REAL, nifty_realty_chg REAL, nifty_psubank REAL, nifty_psubank_chg REAL,
+        nifty_energy REAL, nifty_energy_chg REAL, nifty_pharma REAL, nifty_pharma_chg REAL,
+        india_vix REAL, india_vix_chg REAL, gift_nifty REAL, gift_nifty_chg REAL, overall_sentiment TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE insider_trade (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, person TEXT, person_category TEXT,
+            txn_type TEXT, security_type TEXT, qty REAL, value_rs REAL, mode TEXT, txn_from DATE, txn_to DATE,
+            disclosed_at TIMESTAMP, post_pct REAL, fetched_at TIMESTAMP);
+CREATE TABLE institutional_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        fii_net_cr REAL, dii_net_cr REAL, mf_net_cr REAL,
+        promoter_buy INTEGER DEFAULT 0, promoter_sell INTEGER DEFAULT 0,
+        delivery_pct REAL, inst_score REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ins_components TEXT, UNIQUE(symbol,date));
+CREATE TABLE intraday_bars (
+            symbol TEXT NOT NULL, ts TIMESTAMP NOT NULL, interval_min INTEGER NOT NULL, open REAL, high REAL,
+            low REAL, close REAL, volume INTEGER, source TEXT DEFAULT 'dhan', created_at TIMESTAMP,
+            PRIMARY KEY (symbol, interval_min, ts));
+CREATE TABLE intraday_scan_hit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, run_at TIMESTAMP, session DATE, scan TEXT,
+            symbol TEXT, price REAL, score REAL, details_json TEXT);
+CREATE TABLE investor_profile (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, profile_id TEXT NOT NULL, version INTEGER,
+            band TEXT, risk_score REAL, mode TEXT, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, owner_id));
+CREATE TABLE investor_profile_version (
+            profile_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, version INTEGER NOT NULL,
+            questionnaire_version TEXT, methodology_version TEXT, answers_json TEXT, answers_hash TEXT,
+            result_json TEXT, band TEXT, risk_score REAL, created_at TIMESTAMP, created_by TEXT,
+            UNIQUE(tenant_id, owner_id, version));
+CREATE TABLE job_recovery (
+    day TEXT NOT NULL, step TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_at TIMESTAMP,
+    last_result TEXT, problems TEXT, PRIMARY KEY (day, step));
+CREATE TABLE lake_partition (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, dataset TEXT NOT NULL, partition_date DATE NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1, path TEXT NOT NULL, format TEXT, rows INTEGER, columns_json TEXT,
+            sha256 TEXT, bytes INTEGER, source TEXT, knowledge_time TIMESTAMP, written_at TIMESTAMP);
+CREATE TABLE latency_rollup (
+            stage TEXT NOT NULL, minute TIMESTAMP NOT NULL, n INTEGER, p50_ms REAL, p95_ms REAL, p99_ms REAL,
+            max_ms REAL, mean_ms REAL, PRIMARY KEY (stage, minute));
+CREATE TABLE live_feed_status (
+            feed TEXT PRIMARY KEY, mode TEXT, subscribed INTEGER, ticks INTEGER, last_tick_at TIMESTAMP,
+            last_flush_at TIMESTAMP, detail TEXT, updated_at TIMESTAMP);
+CREATE TABLE live_pnl_snapshot (
+            ts TIMESTAMP NOT NULL, book TEXT NOT NULL, value REAL, day_pnl REAL, unrealized REAL, positions INTEGER,
+            PRIMARY KEY (ts, book));
+CREATE TABLE live_quotes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol     TEXT    NOT NULL,
+        ltp        REAL,
+        open       REAL,
+        high       REAL,
+        low        REAL,
+        prev_close REAL,
+        volume     INTEGER,
+        chg_pct    REAL,
+        timestamp  TEXT,
+        source     TEXT DEFAULT 'dhan', buy_qty REAL, sell_qty REAL,
+        UNIQUE(symbol, timestamp));
+CREATE TABLE live_ticks (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol      TEXT,
+        security_id TEXT,
+        ltp         REAL,
+        open        REAL,
+        high        REAL,
+        low         REAL,
+        close       REAL,
+        volume      INTEGER,
+        timestamp   TEXT,
+        received_at TEXT);
+CREATE TABLE macro_calendar (
+            event_date DATE NOT NULL, event TEXT NOT NULL, country TEXT DEFAULT 'IN', importance TEXT,
+            series_id TEXT, source TEXT, note TEXT, PRIMARY KEY (event_date, event));
+CREATE TABLE macro_observation (
+            series_id TEXT NOT NULL, period DATE NOT NULL, value REAL, available_from DATE NOT NULL,
+            first_seen TIMESTAMP, revised INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (series_id, period));
+CREATE TABLE macro_series (
+            series_id TEXT PRIMARY KEY, name TEXT, country TEXT, source TEXT, source_code TEXT, frequency TEXT,
+            unit TEXT, release_lag_days INTEGER, transform TEXT, last_fetch TIMESTAMP, last_period DATE,
+            status TEXT, error TEXT);
+CREATE TABLE market_event (
+            event_id TEXT PRIMARY KEY, source TEXT NOT NULL, source_id TEXT, symbol TEXT, event_type TEXT NOT NULL,
+            category TEXT, event_date DATE, known_at DATE NOT NULL, direction TEXT, value REAL, payload_json TEXT,
+            created_at TIMESTAMP, UNIQUE (source, source_id));
+CREATE TABLE market_health (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL UNIQUE,
+        mh_score REAL, regime TEXT, nifty_trend REAL, banknifty REAL, breadth REAL,
+        vix_score REAL, fii_score REAL, dii_score REAL, global_score REAL,
+        sector_score REAL, adv_decline REAL, nifty_close REAL, vix_level REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        advances INTEGER, declines INTEGER, pct_advancing REAL, new_highs INTEGER,
+        new_lows INTEGER, breadth_universe INTEGER, mh_coverage REAL, mh_inputs TEXT,
+        backfilled INTEGER DEFAULT 0, portfolio_health REAL);
+CREATE TABLE mf_nav (
+            scheme_code TEXT NOT NULL, date DATE NOT NULL, nav REAL, scheme_name TEXT, isin_growth TEXT,
+            isin_reinvest TEXT, amc TEXT, category TEXT, PRIMARY KEY (scheme_code, date));
+CREATE TABLE microstructure_feature (
+            symbol TEXT NOT NULL, date DATE NOT NULL, feature TEXT NOT NULL, value REAL, source TEXT,
+            created_at TIMESTAMP, PRIMARY KEY (symbol, date, feature));
+CREATE TABLE ml_anomaly (
+            as_of DATE NOT NULL, symbol TEXT NOT NULL, kind TEXT, score REAL, detail_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (as_of, symbol));
+CREATE TABLE ml_cluster (
+            run_id TEXT NOT NULL, as_of DATE, symbol TEXT NOT NULL, cluster INTEGER,
+            PRIMARY KEY (run_id, symbol));
+CREATE TABLE ml_cluster_run (
+            run_id TEXT PRIMARY KEY, as_of DATE, method TEXT, k INTEGER, summary_json TEXT, created_at TIMESTAMP);
+CREATE TABLE ml_dataset (
+            dataset_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, spec_json TEXT NOT NULL,
+            spec_hash TEXT NOT NULL, feature_set TEXT NOT NULL, label_json TEXT NOT NULL, start_date DATE,
+            end_date DATE, universe_json TEXT, frequency TEXT, sampling_json TEXT, source TEXT, status TEXT,
+            summary_json TEXT, snapshot_path TEXT, snapshot_hash TEXT, created_at TIMESTAMP, built_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE ml_dl_benefit (
+            check_id TEXT PRIMARY KEY, dataset_id TEXT, verdict TEXT NOT NULL, reason TEXT, result_json TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE ml_feature (
+            feature_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, category TEXT, data_type TEXT,
+            calculation_method TEXT, version TEXT NOT NULL, dependencies_json TEXT, availability TEXT,
+            lookback INTEGER, created_at TIMESTAMP);
+CREATE TABLE ml_feature_set (
+            name TEXT NOT NULL, version TEXT NOT NULL, features_json TEXT NOT NULL,
+            feature_versions_json TEXT NOT NULL, description TEXT, content_hash TEXT NOT NULL,
+            created_at TIMESTAMP, PRIMARY KEY (name, version));
+CREATE TABLE ml_health_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, checked_at TIMESTAMP, status TEXT, result_json TEXT);
+CREATE TABLE ml_label (
+            label_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            task TEXT NOT NULL, spec_json TEXT NOT NULL, spec_hash TEXT NOT NULL, description TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE ml_model (
+            model_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, model_type TEXT NOT NULL,
+            task TEXT NOT NULL, label_kind TEXT NOT NULL, feature_set TEXT NOT NULL, purpose TEXT NOT NULL,
+            status TEXT NOT NULL, active_version TEXT, owner TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE ml_model_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT, event_type TEXT NOT NULL,
+            from_state TEXT, to_state TEXT, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP);
+CREATE TABLE ml_model_explanation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            explanation_version TEXT, payload_json TEXT, created_at TIMESTAMP);
+CREATE TABLE ml_model_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, version TEXT NOT NULL, kind TEXT NOT NULL,
+            period_start DATE, period_end DATE, metrics_json TEXT, created_at TIMESTAMP);
+CREATE TABLE ml_model_monitoring (
+            model_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, version_status TEXT,
+            prediction_dist_json TEXT, feature_drift_json TEXT, data_quality_json TEXT, n_shifted INTEGER,
+            created_at TIMESTAMP, PRIMARY KEY (model_id, version, as_of));
+CREATE TABLE ml_model_version (
+            model_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, feature_set TEXT,
+            feature_set_hash TEXT, dataset_id TEXT, dataset_spec_hash TEXT, dataset_snapshot_hash TEXT,
+            training_config_json TEXT, training_config_hash TEXT, train_start DATE, train_end DATE,
+            artifact_path TEXT, artifact_hash TEXT, metrics_json TEXT, error TEXT, created_at TIMESTAMP,
+            trained_at TIMESTAMP, activated_at TIMESTAMP, PRIMARY KEY (model_id, version));
+CREATE TABLE ml_prediction (
+            prediction_id TEXT PRIMARY KEY, model_id TEXT NOT NULL, model_version TEXT NOT NULL,
+            version_status TEXT, symbol TEXT NOT NULL, as_of DATE NOT NULL, prediction TEXT,
+            prediction_value REAL, probabilities_json TEXT, confidence REAL, prob_up REAL, ml_score REAL,
+            interval_low REAL, interval_high REAL, feature_set TEXT, feature_set_hash TEXT, artifact_hash TEXT,
+            explanation_json TEXT, features_json TEXT, created_at TIMESTAMP,
+            UNIQUE (model_id, model_version, symbol, as_of));
+CREATE TABLE ml_rl_run (
+            run_id TEXT PRIMARY KEY, verdict TEXT, result_json TEXT, q_table_json TEXT, created_at TIMESTAMP);
+CREATE TABLE ml_training_run (
+            run_id TEXT PRIMARY KEY, model_id TEXT NOT NULL, version TEXT, dataset_id TEXT, status TEXT NOT NULL,
+            config_json TEXT, metrics_json TEXT, rows INTEGER, error TEXT, traceback TEXT, actor TEXT,
+            started_at TIMESTAMP, finished_at TIMESTAMP);
+CREATE TABLE ml_validation_report (
+            report_id TEXT PRIMARY KEY, model_type TEXT, dataset_id TEXT, label_json TEXT, params_json TEXT,
+            report_json TEXT, verdict TEXT, created_at TIMESTAMP);
+CREATE TABLE news_articles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fetched_at TIMESTAMP NOT NULL,
+        headline TEXT NOT NULL, source TEXT, url TEXT, category TEXT,
+        symbols_mentioned TEXT, sentiment REAL, importance TEXT,
+        confidence REAL, news_score REAL, ai_summary TEXT, processed INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, classifier TEXT, novelty REAL, dup_of INTEGER, source_weight REAL, half_life_h REAL, published_at TIMESTAMP);
+CREATE TABLE news_source_quality (
+            source TEXT PRIMARY KEY, articles INTEGER, duplicate_share REAL, symbol_share REAL,
+            reaction_hit_rate REAL, reaction_n INTEGER, configured_weight REAL, weight REAL,
+            detail_json TEXT, updated_at TIMESTAMP);
+CREATE TABLE news_source_status (
+            source TEXT PRIMARY KEY, url TEXT, last_attempt TIMESTAMP, last_ok TIMESTAMP,
+            last_items INTEGER, consecutive_failures INTEGER DEFAULT 0, last_error TEXT);
+CREATE TABLE news_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TIMESTAMP, window_hours INTEGER, article_count INTEGER,
+            classifier TEXT, model TEXT, summary_json TEXT, fallback_reason TEXT);
+CREATE TABLE news_symbol_score (
+            symbol TEXT NOT NULL, date DATE NOT NULL, score REAL, n_articles INTEGER, effective_weight REAL,
+            mean_sentiment REAL, components_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (symbol, date));
+CREATE TABLE oms_event_delivery (
+            event_id TEXT NOT NULL, handler TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 1,
+            error TEXT, at TIMESTAMP, PRIMARY KEY (event_id, handler));
+CREATE TABLE oms_event_outbox (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, topic TEXT NOT NULL, key TEXT,
+            payload_json TEXT, created_at TIMESTAMP, dispatched_at TIMESTAMP, attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT);
+CREATE TABLE oms_execution (
+            execution_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, adapter TEXT, action TEXT,
+            request_json TEXT, response_json TEXT, status TEXT, broker_order_id TEXT, error TEXT,
+            at TIMESTAMP);
+CREATE TABLE oms_fill (
+            fill_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, execution_id TEXT, strategy_id TEXT,
+            strategy_version TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL, quantity INTEGER NOT NULL,
+            price REAL NOT NULL, fees REAL NOT NULL DEFAULT 0, price_source TEXT, mode TEXT,
+            filled_at TIMESTAMP);
+CREATE TABLE oms_order (
+            order_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL UNIQUE, risk_decision_id TEXT NOT NULL UNIQUE,
+            decision_id TEXT, strategy_id TEXT, strategy_version TEXT, symbol TEXT NOT NULL,
+            side TEXT NOT NULL, quantity INTEGER NOT NULL, order_type TEXT NOT NULL, limit_price REAL,
+            product_type TEXT, mode TEXT NOT NULL, adapter TEXT, status TEXT NOT NULL,
+            broker_order_id TEXT, filled_quantity INTEGER NOT NULL DEFAULT 0, avg_fill_price REAL,
+            fees REAL NOT NULL DEFAULT 0, reference_price REAL, reason TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP, tenant_id TEXT DEFAULT 'default', trigger_price REAL, parent_order_id TEXT, modified_count INTEGER DEFAULT 0, instrument TEXT DEFAULT 'CASH', algo_parent_id TEXT, algo_slice INTEGER);
+CREATE TABLE oms_order_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT NOT NULL, from_status TEXT,
+            to_status TEXT NOT NULL, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP);
+CREATE TABLE ops_alert (
+            rule TEXT PRIMARY KEY, status TEXT NOT NULL, severity TEXT, message TEXT, first_at TIMESTAMP,
+            last_at TIMESTAMP, resolved_at TIMESTAMP, notified_at TIMESTAMP, count INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE ops_backup (
+            backup_id TEXT PRIMARY KEY, kind TEXT NOT NULL, path TEXT, started_at TIMESTAMP,
+            finished_at TIMESTAMP, size_bytes INTEGER, sha256 TEXT, integrity TEXT, tables_json TEXT,
+            status TEXT NOT NULL, error TEXT, pruned_at TIMESTAMP, offsite_path TEXT, offsite_status TEXT, encrypted_sha256 TEXT);
+CREATE TABLE ops_config_version (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT NOT NULL, environment TEXT,
+            config_json TEXT, changes_json TEXT, recorded_at TIMESTAMP);
+CREATE TABLE ops_heartbeat (
+            component TEXT PRIMARY KEY, beat_at TIMESTAMP, pid INTEGER, detail TEXT);
+CREATE TABLE ops_idempotency (
+            idem_key TEXT NOT NULL, caller TEXT NOT NULL, request_hash TEXT NOT NULL, status TEXT NOT NULL,
+            response_status INTEGER, response_body BLOB, content_type TEXT, created_at TIMESTAMP,
+            expires_at TIMESTAMP, PRIMARY KEY (idem_key, caller));
+CREATE TABLE ops_job_lock (
+            job TEXT PRIMARY KEY, owner TEXT NOT NULL, pid INTEGER, acquired_at TIMESTAMP,
+            heartbeat_at TIMESTAMP, expires_at TIMESTAMP);
+CREATE TABLE ops_restore_drill (
+            drill_id TEXT PRIMARY KEY, backup_id TEXT, source TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            seconds REAL, status TEXT, details_json TEXT);
+CREATE TABLE ops_rollback_drill (
+            drill_id TEXT PRIMARY KEY, from_ref TEXT, to_ref TEXT, started_at TIMESTAMP, finished_at TIMESTAMP,
+            rto_seconds REAL, status TEXT, details_json TEXT);
+CREATE TABLE ops_secret_access (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, source TEXT, found INTEGER,
+            caller TEXT, at TIMESTAMP);
+CREATE TABLE ops_secret_meta (
+            name TEXT PRIMARY KEY, rotated_at TIMESTAMP, rotated_by TEXT, note TEXT);
+CREATE TABLE ops_webhook_delivery (
+            delivery_id TEXT PRIMARY KEY, endpoint_id TEXT NOT NULL, event_type TEXT, event_id TEXT,
+            payload_json TEXT, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TIMESTAMP, last_status_code INTEGER, last_error TEXT, created_at TIMESTAMP,
+            delivered_at TIMESTAMP, UNIQUE(endpoint_id, event_id));
+CREATE TABLE ops_webhook_endpoint (
+            endpoint_id TEXT PRIMARY KEY, tenant_id TEXT, url TEXT NOT NULL, events_json TEXT,
+            secret_name TEXT, status TEXT NOT NULL, created_at TIMESTAMP, created_by TEXT);
+CREATE TABLE ops_webhook_event (
+            source TEXT NOT NULL, event_id TEXT NOT NULL, received_at TIMESTAMP, signature_ok INTEGER,
+            status TEXT, payload_sha256 TEXT, event_type TEXT, error TEXT, PRIMARY KEY (source, event_id));
+CREATE TABLE option_chain_snapshot (
+            ts TIMESTAMP NOT NULL, symbol TEXT NOT NULL, expiry DATE NOT NULL, strike REAL NOT NULL,
+            option_type TEXT NOT NULL, ltp REAL, change REAL, iv REAL, oi REAL, oi_chg REAL, volume REAL,
+            bid REAL, ask REAL, bid_qty REAL, ask_qty REAL, underlying REAL,
+            PRIMARY KEY (ts, symbol, expiry, strike, option_type));
+CREATE TABLE options_analytics (
+            instrument_id TEXT NOT NULL, date DATE NOT NULL, iv REAL, delta REAL, gamma REAL, theta REAL,
+            vega REAL, rho REAL, iv_rank REAL, iv_rv_spread REAL, model TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (instrument_id, date));
+CREATE TABLE order_book_snapshot (
+            symbol TEXT NOT NULL, ts TIMESTAMP NOT NULL, ltp REAL, best_bid REAL, best_ask REAL, mid REAL,
+            spread_bps REAL, bid_qty_5 REAL, ask_qty_5 REAL, imbalance REAL, bids_json TEXT, asks_json TEXT,
+            source TEXT, PRIMARY KEY (symbol, ts));
+CREATE TABLE order_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp        TEXT,
+            symbol           TEXT,
+            transaction_type TEXT,
+            quantity         INTEGER,
+            order_type       TEXT,
+            product_type     TEXT,
+            price            REAL,
+            estimated_value  REAL,
+            available_funds  REAL,
+            mode             TEXT,
+            status           TEXT,
+            dhan_order_id    TEXT,
+            error            TEXT
+        );
+CREATE TABLE order_rules (
+            id                    TEXT PRIMARY KEY,
+            symbol                TEXT NOT NULL,
+            side                  TEXT NOT NULL,
+            trigger_type          TEXT NOT NULL,
+            trigger_value         REAL,
+            trigger_percent       REAL,
+            reference_price       REAL NOT NULL,
+            resolved_trigger_price REAL NOT NULL,
+            quantity_type         TEXT NOT NULL,
+            quantity_value        REAL NOT NULL,
+            stoploss_type         TEXT,
+            stoploss_value        REAL,
+            resolved_stoploss_price REAL,
+            product_type          TEXT NOT NULL DEFAULT 'CNC',
+            order_type            TEXT NOT NULL DEFAULT 'MARKET',
+            limit_price           REAL,
+            require_confirmation  INTEGER NOT NULL DEFAULT 1,
+            status                TEXT NOT NULL DEFAULT 'ACTIVE',
+            notes                 TEXT DEFAULT '',
+            created_at            TEXT NOT NULL,
+            updated_at            TEXT NOT NULL,
+            triggered_at          TEXT,
+            trigger_hit_price     REAL,
+            confirmation_expires_at TEXT,
+            dhan_order_id         TEXT,
+            execution_price       REAL,
+            execution_quantity    REAL,
+            execution_error       TEXT
+        , trigger_direction TEXT, role TEXT, parent_rule_id TEXT, oco_group_id TEXT, bracket_target_pct REAL, bracket_target2_pct REAL, bracket_stop_pct REAL, bracket_auto_exit INTEGER, bracket_target_split REAL, trail_enabled INTEGER, trail_type TEXT, trail_value REAL, trail_jump REAL, trail_high_water REAL, trail_moves INTEGER, broker_leg_type TEXT, broker_leg_id TEXT);
+CREATE TABLE paper_account (
+            id       INTEGER PRIMARY KEY CHECK (id = 1),
+            balance  REAL NOT NULL,
+            opened_at TEXT
+        );
+CREATE TABLE paper_futures_position (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id TEXT NOT NULL DEFAULT '', underlying TEXT NOT NULL,
+            expiry DATE NOT NULL, lots INTEGER NOT NULL, lot_size INTEGER NOT NULL, avg_price REAL NOT NULL,
+            realized_pnl REAL NOT NULL DEFAULT 0, margin_blocked REAL NOT NULL DEFAULT 0, opened_at TIMESTAMP,
+            updated_at TIMESTAMP, UNIQUE(strategy_id, underlying, expiry));
+CREATE TABLE paper_futures_trade (
+            trade_id TEXT PRIMARY KEY, order_id TEXT, strategy_id TEXT, underlying TEXT, expiry DATE, side TEXT,
+            lots INTEGER, lot_size INTEGER, price REAL, fees REAL, reason TEXT, at TIMESTAMP);
+CREATE TABLE paper_options_position (
+            underlying TEXT NOT NULL, expiry DATE NOT NULL, strike REAL NOT NULL, option_type TEXT NOT NULL,
+            qty REAL NOT NULL DEFAULT 0, lot_size INTEGER, avg_price REAL, realized REAL NOT NULL DEFAULT 0,
+            opened_at TIMESTAMP, updated_at TIMESTAMP, PRIMARY KEY (underlying, expiry, strike, option_type));
+CREATE TABLE paper_options_trade (
+            trade_id TEXT PRIMARY KEY, underlying TEXT, expiry DATE, strike REAL, option_type TEXT, side TEXT,
+            lots INTEGER, lot_size INTEGER, qty REAL, price REAL, premium REAL, fees REAL, price_source TEXT,
+            reason TEXT, realized REAL, at TIMESTAMP);
+CREATE TABLE paper_order (
+            order_id       TEXT PRIMARY KEY,
+            created_at     TEXT,
+            symbol         TEXT,
+            security_id    TEXT,
+            exchange       TEXT,
+            transaction_type TEXT,
+            quantity       INTEGER,
+            filled_qty     INTEGER DEFAULT 0,
+            order_type     TEXT,
+            product_type   TEXT,
+            limit_price    REAL,
+            fill_price     REAL,
+            status         TEXT,
+            reason         TEXT,
+            brokerage      REAL DEFAULT 0,
+            tag            TEXT
+        , trigger_price REAL, triggered_at TEXT, updated_at TEXT, modifications INTEGER DEFAULT 0);
+CREATE TABLE paper_position (
+            symbol       TEXT PRIMARY KEY,
+            quantity     INTEGER DEFAULT 0,
+            avg_price    REAL DEFAULT 0,
+            realized_pnl REAL DEFAULT 0,
+            updated_at   TEXT
+        );
+CREATE TABLE perf_ledger (
+            txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, portfolio TEXT NOT NULL,
+            source TEXT NOT NULL, source_ref TEXT NOT NULL, trade_date DATE NOT NULL, ts TEXT, kind TEXT NOT NULL,
+            symbol TEXT, quantity REAL, price REAL, gross_value REAL, fees REAL, reference_price REAL,
+            price_quality TEXT, strategy_id TEXT, tag TEXT, note TEXT, created_at TIMESTAMP, import_run TEXT,
+            UNIQUE(tenant_id, owner_id, source, source_ref));
+CREATE TABLE perf_ledger_void (
+            txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, voided_at TIMESTAMP,
+            voided_by TEXT, reason TEXT);
+CREATE TABLE perf_report_run (
+            report_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, portfolio TEXT,
+            period_start DATE, period_end DATE, benchmark TEXT, methodology_version TEXT, calculation_version TEXT,
+            inputs_hash TEXT, result_json TEXT, created_at TIMESTAMP, created_by TEXT);
+CREATE TABLE pipeline_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, run_date DATE, job_name TEXT NOT NULL,
+        start_time TIMESTAMP, end_time TIMESTAMP, status TEXT,
+        rows_processed INTEGER DEFAULT 0, error_msg TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, kind TEXT, duration_s REAL);
+CREATE TABLE pnl_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, env TEXT NOT NULL,
+            n_positions INTEGER, positions_value REAL, cost REAL, unrealised REAL,
+            realised_cum REAL, cash REAL, equity REAL, day_pnl REAL,
+            peak_equity REAL, drawdown_pct REAL, recorded_at TIMESTAMP,
+            UNIQUE(date, env));
+CREATE TABLE portfolio_holdings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, symbol TEXT NOT NULL,
+        qty INTEGER, avg_price REAL, cmp REAL, current_val REAL, pnl REAL, pnl_pct REAL,
+        atip_score REAL, vpi REAL, cri REAL, zpi REAL, signal TEXT, weight_pct REAL,
+        sector TEXT, beta_1y REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(symbol,date));
+CREATE TABLE portfolio_optimization (
+            opt_id TEXT PRIMARY KEY, as_of DATE, objective TEXT, result_json TEXT, created_at TIMESTAMP);
+CREATE TABLE portfolio_rebalance_plan (
+            plan_id TEXT PRIMARY KEY, book TEXT, as_of DATE, plan_json TEXT, created_at TIMESTAMP);
+CREATE TABLE portfolio_risk_snapshot (
+            as_of DATE NOT NULL, book TEXT NOT NULL, headline_json TEXT, analysis_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (as_of, book));
+CREATE TABLE portfolio_sync (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE NOT NULL, source TEXT NOT NULL,
+            status TEXT NOT NULL, n_holdings INTEGER, error TEXT, synced_at TIMESTAMP);
+CREATE TABLE predictions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, pred_date DATE NOT NULL, symbol TEXT NOT NULL,
+        signal TEXT, atip_score REAL, vpi REAL, zpi REAL, mri REAL, cri REAL, acs REAL,
+        entry_price REAL, stop_loss REAL, target_1 REAL, target_2 REAL,
+        risk_reward REAL, position_size_pct REAL, confidence REAL,
+        reasoning TEXT, regime TEXT, is_tod INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(pred_date,symbol));
+CREATE TABLE prices_daily (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        open REAL, high REAL, low REAL, close REAL, adj_close REAL,
+        volume INTEGER, delivery_qty INTEGER, delivery_pct REAL,
+        series TEXT DEFAULT 'EQ', source TEXT DEFAULT 'bhavcopy',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,date));
+CREATE TABLE quant_composite (
+            name TEXT NOT NULL, version TEXT NOT NULL, components_json TEXT NOT NULL, min_coverage REAL,
+            normalization_json TEXT, description TEXT, content_hash TEXT NOT NULL, status TEXT,
+            created_at TIMESTAMP, PRIMARY KEY (name, version));
+CREATE TABLE quant_experiment (
+            experiment_id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT, hypothesis TEXT, config_json TEXT,
+            config_hash TEXT, status TEXT NOT NULL, backtest_run_ids_json TEXT, error TEXT,
+            created_at TIMESTAMP, updated_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE quant_exposure (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, portfolio_id TEXT, as_of DATE, exposure_json TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE quant_factor (
+            factor_id TEXT NOT NULL, version TEXT NOT NULL, name TEXT, category TEXT, description TEXT,
+            inputs_json TEXT, formula TEXT, lookback INTEGER, frequency TEXT, normalization_json TEXT,
+            direction INTEGER, data_dependency TEXT, status TEXT, content_hash TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (factor_id, version));
+CREATE TABLE quant_factor_approval (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, factor_key TEXT NOT NULL, decision TEXT NOT NULL, verdict TEXT,
+            evidence_json TEXT, reason TEXT, decided_at TIMESTAMP, decided_by TEXT);
+CREATE TABLE quant_factor_research (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, factor_key TEXT NOT NULL, kind TEXT NOT NULL,
+            start_date DATE, end_date DATE, result_json TEXT, created_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE quant_factor_score (
+            as_of DATE NOT NULL, symbol TEXT NOT NULL, factor_key TEXT NOT NULL, kind TEXT NOT NULL,
+            raw REAL, norm REAL, pct REAL, score REAL, rank INTEGER, sector TEXT, sector_rank INTEGER,
+            universe_size INTEGER, created_at TIMESTAMP, PRIMARY KEY (as_of, symbol, factor_key));
+CREATE TABLE quant_factor_set (
+            name TEXT NOT NULL, version TEXT NOT NULL, factors_json TEXT NOT NULL, content_hash TEXT NOT NULL,
+            description TEXT, created_at TIMESTAMP, PRIMARY KEY (name, version));
+CREATE TABLE quant_pair (
+            pair_id TEXT NOT NULL, version TEXT NOT NULL, asset_a TEXT NOT NULL, asset_b TEXT NOT NULL,
+            hedge_ratio TEXT, spread_kind TEXT, lookback INTEGER, entry_z REAL, exit_z REAL, stop_z REAL,
+            capital_allocation_pct REAL, status TEXT, notes TEXT, created_at TIMESTAMP, tenant_id TEXT DEFAULT 'default',
+            PRIMARY KEY (pair_id, version));
+CREATE TABLE quant_portfolio (
+            portfolio_id TEXT PRIMARY KEY, name TEXT, as_of DATE, spec_json TEXT, method TEXT, long_short TEXT,
+            cash REAL, created_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE quant_portfolio_position (
+            portfolio_id TEXT NOT NULL, symbol TEXT NOT NULL, weight REAL, side TEXT, sector TEXT,
+            PRIMARY KEY (portfolio_id, symbol));
+CREATE TABLE quant_spread (
+            pair_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, hedge_ratio REAL, spread REAL,
+            zscore REAL, correlation REAL, adf_t REAL, cointegrated_5pct INTEGER, half_life REAL,
+            sessions INTEGER, created_at TIMESTAMP, PRIMARY KEY (pair_id, version, as_of));
+CREATE TABLE reconciliation_run (
+            run_id TEXT PRIMARY KEY, trade_date DATE, run_at TIMESTAMP, status TEXT, breaks INTEGER,
+            explained INTEGER, details_json TEXT);
+CREATE TABLE regulatory_item (
+    item_id TEXT PRIMARY KEY, area TEXT NOT NULL, title TEXT NOT NULL, confirm TEXT NOT NULL, gate TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'OPEN', reviewer TEXT, reference TEXT, note TEXT, updated_at TIMESTAMP,
+    signed_at TIMESTAMP);
+CREATE TABLE research_link (
+            study_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, note TEXT, added_at TIMESTAMP,
+            added_by TEXT, PRIMARY KEY (study_id, kind, ref));
+CREATE TABLE research_study (
+            study_id TEXT PRIMARY KEY, title TEXT NOT NULL, hypothesis TEXT NOT NULL, method TEXT, status TEXT NOT NULL,
+            outcome TEXT, conclusion TEXT, tags_json TEXT, supersedes TEXT, created_at TIMESTAMP,
+            updated_at TIMESTAMP, created_by TEXT, concluded_by TEXT);
+CREATE TABLE risk_decision (
+            risk_decision_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, decision_id TEXT,
+            strategy_id TEXT, strategy_version TEXT, symbol TEXT NOT NULL, side TEXT, action TEXT,
+            book TEXT, mode TEXT, requested_quantity INTEGER, approved_quantity INTEGER,
+            reference_price REAL, est_value REAL, equity REAL, risk_status TEXT NOT NULL,
+            rejection_reason TEXT, risk_checks_json TEXT, limits_json TEXT, engine_version TEXT,
+            reviewed_by TEXT, reviewed_at TIMESTAMP, created_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE risk_emergency_exit (
+            run_id TEXT PRIMARY KEY, book TEXT, actor TEXT, reason TEXT, status TEXT, result_json TEXT,
+            created_at TIMESTAMP);
+CREATE TABLE risk_limit (
+            key TEXT PRIMARY KEY, value_json TEXT, note TEXT, updated_by TEXT, updated_at TIMESTAMP);
+CREATE TABLE risk_limit_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, old_json TEXT, new_json TEXT,
+            actor TEXT, at TIMESTAMP);
+CREATE TABLE sast_disclosure (
+            disclosure_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, acquirer TEXT, is_promoter INTEGER,
+            txn_type TEXT, shares_acq REAL, shares_sold REAL, post_pct REAL, disclosed_at TIMESTAMP,
+            fetched_at TIMESTAMP);
+CREATE TABLE schema_migrations (
+            version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TIMESTAMP,
+            duration_ms REAL, status TEXT NOT NULL, rollback_note TEXT, error TEXT);
+CREATE TABLE score_components (
+            symbol TEXT NOT NULL, date DATE NOT NULL, index_name TEXT NOT NULL, component TEXT NOT NULL,
+            value REAL, weight REAL, PRIMARY KEY (symbol, date, index_name, component));
+CREATE TABLE sector_breadth (
+            date DATE NOT NULL, sector TEXT NOT NULL, stocks INTEGER, pct_advancing REAL, avg_return_pct REAL,
+            pct_above_50dma REAL, pct_above_200dma REAL, created_at TIMESTAMP, PRIMARY KEY (date, sector));
+CREATE TABLE shareholding_pattern (
+            symbol TEXT NOT NULL, as_of DATE NOT NULL, promoter_pct REAL, public_pct REAL, mf_pct REAL,
+            fpi_pct REAL, insurance_pct REAL, dii_pct REAL, retail_pct REAL, pledged_pct REAL,
+            submitted_at TIMESTAMP, xbrl_url TEXT, source TEXT DEFAULT 'nse_shp', fetched_at TIMESTAMP,
+            PRIMARY KEY (symbol, as_of));
+CREATE TABLE signal_log (
+            id             TEXT PRIMARY KEY,
+            run_id         TEXT NOT NULL,
+            logged_at      TEXT NOT NULL,
+            signal_date    DATE NOT NULL,
+            symbol         TEXT NOT NULL,
+            signal         TEXT NOT NULL,
+            entry_price    REAL,
+            atip_score REAL, vpi REAL, spi REAL, rri REAL, mri REAL,
+            cri REAL, msi REAL, zpi REAL, acs REAL,
+            mh_score REAL, regime TEXT, is_tod INTEGER DEFAULT 0,
+            model_version  TEXT,
+            weights_hash   TEXT,
+            notes          TEXT,
+            duplicate_of   TEXT
+        );
+CREATE TABLE signal_outcome (
+            signal_id      TEXT NOT NULL,
+            threshold_pct  REAL NOT NULL,
+            hit            INTEGER DEFAULT 0,
+            hit_date       DATE,
+            sessions_to_hit INTEGER,
+            hit_price      REAL,
+            max_favourable_pct REAL,
+            max_adverse_pct    REAL,
+            sessions_tracked   INTEGER DEFAULT 0,
+            still_open     INTEGER DEFAULT 1,
+            data_gap_sessions  INTEGER DEFAULT 0,
+            evaluated_at   TEXT,
+            PRIMARY KEY (signal_id, threshold_pct)
+        );
+CREATE TABLE strategy (
+            strategy_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, kind TEXT NOT NULL,
+            category TEXT, status TEXT NOT NULL DEFAULT 'DRAFT', current_version TEXT,
+            source TEXT DEFAULT 'user', owner TEXT DEFAULT 'owner', priority INTEGER DEFAULT 100,
+            weight REAL DEFAULT 1.0, created_at TIMESTAMP, updated_at TIMESTAMP, activated_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE strategy_decision (
+            decision_id TEXT PRIMARY KEY, run_id TEXT, strategy_id TEXT NOT NULL, version TEXT NOT NULL,
+            as_of DATE NOT NULL, timestamp TIMESTAMP, symbol TEXT NOT NULL, decision TEXT NOT NULL,
+            action TEXT NOT NULL, confidence REAL, score REAL, regime TEXT, reasons_json TEXT,
+            parameters_json TEXT, risk_requirement TEXT, target_position_pct REAL, stop_price REAL,
+            target_price REAL, max_hold_sessions INTEGER, blocked_reason TEXT, features_json TEXT,
+            reason_codes_json TEXT, signal_source TEXT,
+            UNIQUE (strategy_id, version, as_of, symbol));
+CREATE TABLE strategy_decision_run (
+            run_id TEXT PRIMARY KEY, strategy_id TEXT NOT NULL, version TEXT, as_of DATE, book TEXT,
+            status TEXT NOT NULL DEFAULT 'SUCCESS', error TEXT, params_json TEXT, n_universe INTEGER,
+            n_evaluated INTEGER, counts_json TEXT, created_at TIMESTAMP);
+CREATE TABLE strategy_engine_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id TEXT, version TEXT, event_type TEXT NOT NULL,
+            from_state TEXT, to_state TEXT, message TEXT, details_json TEXT, actor TEXT, at TIMESTAMP);
+CREATE TABLE strategy_event (
+            id           TEXT PRIMARY KEY,
+            position_id  TEXT NOT NULL,
+            event_key    TEXT NOT NULL,
+            event_type   TEXT NOT NULL,
+            price        REAL,
+            quantity     INTEGER,
+            detail       TEXT,
+            created_at   TEXT,
+            UNIQUE (position_id, event_key)
+        );
+CREATE TABLE strategy_feature (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, feature TEXT NOT NULL, inputs TEXT,
+            PRIMARY KEY (strategy_id, version, feature));
+CREATE TABLE strategy_health (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, as_of DATE NOT NULL, status TEXT NOT NULL,
+            metrics_json TEXT, issues_json TEXT, created_at TIMESTAMP,
+            PRIMARY KEY (strategy_id, version, as_of));
+CREATE TABLE strategy_parameter (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL,
+            default_json TEXT, min REAL, max REAL, allowed_json TEXT, required INTEGER NOT NULL DEFAULT 0,
+            description TEXT, PRIMARY KEY (strategy_id, version, name));
+CREATE TABLE strategy_position (
+            id             TEXT PRIMARY KEY,
+            entry_rule_id  TEXT,
+            symbol         TEXT NOT NULL,
+            side           TEXT NOT NULL DEFAULT 'BUY',
+            entry_price    REAL NOT NULL,
+            initial_qty    INTEGER NOT NULL,
+            remaining_qty  INTEGER NOT NULL,
+            t1_state       TEXT DEFAULT 'PENDING',
+            t1_qty         INTEGER DEFAULT 0,
+            t1_price       REAL,
+            t1_at          TEXT,
+            t2_state       TEXT DEFAULT 'PENDING',
+            t2_at          TEXT,
+            t2_verdict     TEXT,
+            high_water     REAL,
+            trail_pct      REAL,
+            trail_stop     REAL,
+            trail_moves    INTEGER DEFAULT 0,
+            realized_pnl   REAL DEFAULT 0,
+            unrealized_pnl REAL DEFAULT 0,
+            cost_pct       REAL DEFAULT 0,
+            status         TEXT DEFAULT 'OPEN',
+            exit_reason    TEXT,
+            exit_price     REAL,
+            closed_at      TEXT,
+            mode           TEXT DEFAULT 'PAPER',
+            created_at     TEXT,
+            updated_at     TEXT
+        );
+CREATE TABLE strategy_position_intent (
+            intent_id TEXT PRIMARY KEY, decision_id TEXT NOT NULL UNIQUE, strategy_id TEXT NOT NULL,
+            version TEXT NOT NULL, as_of DATE NOT NULL, timestamp TIMESTAMP, symbol TEXT NOT NULL,
+            side TEXT NOT NULL, action TEXT, target_position_pct REAL, quantity INTEGER, stop_price REAL,
+            target_price REAL, max_hold_sessions INTEGER, confidence REAL, reason TEXT,
+            risk_requirement TEXT, authorization_status TEXT NOT NULL DEFAULT 'NOT_AUTHORIZED',
+            created_at TIMESTAMP, entry_reference REAL, book TEXT, risk_decision_id TEXT,
+            authorized_at TIMESTAMP, tenant_id TEXT DEFAULT 'default');
+CREATE TABLE strategy_regime_mapping (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, regime TEXT NOT NULL, strategy_id TEXT,
+            no_trade INTEGER NOT NULL DEFAULT 0, priority INTEGER NOT NULL DEFAULT 100,
+            weight REAL NOT NULL DEFAULT 1.0, enabled INTEGER NOT NULL DEFAULT 1, notes TEXT,
+            updated_at TIMESTAMP, UNIQUE (regime, strategy_id));
+CREATE TABLE strategy_version (
+            strategy_id TEXT NOT NULL, version TEXT NOT NULL, definition_json TEXT NOT NULL,
+            definition_hash TEXT NOT NULL, notes TEXT, created_at TIMESTAMP, first_activated_at TIMESTAMP,
+            PRIMARY KEY (strategy_id, version));
+CREATE TABLE technical_ext (
+            symbol TEXT NOT NULL, date DATE NOT NULL,
+            vwap_20d REAL, vwap_session REAL, vwap_dev_pct REAL, vp_poc REAL, vp_vah REAL, vp_val REAL, vp_basis TEXT,
+            sr_support REAL, sr_support_touches INTEGER, sr_support_dist_pct REAL, sr_resistance REAL,
+            sr_resistance_touches INTEGER, sr_resistance_dist_pct REAL, beta_60 REAL, beta_downside REAL,
+            beta_long REAL, beta_long_sessions INTEGER, bri REAL, weekly_rsi REAL, weekly_trend TEXT,
+            monthly_trend TEXT, mtf_alignment INTEGER, supertrend REAL, supertrend_dir INTEGER,
+            ichimoku_tenkan REAL, ichimoku_kijun REAL, ichimoku_span_a REAL, ichimoku_span_b REAL,
+            keltner_upper REAL, keltner_lower REAL, donchian_upper REAL, donchian_lower REAL, mfi_14 REAL,
+            cmf_20 REAL, roc_10 REAL, aroon_up REAL, aroon_down REAL, psar REAL, created_at TIMESTAMP,
+            PRIMARY KEY (symbol, date));
+CREATE TABLE technical_indicators (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, date DATE NOT NULL,
+        rsi_14 REAL, stoch_k REAL, stoch_d REAL, williams_r REAL, cci_20 REAL,
+        macd_line REAL, macd_signal REAL, macd_hist REAL, macd_hist_pct REAL, adx_14 REAL,
+        ema_9 REAL, ema_21 REAL, ema_50 REAL, sma_200 REAL,
+        atr_14 REAL, atr_pct REAL, bb_upper REAL, bb_lower REAL, bb_mid REAL, bb_width REAL,
+        obv REAL, volume_sma20 REAL, volume_ratio REAL, rel_volume REAL,
+        pivot REAL, r1 REAL, r2 REAL, s1 REAL, s2 REAL,
+        fib_236 REAL, fib_382 REAL, fib_500 REAL, fib_618 REAL,
+        golden_cross INTEGER DEFAULT 0, death_cross INTEGER DEFAULT 0,
+        above_200dma INTEGER DEFAULT 0, gap_pct REAL, tech_score REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,date));
+CREATE TABLE tenant_paper_account (
+            tenant_id TEXT PRIMARY KEY, starting_cash REAL NOT NULL, cash REAL NOT NULL, realized_pnl REAL DEFAULT 0,
+            peak_equity REAL, created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE tenant_paper_fill (
+            fill_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_id TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL,
+            quantity INTEGER NOT NULL, price REAL NOT NULL, fees REAL, filled_at TIMESTAMP);
+CREATE TABLE tenant_paper_position (
+            tenant_id TEXT NOT NULL, symbol TEXT NOT NULL, quantity INTEGER NOT NULL, avg_price REAL NOT NULL,
+            realized_pnl REAL DEFAULT 0, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, symbol));
+CREATE TABLE tenant_pnl_daily (
+            tenant_id TEXT NOT NULL, date DATE NOT NULL, equity REAL, cash REAL, positions_value REAL, day_pnl REAL,
+            peak_equity REAL, drawdown_pct REAL, recorded_at TIMESTAMP, PRIMARY KEY (tenant_id, date));
+CREATE TABLE tick_capture_status (
+            day DATE PRIMARY KEY, ticks INTEGER, flushed INTEGER, symbols INTEGER, dropped INTEGER,
+            first_tick TIMESTAMP, last_tick TIMESTAMP, minute_bars INTEGER, updated_at TIMESTAMP);
+CREATE TABLE wealth_advice_log (
+            advice_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, asked_at TIMESTAMP,
+            asked_by TEXT, question TEXT, topic TEXT, response_json TEXT, narration_status TEXT,
+            narration_model TEXT, feedback TEXT, feedback_note TEXT);
+CREATE TABLE wealth_allocation_policy (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, policy_json TEXT, updated_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id));
+CREATE TABLE wealth_allocation_run (
+            run_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, as_of DATE,
+            methodology_version TEXT, profile_id TEXT, band TEXT, target_json TEXT, result_json TEXT,
+            inputs_hash TEXT, created_at TIMESTAMP, created_by TEXT);
+CREATE TABLE wealth_classification (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, symbol TEXT NOT NULL, asset_class TEXT NOT NULL,
+            instrument TEXT, updated_at TIMESTAMP, PRIMARY KEY (tenant_id, owner_id, symbol));
+CREATE TABLE wealth_cycle_run (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, run_date DATE,
+            status TEXT, result_json TEXT, created_at TIMESTAMP);
+CREATE TABLE wealth_feedback (
+            feedback_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TIMESTAMP,
+            created_by TEXT, page TEXT, category TEXT, severity TEXT, message TEXT, context_json TEXT,
+            status TEXT NOT NULL, triage_note TEXT, triaged_at TIMESTAMP, triaged_by TEXT);
+CREATE TABLE wealth_goal (
+            goal_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, name TEXT NOT NULL,
+            goal_type TEXT NOT NULL, priority TEXT NOT NULL, target_amount REAL, target_date DATE NOT NULL,
+            inflation_pct REAL, current_amount REAL, linked_json TEXT, monthly_contribution REAL, step_up_pct REAL,
+            expected_return_pct REAL, volatility_pct REAL, retirement_monthly_expense REAL, years_in_retirement REAL,
+            post_retirement_return_pct REAL, emergency_months REAL, notes TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP);
+CREATE TABLE wealth_goal_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL, at TIMESTAMP, kind TEXT NOT NULL, details_json TEXT, actor TEXT);
+CREATE TABLE wealth_goal_projection (
+            goal_id TEXT NOT NULL, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, as_of DATE NOT NULL,
+            status TEXT, success_probability REAL, projected REAL, future_target REAL, gap REAL, result_json TEXT,
+            methodology_version TEXT, created_at TIMESTAMP, PRIMARY KEY (goal_id, as_of));
+CREATE TABLE wealth_holding (
+            holding_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, asset_class TEXT NOT NULL,
+            instrument TEXT NOT NULL, valuation TEXT NOT NULL, name TEXT NOT NULL, symbol TEXT, quantity REAL NOT NULL,
+            unit TEXT, avg_cost REAL, currency TEXT DEFAULT 'INR', fx_rate REAL, manual_price REAL,
+            manual_price_as_of DATE, maturity_date DATE, coupon_pct REAL, notes TEXT, status TEXT NOT NULL,
+            created_at TIMESTAMP, updated_at TIMESTAMP, updated_by TEXT);
+CREATE TABLE wealth_liability (
+            liability_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, kind TEXT NOT NULL,
+            name TEXT, outstanding REAL NOT NULL, interest_pct REAL, emi REAL, end_date DATE, notes TEXT,
+            status TEXT NOT NULL, updated_at TIMESTAMP, updated_by TEXT);
+CREATE TABLE wealth_preference (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT, updated_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id, key));
+CREATE TABLE wealth_rebalance_plan (
+            plan_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TIMESTAMP,
+            created_by TEXT, mode TEXT, new_cash REAL, target_run_id TEXT, verdict TEXT, status TEXT NOT NULL,
+            result_json TEXT, methodology_version TEXT, decided_at TIMESTAMP, decided_by TEXT, decision_note TEXT);
+CREATE TABLE wealth_snapshot (
+            tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, date DATE NOT NULL, net_worth REAL, gross_assets REAL,
+            liabilities REAL, invested_cost REAL, by_class_json TEXT, positions INTEGER, created_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, owner_id, date));
+CREATE TABLE weight_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, index_name TEXT NOT NULL,
+        variable TEXT NOT NULL, weight REAL NOT NULL, description TEXT,
+        regime TEXT DEFAULT 'ALL', active INTEGER DEFAULT 1,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(index_name,variable,regime));
+
+-- ---- indexs ----
+CREATE INDEX idx_ai_usage_day ON ai_usage_log(day);
+CREATE INDEX idx_alert_log_created ON alert_log(created_at);
+CREATE INDEX idx_alert_log_key ON alert_log(dedupe_key, created_at);
+CREATE INDEX idx_algo_parent_status ON exec_algo_parent(status, start_at);
+CREATE INDEX idx_alt_obs ON alt_observation(source_id, metric, date);
+CREATE INDEX idx_assistant_msg_conv ON assistant_message(conversation_id, id);
+CREATE INDEX idx_backtest_mc_run ON backtest_montecarlo(run_id);
+CREATE INDEX idx_backtest_run_parent ON backtest_run(parent_run_id);
+CREATE INDEX idx_backtest_run_strategy ON backtest_run(strategy_id, created_at);
+CREATE INDEX idx_broker_health_at ON broker_health_check(checked_at);
+CREATE INDEX idx_bulk_symbol_date ON bulk_deals(symbol,date);
+CREATE INDEX idx_ca_symbol ON corporate_actions(symbol, ex_date);
+CREATE INDEX idx_compliance_run_at ON compliance_run(at);
+CREATE INDEX idx_corp_ann_symbol ON corporate_announcement(symbol, broadcast_at);
+CREATE INDEX idx_corp_ann_time ON corporate_announcement(broadcast_at);
+CREATE INDEX idx_ent_audit_at ON enterprise_audit(at);
+CREATE INDEX idx_ent_audit_tenant ON enterprise_audit(tenant_id, id);
+CREATE INDEX idx_ent_ndel_status ON enterprise_notification_delivery(status, created_at);
+CREATE INDEX idx_ent_ndel_user ON enterprise_notification_delivery(user_id, created_at);
+CREATE INDEX idx_ent_notif_user ON enterprise_notification(user_id, read_at);
+CREATE INDEX idx_ent_payment_tenant ON enterprise_payment(tenant_id, created_at);
+CREATE INDEX idx_ent_refresh_family ON enterprise_refresh_token(family_id);
+CREATE INDEX idx_ent_rout_report ON enterprise_report_output(report_id, created_at);
+CREATE INDEX idx_ent_session_user ON enterprise_session(user_id);
+CREATE INDEX idx_ff_symbol_period ON fundamental_filing(symbol, period_end);
+CREATE INDEX idx_focd_sym ON fo_contract_daily(symbol, date);
+CREATE INDEX idx_index_datetime ON index_levels(date,time);
+CREATE INDEX idx_insider_symbol ON insider_trade(symbol, disclosed_at);
+CREATE INDEX idx_intraday_bars_ts ON intraday_bars(ts);
+CREATE INDEX idx_lake_ds_date ON lake_partition(dataset, partition_date, version);
+CREATE INDEX idx_latency_minute ON latency_rollup(minute);
+CREATE INDEX idx_lq_symbol ON live_quotes(symbol, timestamp);
+CREATE INDEX idx_lq_timestamp ON live_quotes(timestamp);
+CREATE INDEX idx_lt_symbol ON live_ticks(symbol, received_at);
+CREATE INDEX idx_market_event_sym ON market_event(symbol, known_at);
+CREATE INDEX idx_mfa_recovery_user ON enterprise_mfa_recovery(user_id);
+CREATE INDEX idx_mfnav_date ON mf_nav(date);
+CREATE INDEX idx_ml_dl_benefit_ds ON ml_dl_benefit(dataset_id, created_at);
+CREATE INDEX idx_ml_prediction_date ON ml_prediction(as_of, model_id);
+CREATE INDEX idx_news_date ON news_articles(fetched_at);
+CREATE INDEX idx_obs_ts ON order_book_snapshot(ts);
+CREATE INDEX idx_ocs_sym ON option_chain_snapshot(symbol, ts);
+CREATE INDEX idx_oms_execution_order ON oms_execution(order_id);
+CREATE INDEX idx_oms_fill_strategy ON oms_fill(strategy_id, symbol);
+CREATE INDEX idx_oms_order_event ON oms_order_event(order_id, id);
+CREATE INDEX idx_oms_order_status ON oms_order(status, created_at);
+CREATE INDEX idx_ops_backup_status ON ops_backup(status, finished_at);
+CREATE INDEX idx_ops_idem_expiry ON ops_idempotency(expires_at);
+CREATE INDEX idx_ops_secret_access ON ops_secret_access(name, at);
+CREATE INDEX idx_ops_wh_delivery ON ops_webhook_delivery(status, next_attempt_at);
+CREATE INDEX idx_order_rules_status ON order_rules(status);
+CREATE INDEX idx_order_rules_symbol ON order_rules(symbol);
+CREATE INDEX idx_outbox_pending ON oms_event_outbox(dispatched_at, seq);
+CREATE INDEX idx_outbox_topic ON oms_event_outbox(topic, created_at);
+CREATE INDEX idx_perf_ledger_pf ON perf_ledger(tenant_id, owner_id, portfolio, trade_date);
+CREATE INDEX idx_perf_report_owner ON perf_report_run(tenant_id, owner_id, created_at);
+CREATE INDEX idx_pipeline_log_job ON pipeline_log(job_name, start_time);
+CREATE INDEX idx_pipeline_log_status ON pipeline_log(status, start_time);
+CREATE INDEX idx_portfolio_sync_date ON portfolio_sync(date, status);
+CREATE INDEX idx_prices_date ON prices_daily(date);
+CREATE INDEX idx_prices_symbol_date ON prices_daily(symbol,date);
+CREATE INDEX idx_qfa_key ON quant_factor_approval(factor_key, id);
+CREATE INDEX idx_qfs_key_date ON quant_factor_score(factor_key, as_of);
+CREATE INDEX idx_risk_decision_created ON risk_decision(created_at, risk_status);
+CREATE INDEX idx_risk_decision_intent ON risk_decision(intent_id);
+CREATE INDEX idx_sast_symbol ON sast_disclosure(symbol, disclosed_at);
+CREATE INDEX idx_scan_hit_session ON intraday_scan_hit(session, scan);
+CREATE INDEX idx_score_components_date ON score_components(date, index_name);
+CREATE INDEX idx_scores_date_atip ON ai_scores(date,atip_score DESC);
+CREATE INDEX idx_siglog_date ON signal_log(signal_date);
+CREATE INDEX idx_siglog_run ON signal_log(run_id);
+CREATE INDEX idx_siglog_symbol ON signal_log(symbol,signal_date);
+CREATE INDEX idx_sigout_hit ON signal_outcome(threshold_pct,hit);
+CREATE INDEX idx_strategy_decision_date ON strategy_decision(as_of, decision);
+CREATE INDEX idx_strategy_decision_run ON strategy_decision_run(strategy_id, as_of);
+CREATE INDEX idx_strategy_engine_event ON strategy_engine_event(strategy_id, at);
+CREATE INDEX idx_strategy_intent ON strategy_position_intent(as_of, strategy_id);
+CREATE INDEX idx_stratpos_entry ON strategy_position(entry_rule_id);
+CREATE INDEX idx_stratpos_symbol ON strategy_position(symbol,status);
+CREATE INDEX idx_tech_symbol_date ON technical_indicators(symbol,date);
+CREATE INDEX idx_technical_ext_date ON technical_ext(date);
+CREATE INDEX idx_tpf_tenant ON tenant_paper_fill(tenant_id, filled_at);
+CREATE INDEX idx_wealth_advice_owner ON wealth_advice_log(tenant_id, owner_id, asked_at);
+CREATE INDEX idx_wealth_alloc_owner ON wealth_allocation_run(tenant_id, owner_id, created_at);
+CREATE INDEX idx_wealth_cycle_owner ON wealth_cycle_run(tenant_id, owner_id, created_at);
+CREATE INDEX idx_wealth_feedback_status ON wealth_feedback(status, severity);
+CREATE INDEX idx_wealth_goal_event ON wealth_goal_event(goal_id, id);
+CREATE INDEX idx_wealth_goal_owner ON wealth_goal(tenant_id, owner_id, status);
+CREATE INDEX idx_wealth_holding_owner ON wealth_holding(tenant_id, owner_id, status);
+CREATE INDEX idx_wealth_liability_owner ON wealth_liability(tenant_id, owner_id, status);
+CREATE INDEX idx_wealth_rbl_owner ON wealth_rebalance_plan(tenant_id, owner_id, created_at);
+CREATE UNIQUE INDEX uq_index_levels_date_time ON index_levels(date,time);
+
+-- ---- triggers ----
+CREATE TRIGGER trg_ent_audit_no_delete BEFORE DELETE ON enterprise_audit
+       BEGIN SELECT RAISE(ABORT, 'enterprise_audit is append-only'); END;
+CREATE TRIGGER trg_ent_audit_no_update BEFORE UPDATE ON enterprise_audit
+       BEGIN SELECT RAISE(ABORT, 'enterprise_audit is append-only'); END;
+CREATE TRIGGER trg_investor_profile_version_no_delete BEFORE DELETE ON investor_profile_version WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'investor_profile_version is append-only'); END;
+CREATE TRIGGER trg_investor_profile_version_no_update BEFORE UPDATE ON investor_profile_version BEGIN SELECT RAISE(ABORT, 'investor_profile_version is append-only'); END;
+CREATE TRIGGER trg_oms_event_no_delete BEFORE DELETE ON oms_order_event
+       BEGIN SELECT RAISE(ABORT, 'oms_order_event is append-only'); END;
+CREATE TRIGGER trg_oms_event_no_update BEFORE UPDATE ON oms_order_event
+       BEGIN SELECT RAISE(ABORT, 'oms_order_event is append-only'); END;
+CREATE TRIGGER trg_perf_ledger_no_delete BEFORE DELETE ON perf_ledger WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'perf_ledger is append-only'); END;
+CREATE TRIGGER trg_perf_ledger_no_update BEFORE UPDATE ON perf_ledger BEGIN SELECT RAISE(ABORT, 'perf_ledger is append-only'); END;
+CREATE TRIGGER trg_perf_ledger_void_no_delete BEFORE DELETE ON perf_ledger_void WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'perf_ledger_void is append-only'); END;
+CREATE TRIGGER trg_perf_ledger_void_no_update BEFORE UPDATE ON perf_ledger_void BEGIN SELECT RAISE(ABORT, 'perf_ledger_void is append-only'); END;
+CREATE TRIGGER trg_perf_report_run_no_delete BEFORE DELETE ON perf_report_run WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'perf_report_run is append-only'); END;
+CREATE TRIGGER trg_perf_report_run_no_update BEFORE UPDATE ON perf_report_run BEGIN SELECT RAISE(ABORT, 'perf_report_run is append-only'); END;
+CREATE TRIGGER trg_wealth_allocation_run_no_delete BEFORE DELETE ON wealth_allocation_run WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'wealth_allocation_run is append-only'); END;
+CREATE TRIGGER trg_wealth_allocation_run_no_update BEFORE UPDATE ON wealth_allocation_run BEGIN SELECT RAISE(ABORT, 'wealth_allocation_run is append-only'); END;
+CREATE TRIGGER trg_wealth_goal_event_no_delete BEFORE DELETE ON wealth_goal_event WHEN OLD.tenant_id <> 'uat' BEGIN SELECT RAISE(ABORT, 'wealth_goal_event is append-only'); END;
+CREATE TRIGGER trg_wealth_goal_event_no_update BEFORE UPDATE ON wealth_goal_event BEGIN SELECT RAISE(ABORT, 'wealth_goal_event is append-only'); END;
+
+-- ---- seed data ----
+INSERT INTO "schema_migrations" (version,name,checksum,applied_at,duration_ms,status,rollback_note,error) VALUES('0001','baseline_w1_w7','85dba27c6c55c29b14c1a83e7e96727d7d4891c8b28bcd7f34e208dbc1e6def8','2026-10-03 13:53:52.060404',0.3,'APPLIED','none (validation only)',NULL);
+INSERT INTO "schema_migrations" (version,name,checksum,applied_at,duration_ms,status,rollback_note,error) VALUES('0002','w8_ops_tables','423f670c988eebcc1b4bd6d81be6618af654aced692695be717b4092837cec94','2026-10-03 13:53:52.062163',0.4,'APPLIED','DROP the W8 ops_* tables, enterprise_refresh_token and schema_migrations -- or restore the pre-W8 backup',NULL);
+INSERT INTO "schema_migrations" (version,name,checksum,applied_at,duration_ms,status,rollback_note,error) VALUES('0003','w8_indexes','5e9658c0054f9582e1cfb953987250af32e803b21165114d4e31d251cae3278c','2026-10-03 13:53:52.062998',0.3,'APPLIED','DROP INDEX idx_prices_date, idx_lq_timestamp, idx_pipeline_log_status, idx_ent_audit_at',NULL);
+INSERT INTO "schema_migrations" (version,name,checksum,applied_at,duration_ms,status,rollback_note,error) VALUES('0004','w8_audit_append_only','11070a711d294a0eb92a76b0eeef9a9270cd4de983641116e2da8665ed77deb0','2026-10-03 13:53:52.064009',0.4,'APPLIED','DROP TRIGGER trg_ent_audit_no_update, trg_ent_audit_no_delete, trg_oms_event_no_update, trg_oms_event_no_delete',NULL);
+INSERT INTO "schema_migrations" (version,name,checksum,applied_at,duration_ms,status,rollback_note,error) VALUES('0005','w20_wealth_append_only','6fde4b5ca4bbad3f0568e06fb4866bd31b90c97792d891be187d5866f715f18c','2026-10-03 13:53:52.065896',1.1,'APPLIED','DROP TRIGGER trg_<table>_no_update / trg_<table>_no_delete for investor_profile_version, perf_ledger, perf_ledger_void, perf_report_run, wealth_allocation_run, wealth_goal_event; the wealth tables themselves are additive (restore the pre-W20 backup to remove them)',NULL);
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(1,'VPI','V',0.18,'Volatility (ATR%)','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(2,'VPI','TS',0.15,'Trend Strength (ADX)','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(3,'VPI','RS',0.12,'Relative Strength vs Nifty','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(4,'VPI','LQ',0.1,'Liquidity','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(5,'VPI','VOL',0.1,'Volume Expansion','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(6,'VPI','MR',0.1,'Mean Reversion','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(7,'VPI','FG',0.1,'Fundamental Growth','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(8,'VPI','IS',0.08,'Institutional Strength','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(9,'VPI','NS',0.07,'News Sentiment','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(10,'SPI','ROE',0.2,'Return on Equity','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(11,'SPI','ROCE',0.15,'Return on Capital','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(12,'SPI','EPS',0.15,'EPS Growth YoY','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(13,'SPI','Revenue',0.1,'Revenue Growth','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(14,'SPI','FCF',0.1,'Free Cash Flow','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(15,'SPI','Debt',0.1,'Debt/Equity inv','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(16,'SPI','PEG',0.1,'PEG Ratio inv','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(17,'SPI','Quality',0.1,'Quality Composite','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(18,'RRI','Recovery',0.25,'Rebound from 52W low','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(19,'RRI','Support',0.2,'Near support','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(20,'RRI','Volume',0.15,'Vol on up-days','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(21,'RRI','RSIRecovery',0.15,'RSI crossed 30','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(22,'RRI','Institutional',0.15,'DII/MF buying','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(23,'RRI','News',0.1,'Positive news','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(24,'MRI','MACD',0.25,'MACD cross zero','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(25,'MRI','RSI',0.2,'RSI cross 40','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(26,'MRI','ADX',0.15,'ADX falling inv','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(27,'MRI','Volume',0.15,'Vol surge','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(28,'MRI','EMA',0.15,'9-EMA cross 21','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(29,'MRI','News',0.1,'Catalyst news','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(30,'CRI','Volatility',0.2,'High ATR near 52W high','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(31,'CRI','Debt',0.2,'High D/E','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(32,'CRI','Distribution',0.15,'Vol on down-days','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(33,'CRI','WeakTrend',0.15,'Below DMAs','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(34,'CRI','NegativeNews',0.15,'Negative news','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(35,'CRI','MarketWeakness',0.15,'Sector+VIX','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(36,'MSI','News',0.3,'Aggregate news','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(37,'MSI','FII',0.2,'FII 5-day trend','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(38,'MSI','DII',0.15,'DII activity','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(39,'MSI','Sector',0.1,'% sectors green','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(40,'MSI','Options',0.1,'PCR inverted','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(41,'MSI','Global',0.1,'Global sentiment','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(42,'MSI','VIX',0.05,'VIX inverted','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(43,'ZPI','Support',0.15,'Near key support','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(44,'ZPI','Resistance',0.15,'Room to run','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(45,'ZPI','RSI',0.1,'RSI 30-50 zone','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(46,'ZPI','ATR',0.1,'R:R >= 1:3','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(47,'ZPI','Volume',0.1,'Low vol pullback','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(48,'ZPI','Trend',0.1,'Above 200-DMA','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(49,'ZPI','Institutional',0.1,'Accumulation 10d','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(50,'ZPI','News',0.1,'No negative news','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(51,'ZPI','Sector',0.1,'Top-3 sector','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(52,'ACS','HistoricalAccuracy',0.25,'Past accuracy 90d','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(53,'ACS','Agreement',0.2,'% indexes agree','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(54,'ACS','MarketRegime',0.2,'MH>60','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(55,'ACS','DataQuality',0.15,'Input completeness','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(56,'ACS','NewsConfidence',0.1,'AI news conf','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(57,'ACS','Liquidity',0.1,'Turnover','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(58,'MH','NiftyTrend',0.2,'Nifty trend','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(59,'MH','BankNifty',0.15,'BankNifty','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(60,'MH','Breadth',0.1,'% above 200DMA','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(61,'MH','VIX',0.1,'VIX inv','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(62,'MH','FII',0.1,'FII net 5d','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(63,'MH','DII',0.1,'DII net','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(64,'MH','Global',0.1,'Global score','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(65,'MH','Sector',0.1,'Sector breadth','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(66,'MH','AdvanceDecline',0.05,'A/D ratio','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(67,'ATIP','VPI',0.2,'VPI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(68,'ATIP','SPI',0.15,'SPI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(69,'ATIP','RRI',0.1,'RRI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(70,'ATIP','MRI',0.1,'MRI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(71,'ATIP','MSI',0.1,'MSI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(72,'ATIP','ZPI',0.1,'ZPI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(73,'ATIP','TS',0.1,'Tech Score','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(74,'ATIP','FS',0.1,'Fund Score','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(75,'ATIP','INS',0.05,'Inst Score','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(76,'TOD','VPI',0.2,'VPI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(77,'TOD','ZPI',0.15,'ZPI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(78,'TOD','MRI',0.15,'MRI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(79,'TOD','MSI',0.1,'MSI','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(80,'TOD','Volume',0.1,'Volume breakout','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(81,'TOD','Breakout',0.1,'Price breakout','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(82,'TOD','Sector',0.1,'Sector strength','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(83,'TOD','ACS',0.1,'ACS','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(84,'INS','FII',0.4,'Market FII 5-day net flow','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(85,'INS','DII',0.3,'Market DII 5-day net flow','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(86,'INS','Promoter',0.2,'Promoter shareholding %','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(87,'INS','BulkDeals',0.1,'Net bulk/block deal value (10d)','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(88,'TS','RSI',0.1,'RSI zone','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(89,'TS','MACD',0.1,'MACD histogram','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(90,'TS','ADX',0.1,'Trend strength','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(91,'TS','ATR',0.08,'Volatility','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(92,'TS','EMA',0.08,'EMA alignment','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(93,'TS','VWAP',0.08,'VWAP (needs intraday)','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(94,'TS','Bollinger',0.08,'Position in band','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(95,'TS','Volume',0.08,'Volume ratio','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(96,'TS','Trend',0.08,'Above 200-DMA','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(97,'TS','SR',0.08,'Support/Resistance crosses','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(98,'TS','Gap',0.07,'Gap analysis','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(99,'TS','RelativeVolume',0.07,'Vs same-weekday avg','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(100,'PHS','Diversification',0.25,'Concentration across holdings','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(101,'PHS','Risk',0.2,'Portfolio beta + CRI exposure','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(102,'PHS','Drawdown',0.15,'Drawdown from peak','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(103,'PHS','Quality',0.15,'Mean ATIP score of holdings','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(104,'PHS','Allocation',0.15,'Position sizing vs regime','ALL',1,'2026-10-03 13:53:52');
+INSERT INTO "weight_config" (id,index_name,variable,weight,description,regime,active,updated_at) VALUES(105,'PHS','Performance',0.1,'Unrealised P&L','ALL',1,'2026-10-03 13:53:52');
+COMMIT;
