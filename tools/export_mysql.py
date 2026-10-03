@@ -430,16 +430,20 @@ def export(source: Path, out_root: Path, prefix: str, part_mb: float, gz: bool, 
                 kn = short_name(kn + "_x")
             used_names.add(kn)
             parts = []
+            # VARCHAR width per column, 0 for anything else - used twice below, so
+            # it is computed once rather than re-parsed inside the comprehension.
+            # (Re-parsing it there needed a backslash inside an f-string
+            # expression, which only parses from Python 3.12 and this project
+            # supports 3.11.)
+            widths = {}
             total = 0
             for col in ix["cols"]:
-                mtype = types[col][0]
-                m = re.match(r"VARCHAR\((\d+)\)", mtype)
-                w = int(m.group(1)) if m else 0
-                total += w
+                m = re.match(r"VARCHAR\((\d+)\)", types[col][0])
+                widths[col] = int(m.group(1)) if m else 0
+                total += widths[col]
                 parts.append(q(col))
             if total > 768 and not ix["unique"]:       # stay under InnoDB's 3,072-byte key limit
-                parts = [f"{q(col)}({min(191, int(re.match(r'VARCHAR[(](\d+)', types[col][0]).group(1)))})"
-                         if types[col][0].startswith("VARCHAR") else q(col) for col in ix["cols"]]
+                parts = [f"{q(col)}({min(191, widths[col])})" if widths[col] else q(col) for col in ix["cols"]]
             defs.append(f"  {'UNIQUE KEY' if ix['unique'] else 'KEY'} {q(kn)} ({', '.join(parts)})")
         schema_parts.append(f"DROP TABLE IF EXISTS {q(mt)};\nCREATE TABLE {q(mt)} (\n" + ",\n".join(defs) +
                             "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;\n\n")
