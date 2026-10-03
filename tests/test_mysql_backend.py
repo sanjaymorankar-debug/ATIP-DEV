@@ -335,3 +335,177 @@ def test_connection_wrapper_is_sqlite_shaped(live_db):
         assert row.keys() == ["id", "sym", "px"]
     finally:
         c.close()
+
+
+# ── a key declared by a separate CREATE INDEX ─────────────────────────────
+
+def test_index_target_reads_the_table_and_columns():
+    assert my.index_target("CREATE INDEX IF NOT EXISTS i ON alert_log (dedupe_key)") \
+        == ("alert_log", ["dedupe_key"])
+    # a prefix length or a direction is not part of WHICH columns are keyed
+    assert my.index_target("CREATE UNIQUE INDEX i ON t (`a`(191) DESC, b ASC)") == ("t", ["a", "b"])
+    assert my.index_target("CREATE TABLE t (a TEXT)") is None
+    assert my.index_target("INSERT INTO t VALUES (1)") is None
+
+
+def test_one_statement_at_a_time_cannot_see_a_later_key():
+    """The reason _widen_keyed_text() has to exist.
+
+    ddl() widens a TEXT column it is told is keyed, but a connection is handed one
+    statement at a time, so this CREATE TABLE cannot know the CREATE INDEX below it
+    will key dedupe_key. MySQL then rejects the index with errno 1170.
+    """
+    create = "CREATE TABLE alert_log (id INTEGER PRIMARY KEY, dedupe_key TEXT)"
+    index = "CREATE INDEX idx_dedupe ON alert_log (dedupe_key)"
+
+    alone = my.ddl(create, my.keyed_columns([create]).get("alert_log", set()))
+    assert re.search(r"`dedupe_key`\s+TEXT\b", alone, re.I), alone
+
+    whole = my.ddl(create, my.keyed_columns([create, index]).get("alert_log", set()))
+    assert f"VARCHAR({my.KEYED_TEXT_LEN})" in whole
+
+
+@live_only
+def test_the_connection_creates_an_index_on_a_text_column(live_db):
+    """What used to fail: a CREATE TABLE and its CREATE INDEX arriving separately,
+    as every one of init_db()'s hundreds of execute() calls does."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE alert_log (id INTEGER PRIMARY KEY, dedupe_key TEXT, note TEXT)")
+        c.execute("CREATE INDEX idx_dedupe ON alert_log (dedupe_key)")     # errno 1170 before
+        c.commit()
+        cur.execute("SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='alert_log' "
+                    "AND COLUMN_NAME IN ('dedupe_key','note')")
+        types = dict(cur.fetchall())
+        assert types["dedupe_key"] == f"varchar({my.KEYED_TEXT_LEN})"
+        assert types["note"] == "text", "only the keyed column is widened"
+        cur.execute("SELECT COUNT(*) FROM information_schema.STATISTICS "
+                    "WHERE TABLE_SCHEMA=DATABASE() AND INDEX_NAME='idx_dedupe'")
+        assert cur.fetchone()[0] == 1
+    finally:
+        c.close()
+
+
+@live_only
+def test_widening_keeps_not_null_the_collation_and_the_default(live_db):
+    """MODIFY COLUMN replaces the whole definition, so anything not repeated is
+    dropped. The definition is taken from SHOW CREATE TABLE for that reason."""
+    conn, cur = live_db
+    cur.execute("CREATE TABLE t (id INT, a TEXT NOT NULL, "
+                "b TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, "
+                "c TEXT DEFAULT ('x') COMMENT 'kept')")
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE INDEX i ON t (a, b, c)")
+        c.commit()
+    finally:
+        c.close()
+    cur.execute("SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLLATION_NAME, "
+                "COLUMN_DEFAULT, COLUMN_COMMENT FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t' AND COLUMN_NAME<>'id' "
+                "ORDER BY COLUMN_NAME")
+    rows = {r[0]: r[1:] for r in cur.fetchall()}
+    assert all(r[0] == f"varchar({my.KEYED_TEXT_LEN})" for r in rows.values())
+    assert rows["a"][1] == "NO", "NOT NULL must survive"
+    assert rows["b"][2] == "utf8mb4_bin", "the collation must survive"
+    assert rows["c"][3] is not None and rows["c"][4] == "kept", "default and comment must survive"
+
+
+@live_only
+def test_a_unique_index_still_constrains_the_whole_value(live_db):
+    """Why the column is widened rather than the index given a prefix length:
+    `col(191)` would enforce uniqueness over the first 191 characters only."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, k TEXT)")
+        c.execute("CREATE UNIQUE INDEX i ON t (k)")
+        c.commit()
+    finally:
+        c.close()
+    cur.execute("SELECT SUB_PART FROM information_schema.STATISTICS "
+                "WHERE TABLE_SCHEMA=DATABASE() AND INDEX_NAME='i'")
+    assert cur.fetchone()[0] is None, "a prefix length would show as SUB_PART"
+
+
+@live_only
+def test_widening_refuses_rather_than_truncating_existing_data(live_db):
+    """Narrowing raises 1406 under a strict sql_mode and TRUNCATES under a
+    permissive one, so the check is made before the ALTER, where it can say what
+    it found."""
+    conn, cur = live_db
+    cur.execute("CREATE TABLE t (id INT, k TEXT)")
+    cur.execute("INSERT INTO t VALUES (1, REPEAT('z', 300))")
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        with pytest.raises(UnsupportedSQL) as e:
+            c.execute("CREATE INDEX i ON t (k)")
+        assert "t.k" in str(e.value) and "300" in str(e.value)
+    finally:
+        c.close()
+    cur.execute("SELECT CHAR_LENGTH(k) FROM t")
+    assert cur.fetchone()[0] == 300, "the data must be untouched"
+
+
+@live_only
+def test_an_index_on_a_missing_table_gives_mysqls_own_error(live_db):
+    """The widening must not invent an error of its own for a missing table."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        with pytest.raises(Exception) as e:
+            c.execute("CREATE INDEX i ON nope (k)")
+        assert e.value.args[0] == 1146            # ER_NO_SUCH_TABLE
+    finally:
+        c.close()
+
+
+@live_only
+def test_the_runtime_path_builds_the_same_schema_as_the_whole_list_path(live_db):
+    """The point of widening the column rather than prefixing the index: a database
+    built one statement at a time by MySQLConnection must match one built by
+    tools/sqlite_to_mysql.py, which translates the whole schema at once."""
+    conn, cur = live_db
+    stmts = _all_schema_ddl()
+
+    def columns(db):
+        cur.execute("SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE "
+                    "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=%s", (db,))
+        return {(t, c): (ty, n) for t, c, ty, n in cur.fetchall()}
+
+    cur.execute("SELECT DATABASE()")        # the fixture USEs it rather than connecting to it
+    here = cur.fetchone()[0]
+    other = f"{here}_whole"
+    cur.execute(f"DROP DATABASE IF EXISTS `{other}`")
+    cur.execute(f"CREATE DATABASE `{other}` CHARACTER SET utf8mb4")
+
+    # one statement at a time, through the connection -- the runtime path
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        for s in stmts:
+            try:
+                c.execute(s)
+            except Exception as e:
+                if e.args[0] not in (1060, 1061):
+                    raise
+        c.commit()
+    finally:
+        c.close()
+
+    # the whole list up front -- the migration-tool path
+    keyed = my.keyed_columns(stmts)
+    cur.execute(f"USE `{other}`")
+    for s in stmts:
+        try:
+            cur.execute(my.ddl(s, keyed.get(my._table_of(s), set())))
+        except Exception as e:
+            if e.args[0] not in (1060, 1061):
+                raise
+    cur.execute(f"USE `{here}`")
+
+    runtime, whole = columns(here), columns(other)
+    cur.execute(f"DROP DATABASE IF EXISTS `{other}`")
+    assert runtime and runtime == whole, \
+        f"{len(set(runtime.items()) ^ set(whole.items()))} columns differ"

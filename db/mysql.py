@@ -392,6 +392,24 @@ def keyed_columns(stmts) -> dict:
     return keyed
 
 
+def index_target(stmt: str):
+    """(table, [columns]) for a CREATE INDEX statement, else None.
+
+    The columns come back as bare names: a prefix length or a DESC/ASC qualifier
+    is dropped, because callers want to know WHICH columns the index keys.
+    """
+    m = re.search(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?[\w{}.]+[`\"]?\s+ON\s+"
+                  r"([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$", stmt, re.I | re.S)
+    if not m:
+        return None
+    cols = []
+    for part in m.group(2).split(","):
+        mm = re.match(r"\s*[`\"]?([A-Za-z_]\w*)", part)
+        if mm:
+            cols.append(mm.group(1))
+    return m.group(1), cols
+
+
 _TYPE_RULES = [
     (r"\bREAL\b", "DOUBLE"),
     (r"\bDOUBLE\s+PRECISION\b", "DOUBLE"),
@@ -608,14 +626,107 @@ class MySQLConnection:
         return sql.lstrip().upper().startswith(("CREATE ", "ALTER ", "DROP "))
 
     def _prepare(self, sql):
+        """One statement in MySQL's dialect. Pure: it touches no server.
+
+        The keyed_columns() call sees only this statement, so it widens a TEXT
+        column to VARCHAR only where the key is declared in the CREATE TABLE
+        itself. A key declared by a SEPARATE CREATE INDEX cannot be known here at
+        all; _widen_keyed_text() handles that case when the index arrives.
+        """
         if self._is_ddl(sql):
             if re.match(r"\s*CREATE\s+TRIGGER\b", sql, re.I):
                 return trigger_ddl(sql)
             return ddl(sql, keyed_columns([sql]).get(_table_of(sql), set()))
         return translate(sql, self.pk_of)
 
+    # The column types MySQL will not index without a prefix length.
+    _TEXT_TYPES = frozenset(("tinytext", "text", "mediumtext", "longtext"))
+
+    def _widen_keyed_text(self, sql):
+        """Before a CREATE INDEX runs: widen any TEXT column it keys to VARCHAR.
+
+        ddl() widens the columns it is TOLD are keyed, but a connection is handed
+        one statement at a time, and a CREATE TABLE cannot know that a CREATE
+        INDEX later on will key one of its TEXT columns. 68 columns in this schema
+        are keyed that way, and every one of their indexes failed with errno 1170,
+        "BLOB/TEXT column used in key specification without a key length" -- so
+        init_db() could not create the schema on MySQL at all.
+
+        Handing keyed_columns() the whole schema up front is the obvious fix, and
+        is what tools/sqlite_to_mysql.py does, but it is not available here:
+        init_db() is hundreds of separate execute() calls with no list to hand
+        over. So the missing fact is read off the server instead, at the one
+        moment it is known for certain -- when the index arrives.
+
+        The COLUMN is widened rather than the INDEX given a prefix length
+        (`col(191)`, which MySQL would also accept) for two reasons: a database
+        built by init_db() then matches one built by tools/sqlite_to_mysql.py, and
+        a prefix on a UNIQUE index would quietly weaken the constraint to
+        uniqueness over the first 191 characters instead of the whole value.
+        """
+        target = index_target(sql)
+        if target is None:
+            return
+        table, cols = target
+        for col, definition in self._text_columns(table, cols):
+            self._assert_fits(table, col)
+            # The definition comes from SHOW CREATE TABLE rather than being
+            # reassembled from information_schema, because MODIFY COLUMN replaces
+            # the whole definition: anything not repeated is silently dropped.
+            # SHOW CREATE TABLE gives it as re-executable SQL, so swapping just
+            # the type keeps the collation, the NOT NULL, the default and the
+            # comment exactly as MySQL spells them. (information_schema reports an
+            # expression default in an escaped form that is NOT valid SQL --
+            # _latin1\'x\' for DEFAULT ('x') -- so reassembling would corrupt it.)
+            widened = re.sub(r"^\s*`[^`]+`\s+\w+(?:\([^)]*\))?",
+                             f"{quote(col)} VARCHAR({KEYED_TEXT_LEN})", definition, count=1)
+            self._conn.cursor().execute(f"ALTER TABLE {quote(table)} MODIFY COLUMN {widened}")
+
+    def _text_columns(self, table, cols):
+        """[(column, its SHOW CREATE TABLE definition)] for those of `cols` that
+        are a TEXT type on the server.
+
+        Empty when the table does not exist -- information_schema simply returns
+        no rows, and the CREATE INDEX that follows raises MySQL's own error for a
+        missing table rather than one invented here.
+        """
+        cur = self._conn.cursor()
+        cur.execute(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND DATA_TYPE IN %s",
+            (table, tuple(sorted(self._TEXT_TYPES))))
+        wanted = {r[0] for r in cur.fetchall()} & set(cols)
+        if not wanted:
+            return []
+        cur.execute(f"SHOW CREATE TABLE {quote(table)}")
+        found = []
+        for line in cur.fetchone()[1].splitlines():
+            m = re.match(r"\s*`([^`]+)`\s+(\w+)", line)
+            if m and m.group(1) in wanted and m.group(2).lower() in self._TEXT_TYPES:
+                found.append((m.group(1), line.strip().rstrip(",")))
+        return found
+
+    def _assert_fits(self, table, column):
+        """Refuse to widen a column that already holds a longer value.
+
+        Narrowing to VARCHAR(191) raises error 1406 under a strict sql_mode and
+        TRUNCATES under a permissive one, and which of those a managed server
+        gives is not ours to choose -- so the check is made here, where it can
+        name the table, the column and what it found.
+        """
+        cur = self._conn.cursor()
+        cur.execute(f"SELECT MAX(CHAR_LENGTH({quote(column)})) FROM {quote(table)}")
+        longest = cur.fetchone()[0] or 0
+        if longest > KEYED_TEXT_LEN:
+            raise UnsupportedSQL(
+                f"{table}.{column} is indexed, so MySQL needs it as "
+                f"VARCHAR({KEYED_TEXT_LEN}), but it already holds a value of "
+                f"{longest} characters. Shorten the data, or drop the index.")
+
     def execute(self, sql, params=()):
         stmt = self._prepare(sql)
+        if self._is_ddl(sql):
+            self._widen_keyed_text(sql)
         cur = self._conn.cursor()
         cur.execute(stmt, tuple(params) if params else None)
         return _Cursor(cur)

@@ -31,6 +31,12 @@ WHY THE WHOLE STATEMENT LIST GOES TO keyed_columns() AT ONCE
     statement before any of them is translated. Translating one statement at a time
     produces `dedupe_key TEXT` and the index then fails with errno 1170.
 
+    MySQLConnection cannot do this - it is handed one statement at a time by
+    init_db() - so it reaches the same schema from the other end: when a CREATE
+    INDEX arrives it widens any TEXT column the index keys, reading the current
+    type off the server. The two paths are checked against each other by
+    test_the_runtime_path_builds_the_same_schema_as_the_whole_list_path.
+
 WHAT IT WILL NOT DO SILENTLY
     SQLite lets any column hold any type, so a column declared INTEGER can contain
     a float, or text, or both. MySQL in STRICT_TRANS_TABLES rejects those. Every

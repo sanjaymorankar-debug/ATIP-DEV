@@ -55,13 +55,22 @@ def masked_url(url: str | None = None) -> str:
 
 # -- SQL translation (W38: db/postgres.py; the W9 regex rules are superseded) ---------------
 
-def translate(sql: str, pk_of=None, url: str | None = None) -> str:
+def translate(sql: str, pk_of=None, url: str | None = None, keyed=None) -> str:
     """ddl() for CREATE / ALTER, translate() for everything else, in the dialect of the
-    configured backend (db/postgres.py or db/mysql.py)."""
+    configured backend (db/postgres.py or db/mysql.py).
+
+    `keyed` is db.mysql.keyed_columns() over the WHOLE statement list, and the MySQL
+    path needs it to widen a TEXT column that only a separate CREATE INDEX keys --
+    MySQL cannot index TEXT without a prefix length. Derived from this one statement
+    when it is not given, which is all a single statement can support: a key declared
+    elsewhere is then invisible and its index fails with errno 1170. Callers that hold
+    the whole schema should pass it; MySQLConnection, which does not, widens such a
+    column when the index arrives instead."""
     if backend(url) == "mysql":
         from db import mysql
         if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
-            return mysql.ddl(sql, mysql.keyed_columns([sql]).get(mysql._table_of(sql), set()))
+            keys = keyed if keyed is not None else mysql.keyed_columns([sql])
+            return mysql.ddl(sql, keys.get(mysql._table_of(sql), set()))
         return mysql.translate(sql, pk_of)
     from db import postgres
     if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
