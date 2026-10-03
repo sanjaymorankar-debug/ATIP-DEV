@@ -2,15 +2,17 @@
 Database backend abstraction (W9, DBS-05 foundation).
 
     database_url()      ATIP_DATABASE_URL / DATABASE_URL, else sqlite:///<db.schema.DB_PATH>
-    backend()           "sqlite" | "postgresql"
+    backend()           "sqlite" | "postgresql" | "mysql"
     connect(url=None)   a DB-API connection with ATIP's sqlite3-style interface:
                         execute(sql with ? placeholders, params) -> cursor with fetchone /
                         fetchall; rows readable by index and by column name; commit /
-                        rollback / close. PostgreSQL needs `psycopg` (v3), which is NOT
-                        installed -- connect() says so instead of failing obscurely.
-    Pool(url, size)     a small thread-safe connection pool (PostgreSQL); SQLite connections
-                        are cheap and stay per-call (db.schema.get_connection)
-    translate(sql)      SQLite -> PostgreSQL for the constructs ATIP's DDL / DML use
+                        rollback / close. PostgreSQL needs `psycopg` (v3) and MySQL needs
+                        `PyMySQL`, neither installed by default -- connect() says so
+                        instead of failing obscurely.
+    Pool(url, size)     a small thread-safe connection pool (PostgreSQL / MySQL); SQLite
+                        connections are cheap and stay per-call (db.schema.get_connection)
+    translate(sql)      SQLite -> the configured backend's dialect, for the constructs
+                        ATIP's DDL / DML use (db/postgres.py, db/mysql.py)
     compatibility_report(root)  SQLite-specific SQL still in the code base
 
 THE RUNTIME STAYS ON SQLITE. db.schema.get_connection() is unchanged; ops/config
@@ -40,9 +42,11 @@ def backend(url: str | None = None) -> str:
     u = (url or database_url()).lower()
     if u.startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
         return "postgresql"
+    if u.startswith(("mysql://", "mysql+pymysql://", "mariadb://")):
+        return "mysql"
     if u.startswith("sqlite:"):
         return "sqlite"
-    raise ValueError("unsupported database URL scheme (sqlite:/// or postgresql://)")
+    raise ValueError("unsupported database URL scheme (sqlite:///, postgresql:// or mysql://)")
 
 
 def masked_url(url: str | None = None) -> str:
@@ -51,8 +55,23 @@ def masked_url(url: str | None = None) -> str:
 
 # -- SQL translation (W38: db/postgres.py; the W9 regex rules are superseded) ---------------
 
-def translate(sql: str, pk_of=None) -> str:
-    """ddl() for CREATE / ALTER, translate() for everything else (db/postgres.py)."""
+def translate(sql: str, pk_of=None, url: str | None = None, keyed=None) -> str:
+    """ddl() for CREATE / ALTER, translate() for everything else, in the dialect of the
+    configured backend (db/postgres.py or db/mysql.py).
+
+    `keyed` is db.mysql.keyed_columns() over the WHOLE statement list, and the MySQL
+    path needs it to widen a TEXT column that only a separate CREATE INDEX keys --
+    MySQL cannot index TEXT without a prefix length. Derived from this one statement
+    when it is not given, which is all a single statement can support: a key declared
+    elsewhere is then invisible and its index fails with errno 1170. Callers that hold
+    the whole schema should pass it; MySQLConnection, which does not, widens such a
+    column when the index arrives instead."""
+    if backend(url) == "mysql":
+        from db import mysql
+        if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
+            keys = keyed if keyed is not None else mysql.keyed_columns([sql])
+            return mysql.ddl(sql, keys.get(mysql._table_of(sql), set()))
+        return mysql.translate(sql, pk_of)
     from db import postgres
     if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
         return postgres.ddl(sql)
@@ -74,10 +93,18 @@ def PgConnection(url):
     return _Pg(url.replace("postgresql+psycopg://", "postgresql://"))
 
 
+def MySQLConnection(url):
+    """The full wrapper lives in db.mysql (ON DUPLICATE KEY upserts, rows by name)."""
+    from db.mysql import MySQLConnection as _My
+    return _My(url.replace("mysql+pymysql://", "mysql://").replace("mariadb://", "mysql://"))
+
+
 def connect(url: str | None = None):
     url = url or database_url()
     if backend(url) == "postgresql":
         return PgConnection(url)
+    if backend(url) == "mysql":
+        return MySQLConnection(url)
     import sqlite3
     path = url.split("sqlite:///", 1)[1] if "sqlite:///" in url else url.split("sqlite:", 1)[1]
     c = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)

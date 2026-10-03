@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Uploads the read-only ATIP dashboard snapshot to the bkesari.com tiers every
+  5 minutes. Replaces the PowerShell Register-ScheduledTask recipe in
+  bkesari-platform/DEPLOY.md part 3.
+
+  Paths are rewritten by deploy/launchd/install.sh.
+  Output goes to atip_data/publish.log (publish_snapshot.sh appends to it).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.atip.publish-snapshot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__ATIP_DIR__/publish_snapshot.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__ATIP_DIR__</string>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- A short-lived job: never keep it alive, just run it again on the interval. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__ATIP_DIR__/atip_data/publish.launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>__ATIP_DIR__/atip_data/publish.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TZ</key>
+        <string>Asia/Kolkata</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

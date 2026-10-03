@@ -1,6 +1,6 @@
 # Operations runbook (W8)
 
-All commands run in `D:\Projects\ATIP`. The owner performs every credential action. Development never handles tokens.
+All commands run in `/Users/agtci/Documents/Project_Documents/Projects/ATIP`. The owner performs every credential action. Development never handles tokens.
 
 ## Daily checks (2 minutes)
 

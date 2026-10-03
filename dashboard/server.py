@@ -1317,7 +1317,11 @@ setInterval(pollLiveQuotes,15000); pollLiveQuotes();
     return html
 
 if HAS_FASTAPI:
-    app=FastAPI(title="ATIP Dashboard",version="0.2")
+    from dashboard.security import dashboard_root_path as _root_path
+    # root_path lets a reverse proxy serve the dashboard at a subpath such as
+    # https://dev.bkesari.com/ATIP/ (ATIP_ROOT_PATH=/ATIP). Empty by default, so a
+    # plain local run at http://localhost:8000/ is unchanged.
+    app=FastAPI(title="ATIP Dashboard",version="0.2",root_path=_root_path())
     # W7: the enterprise authorization middleware (a pass-through unless
     # config.json enterprise.enabled is true -- see enterprise/authz.py)
     from enterprise.authz import install as _install_enterprise_authz

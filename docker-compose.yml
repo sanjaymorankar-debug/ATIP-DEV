@@ -3,6 +3,7 @@
 #   cp deploy/atip.env.example deploy/atip.env      # then fill it in (it is git-ignored)
 #   docker compose up -d                            # app on SQLite (the default)
 #   docker compose --profile postgres up -d         # + PostgreSQL 16 (experimental runtime, DBS-05)
+#   docker compose --profile mysql up -d            # + MySQL 8 (the hosted deployment's database)
 #
 # EXPOSURE: every port is published on the HOST'S 127.0.0.1 only. Putting ATIP on the internet is
 # a separate, gated step (ENT-07: TLS proxy, auth on every route, enterprise.enabled, a security
@@ -41,10 +42,39 @@ services:
       interval: 30s
       retries: 5
 
+  mysql:
+    profiles: ["mysql"]
+    image: mysql:8.0
+    container_name: atip-mysql
+    restart: unless-stopped
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-time-zone=+05:30
+    environment:
+      MYSQL_DATABASE: atip
+      MYSQL_USER: atip
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets: [mysql_password, mysql_root_password]
+    ports:
+      - "127.0.0.1:33060:3306"
+    volumes:
+      - atip_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 30s
+      retries: 5
+
 secrets:
   pg_password:
     file: deploy/pg_password.txt     # git-ignored; one line
+  mysql_password:
+    file: deploy/mysql_password.txt       # git-ignored; one line
+  mysql_root_password:
+    file: deploy/mysql_root_password.txt  # git-ignored; one line
 
 volumes:
   atip_data:
   atip_pg:
+  atip_mysql:
