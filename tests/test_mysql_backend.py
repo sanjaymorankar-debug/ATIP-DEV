@@ -673,3 +673,20 @@ def test_init_db_creates_the_whole_schema_on_mysql_and_is_idempotent(live_db):
                 "JOIN information_schema.COLUMNS c USING (TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME) "
                 "WHERE s.TABLE_SCHEMA=DATABASE() AND c.DATA_TYPE LIKE '%text'")
     assert cur.fetchone()[0] == 0, "no TEXT column may be left in a key"
+
+
+@live_only
+def test_a_missing_table_lets_the_risk_check_fall_back(live_db):
+    """The consequence that makes the error mapping worth having at run time, as
+    opposed to during init_db(). orders/risk.py says it plainly: order_log and the
+    paper tables are created lazily by whatever writes them, so a missing table
+    means "nothing placed, nothing held" and MUST NOT raise -- or "configuring a
+    limit would break the first order ATIP ever places". That fallback is an
+    `except sqlite3.OperationalError`, which PyMySQL never raised."""
+    conn, cur = live_db
+    from orders.risk import _query
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        assert _query(c, "SELECT COUNT(*) FROM order_log", (), [(0,)]) == [(0,)]
+    finally:
+        c.close()
