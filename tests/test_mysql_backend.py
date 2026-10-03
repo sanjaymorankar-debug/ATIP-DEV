@@ -6,8 +6,8 @@ Two layers, deliberately:
   * Translation tests need no database and always run. They are the contract of
     db.mysql.translate / ddl / trigger_ddl.
   * Live tests run the whole real schema -- every CREATE TABLE and CREATE INDEX in
-    every db/schema*.py module -- into an actual MySQL/MariaDB server and then
-    round-trip data through it. They are skipped unless ATIP_TEST_MYSQL_URL is set,
+    every db/schema*.py module, and ATIP's own init_db() twice over -- into an
+    actual MySQL/MariaDB server and then round-trip data through it. They are skipped unless ATIP_TEST_MYSQL_URL is set,
     because the server is not part of the default test environment:
 
         ATIP_TEST_MYSQL_URL=mysql://root@localhost:3306/atip_test pytest tests/test_mysql_backend.py
@@ -17,6 +17,7 @@ Two layers, deliberately:
 
 import os
 import re
+import sqlite3
 
 import pytest
 
@@ -450,12 +451,13 @@ def test_widening_refuses_rather_than_truncating_existing_data(live_db):
 
 
 @live_only
-def test_an_index_on_a_missing_table_gives_mysqls_own_error(live_db):
-    """The widening must not invent an error of its own for a missing table."""
+def test_an_index_on_a_missing_table_reports_the_missing_table(live_db):
+    """The widening must not invent an error of its own for a missing table: the
+    caller gets MySQL's errno, as the sqlite3 class SQLite raises for it."""
     conn, cur = live_db
     c = my.MySQLConnection(LIVE_URL)
     try:
-        with pytest.raises(Exception) as e:
+        with pytest.raises(sqlite3.OperationalError) as e:
             c.execute("CREATE INDEX i ON nope (k)")
         assert e.value.args[0] == 1146            # ER_NO_SUCH_TABLE
     finally:
@@ -509,3 +511,165 @@ def test_the_runtime_path_builds_the_same_schema_as_the_whole_list_path(live_db)
     cur.execute(f"DROP DATABASE IF EXISTS `{other}`")
     assert runtime and runtime == whole, \
         f"{len(set(runtime.items()) ^ set(whole.items()))} columns differ"
+
+
+# ── errors: the sqlite3 classes the migration helpers catch ───────────────
+
+def test_the_error_mapping_follows_sqlites_categories_not_the_class_names():
+    """db/schema.py's additive migrations are built on `except
+    sqlite3.OperationalError`. PyMySQL's hierarchy is unrelated to sqlite3's, and
+    it also sorts the same conditions into different classes, so the mapping has
+    to go by condition. All errnos measured against MySQL 8.0.46."""
+    pymysql = pytest.importorskip("pymysql")
+
+    def mapped(cls, errno):
+        return type(my.as_sqlite_error(cls(errno, "msg")))
+
+    # a violated constraint -> IntegrityError, as SQLite raises
+    assert mapped(pymysql.err.IntegrityError, 1062) is sqlite3.IntegrityError   # duplicate key
+    assert mapped(pymysql.err.IntegrityError, 1048) is sqlite3.IntegrityError   # NOT NULL
+    assert mapped(pymysql.err.IntegrityError, 1452) is sqlite3.IntegrityError   # foreign key
+    # PyMySQL calls a CHECK violation Operational; SQLite calls it Integrity
+    assert mapped(pymysql.err.OperationalError, 3819) is sqlite3.IntegrityError
+
+    # everything else a statement can get wrong -> OperationalError, as SQLite raises
+    assert mapped(pymysql.err.OperationalError, 1060) is sqlite3.OperationalError   # dup column
+    assert mapped(pymysql.err.OperationalError, 1061) is sqlite3.OperationalError   # dup key name
+    assert mapped(pymysql.err.OperationalError, 1170) is sqlite3.OperationalError   # TEXT in a key
+    # PyMySQL calls a missing table and bad syntax Programming; SQLite calls both Operational
+    assert mapped(pymysql.err.ProgrammingError, 1146) is sqlite3.OperationalError
+    assert mapped(pymysql.err.ProgrammingError, 1064) is sqlite3.OperationalError
+
+
+def test_the_error_mapping_keeps_the_errno_and_leaves_other_errors_alone():
+    pymysql = pytest.importorskip("pymysql")
+    out = my.as_sqlite_error(pymysql.err.OperationalError(1060, "Duplicate column name 'a'"))
+    assert out.args == (1060, "Duplicate column name 'a'"), "callers switch on args[0]"
+    assert "1060" in str(out) and "Duplicate column name" in str(out)
+
+    # not a database error: returned untouched, so UnsupportedSQL and ordinary
+    # programming mistakes are not disguised as database trouble
+    for exc in (UnsupportedSQL("no translation"), ValueError("nope"), KeyError("k")):
+        assert my.as_sqlite_error(exc) is exc
+
+
+@live_only
+def test_a_duplicate_column_is_catchable_as_sqlite3_operationalerror(live_db):
+    """What db/schema.py's _add_missing_columns relies on to make ALTER TABLE ADD
+    COLUMN idempotent. Before the mapping it raised pymysql.err.OperationalError,
+    which that `except sqlite3.OperationalError` clause does not catch, so every
+    additive migration crashed init_db() on MySQL."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, a REAL)")
+        with pytest.raises(sqlite3.OperationalError) as e:
+            c.execute("ALTER TABLE t ADD COLUMN a REAL")
+        assert e.value.args[0] == 1060
+    finally:
+        c.close()
+
+
+@live_only
+def test_a_constraint_violation_is_catchable_as_sqlite3_integrityerror(live_db):
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, k VARCHAR(10) UNIQUE, n INTEGER NOT NULL)")
+        c.execute("INSERT INTO t (k, n) VALUES (?, ?)", ("x", 1))
+        with pytest.raises(sqlite3.IntegrityError):
+            c.execute("INSERT INTO t (k, n) VALUES (?, ?)", ("x", 2))
+        with pytest.raises(sqlite3.IntegrityError):
+            c.execute("INSERT INTO t (k, n) VALUES (?, ?)", ("y", None))
+    finally:
+        c.close()
+
+
+@live_only
+def test_create_index_if_not_exists_is_a_no_op_the_second_time(live_db):
+    """MySQL has no IF NOT EXISTS for CREATE INDEX, so ddl() strips it and the
+    connection honours it instead -- init_db() runs the whole schema on every
+    start with no try/except around those statements."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, a REAL)")
+        c.execute("CREATE INDEX IF NOT EXISTS i ON t (a)")
+        again = c.execute("CREATE INDEX IF NOT EXISTS i ON t (a)")      # errno 1061 before
+        # shaped like sqlite3's cursor for a DDL statement that did nothing
+        assert again.fetchone() is None and again.fetchall() == [] and list(again) == []
+        assert again.description is None
+
+        # without the clause, a duplicate index name is still an error
+        with pytest.raises(sqlite3.OperationalError) as e:
+            c.execute("CREATE INDEX i ON t (a)")
+        assert e.value.args[0] == 1061
+        c.commit()
+    finally:
+        c.close()
+
+
+@live_only
+def test_sqlite_master_queries_run_on_the_server(live_db):
+    """`sql` is a reserved word in MySQL 8, so the substituted subquery's own alias
+    and any caller reference to that column have to be backticked. Translating the
+    string was not enough: this executes it, which is how errno 1064 was found."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE prices_daily (id INTEGER PRIMARY KEY, sym TEXT)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_sym ON prices_daily (sym)")
+        c.commit()
+
+        assert c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                         ("prices_daily",)).fetchone() is not None
+        assert c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                         ("nope",)).fetchone() is None
+        assert c.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                         ("idx_sym",)).fetchone() is not None
+        names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert "prices_daily" in names
+        # the sql column itself, which is what tripped errno 1064
+        rows = c.execute("SELECT type, name, tbl_name, sql FROM sqlite_master "
+                         "WHERE type='table' AND name=?", ("prices_daily",)).fetchall()
+        assert len(rows) == 1 and rows[0]["name"] == "prices_daily"
+    finally:
+        c.close()
+
+
+@live_only
+def test_init_db_creates_the_whole_schema_on_mysql_and_is_idempotent(live_db):
+    """The end of the line for all of this: ATIP's real init_db(), against a real
+    MySQL server, twice. It is hundreds of bare execute() calls, so every gap above
+    -- the TEXT keys, the error classes, the stripped IF NOT EXISTS, the reserved
+    `sql` alias -- showed up here first."""
+    conn, cur = live_db
+    import db.schema as schema
+
+    original = schema.get_connection
+    held = []
+
+    def _conn():
+        c = my.MySQLConnection(LIVE_URL)
+        held.append(c)
+        return c
+
+    schema.get_connection = _conn
+    try:
+        schema.init_db()
+        schema.init_db()            # every start runs it again
+    finally:
+        schema.get_connection = original
+        for c in held:
+            try:
+                c.commit()
+                c.close()
+            except Exception:
+                pass
+
+    cur.execute("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")
+    assert cur.fetchone()[0] > 200
+    cur.execute("SELECT COUNT(*) FROM information_schema.STATISTICS s "
+                "JOIN information_schema.COLUMNS c USING (TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME) "
+                "WHERE s.TABLE_SCHEMA=DATABASE() AND c.DATA_TYPE LIKE '%text'")
+    assert cur.fetchone()[0] == 0, "no TEXT column may be left in a key"

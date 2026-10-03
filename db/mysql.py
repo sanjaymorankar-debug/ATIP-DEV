@@ -60,11 +60,26 @@ Several SQLite habits are native MySQL and are deliberately left alone:
    does not need pk_of() to pick a key the way the Postgres path does. `VALUES(col)`
    is used rather than the 8.0.20+ `new.col` alias, because MariaDB and MySQL < 8.0.20
    do not understand the newer form and Hostinger's MySQL version is not pinned.
+
+5. The error classes are not the ones callers catch. PyMySQL and sqlite3 both
+   implement PEP 249, but their hierarchies are unrelated, and they sort the same
+   conditions into different classes -- a missing table is OperationalError in
+   SQLite and ProgrammingError in PyMySQL; a CHECK violation is the reverse. ATIP's
+   additive migrations are built on `except sqlite3.OperationalError`, so
+   MySQLConnection raises the class SQLite would raise for the same condition,
+   keeping args so args[0] is still the MySQL errno. See as_sqlite_error().
+
+6. There is no IF NOT EXISTS for CREATE INDEX. ddl() strips the clause SQLite's DDL
+   carries, so MySQLConnection honours it instead -- init_db() runs the whole schema
+   on every start with no try/except around those statements, and relied on SQLite
+   making the repeat a no-op.
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
+import sqlite3
 
 
 class UnsupportedSQL(ValueError):
@@ -83,8 +98,14 @@ _UNSUPPORTED = [
 
 # sqlite_master as MySQL sees it (type, name, tbl_name, sql) -- catalog queries run unchanged.
 # MySQL's information_schema needs DATABASE() rather than current_schema().
+#
+# `sql` is BACKTICKED, and so is any reference a caller makes to it (see translate()):
+# SQL is a reserved word in MySQL 8, so a bare `AS sql` is errno 1064 and every
+# sqlite_master query -- the existence check in 13 call sites -- failed on it. That is
+# the hazard this module's own rule exists for; it was written into a literal here and
+# so escaped the quoting that generated identifiers get.
 _SQLITE_MASTER = (
-    "(SELECT 'table' AS type, TABLE_NAME AS name, TABLE_NAME AS tbl_name, CAST(NULL AS CHAR) AS sql "
+    "(SELECT 'table' AS type, TABLE_NAME AS name, TABLE_NAME AS tbl_name, CAST(NULL AS CHAR) AS `sql` "
     "FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' "
     "UNION ALL SELECT 'view', TABLE_NAME, TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS "
     "WHERE TABLE_SCHEMA=DATABASE() "
@@ -290,6 +311,11 @@ def translate(sql: str, pk_of=None) -> str:
     if cat is not None:
         return cat
     if re.search(r"\bsqlite_master\b", sql, re.I):            # code parts only, never inside a literal
+        # The caller's references to the `sql` column are quoted FIRST -- the
+        # subquery substituted in below already carries its own backticks, and
+        # quoting afterwards would mangle them.
+        sql = "".join(p if s else re.sub(r"(?<![\w`.])sql(?![\w`])", "`sql`", p, flags=re.I)
+                      for s, p in _split_strings(sql))
         sql = "".join(p if s else re.sub(r"\bsqlite_master\b", _SQLITE_MASTER, p, flags=re.I)
                       for s, p in _split_strings(sql))
     code_only = "".join(p for s, p in _split_strings(sql) if not s)
@@ -549,6 +575,70 @@ class Row(tuple):
         return list(self._names)
 
 
+# ── errors: PyMySQL's exceptions as the sqlite3 ones callers catch ─────────
+#
+# The two libraries both implement PEP 249, but their class hierarchies are
+# unrelated -- `except sqlite3.OperationalError` catches nothing a PyMySQL cursor
+# raises. ATIP's migration helpers are built on that clause (db/schema.py swallows
+# "duplicate column name" to make ALTER TABLE ADD COLUMN idempotent), so the
+# connection has to raise what they catch, exactly as it already answers to `?`
+# placeholders and sqlite3.Row.
+#
+# The mapping is by CONDITION, not by class name, because the two libraries
+# categorise the same conditions differently. Mapping name-to-name would be wrong
+# in both directions:
+#
+#   missing table   SQLite: OperationalError   PyMySQL: ProgrammingError (1146)
+#   syntax error    SQLite: OperationalError   PyMySQL: ProgrammingError (1064)
+#   CHECK violated  SQLite: IntegrityError     PyMySQL: OperationalError (3819)
+#   over-long value SQLite: (truncates)        PyMySQL: DataError        (1406)
+#
+# So SQLite's own rule is applied instead: IntegrityError when a constraint was
+# violated, OperationalError for everything else a statement can get wrong -- a
+# missing table, an unknown column, bad syntax, a locked or unreachable database.
+# All measured against MySQL 8.0.46; see tests/test_mysql_backend.py.
+
+_INTEGRITY_ERRNOS = frozenset((
+    1048,                     # ER_BAD_NULL_ERROR            NOT NULL violated
+    1062,                     # ER_DUP_ENTRY                 duplicate unique key
+    1169,                     # ER_DUP_UNIQUE                duplicate on a unique index
+    1216, 1217, 1451, 1452,   # foreign key, child and parent side
+    3819,                     # ER_CHECK_CONSTRAINT_VIOLATED
+))
+
+
+def as_sqlite_error(exc: Exception) -> Exception:
+    """`exc` as the sqlite3 class SQLite would raise for the same condition.
+
+    `args` is carried over unchanged, so args[0] is still the MySQL errno and the
+    message still reads the way PyMySQL wrote it -- callers that switch on the
+    errno (tools/sqlite_to_mysql.py) keep working. Anything that is not a PyMySQL
+    database error is returned untouched, which is what keeps UnsupportedSQL and
+    ordinary programming mistakes from being disguised as database trouble.
+    """
+    try:
+        import pymysql
+    except ImportError:                       # pragma: no cover - MySQLConnection cannot exist
+        return exc
+    if not isinstance(exc, pymysql.err.Error):
+        return exc
+    errno = exc.args[0] if exc.args and isinstance(exc.args[0], int) else None
+    cls = sqlite3.IntegrityError if errno in _INTEGRITY_ERRNOS else sqlite3.OperationalError
+    return cls(*exc.args).with_traceback(exc.__traceback__)
+
+
+@contextlib.contextmanager
+def sqlite_errors():
+    """Re-raise whatever PyMySQL raises inside as the sqlite3 class SQLite would."""
+    try:
+        yield
+    except Exception as e:
+        translated = as_sqlite_error(e)
+        if translated is e:
+            raise
+        raise translated from e
+
+
 class _Cursor:
     def __init__(self, cur):
         self._cur = cur
@@ -558,10 +648,12 @@ class _Cursor:
         return None if r is None else Row(r, self._names)
 
     def fetchone(self):
-        return self._wrap(self._cur.fetchone())
+        with sqlite_errors():
+            return self._wrap(self._cur.fetchone())
 
     def fetchall(self):
-        return [self._wrap(r) for r in self._cur.fetchall()]
+        with sqlite_errors():
+            return [self._wrap(r) for r in self._cur.fetchall()]
 
     def __iter__(self):
         return iter(self.fetchall())
@@ -577,6 +669,29 @@ class _Cursor:
     @property
     def description(self):
         return self._cur.description
+
+
+class _NoRows:
+    """What sqlite3 hands back for a DDL statement that did nothing.
+
+    Measured against sqlite3 for a no-op `CREATE INDEX IF NOT EXISTS`, so a caller
+    cannot tell the two backends apart: no description, rowcount -1, lastrowid 0,
+    and fetching gives nothing rather than raising. PyMySQL's own cursor raises
+    "execute() first" after a statement that failed, which is why this exists.
+    """
+
+    description = None
+    rowcount = -1
+    lastrowid = 0
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+    def __iter__(self):
+        return iter(())
 
 
 class MySQLConnection:
@@ -610,8 +725,9 @@ class MySQLConnection:
         if table in self._keys:
             return self._keys[table]
         cur = self._conn.cursor()
-        cur.execute(
-            "SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS "
+        with sqlite_errors():
+            cur.execute(
+                "SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS "
             "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND NON_UNIQUE=0 "
             "ORDER BY INDEX_NAME='PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX", (table,))
         groups: dict = {}
@@ -723,31 +839,55 @@ class MySQLConnection:
                 f"VARCHAR({KEYED_TEXT_LEN}), but it already holds a value of "
                 f"{longest} characters. Shorten the data, or drop the index.")
 
+    # CREATE INDEX IF NOT EXISTS, which MySQL has no syntax for: ddl() strips the
+    # clause, so honouring it falls to the connection.
+    _INDEX_IF_NOT_EXISTS = re.compile(r"\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b", re.I)
+    ER_DUP_KEYNAME = 1061
+
     def execute(self, sql, params=()):
+        # _prepare first: it is pure, so a statement this backend cannot express
+        # raises UnsupportedSQL before anything is sent or altered.
         stmt = self._prepare(sql)
-        if self._is_ddl(sql):
-            self._widen_keyed_text(sql)
-        cur = self._conn.cursor()
-        cur.execute(stmt, tuple(params) if params else None)
+        try:
+            with sqlite_errors():
+                if self._is_ddl(sql):
+                    self._widen_keyed_text(sql)
+                cur = self._conn.cursor()
+                cur.execute(stmt, tuple(params) if params else None)
+        except sqlite3.OperationalError as e:
+            # SQLite makes `CREATE INDEX IF NOT EXISTS` a no-op when the index is
+            # already there, and init_db() relies on that: it runs the whole schema
+            # on every start, with no try/except around those statements. MySQL has
+            # no such clause, so ddl() removes it and the second run died on errno
+            # 1061. The clause is honoured here instead -- only when the caller
+            # actually wrote it, so a duplicate index name is still an error for
+            # anyone who did not ask for it to be ignored.
+            if e.args and e.args[0] == self.ER_DUP_KEYNAME and self._INDEX_IF_NOT_EXISTS.match(sql):
+                return _NoRows()
+            raise
         return _Cursor(cur)
 
     def executemany(self, sql, seq):
         stmt = self._prepare(sql)
-        cur = self._conn.cursor()
-        cur.executemany(stmt, [tuple(p) for p in seq])
+        with sqlite_errors():
+            cur = self._conn.cursor()
+            cur.executemany(stmt, [tuple(p) for p in seq])
         return _Cursor(cur)
 
     def reset_identity(self, table, column="id"):
-        cur = self._conn.cursor()
-        cur.execute(f"SELECT COALESCE(MAX({quote(column)}), 0) + 1 FROM {quote(table)}")
-        nxt = cur.fetchone()[0]
-        cur.execute(f"ALTER TABLE {quote(table)} AUTO_INCREMENT = {int(nxt)}")
+        with sqlite_errors():
+            cur = self._conn.cursor()
+            cur.execute(f"SELECT COALESCE(MAX({quote(column)}), 0) + 1 FROM {quote(table)}")
+            nxt = cur.fetchone()[0]
+            cur.execute(f"ALTER TABLE {quote(table)} AUTO_INCREMENT = {int(nxt)}")
 
     def commit(self):
-        self._conn.commit()
+        with sqlite_errors():
+            self._conn.commit()
 
     def rollback(self):
-        self._conn.rollback()
+        with sqlite_errors():
+            self._conn.rollback()
 
     def close(self):
         self._conn.close()
