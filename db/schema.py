@@ -111,6 +111,27 @@ def pg_runtime_url():
     return _PG_URL[0]
 
 
+def describe_target() -> str:
+    """Which database init_db() actually initialises, for logging and for --init.
+
+    Derived from the same gated URLs get_connection() dispatches on, NOT from
+    db.backend.database_url(): that reads ATIP_DATABASE_URL whether or not the
+    config gates let it through, so it would name an engine the runtime is not
+    using -- the opposite of the problem this function exists to fix.
+
+    Credentials are masked. A DSN carries a password and this string is both
+    logged and printed to the terminal.
+    """
+    from db.backend import masked_url
+    pg = pg_runtime_url()
+    if pg:
+        return f"PostgreSQL — {masked_url(pg)}"
+    my = mysql_runtime_url()
+    if my:
+        return f"MySQL — {masked_url(my)}"
+    return f"SQLite — {DB_PATH.resolve()}"
+
+
 def get_connection():
     pg = pg_runtime_url()
     if pg:
@@ -1744,8 +1765,12 @@ def init_db():
     _ensure_migrated(conn, force=True)   # W8: base tables now exist -- re-run the additive layer
     _migrate_index_levels_unique(conn)
     conn.close()
-    log.info(f"✅ Database ready: {DB_PATH.resolve()}")
-    return str(DB_PATH.resolve())
+    # describe_target(), not DB_PATH: on MySQL or PostgreSQL this function has
+    # just built the schema on a server and written no SQLite file at all, and
+    # naming one told an operator they were on an engine they were not.
+    target = describe_target()
+    log.info(f"✅ Database ready: {target}")
+    return target
 
 def seed_weights():
     weights = [

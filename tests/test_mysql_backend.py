@@ -690,3 +690,83 @@ def test_a_missing_table_lets_the_risk_check_fall_back(live_db):
         assert _query(c, "SELECT COUNT(*) FROM order_log", (), [(0,)]) == [(0,)]
     finally:
         c.close()
+
+
+# ── what --init reports ───────────────────────────────────────────────────
+
+@pytest.fixture
+def runtime_url_cache():
+    """Let a test change the gated runtime URL without poisoning the process.
+
+    pg_runtime_url() and mysql_runtime_url() memoise into module-level lists, and
+    monkeypatch does not restore those -- a test that leaves one populated sends
+    every later get_connection() in the session to that host. An earlier version of
+    the test below did exactly that, and 62 tests downstream failed trying to
+    resolve its fake DSN, so this puts both caches back the way it found them.
+    """
+    import db.schema as schema
+    pg, my = list(schema._PG_URL), list(schema._MYSQL_URL)
+    try:
+        yield schema
+    finally:
+        schema._PG_URL[:] = pg
+        schema._MYSQL_URL[:] = my
+
+
+def test_describe_target_names_the_database_that_was_actually_initialised(
+        tmp_path, monkeypatch, runtime_url_cache):
+    """init_db() used to log and return DB_PATH no matter which backend it had just
+    built, so `main.py --init` against a server told the operator they were on
+    SQLite and named a file it had not written.
+
+    The description has to come from the GATED urls get_connection() dispatches on:
+    db.backend.database_url() reads ATIP_DATABASE_URL whether or not the config lets
+    it through, so it would name an engine the runtime is not using -- the same class
+    of wrong answer, in the other direction.
+    """
+    import json
+    schema = runtime_url_cache
+
+    cfg_dir = tmp_path / "atip_data"
+    cfg_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    def describe(url, database_cfg):
+        (cfg_dir / "config.json").write_text(json.dumps({"database": database_cfg}))
+        if url is None:
+            monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+        else:
+            monkeypatch.setenv("ATIP_DATABASE_URL", url)
+        schema._PG_URL.clear()
+        schema._MYSQL_URL.clear()
+        return schema.describe_target()
+
+    gated = {"allow_experimental": True}
+    my_dsn = "mysql://atip:s3cr3t@db.example.com/atip"
+    pg_dsn = "postgresql://atip:s3cr3t@db.example.com/atip"
+
+    assert describe(None, {}).startswith("SQLite")
+    assert describe(my_dsn, {"backend": "mysql", **gated}).startswith("MySQL")
+    assert describe(pg_dsn, {"backend": "postgresql", **gated}).startswith("PostgreSQL")
+
+    # a URL the gates do NOT let through is not the runtime's database
+    assert describe(my_dsn, {"backend": "mysql", "allow_experimental": False}).startswith("SQLite")
+    assert describe(my_dsn, {"backend": "postgresql", **gated}).startswith("SQLite")
+
+    # a DSN carries a password and this string is both logged and printed
+    for dsn, cfg in ((my_dsn, {"backend": "mysql", **gated}),
+                     (pg_dsn, {"backend": "postgresql", **gated})):
+        out = describe(dsn, cfg)
+        assert "s3cr3t" not in out, out
+        assert ":***@" in out, out
+
+
+def test_the_describe_target_test_left_no_dsn_cached():
+    """Runs straight after the test above, in file order, and checks the thing that
+    actually broke: a fake DSN left in either memoised cache redirects every later
+    get_connection() in the session. It once cost 62 downstream failures."""
+    import db.schema as schema
+    for cache in (schema._PG_URL, schema._MYSQL_URL):
+        for url in cache:
+            assert url is None or "db.example.com" not in url, \
+                f"a test DSN is still cached and will redirect the rest of the suite: {url}"

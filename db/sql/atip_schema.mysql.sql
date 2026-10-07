@@ -6,10 +6,14 @@
 -- database, plus seed rows (atip_weight_config 105,
 -- atip_schema_migrations 5).
 --
--- IMPORTANT: ATIP itself CANNOT run on MySQL (its runtimes are SQLite and,
--- experimentally, PostgreSQL). This is a reporting/dashboard COPY target
--- only. To refresh it with real data run tools/export_mysql.py on the
--- production machine and import its output instead.
+-- IMPORTANT: this is a reporting/dashboard COPY target, NOT the schema ATIP
+-- runs on. Its tables are prefixed `atip_` and their types are inferred from
+-- the data, so ATIP's own MySQL queries do not fit it. ATIP's runtime is
+-- SQLite; its MySQL and PostgreSQL backends are experimental, and for a
+-- database their queries DO fit use tools/sqlite_to_mysql.py (or init_db()
+-- with the MySQL backend) rather than this file. To refresh this copy with
+-- real data run tools/export_mysql.py on the production machine and import
+-- its output instead.
 --
 -- phpMyAdmin: select the database, Import this file. It DROPs and
 -- recreates ONLY the atip_* tables. Not carried over: the 16 append-only
