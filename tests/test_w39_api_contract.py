@@ -216,6 +216,8 @@ def test_every_get_resource_returns_real_rows_that_match_its_schema(v1):
     d = seen["/api/strategies/{strategy_id}"]
     assert d["status"] == "PAPER" and d["definition"]["strategy_id"] == SID and d["versions"] and d["backtests"]
     assert [e["to_state"] for e in d["lifecycle"]][:1] == ["PAPER"] and "READY" in d["allowed_transitions"]
+    import json as _json                     # W39: metrics decoded beside the published text
+    assert all(b["metrics"] == (_json.loads(b["metrics_json"]) if b["metrics_json"] else None) for b in d["backtests"])
     a = seen["/api/alerts"]
     assert a["job_health"][0]["kind"] == "FAILING" and a["recovered_today"][0]["step"] == "news" and a["alerts"]
     tod = seen["/api/tod"]
@@ -228,6 +230,8 @@ def test_every_get_resource_returns_real_rows_that_match_its_schema(v1):
     assert seen["/api/account/watchlists"][0]["symbols"] == ["HDFCBANK", "ICICIBANK"]
     assert seen["/api/account/alerts"][0]["feature"] == "rsi_14"
     assert seen["/api/account/reports"][0]["params"] == {"top": 5} and seen["/api/account/reports"][0]["last_run_at"]
+    rep = seen["/api/account/reports"][0]
+    assert "formats" in rep and rep["formats"] == (_json.loads(rep["formats_json"]) if rep["formats_json"] else None)
 
 
 def test_v1_list_pagination_keeps_the_declared_shape(v1):
@@ -290,9 +294,13 @@ def test_error_bodies_match_the_error_schema(v1):
     narrow = apikeys.create(v1["conn"], v1["user"]["user_id"], "default", "narrow", ["strategy:read"])
     r = client.get("/api/v1/oms/orders", headers={"Authorization": f"ApiKey {narrow['api_key']}"})
     assert r.status_code == 403 and validate(r.json(), err) == []                    # a scope the key lacks
-    # a query parameter of the wrong type is FastAPI's own 422, documented as HTTPValidationError
+    # a query parameter of the wrong type: FastAPI's 422 now carries the envelope too (W39), with its
+    # "detail" list kept for existing clients -- valid as the Error schema and as HTTPValidationError
     r = client.get("/api/v1/backtests?limit=abc", headers=h)
-    assert r.status_code == 422 and "detail" in r.json() and "error" not in r.json()
+    b = r.json()
+    assert r.status_code == 422 and validate(b, err) == [] and isinstance(b["detail"], list)
+    assert b["error"]["code"] == "VALIDATION_FAILED" and "limit" in b["error"]["message"]
+    assert b["error"]["request_id"] == r.headers["x-request-id"]
 
 
 def test_with_the_enterprise_layer_off_reads_keep_their_shapes_and_account_routes_answer_503(v1):

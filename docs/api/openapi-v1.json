@@ -1582,7 +1582,14 @@
                     "string",
                     "null"
                   ],
-                  "description": "the metrics as stored: JSON text, not decoded"
+                  "description": "the metrics as stored: JSON text (kept for compatibility; use metrics)"
+                },
+                "metrics": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "metrics_json decoded (W39)"
                 },
                 "created_at": {
                   "type": [
@@ -2635,7 +2642,17 @@
               "string",
               "null"
             ],
-            "description": "the scheduled formats as stored: JSON text, not decoded"
+            "description": "the scheduled formats as stored: JSON text (kept for compatibility; use formats)"
+          },
+          "formats": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "formats_json decoded (W39)"
           },
           "last_run_at": {
             "type": [

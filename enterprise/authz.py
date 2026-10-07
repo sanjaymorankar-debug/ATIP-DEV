@@ -314,8 +314,10 @@ def install(app):
                 kl = key_limits(conn, p["key_id"])
                 ok, wait = store().bucket(f"apikey:{p['key_id']}", kl["per_minute"])
                 if not ok:
+                    from ops import context as _ctx
                     return JSONResponse({"error": {"code": "RATE_LIMITED", "message": "API key rate limit",
-                                                   "retryable": True}}, status_code=429,
+                                                   "request_id": _ctx.request_id.get(), "retryable": True}},
+                                        status_code=429,
                                         headers={"Retry-After": str(wait)})
                 from datetime import date as _d
                 used = conn.execute("SELECT calls FROM enterprise_api_usage WHERE key_id=? AND date=?",

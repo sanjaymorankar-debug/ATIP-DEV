@@ -213,7 +213,9 @@ SCHEMAS = {
                           "backtests": {"type": "array", "items": _o({
                               "run_id": _S, "strategy_version": _STR, "kind": _S, "period_label": _STR,
                               "start_date": _STR, "end_date": _STR, "status": _S,
-                              "metrics_json": {**_STR, "description": "the metrics as stored: JSON text, not decoded"},
+                              "metrics_json": {**_STR, "description": "the metrics as stored: JSON text (kept for "
+                                                                      "compatibility; use metrics)"},
+                              "metrics": {"type": ["object", "null"], "description": "metrics_json decoded (W39)"},
                               "created_at": _STR}, ["run_id", "status"])}},
                          _STRATEGY_REQ + ["definition", "versions", "lifecycle", "events", "allowed_transitions",
                                           "health", "backtests"]),
@@ -274,7 +276,9 @@ SCHEMAS = {
     "Report": _o({"report_id": _S, "tenant_id": _S, "user_id": _S, "name": _STR, "kind": _STR,
                   "params": {"description": "the params given when the report was saved (decoded JSON)"},
                   "shared": {"type": ["boolean", "integer"]}, "created_at": _STR, "schedule": _STR,
-                  "formats_json": {**_STR, "description": "the scheduled formats as stored: JSON text, not decoded"},
+                  "formats_json": {**_STR, "description": "the scheduled formats as stored: JSON text (kept for "
+                                                          "compatibility; use formats)"},
+                  "formats": {"type": ["array", "null"], "items": _S, "description": "formats_json decoded (W39)"},
                   "last_run_at": _STR}, ["report_id", "tenant_id", "user_id"]),
     "ReportRun": _o({"output_id": _S, "report_id": _S, "format": _S, "rows": _I},
                     ["output_id", "report_id", "format", "rows"]),
