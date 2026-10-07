@@ -27,6 +27,8 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/signals/technical?date&direction&min_confluence&alignment    signals with levels, confluence, market gate
     GET  /api/signals/technical/stats?min_confluence&alignment  track record per scan: win rate, average R
     GET  /api/signals/technical/gate-effect?min_confluence     closed signals WITH / MIXED / AGAINST the market gate
+    GET  /api/signals/technical/forward?horizon=20&min_confluence   vs the Nifty after 5 / 20 / 60 sessions, by scan x
+                                                     the gate at birth and by confluence band
     GET  /api/signals/technical/symbol/{symbol}      latest technical snapshot + recent signals for one stock
     POST /api/signals/technical/run                  {symbols?} compute today's snapshot and signals now
     GET  /api/market-regime                          the market gate today: status, distribution days, 200-DMA, changes
@@ -279,6 +281,11 @@ def register(app, guard, Req, get_connection, json_safe):
         if alignment and alignment.upper() not in _ALIGN:
             return JSONResponse({"error": "alignment must be WITH, MIXED or AGAINST"}, status_code=400)
         return await run(lambda c: scan_stats(c, max(0, int(min_confluence)), alignment))
+
+    @app.get("/api/signals/technical/forward")
+    async def api_tech_forward(horizon: int = 20, min_confluence: int = 0):
+        from research.tech_signals import forward_stats
+        return await run(lambda c: forward_stats(c, int(horizon), max(0, int(min_confluence))))
 
     @app.get("/api/signals/technical/gate-effect")
     async def api_tech_gate_effect(min_confluence: int = 0):

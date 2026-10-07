@@ -226,7 +226,7 @@ async function del(id){if(!confirm('Delete this saved screen?'))return;await pos
 SIGNALS = _HEAD + r"""
 <div class="wrap"><div class="tabs" id="tabs"></div>
 <div class="pane" id="p-today"><div class="card"><h3>Technical signals <span class="muted" id="asof"></span></h3>
-<div class="muted">End-of-day scans for the next session (research/technicals.py): crossovers, breakouts on volume, oscillator turns, Supertrend, squeezes, trend templates. Each signal has an entry (the close), a stop 2×ATR away and a target 4×ATR away (2R), and a <b>confluence</b> count of independent agreeing evidence out of 6: technical rating, volume, relative strength vs Nifty, market regime, a candle pattern, the research rating. Each also carries the <b>market gate</b> it was born under: a long signal while the gate is closed is <i>against the market</i>. Not advice.</div>
+<div class="muted">End-of-day scans for the next session (research/technicals.py): crossovers, breakouts on volume, oscillator turns, Supertrend, squeezes, trend templates. Each signal has an entry (the close), a stop 2×ATR away and a target 4×ATR away (2R), and a <b>confluence</b> count of independent agreeing evidence out of 6: technical rating, volume, relative strength vs Nifty, market regime, a candle pattern, the research rating. Each also carries the <b>market gate</b> it was born under: a long signal while the gate is closed is <i>against the market</i>. In brackets after each scan: its record so far in today's market, how often it beat the Nifty over 20 sessions · its median excess (grey: fewer than 10 signals; * across all markets). Not advice.</div>
 <div id="gate" style="margin-top:8px"></div>
 <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select id="dirf" onchange="today()"><option value="">Bullish and bearish</option><option value="BULL">Bullish</option><option value="BEAR">Bearish</option></select>
 <select id="alf" onchange="draw()"><option value="not_against" selected>Hide signals against the market</option><option value="">All signals</option><option value="WITH">Only with the market</option></select>
@@ -239,7 +239,13 @@ SIGNALS = _HEAD + r"""
 <select id="ra" onchange="rec()"><option value="">born in any market</option><option value="WITH">born with the market</option><option value="MIXED">born in a mixed market</option><option value="AGAINST">born against the market</option></select></div>
 <h3 style="margin-top:10px">Does the market gate help?</h3><div id="geff" class="sx"></div>
 <h3 style="margin-top:10px">Per scan</h3>
-<div id="stats" style="margin-top:4px;overflow-x:auto"></div></div></div>
+<div id="stats" style="margin-top:4px;overflow-x:auto"></div></div>
+<div class="card"><h3>Against the Nifty, by market and holding period</h3>
+<div class="muted">Separately from the stop and target, every signal's return is recorded 5, 20 and 60 sessions later and compared with the Nifty over the same days (signed for its direction). Each cell: how often the signal beat the Nifty · its median excess return (number of signals). Split by the market gate the signal was born under. Grey cells have fewer than 10 signals: too few to judge.</div>
+<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted">holding period</span><select id="rh" onchange="fwd()"><option value="5">5 sessions</option><option value="20" selected>20 sessions</option><option value="60">60 sessions</option></select><span class="muted">(confluence filter above applies)</span></div>
+<div id="fwall" style="margin-top:8px" class="sx"></div>
+<h3 style="margin-top:10px">Does confluence add?</h3><div id="fwconf" class="sx"></div>
+<h3 style="margin-top:10px">Per scan</h3><div id="fwscan" class="sx"></div><div id="fwnote" class="muted" style="margin-top:4px"></div></div></div>
 </div><div id="tip"></div>
 <script>""" + _JS_COMMON + r"""
 const TABS=[['today','Today'],['rec','Track record']];const loaded={};
@@ -248,6 +254,9 @@ function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggl
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const dpill=d=>`<span class="pill ${d==='BULL'?'BUY':d==='BEAR'?'SELL':'NOT_RATED'}">${d==='BULL'?'▲ bull':d==='BEAR'?'▼ bear':esc(d)}</span>`;
 let SIG=[];
+const recb=s=>{const r=s.record;if(!r)return '';const m=(r.median_excess_pct>0?'+':'')+r.median_excess_pct;
+ const t=`Over ${s.record_horizon} sessions ${s.record_scope==='gate'?'in a market with the gate '+(s.market_gate||'').toLowerCase():'in all markets (none yet in this one)'}: beat the Nifty ${r.beat_nifty_pct}% of ${r.n} times, median excess ${m}%${r.enough?'':'. Too few to judge.'}`;
+ return ` <span class="${r.enough?(r.median_excess_pct>0?'ok':'bad'):'muted'}" style="font-size:11px;white-space:nowrap" title="${esc(t)}">[${r.beat_nifty_pct}% · ${m}%${s.record_scope==='gate'?'':'*'}]</span>`};
 async function gate(){try{const g=await j('/api/market-regime');const el=document.getElementById('gate');
  if(!g.gate){el.innerHTML=`<span class="muted">Market gate: ${esc(g.reason||'not computed yet')}</span>`;return}
  const long=g.gate==='OPEN'?'long signals are <b>with</b> the market':g.gate==='CAUTION'?'mixed market: long signals are <b>mixed</b>, size down':'long signals are <b>against</b> the market; short signals are with it';
@@ -258,8 +267,16 @@ function draw(){const af=document.getElementById('alf').value,r=SIG.filter(x=>!a
  const hidden=SIG.length-r.length;const g={};r.forEach(x=>{const k=x.symbol+'|'+x.direction;(g[k]=g[k]||{...x,list:[]}).list.push(x)});
  const rows=Object.values(g).sort((a,b)=>b.confluence-a.confluence||b.list.length-a.list.length||a.symbol.localeCompare(b.symbol));
  document.getElementById('asof').textContent=SIG.length?`· ${String(SIG[0].date).slice(0,10)} · ${rows.length} stocks, ${r.length} signals${hidden?` (${hidden} hidden by the market filter)`:''}`:'· none yet';
- document.getElementById('sig').innerHTML=table(['Symbol','','Market','Signals','Entry','Stop','Target','Confluence','Evidence','Rating','Patterns'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${apill(x.alignment)}</td><td>${x.list.map(s=>`<span title="${esc(s.reason||'')}">${esc(s.name)}</span>`).join(' · ')}</td><td>${n(x.entry,2)}</td><td>${n(x.stop,2)}</td><td>${n(x.target,2)}</td><td><b>${x.confluence}</b>/6</td><td class="muted">${Object.entries(x.evidence||{}).filter(([k,v])=>v).map(([k])=>esc(k)).join(', ')}</td><td style="white-space:nowrap">${esc((x.tech_rating_label||'').replace('_',' '))}</td><td class="muted">${esc(x.patterns||'')}</td></tr>`))}
-async function rec(){const mc=document.getElementById('rc').value,al=document.getElementById('ra').value;
+ document.getElementById('sig').innerHTML=table(['Symbol','','Market','Signals','Entry','Stop','Target','Confluence','Evidence','Rating','Patterns'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${apill(x.alignment)}</td><td>${x.list.map(s=>`<span title="${esc(s.reason||'')}">${esc(s.name)}</span>${recb(s)}`).join(' · ')}</td><td>${n(x.entry,2)}</td><td>${n(x.stop,2)}</td><td>${n(x.target,2)}</td><td><b>${x.confluence}</b>/6</td><td class="muted">${Object.entries(x.evidence||{}).filter(([k,v])=>v).map(([k])=>esc(k)).join(', ')}</td><td style="white-space:nowrap">${esc((x.tech_rating_label||'').replace('_',' '))}</td><td class="muted">${esc(x.patterns||'')}</td></tr>`))}
+const fcell=c=>!c?'<span class="muted">—</span>':`<span class="${c.enough?(c.median_excess_pct>0?'ok':'bad'):'muted'}" style="white-space:nowrap">${c.beat_nifty_pct}% · ${c.median_excess_pct>0?'+':''}${c.median_excess_pct}%</span> <span class="muted">(${c.n})</span>`;
+const GCOLS=[['ALL','All markets'],['OPEN','Gate open'],['CAUTION','Caution'],['CLOSED','Gate closed']];
+async function fwd(){const h=document.getElementById('rh').value,mc=document.getElementById('rc').value;
+ const f=await j(`/api/signals/technical/forward?horizon=${h}&min_confluence=${mc}`);
+ document.getElementById('fwall').innerHTML=table(['All signals',...GCOLS.map(g=>g[1])],[`<tr><td class="muted">beat the Nifty · median excess (n)</td>${GCOLS.map(([k])=>`<td>${fcell(f.overall[k])}</td>`).join('')}</tr>`]);
+ document.getElementById('fwconf').innerHTML=table(['Confluence',...GCOLS.map(g=>g[1])],f.by_confluence.map(b=>`<tr><td>${esc(b.band)} of 6</td>${GCOLS.map(([k])=>`<td>${fcell(b.cells[k])}</td>`).join('')}</tr>`));
+ document.getElementById('fwscan').innerHTML=table(['Scan','',...GCOLS.map(g=>g[1])],f.by_scan.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td>${GCOLS.map(([k])=>`<td>${fcell(o.cells[k])}</td>`).join('')}</tr>`));
+ document.getElementById('fwnote').textContent=f.note}
+async function rec(){fwd();const mc=document.getElementById('rc').value,al=document.getElementById('ra').value;
  const [r,ge]=await Promise.all([j('/api/signals/technical/stats?min_confluence='+mc+(al?'&alignment='+al:'')),j('/api/signals/technical/gate-effect?min_confluence='+mc)]);
  document.getElementById('geff').innerHTML=table(['Signals born','Open','Closed','Win rate','Avg R','Avg return'],ge.groups.map(o=>`<tr><td>${o.alignment==='UNKNOWN'?'<span class="muted">before the gate</span>':apill(o.alignment)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))+`<div class="muted" style="margin-top:4px">${esc(ge.verdict||ge.note)}</div>`;
  document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))}

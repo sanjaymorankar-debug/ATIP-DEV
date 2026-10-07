@@ -6939,6 +6939,54 @@
     }
    }
   },
+  "/api/signals/technical/forward": {
+   "get": {
+    "summary": "Api Tech Forward",
+    "operationId": "api_tech_forward_api_signals_technical_forward_get",
+    "parameters": [
+     {
+      "name": "horizon",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 20,
+       "title": "Horizon"
+      }
+     },
+     {
+      "name": "min_confluence",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Min Confluence"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/signals/technical/gate-effect": {
    "get": {
     "summary": "Api Tech Gate Effect",

@@ -37,7 +37,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 - **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
 
 **The best plan from here** (section 8):
-- **Phase 2 (uses data ATIP already has):** regime gate (**built**, see §8), a per-signal record split by regime, weekly-timeframe rating, chart patterns, explainable fundamental composite.
+- **Phase 2 (uses data ATIP already has):** regime gate and a per-signal record split by regime and horizon (both **built**, see §8), weekly-timeframe rating, chart patterns, explainable fundamental composite.
 - **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
 - **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
 - **Phase 5:** live execution, only with your explicit go-ahead.
@@ -108,7 +108,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 | Completed candles only | Dhan ScanX | ✅ Scans run at 20:30 on stored daily bars; a stock with no bar for the day is skipped rather than reusing yesterday's |
 | Regime gate | IBD | ✅ `research/regime_gate.py` (Phase 2, item 1): distribution days, correction / rally attempt / follow-through day and the 200-DMA give an OPEN / CAUTION / CLOSED gate. Every signal carries the gate it was born under; signals against it are hidden by default and never alerted. ATIP's `market_health` regime still counts as one confluence factor. |
 | Independent confluence | Trade Ideas, analysts | ✅ Out of 6: technical rating, volume, relative strength, regime, a candle pattern, ATIP's research rating |
-| Track record per signal | Tickeron, Danelfin, Holly | ✅ `technical_signal`: each signal closes as TARGET, STOPPED or EXPIRED (20 sessions); per-scan win rate, average R and average return, filterable by minimum confluence. A bar touching both levels counts as STOPPED (conservative). 🟡 Not yet split by regime, no forward returns vs Nifty at 5/20/60 days. |
+| Track record per signal | Tickeron, Danelfin, Holly | ✅ `technical_signal`: each signal closes as TARGET, STOPPED or EXPIRED (20 sessions); per-scan win rate, average R and average return, filterable by minimum confluence. A bar touching both levels counts as STOPPED (conservative). Phase 2: also split by the market gate at birth, plus forward returns vs the Nifty at 5/20/60 sessions by scan, gate and confluence, shown next to each of today's signals. |
 
 ---
 
@@ -193,6 +193,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
 | Your open orders | `portfolio/open_orders.py` | `/market-pulse` | On page load |
 | Market regime gate (Phase 2, item 1) | `research/regime_gate.py` (`market_regime_gate`; `technical_signal.market_gate`, `alignment`) | `/market-pulse` (gate card and chart), `/signals` (banner, filter, "Does the market gate help?") | With the 20:30 signal run |
+| Track record by regime and horizon (Phase 2, item 2) | `research/tech_signals.py` `evaluate_forward`, `forward_stats` (`technical_signal.ret_*` / `excess_*` at 5/20/60, `market_status`) | `/signals`: a record next to each scan; Track record → "Against the Nifty, by market and holding period" | With the 20:30 signal run |
 
 **API:**
 - `GET /api/signals/technical[...]`
@@ -221,7 +222,7 @@ They use synthetic series with known answers. Examples:
 | Gap | Best-in-class | Phase |
 |---|---|---|
 | ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
-| Track record by regime; forward returns at 5/20/60 days vs Nifty | Tickeron, Danelfin | 2 |
+| ~~Track record by regime; forward returns at 5/20/60 days vs Nifty~~ | Tickeron, Danelfin | 2: **built** |
 | Weekly (and later 75-minute) technical rating | TradingView any-timeframe | 2 / 3 |
 | Chart patterns: Darvas box, VCP, triangles, double bottom, head and shoulders, channels | Finviz, TrendSpider, StockEdge | 2 |
 | RS-line new high; SCTR-style rank within cap bucket | IBD, StockCharts | 2 |
@@ -251,9 +252,11 @@ They use synthetic series with known answers. Examples:
    - **Gate:** OPEN (confirmed uptrend above the 200-DMA), CAUTION (under pressure, or an uptrend still below the 200-DMA), CLOSED (correction or rally attempt). Thresholds are configurable (`config.json` `"regime_gate"`).
    - **Signals:** each carries the gate it was born under and its alignment (with, mixed or against the market). Signals against the market are hidden on `/signals` by default and never alerted. "Does the market gate help?" compares their results. It only gives a verdict once both sides have 30 closed signals and the gap is beyond noise (|t| ≥ 2).
    - *Why first:* it is the single filter every successful retail method uses, and it is cheap.
-2. **Track record by regime and horizon.**
-   - Forward returns at 5, 20 and 60 sessions vs the Nifty for every scan, split by regime and confluence.
-   - A per-signal card ("this scan, this regime: n, hit rate, median excess return").
+2. **Track record by regime and horizon. Built** (`research/tech_signals.py`).
+   - Every signal's return 5, 20 and 60 sessions after its close is recorded, independent of its stop and target. So is that return minus the Nifty's over the same sessions (excess). Both are signed for the direction, so a short gains when the stock falls.
+   - Split by scan × the market gate it was born under, and by confluence band (0–1, 2–3, 4–6): how often it beat the Nifty, and its median and mean excess. Cells with fewer than 10 signals are marked too few.
+   - Each of today's signals shows its scan's record in today's market (20 sessions), or across all markets when today's market has none yet. Alerts quote it once it has 10+ signals.
+   - Measured from the signal day's close; a real entry at the next open differs by the opening gap.
 3. **Weekly technical rating** on resampled bars, with a multi-timeframe agreement flag (daily and weekly both BUY).
 4. **Chart patterns** from swing pivots:
    - Darvas box and VCP (the volatility contraction pattern) first, as the easiest to define precisely;
