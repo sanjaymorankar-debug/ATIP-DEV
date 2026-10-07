@@ -181,3 +181,48 @@ def test_a_portfolio_sync_that_fails_mid_batch_still_records_the_failure_and_ale
                                        "AND kind='run'")] == ["FAILED"]
     assert [a["dedupe_key"] for a in _alerts("job")] == ["job_failed:dhan_portfolio"]
     assert _rows("SELECT symbol FROM portfolio_holdings") == []      # the half-written batch was rolled back
+
+
+class _Conn:
+    """Records close(); execute raises when told to."""
+    def __init__(self, fail=False):
+        self.fail, self.closed = fail, False
+
+    def execute(self, *a, **k):
+        if self.fail and str(a[0]).lstrip().upper().startswith("INSERT"):
+            raise RuntimeError("disk I/O error")
+        return self
+
+    def commit(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_log_job_and_tick_flush_close_their_connection_on_success_and_failure(monkeypatch, fail):
+    from db import schema
+    made = []
+    monkeypatch.setattr(schema, "get_connection", lambda: made.append(_Conn(fail)) or made[-1])
+    schema.log_job("x", "SUCCESS")
+    from data import dhan
+    monkeypatch.setattr(dhan, "get_connection", lambda: made.append(_Conn(fail)) or made[-1])
+    feed = dhan.DhanLiveFeed.__new__(dhan.DhanLiveFeed)
+    feed._buffer = [{"symbol": "ACME", "LTP": 1.0}]
+    feed._flush_buffer()
+    assert len(made) == 2 and all(c.closed for c in made)
+    assert feed._buffer == []
+
+
+def test_index_feed_flush_closes_its_connection(monkeypatch):
+    from data import dhan_ws
+    made = []
+    monkeypatch.setattr(dhan_ws, "get_connection", lambda: made.append(_Conn()) or made[-1])
+    monkeypatch.setattr(dhan_ws, "feed_window_open", lambda: True)
+    m = dhan_ws.IndexFeedManager.__new__(dhan_ws.IndexFeedManager)
+    import threading
+    m._lock, m._last_tick_at = threading.Lock(), {}
+    m.snapshot = lambda: {"nifty50": {"ltp": 25000.0, "chg_pct": 0.4}}
+    m._flush_to_db()
+    assert len(made) == 1 and made[0].closed

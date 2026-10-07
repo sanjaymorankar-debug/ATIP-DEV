@@ -1869,6 +1869,7 @@ def log_job(job_name, status, rows=0, error=None, run_date=None, start_time=None
     """
     end_time = end_time or datetime.now()
     start_time = start_time or end_time
+    conn = None
     try:
         conn = get_connection()
         conn.execute(
@@ -1877,9 +1878,14 @@ def log_job(job_name, status, rows=0, error=None, run_date=None, start_time=None
             (str(run_date or __import__('datetime').date.today()), job_name, start_time, end_time,
              status, rows, str(error)[:2000] if error else None, kind,
              round((end_time - start_time).total_seconds(), 1)))
-        conn.commit(); conn.close()
+        conn.commit()
     except Exception as e:
         log.warning(f"  pipeline_log: could not record {job_name} {status}: {e}")
+    finally:
+        # W39: closed on failure too -- an unclosed sqlite3 connection keeps its write lock until a
+        # GC pass (reference cycle), stalling the next writer for the whole busy timeout
+        if conn is not None:
+            conn.close()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

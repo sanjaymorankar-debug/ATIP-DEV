@@ -878,6 +878,7 @@ class DhanLiveFeed:
         """Write buffered ticks to database."""
         if not self._buffer:
             return
+        conn = None
         try:
             conn = get_connection()
             # Create live_ticks table if not exists
@@ -910,11 +911,12 @@ class DhanLiveFeed:
                      ltp, open_, high, low, close, vol, str(ts), tick.get("received_at",""))
                 )
             conn.commit()
-            conn.close()
             log.debug(f"  💾 Flushed {len(self._buffer)} ticks to DB")
         except Exception as e:
             log.warning(f"  Tick flush failed: {e}")
         finally:
+            if conn is not None:
+                conn.close()      # W39: also on failure (a half-written batch kept the write lock)
             self._buffer = []
             self._last_store = datetime.now()
 
