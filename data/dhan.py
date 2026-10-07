@@ -400,6 +400,24 @@ def fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
         return _fetch_live_quotes(symbols, dhan)
 
 
+_CIRCUIT_KEYS = {"upper": ("upper_circuit_limit", "upperCircuitLimit", "upper_circuit", "uc_limit", "upper_limit"),
+                 "lower": ("lower_circuit_limit", "lowerCircuitLimit", "lower_circuit", "lc_limit", "lower_limit")}
+
+
+def _circuit_field(q: dict, side: str):
+    """Dhan's quote carries upper_circuit_limit / lower_circuit_limit; tolerate the other
+    spellings seen across API versions. A missing, zero or unparsable value -> None."""
+    for k in _CIRCUIT_KEYS[side]:
+        v = q.get(k)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            return v
+    return None
+
+
 def _fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
     """
     Fetch live LTP, OHLC, volume, prev_close for a list of symbols.
@@ -475,6 +493,9 @@ def _fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
                     "volume":     q.get("volume"),
                     "chg_pct":    chg_pct,
                     "timestamp":  datetime.now(),
+                    # W39 (RK-21): the day's circuit band, for orders/risk.circuit_check
+                    "upper_circuit": _circuit_field(q, "upper"),
+                    "lower_circuit": _circuit_field(q, "lower"),
                 }
                 if ltp is None:
                     log.warning(f"  {sym}: quote resolved with ltp=None — raw fields seen: {list(q.keys())}")
@@ -1220,15 +1241,24 @@ def run_live_quote_refresh(symbols: list = None) -> dict:
         )
     """)
 
+    conn.commit()
+    try:                                       # W39 columns (schema_w39): absent until init_db has migrated
+        conn.execute("SELECT upper_circuit, lower_circuit FROM live_quotes WHERE 1=0").fetchall()
+        circuits = True
+    except Exception:
+        conn.rollback()
+        circuits = False
     for _, row in df.iterrows():
-        conn.execute("""
-            INSERT OR REPLACE INTO live_quotes
-                (symbol,ltp,open,high,low,prev_close,volume,chg_pct,timestamp)
-            VALUES(?,?,?,?,?,?,?,?,?)
-        """, (row.get("symbol"), row.get("ltp"), row.get("open"),
-              row.get("high"), row.get("low"), row.get("prev_close"),
-              row.get("volume"), row.get("chg_pct"),
-              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        vals = [row.get("symbol"), row.get("ltp"), row.get("open"), row.get("high"), row.get("low"),
+                row.get("prev_close"), row.get("volume"), row.get("chg_pct"),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+        if circuits:
+            conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
+                         "timestamp,upper_circuit,lower_circuit) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                         vals + [_circuit_field(row, "upper"), _circuit_field(row, "lower")])
+        else:
+            conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
+                         "timestamp) VALUES(?,?,?,?,?,?,?,?,?)", vals)
         count += 1
 
     conn.commit()

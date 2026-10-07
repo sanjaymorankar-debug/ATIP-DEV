@@ -35,6 +35,9 @@ value and limit, so a decision can be read back without re-deriving it.
                          beyond the band, BUY or SELL. MARKET, or no reference price: SKIP.
                          The limit is w4 max_price_band_pct once execution/config.py declares
                          it, else config.json risk_limits.max_price_band_pct (default 20)
+    circuit_limit        (W39, RK-21) that price against today's NSE upper / lower circuit
+                         (live_quotes, from the Dhan REST quote); REJECTED outside it. MARKET,
+                         or no circuit stored today: SKIP
   SELL / EXIT / REDUCE   reduce risk: only the gates and a held position are
                          required. EXIT sells everything held; REDUCE the
                          intent's quantity (else half), capped at what is held.
@@ -511,10 +514,10 @@ def _price_band(conn, it, rd, settings, lim, add) -> str | None:
     if "max_price_band_pct" not in lim:          # until RISK_DEFAULTS declares it: config.json risk_limits
         lim["max_price_band_pct"] = gateway_limits().get("max_price_band_pct")
     band = lim["max_price_band_pct"]
+    otype = str(settings.get("order_type") or "MARKET").upper()
     if band is None:
         add("max_price_band_pct", SKIP, "limit disabled")
-        return None
-    otype = str(settings.get("order_type") or "MARKET").upper()
+        return _circuit(conn, it, rd, otype, add)
     try:
         pb = price_band(conn, it["symbol"], otype, rd.reference_price if otype in ("LIMIT", "SL") else None,
                         None, band)
@@ -522,12 +525,30 @@ def _price_band(conn, it, rd, settings, lim, add) -> str | None:
         pb = {"skipped": True, "reason": f"price band not measured ({e})"}
     if pb.get("skipped"):
         add("max_price_band_pct", SKIP, pb["reason"], limit=band)
-        return None
+        return _circuit(conn, it, rd, otype, add)
     if pb["breached"]:
         add("max_price_band_pct", FAIL, pb["reason"], pb["value"], band)
         return f"price band: {otype} {pb['price']:,.2f} is {pb['value']:.1f}% from {pb['reference_source']} " \
                f"{pb['reference']:,.2f} (> {band:g}%)"
     add("max_price_band_pct", PASS, pb["reason"], pb["value"], band)
+    return _circuit(conn, it, rd, otype, add)
+
+
+def _circuit(conn, it, rd, otype, add) -> str | None:
+    """RK-21 (W39): today's NSE circuit (orders/risk.py circuit_check) on the price the order will
+    carry; REJECTED outside it. MARKET, or no circuit stored today: SKIP."""
+    from orders.risk import circuit_check
+    try:
+        cc = circuit_check(conn, it["symbol"], otype, rd.reference_price if otype in ("LIMIT", "SL") else None)
+    except Exception as e:
+        cc = {"skipped": True, "reason": f"circuit limits not checked ({e})"}
+    if cc.get("skipped"):
+        add("circuit_limit", SKIP, cc["reason"])
+        return None
+    if cc["breached"]:
+        add("circuit_limit", FAIL, cc["reason"], cc["value"])
+        return cc["reason"]
+    add("circuit_limit", PASS, cc["reason"], cc["value"])
     return None
 
 

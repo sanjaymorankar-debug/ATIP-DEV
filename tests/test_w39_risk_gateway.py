@@ -312,3 +312,89 @@ def test_gross_notional_marks_at_the_futures_close(conn):
                                           str(date.today() + timedelta(days=20)), 100))
     conn.commit()
     assert gross_notional(conn) == 12000.0
+
+
+# ── circuit limits (W39, RK-21) ──────────────────────────────────────────
+
+def _circuit(conn, sym, ltp, upper, lower, minutes_ago=1, day=None):
+    ts = ((day and datetime.combine(day, datetime.now().time())) or datetime.now()) - timedelta(minutes=minutes_ago)
+    conn.execute("INSERT INTO live_quotes (symbol, ltp, timestamp, upper_circuit, lower_circuit) VALUES (?,?,?,?,?)",
+                 (sym, ltp, ts.strftime("%Y-%m-%d %H:%M:%S"), upper, lower))
+    conn.commit()
+
+
+def _circ(r):
+    return next(g for g in r["gateway"] if g["limit"] == "circuit_limit")
+
+
+def test_dhan_quote_circuit_fields_are_parsed_tolerantly():
+    from data.dhan import _circuit_field
+    assert _circuit_field({"upper_circuit_limit": 110.5, "lower_circuit_limit": "90.4"}, "upper") == 110.5
+    assert _circuit_field({"upper_circuit_limit": 110.5, "lower_circuit_limit": "90.4"}, "lower") == 90.4
+    assert _circuit_field({"upperCircuitLimit": 12}, "upper") == 12.0
+    assert _circuit_field({"upper_circuit_limit": 0, "lower_circuit_limit": "n/a"}, "upper") is None
+    assert _circuit_field({}, "lower") is None
+
+
+def test_live_quote_refresh_stores_the_circuit(conn, monkeypatch):
+    import pandas as pd
+    from data import dhan
+    q = {"last_price": 100.0, "ohlc": {"open": 99, "high": 101, "low": 98, "close": 97},
+         "upper_circuit_limit": 106.7, "lower_circuit_limit": 87.3}
+    monkeypatch.setattr(dhan, "fetch_live_quotes", lambda symbols, d=None: pd.DataFrame(
+        [{"symbol": "ACME", "ltp": 100.0, "prev_close": 97, "chg_pct": 3.09,
+          "upper_circuit": dhan._circuit_field(q, "upper"), "lower_circuit": dhan._circuit_field(q, "lower")}]))
+    monkeypatch.setattr(dhan, "HAS_DHAN", True)
+    monkeypatch.setattr(dhan, "get_dhan_client", lambda: (object(), None))
+    monkeypatch.setattr(dhan, "log_job", lambda *a, **k: None, raising=False)
+    assert dhan.run_live_quote_refresh(["ACME"])["rows"] == 1
+    from orders.risk import circuit_limits
+    cl = circuit_limits(conn, "ACME")
+    assert (cl["upper"], cl["lower"]) == (106.7, 87.3)
+
+
+def test_a_limit_above_the_upper_circuit_is_blocked_even_inside_the_band(conn):
+    from orders.risk import pretrade_check
+    _circuit(conn, "ACME", 100.0, 105.0, 95.0)                        # a 5% circuit stock
+    r = pretrade_check(conn, "ACME", "BUY", 10, 1080.0, env="PAPER", order_type="LIMIT", price=108.0)
+    assert (r["ok"], r["blocked_by"]) == (False, "circuit_limit")
+    assert _band(r)["breached"] is False, "8% is inside the 20% band: only the circuit catches it"
+    c = _circ(r)
+    assert c["breached"] and c["value"] == 108.0 and (c["upper"], c["lower"]) == (105.0, 95.0)
+    assert "95.00 - 105.00" in r["message"]
+    r = pretrade_check(conn, "ACME", "SELL", 10, 0.0, env="PAPER", order_type="SL-M", trigger_price=94.0)
+    assert r["blocked_by"] == "circuit_limit" and _circ(r)["value"] == 94.0
+    ok = pretrade_check(conn, "ACME", "BUY", 10, 1040.0, env="PAPER", order_type="LIMIT", price=104.0)
+    assert ok["ok"] is True and _circ(ok)["breached"] is False and "circuit_limit ok" in ok["message"]
+
+
+def test_circuit_is_skipped_for_market_orders_and_unknown_or_old_limits(conn, cfgfile):
+    from orders.risk import pretrade_check
+    _circuit(conn, "ACME", 100.0, 105.0, 95.0)
+    assert _circ(pretrade_check(conn, "ACME", "BUY", 1, 100.0, env="PAPER", order_type="MARKET"))["skipped"]
+    _quote(conn, "OTHER", 100.0)                                      # a websocket row: no circuit
+    assert _circ(pretrade_check(conn, "OTHER", "BUY", 1, 108.0, env="PAPER", order_type="LIMIT",
+                                price=108.0))["skipped"]
+    _circuit(conn, "OLD", 100.0, 105.0, 95.0, day=date.today() - timedelta(days=1))
+    r = pretrade_check(conn, "OLD", "BUY", 1, 108.0, env="PAPER", order_type="LIMIT", price=108.0)
+    assert _circ(r)["skipped"] and r["ok"] is True, "yesterday's circuit is not today's"
+    # the newest row of today that carries limits wins over a later websocket row without them
+    _quote(conn, "ACME", 101.0, minutes_ago=0)
+    assert pretrade_check(conn, "ACME", "BUY", 1, 108.0, env="PAPER", order_type="LIMIT",
+                          price=108.0)["blocked_by"] == "circuit_limit"
+    cfgfile(risk_limits={"enforce_circuit_limits": False})
+    r = pretrade_check(conn, "ACME", "BUY", 1, 108.0, env="PAPER", order_type="LIMIT", price=108.0)
+    assert r["ok"] is True and all(g["limit"] != "circuit_limit" for g in r["gateway"])
+
+
+def test_w4_limit_outside_the_circuit_is_rejected(conn, w4):
+    for s in ("CA", "CB", "CC"):                     # one intent per symbol and day
+        _circuit(conn, s, 100.0, 105.0, 95.0)
+    rd, checks = _evaluate(conn, w4(symbol="CA", entry=108.0))
+    assert checks["max_price_band_pct"]["status"] == "PASS"
+    assert rd.risk_status == "REJECTED" and checks["circuit_limit"]["status"] == "FAIL"
+    assert "outside today's circuit 95.00 - 105.00" in rd.rejection_reason
+    rd, checks = _evaluate(conn, w4(symbol="CB", entry=104.0))
+    assert rd.risk_status == "APPROVED" and checks["circuit_limit"]["status"] == "PASS"
+    rd, checks = _evaluate(conn, w4(symbol="CC", entry=108.0, order_type="MARKET"))
+    assert checks["circuit_limit"]["status"] == "SKIP"

@@ -41,8 +41,12 @@ sane order does. null disables one:
                                           # the freshest live_quotes LTP (<= 30 min
                                           # old), else the last prices_daily close.
                                           # 20 = NSE's widest circuit band: fat fingers
-      "max_gross_exposure_pct":  100      # BUY: held value + paper futures notional
+      "max_gross_exposure_pct":  100,     # BUY: held value + paper futures notional
                                           # + this order, % of equity (100 = no leverage)
+      "enforce_circuit_limits":  true     # the order's price vs today's NSE upper /
+                                          # lower circuit (live_quotes, Dhan REST quote);
+                                          # false switches it off. No circuit stored
+                                          # today -> skipped (circuit_check)
 
 The band applies to BUY and SELL; a MARKET order (no price) or a symbol with no
 reference price is recorded as skipped, never blocked. The gross limit is
@@ -308,6 +312,7 @@ def _gate_note(gate) -> str:
     if not gate:
         return ""
     return "; gateway: " + ", ".join(f"{g['limit']} skipped" if g.get("skipped") else
+                                     f"{g['limit']} ok" if g.get("cap") is None else
                                      f"{g['limit']} {g['value']:g}% (cap {g['cap']:g}%)" for g in gate)
 
 
@@ -322,6 +327,12 @@ def _gateway(conn, symbol, transaction_type, est_value, env, order_type, price, 
         except Exception as e:
             out.append({"limit": "max_price_band_pct", "value": None, "cap": gl["max_price_band_pct"],
                         "breached": False, "skipped": True, "reason": f"price band not measured ({e})"})
+    if (_config().get("risk_limits") or {}).get("enforce_circuit_limits", True) is not False:
+        try:
+            out.append(circuit_check(conn, symbol, order_type, price, trigger_price))
+        except Exception as e:
+            out.append({"limit": "circuit_limit", "value": None, "cap": None, "breached": False, "skipped": True,
+                        "reason": f"circuit limits not checked ({e})"})
     # as with the W1 exposure caps, a SELL reduces exposure: only a BUY is counted
     if "max_gross_exposure_pct" in gl and transaction_type == "BUY":
         out.append(_gross_exposure(conn, env, est_value, gl["max_gross_exposure_pct"]))
@@ -358,10 +369,9 @@ def price_band(conn, symbol, order_type=None, price=None, trigger_price=None, ca
     "skipped" (never breached). {"limit", "value", "cap", "breached",
     "skipped"?, "price"?, "reference"?, "reference_source"?, "reason"}.
 
-    NSE's own circuit limits are not checked: nothing in ATIP stores them --
-    live_quotes keeps ltp / ohlc / prev_close / volume, and data/dhan.py's quote
-    parsing does not read the quote API's circuit fields. The exchange enforces
-    the circuit; this band is the backstop for a mistyped price.
+    NSE's own circuit limits are a separate check, circuit_check() (W39): the
+    band is the backstop for a mistyped price, the circuit what the exchange
+    itself would refuse.
     """
     out = {"limit": "max_price_band_pct", "value": None, "cap": cap, "breached": False}
     t = str(order_type or "").upper()
@@ -381,6 +391,56 @@ def price_band(conn, symbol, order_type=None, price=None, trigger_price=None, ca
     why = f"{t or 'order'} price {px:,.2f} is {off:.1f}% from the reference {ref:,.2f} ({src})"
     return {**out, "value": off, "breached": breached, "price": px, "reference": ref, "reference_source": src,
             "reason": f"max_price_band_pct: {why}, outside the {cap:g}% band" if breached else why}
+
+
+def circuit_limits(conn, symbol) -> dict | None:
+    """Today's NSE circuit limits for symbol, from the newest live_quotes row of today
+    that carries them (the Dhan REST quote stores upper_circuit / lower_circuit; the
+    websocket rows do not, so the newest row overall may have none). Circuits are set
+    per session, so an earlier day's limits are never used. None when unknown."""
+    try:
+        r = conn.execute("SELECT upper_circuit, lower_circuit, timestamp FROM live_quotes WHERE symbol=? AND "
+                         "substr(timestamp,1,10)=? AND (upper_circuit IS NOT NULL OR lower_circuit IS NOT NULL) "
+                         "ORDER BY timestamp DESC LIMIT 1", (symbol, str(date.today()))).fetchone()
+    except Exception as e:                     # no live_quotes table / columns on a fresh install
+        log.debug(f"  circuit limits unavailable ({e})")
+        return None
+    if not r:
+        return None
+    up, lo = (float(x) if x is not None and float(x) > 0 else None for x in (r[0], r[1]))
+    if up is None and lo is None:
+        return None
+    return {"upper": up, "lower": lo, "as_of": str(r[2])[:19]}
+
+
+def circuit_check(conn, symbol, order_type=None, price=None, trigger_price=None) -> dict:
+    """RK-21 (W39): an order whose limit price or trigger is outside today's circuit is
+    refused here rather than by the exchange. {"limit": "circuit_limit", "value": the
+    price furthest outside, "breached", "skipped"?, "upper", "lower", "reason"}.
+    A MARKET order, no price, or unknown limits: skipped (never breached)."""
+    out = {"limit": "circuit_limit", "value": None, "cap": None, "breached": False}
+    t = str(order_type or "").upper()
+    if t == "MARKET":
+        return {**out, "skipped": True, "reason": "MARKET order: no price to check"}
+    priced = [float(p) for p in (price if t != "SL-M" else None, trigger_price if t != "LIMIT" else None)
+              if p and float(p) > 0]
+    if not priced:
+        return {**out, "skipped": True, "reason": "no order price given"}
+    cl = circuit_limits(conn, symbol)
+    if not cl:
+        return {**out, "skipped": True, "reason": f"no circuit limits for {symbol} today (live quote) - not checked"}
+    up, lo = cl["upper"], cl["lower"]
+    above = [p for p in priced if up is not None and p > up + 1e-9]
+    below = [p for p in priced if lo is not None and p < lo - 1e-9]
+    out.update({"upper": up, "lower": lo, "as_of": cl["as_of"]})
+    rng = f"{lo:,.2f} - {up:,.2f}" if up is not None and lo is not None else \
+        (f"upper {up:,.2f}" if up is not None else f"lower {lo:,.2f}")
+    if above or below:
+        px = max(above) if above else min(below)
+        return {**out, "value": px, "breached": True,
+                "reason": f"circuit_limit: {t or 'order'} price {px:,.2f} is outside today's circuit {rng} "
+                          f"(quote {cl['as_of']}) - the exchange would reject it"}
+    return {**out, "value": max(priced), "reason": f"within today's circuit {rng}"}
 
 
 def _gross_exposure(conn, env, est_value, cap) -> dict:
