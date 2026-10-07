@@ -1480,12 +1480,90 @@ def _schedule_w29_jobs():
 
 
 def _schedule_w39_jobs():
-    """W39: equity research reports after the evening scoring (research/report.py), the saved
+    """W39: order-book pressure every 15 minutes in the session (data/order_pressure.py); the pre-open
+    GIFT / global-cue estimate at 08:45 and 09:05 and its check against the open at 09:35, NSE
+    participant OI at 20:15 and the Nifty history at 23:20 (research/market_pulse.py); the
+    technical snapshot and signals (research/tech_signals.py), equity research reports after the
+    evening scoring (research/report.py), the saved
     fundamental screens after them (research/screener.py), and the nightly, budgeted 7-year
     price-history backfill (data/history_backfill.py)."""
+    schedule.every(15).minutes.do(_w39_order_pressure_tick)
+    schedule.every().day.at("08:45").do(_w39_gift)
+    schedule.every().day.at("09:05").do(_w39_gift)
+    schedule.every().day.at("09:35").do(_w39_gap_eval)
+    schedule.every().day.at("20:15").do(_w39_participant_oi)
+    schedule.every().day.at("23:20").do(_w39_nifty_history)
+    schedule.every().day.at("20:30").do(_w39_technical_signals)
     schedule.every().day.at("20:40").do(_w39_research_reports)
     schedule.every().day.at("20:50").do(_w39_saved_screens)
     schedule.every().day.at("22:20").do(_w39_history_backfill)
+
+
+def _w39_order_pressure_tick():
+    """Pending buy / sell totals for the tracked universe (data/order_pressure.py), in market hours."""
+    try:
+        from data.order_pressure import settings as op_settings, snapshot
+        if op_settings()["enabled"] and is_market_hours():
+            run_job("order_pressure", snapshot)
+    except Exception as e:
+        log.warning(f"  Order pressure: {e}")
+
+
+def _w39_gift():
+    """Pre-open GIFT Nifty + global-model gap estimate (research/market_pulse.py)."""
+    if not is_market_day():
+        return
+    try:
+        from research.market_pulse import capture_gift
+        run_job("gift_preopen", capture_gift)
+    except Exception as e:
+        log.warning(f"  GIFT pre-open: {e}")
+
+
+def _w39_gap_eval():
+    if not is_market_day():
+        return
+    try:
+        from research.market_pulse import evaluate_gaps
+        run_job("gap_evaluation", evaluate_gaps)
+    except Exception as e:
+        log.warning(f"  Gap evaluation: {e}")
+
+
+def _w39_participant_oi():
+    if not is_market_day():
+        return
+    try:
+        from data.participant_oi import run as poi_run
+        run_job("participant_oi", poi_run)
+    except Exception as e:
+        log.warning(f"  Participant OI: {e}")
+
+
+def _w39_nifty_history():
+    """Keep the long Nifty close series the global-cue model regresses on (5 years the first time)."""
+    try:
+        from db.schema import get_connection
+        from research.market_pulse import nifty_history
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM global_market_history WHERE series='nifty50'").fetchone()[0]
+        finally:
+            c.close()
+        run_job("nifty_history", nifty_history, "5y" if n < 300 else "1mo")
+    except Exception as e:
+        log.warning(f"  Nifty history: {e}")
+
+
+def _w39_technical_signals():
+    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert."""
+    if not is_market_day():
+        return
+    try:
+        from research.tech_signals import run_job as tech_job
+        run_job("technical_signals", tech_job)
+    except Exception as e:
+        log.warning(f"  Technical signals: {e}")
 
 
 def _w39_saved_screens():

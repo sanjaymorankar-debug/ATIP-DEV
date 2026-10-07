@@ -66,6 +66,8 @@ INVENTORY = {
     "oms_order": ("financial", False, "kept (trade audit)"),
     "strategy": ("research", False, "tenant lifetime"),
     "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
+    "order_book_pressure": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
+    "market_cue": ("research", False, "kept: the record of pre-open gap estimates"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

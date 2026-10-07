@@ -12,7 +12,7 @@
 - ✅ present
 - 🟡 partial
 - ❌ missing
-- 🆕 built in W39 (this change; see `docs/W39_RESEARCH_HISTORY_OPTIONS_HANDOFF.md`)
+- 🆕 built in W39 (this change; see `docs/W39_RESEARCH_HISTORY_OPTIONS_HANDOFF.md`; the tools-and-signals research is in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`)
 
 ## 1. Where ATIP stands
 
@@ -46,6 +46,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Technical-indicator conditional orders | ✅ (Conditional Trigger API, May 2026) | ✅ (ATO on alerts) | 🟡 | Strategy rules exist, but there is no broker-side trigger |
 | Daily P&L exit / kill switch | ✅ (Trader's Control API) | ✅ (manual, per segment) | ✅ | `orders/risk.py` halts, loss and drawdown limits (KD-005: loss limits block BUYs when there is no P&L history) |
 | Margin calculator, max-quantity sizing | ✅ | ✅ | ❌ | Funds check only |
+| See all your pending orders (order book, forever / GTT) | ✅ | ✅ | 🆕 | W39 `GET /api/brokers/open-orders` and `/market-pulse`: Dhan open and forever orders (read-only) next to ATIP's resting paper orders and target / stop rules |
 
 ### 2.2 API, algo and SEBI's retail-algo rules
 
@@ -66,10 +67,13 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Options strategy builder: payoff, breakevens, POP, Greeks, templates | Sensibull (30+ templates), Dhan Options Trader | 🆕 | W39 `/options-builder`: 16 templates, multi-leg, payoff at expiry and at a chosen date, POP, net Greeks, premiums from stored chains |
 | Rule-based strike selection (Dhan "Quant Mode") | Dhan | ❌ | — |
 | Option chain with PCR, max pain, IV, IV percentile | Both | ✅ | Chain snapshot off by default; Greeks not computed per chain row |
-| Real-time technical screener, 200+ filters, saved screens | ScanX, Streak, Kite Screener (July 2026) | 🟡 | 5 fixed intraday scans; builder preview runs on latest-session data only |
-| Fundamental multi-filter screener, saved screens | ScanX, Kite Screener, Screener.in | 🆕 | W39 `/screener`: ~50 fields (valuation, profitability, growth, balance sheet, ownership, price, technical, ATIP score, research rating), a safe query language with AND / OR / NOT / IN, 12 presets including a magic-formula rank, sortable results, CSV export, saved screens with daily new-match alerts |
+| Technical screener, scans, candlestick screens, saved screens | ScanX, Streak, Chartink, Kite Screener (July 2026) | 🆕 (EOD) | W39: 30 end-of-day scans (crosses, breakouts on volume, oscillator turns, Supertrend, squeezes, Minervini template, pocket pivots), 19 candle patterns, technical rating, IBD-style RS rating, all as screener fields with 13 technical and 3 combined presets. Intraday scans still the 5 fixed ones (plan Phase 3). |
+| Fundamental multi-filter screener, saved screens | ScanX, Kite Screener, Screener.in | 🆕 | W39 `/screener`: 99 fields (fundamental, technical, order book, ATIP score, research rating), a safe query language with AND / OR / NOT / IN / CONTAINS, 28 presets including a magic-formula rank, sortable results, CSV export, saved screens with daily new-match alerts |
+| Signals with entry, stop, target and a track record | Trade Ideas Holly, Tickeron, Streak | 🆕 | W39 `/signals`: each scan hit gets 2 × ATR stop, 4 × ATR target, a confluence count of 6, and is followed to TARGET / STOPPED / EXPIRED; win rate and average R per scan |
+| Market depth / pending buy-sell quantity across stocks | Both (per stock) | 🆕 | W39 order-book pressure: total pending buy vs sell for every tracked stock every 15 minutes, persistent buyers / sellers, screener fields. Needs the Dhan Data API. |
 | Price and indicator alerts | Both | 🟡 | Needs `enterprise.enabled`; Telegram not configured |
 | FII/DII, pre-market dashboard, heatmaps | Both | ✅ | `/market` |
+| Global cues → expected Nifty open; FII flow pressure; FII derivatives positioning | Sensibull FII page, Moneycontrol / ET pre-market | 🆕 | W39 `/market-pulse`: global-cue model fitted on ATIP's data with its walk-forward record, basis-free GIFT gap checked against the actual open, FII flow surprise and pressure, NSE participant OI with a covering-aware crowded-short rule, OI walls |
 
 ### 2.4 AI
 
@@ -78,7 +82,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Official MCP server (Claude, Cursor) | Kite MCP (May 2025); Dhan MCP (May 2026, places orders) | ❌ | An **ATIP MCP server** exposing research reports, scores and the options analyser would make ATIP usable from Claude. The Dhan MCP already covers orders. |
 | AI concall and earnings summaries | Zerodha via Tijori | 🟡 | `data/announcements.py` PDF → Claude is built, but the Anthropic key returns 401 (KD-001) |
 | AI assistant | Dhan support bot only | 🟡 | `ml/chat.py` with 7 read-only tools; same key problem |
-| Natural language → screen or strategy | Neither (verified) | ❌ | Would be a differentiator |
+| Natural language → screen or strategy | Neither broker (verified); TradingView, Trendlyne and Screener.in ship it | ❌ | Plan Phase 4 (`docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`) |
 
 ### 2.5 Investing, portfolio and charting
 
@@ -89,7 +93,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Tax P&L (STCG/LTCG), verified P&L | Console, Dhan Journal | ❌ | — |
 | Portfolio performance vs NIFTY | Console | ✅ | `wealth/perf/` |
 | MTF, pledge, stock lending | Both | ❌ | Broker products; low priority for ATIP |
-| TradingView charts, 100+ indicators, trade from chart | Both | 🟡 | Hand-drawn SVG chart: no indicator overlays, no candlestick patterns, no intraday chart |
+| TradingView charts, 100+ indicators, trade from chart | Both | 🟡 | Hand-drawn SVG chart: no indicator overlays, no intraday chart. Candlestick patterns are now detected (W39 technicals) but not drawn. |
 | Terminal / workspaces, order flow | Dhan DEXT T3, Kite Terminal Mode | ❌ | Not a goal |
 
 ## 3. Against institutional research
@@ -126,9 +130,10 @@ Ranked by value to this owner (single user, Dhan account, research-led) against 
 
 1. **Done in W39:** 7-year history (purge fix + backfill), valuation and research reports with tracked calls, and the options strategy builder.
 2. **Done in W39 (follow-up):** fundamental screener (Screener.in / ScanX style) with presets, saved screens and new-match alerts.
+   - **Second follow-up:** technical screener and signal engine with track record, market pulse (global cues, GIFT gap, FII pressure and positioning, OI walls), market-wide order-book pressure and the open-orders view. The next technical and AI steps are ordered in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8.
 3. **Mutual fund analytics** (your note in `ATIP-.txt`): returns, rolling returns, XIRR and SIP tracking on the AMFI NAVs already stored; let the wealth ledger hold MFs.
 4. **Tax P&L** (STCG/LTCG with grandfathering, FIFO lots) from the holdings and trade ledger.
-5. **Charts:** indicator overlays and candlestick-pattern detection on the stock view; intraday chart once the 15-minute bar job is fixed (W9-J1).
+5. **Charts:** indicator overlays and drawing the detected candle patterns on the stock view; intraday chart once the 15-minute bar job is fixed (W9-J1).
 6. **ATIP MCP server:** read-only tools (report, ratings, scores, options analysis, coverage) so Claude can work with ATIP the way it works with Kite MCP and Dhan MCP.
 7. **Earnings surprise / PEAD and a revisions proxy** from ATIP's own quarterly EPS history.
 8. **Live execution with broker-held orders** (Dhan super order, forever / GTT order, order-update WebSocket, algo-ID, per-second throttle, static IP). **This is real-money work and needs your explicit go-ahead and a test plan.** Until then ATIP stays paper-first, which is the safer default given SEBI's finding that 91 % of individual F&O traders lost money in FY25.

@@ -1,21 +1,28 @@
 """
-W39 (SC-20) — fundamental screener: Screener.in / Dhan ScanX / Kite Screener style filters over
+W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        ~45 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        99 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
-                  3-year return, distance from 52-week high / low, RSI, 200-DMA), ATIP (score, signal)
-                  and the research model (rating, upside, fair value, moat proxy, quality), plus a
-                  magic-formula rank (Greenblatt, approximated with E/P and ROCE; financials excluded)
+                  3-year return, distance from 52-week high / low), ATIP (score, signal), the research
+                  model (rating, upside, fair value, moat proxy, quality), a magic-formula rank
+                  (Greenblatt, approximated with E/P and ROCE; financials excluded), the technical
+                  snapshot (research/tech_signals.py: rating, RS rating, RSI, MACD, ADX, Supertrend,
+                  patterns, signals and one scan_<key> 1/0 field per scan) and order-book pressure
+                  (data/order_pressure.py)
     query         a small, safe query language -- no eval:
                       roce_pct > 20 AND debt_equity < 0.5 AND (pe < 25 OR peg < 1)
                       industry IN ("Capital Goods", "Automobile and Auto Components")
+                      scan_golden_cross = 1 AND roce_pct > 15       (technical + fundamental)
+                      patterns CONTAINS "engulfing" AND tech_rating > 0
                       research_rating = "BUY" AND NOT atip_signal = "SELL"
                   AND binds tighter than OR; field names are case-insensitive and accept the aliases
                   in FIELDS (e.g. ROCE, PE, "debt to equity" written as debt_to_equity). A stock
                   missing a field never matches a condition on it (as Screener.in does).
-    PRESETS       ready-made screens (quality compounders, value, GARP, dividend, debt-free, ...)
+    PRESETS       ready-made screens in three groups: fundamental (quality compounders, value, GARP,
+                  dividend, debt-free, ...), technical (breakouts on volume, golden cross, Supertrend,
+                  trend template, RS leaders, ...) and combined (quality stock breaking out, ...)
     saved screens research_screen: name, query, sort, columns, notify. run_saved_screens() (daily
                   20:50, after the research reports) re-runs them and alerts on NEW matches.
 
@@ -30,7 +37,6 @@ import csv
 import html
 import io
 import json
-import math
 import re
 import time
 import uuid
@@ -87,8 +93,36 @@ FIELDS = dict([
     _f("from_52w_high_pct", "From 52-week high", "Price", "%", aliases=("from_high",),
        desc="0 at the high, -20 means 20% below it"),
     _f("from_52w_low_pct", "From 52-week low", "Price", "%", aliases=("from_low",)),
+    _f("tech_rating", "Technical rating", "Technical", "-1..1", aliases=("technical_rating",),
+       desc="mean of moving-average and oscillator votes (research/technicals.py)"),
+    _f("tech_rating_label", "Technical rating label", "Technical", kind="text",
+       desc="STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL"),
+    _f("rs_rating", "RS rating (1-99)", "Technical", "", aliases=("rs_rank", "ibd_rs"),
+       desc="IBD-style: weighted 3/6/9/12-month return, percentile across the universe; 99 = strongest"),
     _f("rsi_14", "RSI (14)", "Technical", "", aliases=("rsi",)),
+    _f("macd_hist", "MACD histogram", "Technical", "", aliases=("macd",)),
+    _f("adx_14", "ADX (14)", "Technical", "", aliases=("adx",)),
+    _f("supertrend_dir", "Supertrend direction", "Technical", "+1/-1", aliases=("supertrend",)),
+    _f("atr_pct", "ATR % of price", "Technical", "%", aliases=("atr",)),
     _f("above_200dma", "Above 200-DMA", "Technical", "1/0", aliases=("above_200",)),
+    _f("pct_from_sma50", "From SMA 50", "Technical", "%", aliases=("from_sma50",)),
+    _f("pct_from_sma200", "From SMA 200", "Technical", "%", aliases=("from_sma200",)),
+    _f("bb_width_pct", "Bollinger width", "Technical", "%", aliases=("bb_width",)),
+    _f("vol_ratio", "Volume vs 20-day avg", "Technical", "x", aliases=("volume_ratio", "rel_volume")),
+    _f("rs_63_pct", "Relative strength vs Nifty (3m)", "Technical", "%", aliases=("rs", "relative_strength")),
+    _f("return_1m_pct", "Return 1 month", "Price", "%", aliases=("return_1m",)),
+    _f("return_3m_pct", "Return 3 months", "Price", "%", aliases=("return_3m",)),
+    _f("patterns", "Candlestick patterns today", "Technical", kind="text", aliases=("pattern", "candles"),
+       desc='e.g. patterns CONTAINS "engulfing"'),
+    _f("signals", "Technical signals today", "Technical", kind="text",
+       desc='e.g. signals CONTAINS "breakout"'),
+    _f("bull_signals", "Bullish signals today", "Technical", "count"),
+    _f("bear_signals", "Bearish signals today", "Technical", "count"),
+    _f("book_imbalance", "Pending buy/sell imbalance (today)", "Order book", "-1..1", aliases=("order_imbalance",),
+       desc="(total pending buy - sell) / (buy + sell), latest poll today (data/order_pressure.py)"),
+    _f("book_pressure", "Order-book pressure", "Order book", kind="text",
+       desc="STRONG_BUYERS / BUYERS / BALANCED / SELLERS / STRONG_SELLERS"),
+    _f("book_persistent", "Persistent one-sided book", "Order book", kind="text", desc="BUYERS / SELLERS"),
     _f("atip_score", "ATIP score", "ATIP", "", aliases=("score",)),
     _f("atip_signal", "ATIP signal", "ATIP", kind="text", aliases=("signal",)),
     _f("research_rating", "Research rating", "Research", kind="text", aliases=("rating",)),
@@ -100,6 +134,11 @@ FIELDS = dict([
        desc="Greenblatt: rank by earnings yield + rank by ROCE; 1 is best; financials excluded"),
 ])
 
+from research.technicals import SCANS as _SCANS                     # noqa: E402  (one 1/0 field per scan)
+for _key, (_name, _dir, _rule, _desc) in _SCANS.items():
+    _k, _m = _f(f"scan_{_key}", _name, "Technical scans", "1/0", desc=f"{_dir}: {_desc}")
+    FIELDS[_k] = _m
+
 _ALIAS = {}
 for _k, _m in FIELDS.items():
     for _a in [_k, *_m["aliases"]]:
@@ -107,6 +146,19 @@ for _k, _m in FIELDS.items():
 
 DEFAULT_COLUMNS = ["symbol", "industry", "price", "market_cap_cr", "pe", "roce_pct", "roe_pct", "debt_equity",
                    "revenue_growth_pct", "eps_growth_pct", "research_rating", "research_upside_pct", "atip_score"]
+TECH_COLUMNS = ["symbol", "industry", "price", "tech_rating_label", "rs_rating", "rsi_14", "adx_14",
+                "pct_from_sma200", "vol_ratio", "return_1m_pct", "signals"]
+COMBINED_COLUMNS = ["symbol", "industry", "price", "pe", "roce_pct", "research_rating", "research_upside_pct",
+                    "tech_rating_label", "rs_rating", "rsi_14", "signals"]
+_TECH_GROUPS = {"Technical", "Technical scans", "Order book"}
+_NEUTRAL_GROUPS = {"Company", "Price"}
+
+
+def default_columns(used: list) -> list:
+    """Columns that suit the query: technical ones for a chart screen, a mix for a combined one."""
+    groups = {FIELDS[f]["group"] for f in used if f in FIELDS}
+    tech, fund = bool(groups & _TECH_GROUPS), bool(groups - _TECH_GROUPS - _NEUTRAL_GROUPS)
+    return COMBINED_COLUMNS if tech and fund else TECH_COLUMNS if tech else DEFAULT_COLUMNS
 
 PRESETS = [
     {"key": "quality_compounders", "name": "Quality compounders",
@@ -139,7 +191,62 @@ PRESETS = [
      "query": "rsi_14 < 35 AND roce_pct > 18 AND debt_equity < 0.7", "sort": "rsi_14", "desc": False},
     {"key": "pledge_risk", "name": "Pledge risk", "description": "Promoter pledge above 20%: names to be careful with",
      "query": "pledged_pct > 20", "sort": "pledged_pct"},
+    # technical (Chartink / Finviz style; EOD, from research/technicals.py)
+    {"key": "t_breakout_volume", "name": "52-week high breakout on volume", "group": "technical",
+     "description": "Close above the prior 52-week high, volume over 1.5x average",
+     "query": "scan_high_52w_breakout = 1", "sort": "vol_ratio"},
+    {"key": "t_golden_cross", "name": "Golden cross", "group": "technical",
+     "description": "SMA 50 crossed above SMA 200 today", "query": "scan_golden_cross = 1", "sort": "rs_63_pct"},
+    {"key": "t_supertrend_buy", "name": "Supertrend buy", "group": "technical",
+     "description": "Supertrend(10,3) flipped up today", "query": "scan_supertrend_buy = 1", "sort": "tech_rating"},
+    {"key": "t_macd_bull", "name": "MACD bullish crossover above 200-DMA", "group": "technical",
+     "description": "MACD crossed its signal line while price is above SMA 200",
+     "query": "scan_macd_bull = 1 AND above_200dma = 1", "sort": "rs_63_pct"},
+    {"key": "t_rsi_oversold", "name": "RSI oversold reversal", "group": "technical",
+     "description": "RSI(14) crossed back up through 30", "query": "scan_rsi_oversold_turn = 1", "sort": "rsi_14",
+     "desc": False},
+    {"key": "t_trend_template", "name": "Minervini trend template", "group": "technical",
+     "description": "Stage-2 up-trend: price > SMA50 > SMA150 > SMA200, near highs, RS positive",
+     "query": "scan_trend_template = 1", "sort": "rs_63_pct"},
+    {"key": "t_squeeze", "name": "Squeeze fired", "group": "technical",
+     "description": "Bollinger bands expanded out of the Keltner channel with price above SMA 20",
+     "query": "scan_bb_squeeze_fire = 1", "sort": "vol_ratio"},
+    {"key": "t_bull_candles", "name": "Bullish candle at support", "group": "technical",
+     "description": "Bullish engulfing / hammer / morning star / piercing line near the 50-DMA",
+     "query": 'patterns CONTAINS "engulfing" OR patterns CONTAINS "hammer" OR patterns CONTAINS "morning star" '
+              'OR patterns CONTAINS "piercing"', "sort": "tech_rating"},
+    {"key": "t_strong_buy", "name": "Technical rating STRONG BUY", "group": "technical",
+     "description": "Most moving-average and oscillator votes positive", "query": 'tech_rating_label = "STRONG_BUY"',
+     "sort": "tech_rating"},
+    {"key": "t_rs_leaders", "name": "Relative-strength leaders", "group": "technical",
+     "description": "RS rating 80+ (IBD-style) and above SMA 50", "query": "rs_rating >= 80 AND pct_from_sma50 > 0",
+     "sort": "rs_rating"},
+    {"key": "t_pocket_pivot", "name": "Pocket pivots", "group": "technical",
+     "description": "Up day on volume above any down-day volume of the last 10 sessions, above SMA 50",
+     "query": "scan_pocket_pivot = 1", "sort": "rs_rating"},
+    {"key": "t_breakdown", "name": "Breakdowns (avoid / exit)", "group": "technical",
+     "description": "New 52-week low on volume, death cross, or a Supertrend sell",
+     "query": "scan_low_52w_breakdown = 1 OR scan_death_cross = 1 OR scan_supertrend_sell = 1", "sort": "rs_63_pct",
+     "desc": False},
+    {"key": "t_buyers_queuing", "name": "Buyers queuing, chart positive", "group": "technical",
+     "description": "Persistent pending-buy pressure today with a positive technical rating (intraday context)",
+     "query": 'book_persistent = "BUYERS" AND tech_rating > 0', "sort": "book_imbalance"},
+    # technical + fundamental (the combination Trendlyne / Chartink + Screener users build by hand)
+    {"key": "tf_quality_breakout", "name": "Quality stock breaking out", "group": "combined",
+     "description": "ROCE over 15%, low debt, and a 20-day or 52-week breakout today",
+     "query": "roce_pct > 15 AND debt_equity < 1 AND (scan_donchian_20_breakout = 1 OR scan_high_52w_breakout = 1)",
+     "sort": "vol_ratio"},
+    {"key": "tf_value_turning", "name": "Value stock turning up", "group": "combined",
+     "description": "P/E under 20, ROE over 12%, and a MACD or Supertrend buy today",
+     "query": "pe < 20 AND pe > 0 AND roe_pct > 12 AND (scan_macd_bull = 1 OR scan_supertrend_buy = 1)",
+     "sort": "tech_rating"},
+    {"key": "tf_model_buy_uptrend", "name": "Model BUY in an up-trend", "group": "combined",
+     "description": "Research rating BUY / ADD, above the 200-DMA, technical rating positive",
+     "query": 'research_rating IN ("BUY", "ADD") AND above_200dma = 1 AND tech_rating > 0.1',
+     "sort": "research_upside_pct"},
 ]
+for _p in PRESETS:
+    _p.setdefault("group", "fundamental")
 
 
 class ScreenError(ValueError):
@@ -171,7 +278,7 @@ def _tokens(text: str) -> list:
             out.append(("num", float(val)))
         elif kind == "str":
             out.append(("str", val[1:-1]))
-        elif kind == "word" and val.upper() in ("AND", "OR", "NOT", "IN"):
+        elif kind == "word" and val.upper() in ("AND", "OR", "NOT", "IN", "CONTAINS"):
             out.append((val.upper(), val.upper()))
         else:
             out.append((kind, val))
@@ -244,6 +351,12 @@ class _Parser:
         _, name = self.take("word")
         key = field_key(name)
         kind, op = self.peek()
+        if kind == "CONTAINS":
+            self.take()
+            val = self._value()
+            if isinstance(val, float):
+                raise ScreenError("CONTAINS needs text, e.g. patterns CONTAINS \"engulfing\"")
+            return ("contains", key, val)
         if kind == "IN":
             self.take()
             self.take("lp")
@@ -283,6 +396,9 @@ def matches(node, row: dict) -> bool:
         return matches(node[1], row) or matches(node[2], row)
     if kind == "not":
         return not matches(node[1], row)
+    if kind == "contains":
+        v = row.get(node[1])
+        return v is not None and node[2].upper() in str(v).upper()
     if kind == "in":
         v = row.get(node[1])
         return v is not None and any(_cmp(v, "=", x) for x in node[2])
@@ -347,11 +463,18 @@ def _margin_pct(v):
 
 
 def build_snapshot(conn, as_of=None, industry_map=None) -> list:
-    """One row per symbol with fundamentals, every field in FIELDS (None where unknown)."""
+    """One row per symbol with fundamentals or a recent technical snapshot (and a price); every field in
+    FIELDS, None where unknown."""
     from research.report import Universe
     as_of = (as_of if isinstance(as_of, date) else
              datetime.strptime(str(as_of)[:10], "%Y-%m-%d").date()) if as_of else date.today()
-    syms = sorted({r[0] for r in conn.execute("SELECT DISTINCT symbol FROM fundamental_data")})
+    syms = {r[0] for r in conn.execute("SELECT DISTINCT symbol FROM fundamental_data")}
+    try:                     # stocks with only a technical snapshot belong in a technical screen too
+        syms |= {r[0] for r in conn.execute("SELECT DISTINCT symbol FROM technical_snapshot WHERE date>?",
+                                            (str(as_of - timedelta(days=10)),))}
+    except Exception:
+        pass
+    syms = sorted(syms)
     if not syms:
         return []
     uni = Universe(conn, as_of, industry_map, only=syms)
@@ -365,7 +488,17 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
             hi_lo[r[0]] = (r[1], r[2])
     c1 = _closes_at(conn, syms, as_of - timedelta(days=365))
     c3 = _closes_at(conn, syms, as_of - timedelta(days=round(3 * 365.25)))
+    try:
+        from research.tech_signals import latest_snapshot
+        tsnap = latest_snapshot(conn, syms, as_of)
+    except Exception:
+        tsnap = {}
     tech = _latest_rows(conn, "technical_indicators", "t.rsi_14, t.above_200dma", syms, as_of)
+    try:
+        from data.order_pressure import latest as book_latest
+        book = {r["symbol"]: r for r in book_latest(conn, day=as_of, limit=5000)}
+    except Exception:
+        book = {}
     sc = _latest_rows(conn, "ai_scores", "t.atip_score, t.signal", syms, as_of)
     rr = _latest_rows(conn, "research_report", "t.rating, t.upside_pct, t.fair_value, t.moat_proxy, t.quality_score",
                       syms, as_of, date_col="as_of")
@@ -382,7 +515,7 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
 
     rows = []
     for s in syms:
-        f, px = uni.fund[s], uni.prices[s]
+        f, px = uni.fund.get(s) or {}, uni.prices[s]
         num = V._num
         eps, bv, shares = num(f.get("eps_ttm")), num(f.get("book_value_ps")), num(f.get("shares_out"))
         mcap = round(px * shares / 1e7, 2) if shares else None
@@ -425,6 +558,19 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
             "fair_value": num(r.get("fair_value")), "moat_proxy": r.get("moat_proxy"),
             "quality_score": num(r.get("quality_score")), "magic_rank": None,
         }
+        bk = book.get(s) or {}
+        row["book_imbalance"], row["book_pressure"] = bk.get("total_imbalance"), bk.get("pressure")
+        row["book_persistent"] = bk.get("persistent")
+        ts = tsnap.get(s) or {}
+        for k in ("tech_rating", "tech_rating_label", "rs_rating", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
+                  "pct_from_sma50", "pct_from_sma200", "bb_width_pct", "vol_ratio", "rs_63_pct", "return_1m_pct",
+                  "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals"):
+            row[k] = ts.get(k)
+        for k in ("rsi_14", "above_200dma"):
+            if ts.get(k) is not None:
+                row[k] = ts[k]
+        for key in _SCANS:
+            row[f"scan_{key}"] = ts.get(f"scan_{key}", 0) if ts else None
         rows.append(row)
     _magic_rank(rows)
     return rows
@@ -475,7 +621,7 @@ def run_screen(conn, query: str, sort: str | None = None, desc: bool = True, lim
     node = parse(query)
     used = fields_in(node)
     sort = field_key(sort) if sort else (used[0] if used else "market_cap_cr")
-    cols = [field_key(c) for c in (columns or DEFAULT_COLUMNS)]
+    cols = [field_key(c) for c in (columns or default_columns(used))]
     for f in used + [sort]:
         if f not in cols:
             cols.append(f)
@@ -511,7 +657,7 @@ def catalog() -> dict:
         groups.setdefault(m["group"], []).append({k: m[k] for k in ("key", "label", "unit", "kind", "aliases",
                                                                       "description")})
     return {"groups": groups, "presets": PRESETS, "default_columns": DEFAULT_COLUMNS,
-            "operators": [">", ">=", "<", "<=", "=", "!=", "IN"], "combine": ["AND", "OR", "NOT", "( )"]}
+            "operators": [">", ">=", "<", "<=", "=", "!=", "IN", "CONTAINS"], "combine": ["AND", "OR", "NOT", "( )"]}
 
 
 # ── saved screens ────────────────────────────────────────────────────────────
@@ -626,7 +772,7 @@ def run_saved_screens() -> dict:
 
 def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser(prog="python -m research.screener", description="W39 fundamental screener")
+    ap = argparse.ArgumentParser(prog="python -m research.screener", description="W39 stock screener")
     ap.add_argument("query", nargs="?", help='e.g. "roce_pct > 20 AND debt_equity < 0.5"')
     ap.add_argument("--preset", choices=[p["key"] for p in PRESETS])
     ap.add_argument("--sort")

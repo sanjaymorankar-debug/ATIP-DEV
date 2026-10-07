@@ -1,0 +1,385 @@
+# Analysis tools, signals and the market-pulse plan (7 October 2026)
+
+**What this covers:**
+- How the leading fundamental, technical and AI analysis tools (free and paid, Indian and global) analyse stocks and generate signals.
+- How global markets, FII flows and pending orders affect the Indian market, and what the evidence says is usable.
+- What ATIP built in this round (technical screener, signal engine, market pulse, order-book pressure, open-orders view).
+- The best plan for what to build next, in order.
+
+**How it was compiled:**
+- **Tools and evidence:** web research on 2026-10-07. Most vendor sites blocked direct fetching, so many facts come from search summaries. Anything marked **[unverified]** came from a single third-party page or could not be confirmed.
+- **ATIP side:** the code on this branch. Companion documents: `docs/ATIP_GAP_ANALYSIS_2026-10.md` (brokers and institutional research) and `docs/W39_RESEARCH_HISTORY_OPTIONS_HANDOFF.md` (what W39 built, with tests).
+
+Nothing here is investment advice. ATIP's signals are for the owner's own use; sharing them with others needs SEBI Research Analyst registration.
+
+---
+
+## 1. In one page
+
+**What the best tools have in common.** No serious product trusts one indicator. They:
+1. **Vote across many indicators**, with a neutral band, so one indicator can't flip the call (TradingView, Barchart, Investing.com, Trendlyne).
+2. **Rank instead of using fixed thresholds** (IBD/MarketSmith RS 1–99, StockCharts SCTR 0–99.9 within a cap bucket, Seeking Alpha sector-relative grades).
+3. **Demand volume confirmation** for breakouts (StockCharts, pocket pivots, MarketSmith Buyer Demand).
+4. **Evaluate completed candles only**, so signals don't repaint (Dhan ScanX).
+5. **Gate signals by market regime** (IBD distribution days and follow-through days).
+6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
+
+**What ATIP now does (this round):**
+- **Technical screener:** 30 end-of-day scans and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 13 technical and 3 combined presets.
+- **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
+- **Market pulse:**
+  - a global-cue model fitted on ATIP's own data, with its walk-forward record;
+  - the GIFT Nifty gap, measured the right way (basis-free) and checked against the actual open;
+  - FII flow pressure, including the part of the flow returns don't explain;
+  - FII derivatives positioning from NSE's participant-wise OI, with a rule built to avoid the contrarian trap that failed in 2026;
+  - option OI walls;
+  - market-wide pending-order pressure.
+- **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
+
+**The best plan from here** (section 8):
+- **Phase 2 (next, uses data ATIP already has):** regime gate, a per-signal record split by regime, weekly-timeframe rating, chart patterns, explainable fundamental composite.
+- **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
+- **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
+- **Phase 5:** live execution, only with your explicit go-ahead.
+
+---
+
+## 2. How the leading tools analyse stocks
+
+### 2.1 Technical tools
+
+| Tool | Cost | How it analyses | How it signals | Track record shown |
+|---|---|---|---|---|
+| **TradingView** Technical Ratings | Free; real-time and alerts paid | 26 votes of −1/0/+1: 15 moving averages (SMA/EMA 10–200, Hull, VWMA, Ichimoku) and 11 oscillators (RSI, Stoch, CCI, ADX, AO, Momentum, MACD, StochRSI, Williams %R, Bull Bear Power, UO). MA mean and oscillator mean are averaged. Any timeframe. | Strong Sell < −0.5 < Sell < −0.1 < Neutral < 0.1 < Buy < 0.5 < Strong Buy. Pine Screener runs custom logic on up to 1,000 symbols. | No |
+| **StockCharts** SCTR | $19.95–49.95/month | 30 % distance from EMA200, 30 % ROC125, 15 % distance from EMA50, 15 % ROC20, 5 % PPO-histogram slope, 5 % RSI14 | Percentile 0–99.9 **within** large, mid or small cap. Predefined scans (52-week highs, volume > 4 × 20-day average, 50/200 crosses, candlesticks, P&F). | No |
+| **Barchart** Opinion | Free | 13 indicators in short (≈20 d), medium (≈50 d) and long (100–200 d) groups | % Buy/Sell per group, plus *Strength* (vs the signal's own history) and *Direction* (3-day change) | No |
+| **Investing.com** | Free | 12 MA votes and ~12 oscillator votes | Strong Buy … Strong Sell (cut-offs [unverified]) | No |
+| **Finviz** | Free; Elite $39.50/month | Signal filters: new highs/lows, unusual volume, overbought/oversold, plus chart patterns (channels, triangles, wedges, double tops/bottoms, head and shoulders) | Screener filters | Elite backtests |
+| **TrendSpider** | ≈ $107–197/month | Automatic trendlines, Fibonacci, candle and chart patterns, synced multi-timeframe, Raindrop charts. AI Strategy Lab trains user models (Naive Bayes, logistic regression, k-NN, random forest). | Alerts and bots | Backtests |
+| **Trade Ideas** Holly | ≈ $169–228/month | Backtests 60–70 strategies every night; only those that pass its statistical bar trade the next day | 5–25 intraday signals a day, each with entry, stop and target | Live win % per strategy |
+| **Tickeron** | ≈ $25–250/month | AI pattern search; Trend Prediction Engine | "Odds of success" per pattern on that ticker, plus a confidence % | Yes, per pattern |
+| **Chartink** (India) | Free (5-minute delay); ₹780/month | Visual scan builder mixing technical and fundamental conditions | Popular scans: 15-minute breakout, open = high/low, Bollinger squeeze, engulfing, MA crosses. Alerts by SMS, email or webhook. | No |
+| **Streak** (Zerodha) | Free to Zerodha users | 70+ predefined scans, 100+ indicators, universes such as Nifty 50/500 and F&O | Scanner, alerts, strategy deploy | Backtests |
+| **Dhan ScanX** | Free | Golden/death cross, RSI zones, S/R breakouts, squeezes, candlesticks; custom screens mixing technicals, financials and shareholding | **Completed candles only** (no repainting) | No |
+| **StockEdge** | ₹2,499/month (Club) | 70+ technical, 60+ fundamental and F&O scans; combination scans (up to 10); AI chart patterns; sector rotation from breadth and delivery | Scans | No |
+
+### 2.2 Fundamental and combined research tools
+
+| Tool | Cost | Method | Output |
+|---|---|---|---|
+| **Screener.in** | Premium ₹4,999/year | Query language over 10 years of Indian financials; Piotroski and Darvas screens | Screens, filing alerts. Screener AI answers from annual reports and concalls. |
+| **Trendlyne** DVM | Freemium | Durability, Valuation and Momentum, each 0–100. Momentum uses 20–30+ indicators at end of day (> 70 strong, < 35 weak). | DVM class, SWOT from rule screens, checklists, Piotroski. Also an AI query mode and an MCP server. |
+| **Tickertape** Scorecard | Freemium | Performance, valuation, growth and profitability, each 0–10 | Red flags (pledge, ASM/GSM, default probability), entry point |
+| **MarketSmith India** (IBD style) | ₹13,900/year | EPS Rating 1–99, RS Rating 1–99, Buyer Demand A–E, Group Rank of 197 groups, Master Score | CAN SLIM checklist, 7 base patterns |
+| **Value Research** | Free | Quality, Growth, Valuation and Momentum (each out of 10) | 1–5 stars |
+| **Simply Wall St** Snowflake | ≈ $11/month | 5 axes × 6 pass/fail checks | The most explainable composite |
+| **Morningstar** | Paid | Analyst DCF fair value, uncertainty, moat | Stars from price ÷ fair value against uncertainty bands |
+| **Seeking Alpha** Quant | ≈ $299/year | 100+ metrics graded within sector: Value, Growth, Profitability, Momentum, EPS Revisions | Score 1–5 → Strong Sell … Strong Buy |
+| **Zacks Rank** | Freemium | Estimate revisions (agreement, magnitude, upside, surprise), recomputed nightly | 5 buckets plus Style Scores |
+| **GuruFocus** GF Score | Paid | Five 1–10 ranks (financial strength, profitability, growth, GF Value, momentum), backtested weights | 0–100 |
+| **Stock Rover** | ≈ $29–149/month | Percentile scores for value, growth, quality, sentiment, momentum, dividend | 0–100 each |
+| **Danelfin** | Free; $19–79/month | ML on ≈ 900 features (600 technical, 150 fundamental, 150 sentiment) → probability of beating the market over ≈ 60 sessions | AI Score 1–10 plus the top driving signals; backtest claims are self-reported |
+| **Kavout** K Score | Paid | Ensemble over 200+ factors | 1–9 (30-day upside probability) |
+| **LSEG StarMine** (institutional) | Institutional | Analyst revisions, SmartEstimate, a static blend of 8 sub-models | 1–100 ranks |
+
+### 2.3 AI features, 2024–2026
+
+| Product | What it does |
+|---|---|
+| TradingView AI Copilot, AI Screener, MCP server (public beta 16 Sep 2026) | Chart assistant; natural language → screener filters; MCP access for Essential plans and above |
+| Zerodha Kite MCP (May 2025, free) | Holdings, positions, orders, quotes and GTTs from Claude and similar assistants |
+| Dhan MCP | Market data, orders, alerts and margins |
+| Screener.in AI, Trendlyne AI mode and MCP | Answers from filings; English → screen |
+| Perplexity Finance (India since Aug 2025) | Live NSE/BSE concall transcripts, results calendar, natural-language screening |
+| Fiscal.ai (ex-FinChat) | Sourced answers, KPI and segment data, API and MCP |
+| Bloomberg ASKB, FactSet Mercury, Morgan Stanley AskResearchGPT | Agentic assistants over proprietary research |
+
+**The pattern:** AI is used as an *interface* (English to screen, chat over filings, MCP), not as the signal itself. The signals that ship with track records (Danelfin, Tickeron, Holly) are statistical models with published hit rates.
+
+---
+
+## 3. What separates good signals from noise, and how ATIP applies it
+
+| Practice | Who does it | ATIP now |
+|---|---|---|
+| Vote across many indicators with a neutral band | TradingView, Barchart, Trendlyne | ✅ `research/technicals.py rating()`: 11 votes (close vs SMA20/50/200, EMA9/21, SMA50/200, Supertrend, RSI, MACD, ADX/DI, Bollinger). Same bands as TradingView (±0.1, ±0.5). It is a single mean, simpler than TradingView's MA/oscillator split. |
+| Rank, don't threshold | IBD, SCTR, Seeking Alpha | ✅ RS rating 1–99 across ATIP's universe (0.4 ROC63 + 0.2 ROC126 + 0.2 ROC189 + 0.2 ROC252, the community replica of IBD). 🟡 No cap-bucket ranking yet. |
+| Volume confirmation | StockCharts, O'Neil | ✅ 52-week breakout needs volume > 1.5 × the 20-day average; pocket pivot needs volume above the largest down-day volume of the last 10 sessions; volume > 1.5 × counts as confluence |
+| Completed candles only | Dhan ScanX | ✅ Scans run at 20:30 on stored daily bars; a stock with no bar for the day is skipped rather than reusing yesterday's |
+| Regime gate | IBD | 🟡 ATIP's regime (`market_health`) counts as one confluence factor; signals against the regime lose it. No distribution-day count yet (Phase 2). |
+| Independent confluence | Trade Ideas, analysts | ✅ Out of 6: technical rating, volume, relative strength, regime, a candle pattern, ATIP's research rating |
+| Track record per signal | Tickeron, Danelfin, Holly | ✅ `technical_signal`: each signal closes as TARGET, STOPPED or EXPIRED (20 sessions); per-scan win rate, average R and average return, filterable by minimum confluence. A bar touching both levels counts as STOPPED (conservative). 🟡 Not yet split by regime, no forward returns vs Nifty at 5/20/60 days. |
+
+---
+
+## 4. Global markets, FII flows and the Indian market
+
+### 4.1 What the evidence says
+
+- **US → India runs mostly one way.**
+  - The US (S&P, Nasdaq) Granger-causes the Nifty.
+  - Nasdaq's daytime return predicts the Nifty's next overnight (close-to-open) move.
+  - Asian markets (Hang Seng, Kospi) also lead the Nifty open.
+  - The S&P–Nifty correlation has fallen over time and rises in crises, so any fixed beta goes stale. Fit it on a rolling window.
+- **Crude, the rupee and gold.**
+  - Brent explains only a few percent of Nifty variance [unverified].
+  - The Nifty, USD/INR and Brent are connected.
+  - Gold's link is weak.
+  - FII flows and the rupee have been highly correlated recently.
+- **GIFT Nifty is the best single pre-open input.** The offshore contract leads price discovery.
+  - **The trap:** GIFT is a *future*, so its premium over the spot close includes carry. Measure its move against **GIFT's own price at 15:30 the previous day**, not against the Nifty close.
+  - Vendor claims of 80–90 % direction accuracy are unaudited, so ATIP measures its own.
+- **FII flows mostly *follow* returns.** Flows lead returns only in the very short term, so the raw daily FII figure is largely an echo of what the market already did. The informative part is the **surprise**: the flow that recent returns don't explain.
+- **Derivatives positioning is read with the cash flows.**
+  - NSE's participant-wise OI file gives FII, DII, Pro and Client longs and shorts every evening.
+  - **The usual contrarian rule failed through 2026.** "FII index-futures long % below 15 % means a bounce is coming" did not work: FIIs stayed heavily short (long % ≈ 8 % in early October) while the index kept falling.
+  - Crowded shorts mattered only when they were actually being covered.
+- **Context as reported in early October 2026 [unverified press figures]:**
+  - Nifty ≈ 22,400 on 1 Oct (−14 % YTD) after its longest weekly losing streak in 25 years.
+  - FPI outflows ≈ ₹2.7 lakh crore YTD.
+  - INR ≈ 95.9/USD, a record low.
+  - US 10-year yield ≈ 5.27 %, the highest since 2002.
+
+### 4.2 What ATIP built (`research/market_pulse.py`, page `/market-pulse`)
+
+| Part | Method | Honest limits |
+|---|---|---|
+| **Global-cue model** | Ridge regression on a rolling 250 sessions. It regresses Nifty daily log returns on the previous session's S&P 500, Nasdaq, Nikkei, Hang Seng, Brent, dollar index, USD/INR and gold moves and the US 10-year yield change (bp). Outputs: today's expected move, each factor's contribution, sensitivity with explicit units, 60-day correlations, and a walk-forward record (direction hit rate on days that moved > 0.2 %, RMSE vs a "no change" forecast). | Daily closes, not synchronised 15:30→08:45 moves. It reports "INSUFFICIENT" under 80 overlapping sessions. Run `python -m research.market_pulse nifty-history` once to load 5 years of the Nifty. |
+| **GIFT Nifty gap** | Captured at 08:45 and 09:05. Move = GIFT now ÷ GIFT at ≈ 15:30 yesterday (basis-free). Expected gap = move × a fitted beta (1.0 until 30 mornings exist). At 09:35 the actual open (first reading from 09:15) is filled in, and the page shows the direction hit rate for both GIFT and the global model. | Needs Dhan index quotes and stored `index_levels` |
+| **FII flow pressure** | z-score of the 5-day FII net; the flow **surprise** (residual after regressing flows on today's and the last two days' returns); selling streak; DII absorption (DII buying ÷ FII selling); MTD and YTD; USD/INR 20-day change. Score = 0.5 z(5-day) + 0.3 z(surprise) + 0.2 z(−ΔINR), shown as STRONG_INFLOW … STRONG_OUTFLOW. | A context variable for 1–20 days, not a next-day trade |
+| **Positioning** | FII index-futures long % with its 5-day change and percentile; net futures, calls and puts; client long %; Nifty futures build-up (long build-up, short build-up, short covering, long unwinding, counted only when \|ΔOI\| > 2 % and \|Δprice\| > 0.3 %); PCR z-score. The read is CROWDED_SHORT_COVERING **only** when long % rose more than 5 pp in 5 days **and** futures show short covering. Otherwise a crowded short is reported as a headwind. | NSE serves the file to Indian connections; nightly at 20:15 |
+| **OI walls** | Nearest-expiry max call OI above spot and max put OI below spot, shown as distance from spot | Display only. An IIMB study finds no max-pain effect in India. |
+| **Market context** | Combines global cues, GIFT, FII pressure, positioning and the ATIP regime into RISK_ON / NEUTRAL / RISK_OFF, listing every reason | A summary, not a forecast. Each part keeps its own record. |
+
+---
+
+## 5. Pending orders: the market's and yours
+
+### 5.1 The market's pending orders (`data/order_pressure.py`)
+
+- **The data.** Dhan's quote call returns, per stock, the **total pending buy and sell quantity across the whole book** plus 5 levels of depth, for up to 1,000 instruments per request. Every 15 minutes in market hours, ATIP stores for every tracked stock:
+  - the totals;
+  - `total_imbalance` = (buy − sell) ÷ (buy + sell);
+  - the top-5 imbalance and spread;
+  - a label from STRONG_BUYERS to STRONG_SELLERS.
+- **Persistence.** A stock is flagged "persistent buyers/sellers" only if one side passed ±0.2 in 3 of the last 4 polls, **including the newest**. Persistent pressure is harder to fake than one reading.
+- **Where it shows:**
+  - `/market-pulse`: market-wide buy/sell ratio, most bid, most offered, persistent lists;
+  - the screener: `book_imbalance`, `book_pressure`, `book_persistent`, and the preset "Buyers queuing, chart positive";
+  - the API: `/api/orderbook/pressure[/{symbol}]`.
+- **Limits, from the evidence:**
+  - Book imbalance predicts price over seconds to minutes. In NSE's most active stocks the effect is strong for 5 minutes and gone within 30.
+  - Totals include orders far from the market.
+  - Visible size can be spoofed (SEBI's 2025 Patel Wealth order) or hidden (icebergs).
+  - So this is **context ("who is waiting where right now")**, not a signal on its own, and the page says so.
+
+### 5.2 Your pending orders (`portfolio/open_orders.py`, `GET /api/brokers/open-orders`)
+
+- **Dhan:** the order book filtered to open statuses (TRANSIT, PENDING, PART_TRADED and the trigger and confirm states), plus forever (GTT) orders. **Read-only**, and reading needs no static IP.
+- **ATIP:** resting paper orders (PENDING, PARTIALLY_FILLED) and waiting target/stop rules (ACTIVE, PENDING_CONFIRMATION).
+- **Where:** shown at the bottom of `/market-pulse`.
+
+---
+
+## 6. What was built in this round
+
+| Feature | Code | Where you see it | Schedule |
+|---|---|---|---|
+| Indicators, 30 scans, 19 candle patterns, technical rating | `research/technicals.py` | — | — |
+| Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
+| Technical + combined screener | `research/screener.py` (99 fields, `CONTAINS`, 28 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
+| Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
+| Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
+| Your open orders | `portfolio/open_orders.py` | `/market-pulse` | On page load |
+
+**API:**
+- `GET /api/signals/technical[...]`
+- `GET /api/market-pulse[/global|/fii|/positioning]`
+- `GET /api/orderbook/pressure[/{symbol}]`
+- `GET /api/brokers/open-orders`
+- POST actions to recompute, capture GIFT, refresh NSE files, or poll the book. These need the dashboard token and the `research:run` permission.
+
+The full list is in `docs/API_REFERENCE.md`.
+
+**Tests:**
+- `tests/test_w39_technicals.py`
+- `tests/test_w39_market_pulse.py`
+- `tests/test_w39_screener.py`
+
+They use synthetic series with known answers. Examples:
+- the global model must recover a planted 0.5 S&P beta;
+- a golden cross fires only on the crossing day;
+- a 52-week breakout without volume does not fire;
+- a crowded short without covering is not called bullish.
+
+---
+
+## 7. Gaps that remain (ATIP vs the best tools)
+
+| Gap | Best-in-class | Phase |
+|---|---|---|
+| Distribution-day regime gate; follow-through day | IBD / MarketSmith | 2 |
+| Track record by regime; forward returns at 5/20/60 days vs Nifty | Tickeron, Danelfin | 2 |
+| Weekly (and later 75-minute) technical rating | TradingView any-timeframe | 2 / 3 |
+| Chart patterns: Darvas box, VCP, triangles, double bottom, head and shoulders, channels | Finviz, TrendSpider, StockEdge | 2 |
+| RS-line new high; SCTR-style rank within cap bucket | IBD, StockCharts | 2 |
+| Delivery-% spike scan (NSE `DELIV_PER`) | StockEdge, Chartink | 2 |
+| Explainable fundamental composite (Snowflake-style 5 × 6 checks) and a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 |
+| Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze | Chartink, Streak | 3 |
+| Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
+| English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
+| ATIP MCP server | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4 |
+| Event calendar (FOMC, US CPI, RBI) widening the gap forecast | Institutional desks | 2 |
+| Consensus estimates and revisions | Zacks, StarMine | Needs a licensed feed |
+| Live orders from signals | Streak, Trade Ideas | 5, with your go-ahead |
+
+---
+
+## 8. The best plan, in order
+
+**Rule for every phase:** a new signal ships with its own track record. It goes into Telegram alerts only after it has at least ~30 closed signals and positive expectancy on ATIP's own stocks. That is what separates Tickeron, Danelfin and Holly from scan lists.
+
+### Phase 1: done in this change
+- Technical screener, signal engine with track record, market pulse, participant OI, order-book pressure, open-orders view.
+
+### Phase 2: next, using data ATIP already stores (no new subscriptions)
+1. **Regime gate.**
+   - Count Nifty distribution days (down ≥ 0.2 % on higher volume) over 25 sessions, track the follow-through day, and record Nifty above or below its 200-DMA.
+   - Bullish signals need the gate open, or show "against the market".
+   - *Why first:* it is the single filter every successful retail method uses, and it is cheap.
+2. **Track record by regime and horizon.**
+   - Forward returns at 5, 20 and 60 sessions vs the Nifty for every scan, split by regime and confluence.
+   - A per-signal card ("this scan, this regime: n, hit rate, median excess return").
+3. **Weekly technical rating** on resampled bars, with a multi-timeframe agreement flag (daily and weekly both BUY).
+4. **Chart patterns** from swing pivots:
+   - Darvas box and VCP (the volatility contraction pattern) first, as the easiest to define precisely;
+   - then double bottom, ascending triangle, head and shoulders;
+   - each with its own track record before alerts.
+5. **RS-line new high**, and percentile ranks within large, mid and small cap.
+6. **Delivery-% spike** from NSE's full bhavcopy: delivery above 1.5 × its 20-day average on an up day.
+7. **Explainable fundamental composite.**
+   - 5 axes × 6 pass/fail checks over the stored fundamentals, shown next to the research rating;
+   - the screener gets `checks_passed` fields.
+8. **Event calendar** (FOMC, US CPI and NFP, RBI policy) to widen the gap forecast and mark event days.
+
+### Phase 3: intraday (needs the Dhan Data API, ₹499/month)
+1. Store 15-minute bars for the watchlist, then add the opening-range breakout, open = low/high and intraday squeeze scans. Reuse `research/technicals.py` on the intraday frames.
+2. **20-level depth** WebSocket for up to 50 watchlist stocks: depth-weighted imbalance (levels within 50 bp, weights e^(−0.5(k−1))), flagged when |DWI| > 0.3 for 3 or more snapshots. Validate with logistic regression of the next 1-minute and 5-minute move.
+3. Swap the daily-close global model for one built on synchronised moves (15:30 → 08:45) once intraday global quotes are stored.
+
+### Phase 4: AI as the interface (needs the Anthropic key fixed, KD-001)
+1. **English → screener query.** The model writes ATIP's query language, and the safe parser validates it, so nothing is eval'd. The user sees and can edit the query before it runs.
+2. **ATIP MCP server**, read-only:
+   - tools: screener run, signals today, signal track record, market pulse, research report, open orders;
+   - lets you use ATIP from Claude, alongside the Dhan MCP.
+3. **LLM explanations** of a signal or report, citing the stored numbers, with look-ahead-bias controls before any LLM output is backtested.
+
+### Phase 5: execution (only with your explicit go-ahead and a test plan)
+- Signals → Dhan super orders or forever orders with the signal's stop and target.
+- Needs a static IP, an algo ID, per-second throttling, a kill switch and a paper-first period. This is real-money work: ATIP stays paper-first until you ask for it.
+
+---
+
+## 9. Daily routine with the new pages
+
+| Time (IST) | What happens | Where to look |
+|---|---|---|
+| 08:45, 09:05 | GIFT Nifty move and expected open captured | `/market-pulse` → Global cues |
+| 09:35 | Actual open compared with the forecast | `/market-pulse` → open-gap record |
+| 09:15–15:30, every 15 min | Pending-order pressure across the universe | `/market-pulse` → Pending orders; screener `book_*` fields |
+| Any time | Your Dhan open and forever orders, ATIP paper orders and rules | `/market-pulse` → Your pending orders |
+| 20:15 | NSE participant OI (FII positioning) | `/market-pulse` → Derivatives positioning |
+| 20:30 | Technical snapshot and signals; outcomes of open signals | `/signals`; screener technical presets |
+| 20:40, 20:50 | Research reports; saved screens with new-match alerts | `/research`, `/screener` |
+
+---
+
+## 10. Owner actions
+
+- **Dhan Data API subscription (₹499/month):** needed for history, quotes, order-book pressure and GIFT capture.
+- **Run once:** `python -m research.market_pulse nifty-history` (5 years of the Nifty, for the global model) and `python -c "from data.markets import backfill_global_history as b; print(b())"` (global series).
+- **NSE files (participant OI):** NSE serves them to Indian connections. The 20:15 job on your Mac fetches them; run `python -m data.participant_oi --days 60` once to load history.
+- **Read the track record before trusting a scan.** Check `/signals` → Track record. A scan with fewer than ~30 closed signals has no record yet.
+
+---
+
+## Sources
+
+**Technical tools:**
+- https://in.tradingview.com/support/solutions/43000614331
+- https://tradingview.com/support/solutions/43000742436
+- https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/stockcharts-technical-rank-sctr
+- https://help.stockcharts.com/scanning-and-alerts/advanced-scan-library/predefined-scans
+- https://www.barchart.com/trader/help/technical_opinion/opinions.php
+- https://www.investing.com/equities/nvidia-corp-technical
+- https://www.liberatedstocktrader.com/finviz-pricing-discounts/
+- https://www.trade-ideas.com/hollyguide/What_Holly_Does.html
+- https://www.liberatedstocktrader.com/tickeron-review/
+- https://chartink.com/subscription
+- https://chartink.com/articles/page/4
+- https://zerodha.com/z-connect/streak/introducing-scanner-by-streak
+- https://dhan.co/support/platforms/scanx/what-types-of-candlestick-screeners-are-available-in-scanx/
+- https://blog.stockedge.com/ready-combination-scans/
+- https://discussion.fool.com/t/ibd-follow-through-day-definition/107779
+
+**Fundamental, combined and AI tools:**
+- https://www.screener.in/docs/changelog/Screener-AI/
+- https://help.trendlyne.com/support/solutions/articles/84000347982
+- https://trendlyne.com/subscription/mcp/plans/
+- https://www.tickertape.in/blog/introducing-scorecard-stock-analysis-got-quicker-and-better-with-quantitative-insights/
+- https://marketsmithindia.com/mstool/evaluationFAQ.jsp
+- https://www.valueresearchonline.com/stock-rating-methodology
+- https://support.simplywall.st/hc/en-us/articles/360001740916
+- https://help.seekingalpha.com/premium/quant-ratings-and-factor-grades-faq
+- https://gurufocus.com/tutorial/article/28/gf-score
+- https://www.stockrover.com/metrics/stock-rover-ratings/
+- https://tooliverse.ai/tools/danelfin
+- https://www.kavout.com/k-score/
+- https://www.lseg.com/en/data-analytics/financial-data/analytics/quantitative-analytics/starmine-combined-alpha-model
+- https://www.tradingview.com/blog/en/ai-copilot-now-on-tradingview-61231/
+- https://www.tradingview.com/support/solutions/43000785770-how-to-use-the-ai-screener/
+- https://www.tradingview.com/blog/en/tradingview-mcp-server-public-beta-60864/
+- https://docs.dhanhq.co/mcp/
+- https://techcrunch.com/2025/08/18/perplexity-now-supports-live-earnings-call-transcripts-for-indian-stocks/
+- https://www.matchmybroker.com/tools/fiscal-ai-review
+- https://www.marketsmedia.com/bloomberg-introduces-agentic-ai-to-the-terminal/
+
+**Global cues, GIFT Nifty and FII flows:**
+- https://nsearchives.nseindia.com/content/research/Paper39.pdf
+- https://iupindia.in/1207/IJFE_VolatilitySpillovers7.pdf
+- https://mse.ac.in/wp-content/uploads/2026/01/34.pdf
+- https://publishingindia.com/archive/jcar/dynamic-effects-of-us-and-asian-markets-on-indian-stock-market
+- https://reference-global.com/article/10.2478/eoik-2025-0039
+- https://www.valueresearchonline.com/learn/stocks/brent-crude-indian-stocks-portfolio-impact/
+- https://www.sciencedirect.com/science/article/pii/S2214845026000918
+- https://emerald.com/insight/content/doi/10.1108/IJOEM-07-2022-1097/full/html
+- https://openthemagazine.com/business/gift-nifty-trading-hours-impact-and-role-in-nifty-price-discovery-explained
+- https://serialsjournals.com/abstract/23573_26.pdf
+- https://www.emerald.com/insight/content/doi/10.1108/17554191211274794/full/html
+- https://www.freepressjournal.in/business/fiis-pull-40-billion-from-india-in-two-years-know-what-is-keeping-foreign-money-away
+- https://algotest.in/blog/participant-wise-open-interest/
+- https://www.business-standard.com/amp/markets/news/fiis-hold-10-short-bets-for-every-long-trade-in-index-futures-125080700077_1.html
+- https://www.marketcalls.in/futures-and-options/what-do-we-actually-know-about-fii-index-futures-shorts.html
+- https://www.businesstoday.in/markets/stocks/story/rs-20000-crore-fpi-outflows-in-2-days-stock-market-headed-for-more-pain-558929-2026-10-01
+- https://www.deccanherald.com/amp/story/business/markets/rupee-crashes-to-record-9580-against-usd-settles-near-all-time-low-at-9566-4001257
+- https://www.cnbc.com/2026/10/06/treasury-yields-fed-fomc-minutes.html
+- https://repository.iimb.ac.in/handle/2074/21032 (no max-pain effect in India)
+
+**Order book:**
+- https://arxiv.org/abs/1011.6402 (order-flow imbalance, Cont-Kukanov-Stoikov)
+- https://arxiv.org/abs/1907.06230 (multi-level OFI)
+- https://arxiv.org/abs/2112.13213 (integrated OFI)
+- https://arxiv.org/abs/1512.03492 (queue imbalance)
+- https://ideas.repec.org/a/eee/finlet/v41y2021ics1544612320316779.html (NSE: predictability gone within 30 minutes)
+- https://raw.githubusercontent.com/dhan-oss/DhanHQ-py/main/src/dhanhq/marketfeed.py
+- https://raw.githubusercontent.com/dhan-oss/DhanHQ-py/main/src/dhanhq/fulldepth.py
+- https://www.business-standard.com/markets/news/sebi-bars-patel-wealth-advisors-4-directors-over-order-spoofing-charges-125042800957_1.html
+
+**Not verified in this research:**
+- Vendor GIFT accuracy claims (80–90 %).
+- The exact Investing.com and Finviz thresholds.
+- Seeking Alpha and Zacks bucket cut-offs.
+- Danelfin's self-reported backtest.
+- The early-October 2026 market figures quoted in 4.1.
+- Whether Dhan's REST order list reports PART_TRADED (it is confirmed only in third-party wrappers; ATIP treats it as open).

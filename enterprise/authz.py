@@ -112,6 +112,8 @@ ROUTE_RULES = [
     # backfill are covered by the /api/research/ and /api/data/ rules below
     ("POST", r"^/api/options/(build|analyse)$", "research:run"),
     ("POST", r"^/api/screener/", "workspace:write"),            # saved screens; running one is a GET
+    ("POST", r"^/api/signals/", "research:run"),                # computing technical signals; reading is a GET
+    ("POST", r"^/api/(market-pulse|orderbook)/", "research:run"),  # fetch / compute now; reading is a GET
     # W22 research platform
     ("POST", r"^/api/quant/approvals/", "strategy:lifecycle"),
     ("POST", r"^/api/quant/research-report$", "research:run"),

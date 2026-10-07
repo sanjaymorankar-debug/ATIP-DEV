@@ -4,7 +4,8 @@ options strategy builder (OP). JSON; 400 invalid; 404 unknown; token on every PO
 Authz (enterprise/authz.py): GET /api/research/ -> research:read, POST -> research:run;
 GET /api/data/ -> dashboard:read, POST -> research:run; POST /api/options/(build|analyse) ->
 research:run (analysis only: nothing is ordered); POST /api/screener/ -> workspace:write (saved
-screens); other GETs -> dashboard:read.
+screens); POST /api/signals/, /api/market-pulse/, /api/orderbook/ -> research:run;
+GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
 
     GET  /research                                   the research page (dashboard/w39_page.py)
     GET  /api/research/equity?rating=BUY             latest rating per symbol
@@ -15,13 +16,27 @@ screens); other GETs -> dashboard:read.
     GET  /api/research/hit-rate                      closed calls by rating
     GET  /api/data/history/coverage                  how much of the universe reaches back 7 years
     POST /api/data/history/backfill                  {symbols?, max?, years?} one budgeted backfill pass
-    GET  /screener                                   the fundamental screener page
+    GET  /screener                                   the stock screener page (fundamental + technical)
     GET  /api/screener/fields                        field catalogue (groups, units, aliases), presets, operators
     GET  /api/screener/run?query&sort&desc&limit&columns     run a screen (read-only)
     GET  /api/screener/run.csv?...                   the same, as CSV
     GET  /api/screener/saved                         saved screens; POST {name, query, sort?, desc?, columns?, notify?, screen_id?}
     GET  /api/screener/saved/{id}/run                run a saved screen; reports new / dropped matches since its last run
     POST /api/screener/saved/{id}/delete
+    GET  /signals                                    technical signals page (today, track record)
+    GET  /api/signals/technical?date&direction&min_confluence    signals with entry / stop / target, confluence
+    GET  /api/signals/technical/stats?min_confluence  track record per scan: win rate, average R
+    GET  /api/signals/technical/symbol/{symbol}      latest technical snapshot + recent signals for one stock
+    POST /api/signals/technical/run                  {symbols?} compute today's snapshot and signals now
+    GET  /market-pulse                               global cues, FII flows, positioning, order book, your orders
+    GET  /api/market-pulse                           everything + the overall context and its reasons
+    GET  /api/market-pulse/global | /fii | /positioning   the parts
+    POST /api/market-pulse/gift                      capture the GIFT Nifty / global-model gap estimate now
+    POST /api/market-pulse/refresh                   fetch NSE participant OI (7 days) and the Nifty history now
+    GET  /api/orderbook/pressure?side=buy|sell&limit  latest pending buy / sell totals per stock today
+    GET  /api/orderbook/pressure/{symbol}            today's polls for one stock
+    POST /api/orderbook/snapshot                     poll the whole universe now
+    GET  /api/brokers/open-orders                    your pending orders at Dhan (read-only) + ATIP's resting ones
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates
     GET  /api/options/chain/{symbol}                 spot, lot size, expiries and strikes ATIP has stored
@@ -157,7 +172,119 @@ def register(app, guard, Req, get_connection, json_safe):
             return out
         return await run(f)
 
-    # ── fundamental screener ──
+    # ── market pulse: global cues, FII, positioning, order book ──
+    @app.get("/market-pulse", response_class=HTMLResponse)
+    async def page_market_pulse():
+        from dashboard.security import token
+        from dashboard.w39_page import render_pulse
+        return HTMLResponse(render_pulse(token()))
+
+    @app.get("/api/market-pulse")
+    async def api_pulse():
+        from research.market_pulse import pulse
+        return await run(pulse)
+
+    @app.get("/api/market-pulse/global")
+    async def api_pulse_global():
+        from research.market_pulse import global_cue_model
+        return await run(global_cue_model)
+
+    @app.get("/api/market-pulse/fii")
+    async def api_pulse_fii():
+        from research.market_pulse import fii_pressure
+        return await run(fii_pressure)
+
+    @app.get("/api/market-pulse/positioning")
+    async def api_pulse_positioning():
+        from research.market_pulse import oi_walls, positioning
+        return await run(lambda c: {**positioning(c), "oi_walls": oi_walls(c)})
+
+    @app.post("/api/market-pulse/gift", dependencies=guard)
+    async def api_pulse_gift():
+        def f(conn):
+            from research.market_pulse import capture_gift
+            return capture_gift(conn)
+        return await run(f)
+
+    @app.post("/api/market-pulse/refresh", dependencies=guard)
+    async def api_pulse_refresh():
+        def f(_conn):
+            from data.participant_oi import run as poi_run
+            from research.market_pulse import nifty_history
+            return {"participant_oi": poi_run(7), "nifty_history": nifty_history("5y")}
+        return await run(f)
+
+    @app.get("/api/orderbook/pressure")
+    async def api_book_pressure(side: str = None, limit: int = 100):
+        from data.order_pressure import latest
+        if side and side not in ("buy", "sell"):
+            return JSONResponse({"error": "side must be buy or sell"}, status_code=400)
+        return await run(lambda c: latest(c, side=side, limit=max(1, min(int(limit), 2000))))
+
+    @app.get("/api/orderbook/pressure/{symbol}")
+    async def api_book_symbol(symbol: str):
+        from data.order_pressure import intraday
+        return await run(lambda c: intraday(c, _sym(symbol)))
+
+    @app.post("/api/orderbook/snapshot", dependencies=guard)
+    async def api_book_snapshot():
+        def f(conn):
+            from data.order_pressure import snapshot
+            return snapshot(conn=conn)
+        return await run(f)
+
+    @app.get("/api/brokers/open-orders")
+    async def api_open_orders():
+        from portfolio.open_orders import waiting
+        return await run(waiting)
+
+    # ── technical signals ──
+    @app.get("/signals", response_class=HTMLResponse)
+    async def page_signals():
+        from dashboard.security import token
+        from dashboard.w39_page import render_signals
+        return HTMLResponse(render_signals(token()))
+
+    @app.get("/api/signals/technical")
+    async def api_tech_signals(date: str = None, direction: str = None, min_confluence: int = 0, limit: int = 300):
+        from research.tech_signals import todays_signals
+        if direction and direction.upper() not in ("BULL", "BEAR"):
+            return JSONResponse({"error": "direction must be BULL or BEAR"}, status_code=400)
+        return await run(lambda c: todays_signals(c, date, direction, max(0, int(min_confluence)),
+                                                   max(1, min(int(limit), 2000))))
+
+    @app.get("/api/signals/technical/stats")
+    async def api_tech_signal_stats(min_confluence: int = 0):
+        from research.tech_signals import scan_stats
+        return await run(lambda c: scan_stats(c, max(0, int(min_confluence))))
+
+    @app.get("/api/signals/technical/symbol/{symbol}")
+    async def api_tech_symbol(symbol: str):
+        def f(conn):
+            from research.tech_signals import ensure_tables, latest_snapshot
+            s = _sym(symbol)
+            snap = latest_snapshot(conn, [s]).get(s)
+            if not snap:
+                raise LookupError(f"no technical snapshot for {s}")
+            ensure_tables(conn)
+            cur = conn.execute("SELECT date, scan, name, direction, entry, stop, target, confluence, status, "
+                               "return_pct, r_multiple FROM technical_signal WHERE symbol=? ORDER BY date DESC "
+                               "LIMIT 50", (s,))
+            cols = [c[0] for c in cur.description]
+            return {"snapshot": snap, "signals": [dict(zip(cols, r)) for r in cur.fetchall()]}
+        return await run(f)
+
+    @app.post("/api/signals/technical/run", dependencies=guard)
+    async def api_tech_run(request: Req):
+        b = await body(request)
+        syms = [_sym(x) for x in (b.get("symbols") or [])] or None
+
+        def f(_conn):
+            from research.tech_signals import run_technical
+            return run_technical(syms)
+        return await run(f)
+
+    # ── stock screener (fundamental + technical) ──
     @app.get("/screener", response_class=HTMLResponse)
     async def page_screener():
         from dashboard.security import token

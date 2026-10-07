@@ -209,6 +209,10 @@ def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
         def day(self):
             return self
 
+        @property
+        def minutes(self):
+            return self
+
         def at(self, t):
             self.t = t
             return self
@@ -227,5 +231,8 @@ def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
     fake = _Schedule()
     monkeypatch.setattr(S, "schedule", fake, raising=False)
     S._schedule_w39_jobs()
-    assert fake.jobs == [("20:40", S._w39_research_reports), ("20:50", S._w39_saved_screens),
+    assert fake.jobs == [(None, S._w39_order_pressure_tick), ("08:45", S._w39_gift), ("09:05", S._w39_gift),
+                         ("09:35", S._w39_gap_eval), ("20:15", S._w39_participant_oi),
+                         ("23:20", S._w39_nifty_history), ("20:30", S._w39_technical_signals),
+                         ("20:40", S._w39_research_reports), ("20:50", S._w39_saved_screens),
                          ("22:20", S._w39_history_backfill)]

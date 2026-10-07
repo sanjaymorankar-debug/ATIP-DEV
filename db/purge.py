@@ -61,6 +61,7 @@ LONG_RETENTION_TABLES = {
     "ml_anomaly":           "as_of",     # W24
     "intraday_scan_hit":    "session",   # W28
     "news_symbol_score":    "date",      # W28b (NS-05)
+    "technical_snapshot":   "date",      # W39 (TA-05): recomputable from prices_daily; signals are kept
 }
 
 SHORT_RETENTION_TABLES = {
@@ -78,6 +79,7 @@ SHORT_RETENTION_TABLES = {
     "order_book_snapshot": "ts",         # W35 (DP-05); history stays in lake "depth"
     "option_chain_snapshot": "ts",       # W35 (DP-08); history stays in lake "option_chain"
     "fo_contract_daily": "date",         # W35 (DP-08); every contract stays in lake "fo_bhavcopy"
+    "order_book_pressure": "ts",         # W39 (OB-01): intraday context, 15-minute polls
 }
 
 HISTORY_YEARS = 7

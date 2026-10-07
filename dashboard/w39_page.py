@@ -1,8 +1,10 @@
 """
 W39 pages: /research (equity research reports, ratings, hit rate, 7-year history coverage),
-/screener (fundamental screener with presets and saved screens) and /options-builder
-(multi-leg strategy builder with a payoff chart). Both read the W39 API
-(dashboard/w39_routes.py); the options page only analyses -- it has no order button.
+/screener (fundamental + technical stock screener with presets and saved screens), /signals
+(end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, FII
+flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
+strategy builder with a payoff chart). All read the W39 API (dashboard/w39_routes.py); none of them
+places an order.
 
 Payoff chart colours: categorical slots 1 and 2 of the dataviz reference palette, dark steps
 (#3987e5 expiry, #d95926 target date), validated on the panel surface #1e293b (contrast and
@@ -21,6 +23,7 @@ _EXTRA = """
 .SELL{background:#7f1d1d;color:#fecaca}.NOT_RATED{background:#334155;color:#cbd5e1}
 ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:800px){.two{grid-template-columns:1fr}}
+.two>*{min-width:0}.pill{white-space:nowrap}.sx{overflow-x:auto}
 #chart{overflow:hidden}.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin:4px 0}
 .legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 #tip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
@@ -30,7 +33,7 @@ ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-co
 _HEAD = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title><style>__STYLE__</style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">__SUB__</span></div>
-<div><a href="/screener">Screener</a><a href="/research">Research</a><a href="/options-builder">Options builder</a><a href="/">← Dashboard</a></div></div>"""
+<div><a href="/market-pulse">Market pulse</a><a href="/screener">Screener</a><a href="/signals">Signals</a><a href="/research">Research</a><a href="/options-builder">Options builder</a><a href="/">← Dashboard</a></div></div>"""
 
 _JS_COMMON = r"""
 const TOKEN=__TOKEN__;
@@ -166,8 +169,8 @@ function chart(r){LAST=r;const W=Math.max(280,document.getElementById('chart').c
 
 
 SCREENER = _HEAD + r"""
-<div class="wrap"><div class="card"><h3>Fundamental screener</h3>
-<div class="muted">Filter every stock ATIP has fundamentals for, Screener.in style: <code>roce_pct &gt; 20 AND debt_equity &lt; 0.5 AND (pe &lt; 25 OR peg &lt; 1)</code>, <code>industry IN ("Capital Goods")</code>, <code>research_rating = "BUY"</code>. Percentages are in %, money in ₹ crore where the field ends in _cr. A stock missing a field never matches a condition on it.</div>
+<div class="wrap"><div class="card"><h3>Stock screener</h3>
+<div class="muted">Filter every stock ATIP tracks on fundamentals, technicals or both, Screener.in / Chartink style: <code>roce_pct &gt; 20 AND debt_equity &lt; 0.5 AND (pe &lt; 25 OR peg &lt; 1)</code>, <code>scan_golden_cross = 1 AND rs_rating &gt;= 80</code>, <code>patterns CONTAINS "engulfing" AND rsi_14 &lt; 40</code>, <code>industry IN ("Capital Goods")</code>. Percentages are in %, money in ₹ crore where the field ends in _cr. A stock missing a field never matches a condition on it.</div>
 <div id="presets" style="margin:8px 0;display:flex;flex-wrap:wrap;gap:4px"></div>
 <textarea id="q" rows="3" style="width:100%;font-family:ui-monospace,monospace;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" placeholder="roce_pct > 20 AND debt_equity < 0.5"></textarea>
 <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
@@ -186,13 +189,14 @@ SCREENER = _HEAD + r"""
 let CAT=null,LAST=null,SORT=null,DESC=1;
 const fmt=(k,v)=>{if(v==null)return '<span class="muted">—</span>';const f=CAT.fields[k]||{};
  if(k==='symbol')return `<a href="/research?symbol=${encodeURIComponent(v)}" style="color:var(--accent)">${esc(v)}</a>`;
- if(k==='research_rating')return pill(v);if(f.kind==='text')return esc(v);
+ if(k==='research_rating')return pill(v);if(k==='tech_rating_label')return `<span style="white-space:nowrap">${esc(String(v).replace('_',' '))}</span>`;if(f.kind==='text')return esc(v);
  if(f.unit==='%')return n(v,1)+'%';if(f.unit==='pts')return (v>0?'+':'')+n(v,2);if(f.unit==='₹ cr')return n(v,0);if(f.unit==='₹')return n(v,2);if(f.unit==='x')return n(v,2);return n(v,2)};
 (async()=>{const c=await j('/api/screener/fields');CAT={...c,fields:{}};
  Object.values(c.groups).flat().forEach(f=>CAT.fields[f.key]=f);
  const opts=Object.entries(c.groups).map(([g,fs])=>`<optgroup label="${esc(g)}">${fs.map(f=>`<option value="${f.key}">${esc(f.label)}${f.unit?' ('+esc(f.unit)+')':''}</option>`).join('')}</optgroup>`).join('');
  document.getElementById('bf').innerHTML=opts;document.getElementById('bf').value='roce_pct';document.getElementById('sort').innerHTML='<option value="">first field</option>'+opts;
- document.getElementById('presets').innerHTML=c.presets.map((p,i)=>`<button title="${esc(p.description)}" onclick="preset(${i})" style="background:var(--panel);border:1px solid var(--line)">${esc(p.name)}</button>`).join('');
+ const G={fundamental:'Fundamental',technical:'Technical',combined:'Fundamental + technical'};
+ document.getElementById('presets').innerHTML=Object.keys(G).map(g=>`<div style="width:100%;margin-top:4px" class="muted">${G[g]}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${c.presets.map((p,i)=>p.group===g?`<button title="${esc(p.description)}" onclick="preset(${i})" style="background:var(--panel);border:1px solid var(--line)">${esc(p.name)}</button>`:'').join('')}</div>`).join('');
  document.getElementById('help').innerHTML=Object.entries(c.groups).map(([g,fs])=>`<h3 style="margin-top:6px">${esc(g)}</h3>`+table(['Field','Name','Unit','Notes'],fs.map(f=>`<tr><td><code>${f.key}</code></td><td>${esc(f.label)}</td><td>${esc(f.unit||f.kind)}</td><td class="muted">${esc([f.description,f.aliases.length?'also: '+f.aliases.join(', '):''].filter(Boolean).join(' · '))}</td></tr>`))).join('');
  saved();const q=new URLSearchParams(location.search).get('q');if(q){document.getElementById('q').value=q;go()}})();
 function preset(i){const p=CAT.presets[i];document.getElementById('q').value=p.query;document.getElementById('sort').value=p.sort||'';document.getElementById('dir').value=p.desc===false?'0':'1';go()}
@@ -215,9 +219,110 @@ async function del(id){if(!confirm('Delete this saved screen?'))return;await pos
 </script></body></html>"""
 
 
+SIGNALS = _HEAD + r"""
+<div class="wrap"><div class="tabs" id="tabs"></div>
+<div class="pane" id="p-today"><div class="card"><h3>Technical signals <span class="muted" id="asof"></span></h3>
+<div class="muted">End-of-day scans for the next session (research/technicals.py): crossovers, breakouts on volume, oscillator turns, Supertrend, squeezes, trend templates. Each signal has an entry (the close), a stop 2×ATR away and a target 4×ATR away (2R), and a <b>confluence</b> count of independent agreeing evidence out of 6: technical rating, volume, relative strength vs Nifty, market regime, a candle pattern, the research rating. Not advice.</div>
+<div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select id="dirf" onchange="today()"><option value="">Bullish and bearish</option><option value="BULL">Bullish</option><option value="BEAR">Bearish</option></select>
+<span class="muted">min confluence</span><select id="mc" onchange="today()"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+<button onclick="runNow()">Recompute now</button><span id="ro" class="muted"></span></div></div>
+<div class="card"><div id="sig" style="overflow-x:auto"></div></div></div>
+<div class="pane" id="p-rec"><div class="card"><h3>Track record per scan</h3>
+<div class="muted">Every signal is followed until it reaches its target (win), its stop, or 20 sessions (expired at the close). Average R: +2 is a target, −1 a stop. Expectancy above 0 means the scan has paid on ATIP's own stocks; a few dozen closed signals are needed before trusting it.</div>
+<div style="margin-top:6px"><span class="muted">only signals with confluence ≥</span> <select id="rc" onchange="rec()"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+<div id="stats" style="margin-top:8px;overflow-x:auto"></div></div></div>
+</div><div id="tip"></div>
+<script>""" + _JS_COMMON + r"""
+const TABS=[['today','Today'],['rec','Track record']];const loaded={};
+function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.id===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
+ if(!loaded[id]){loaded[id]=1;({today,rec})[id]()}}
+document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
+const dpill=d=>`<span class="pill ${d==='BULL'?'BUY':d==='BEAR'?'SELL':'NOT_RATED'}">${d==='BULL'?'▲ bull':d==='BEAR'?'▼ bear':esc(d)}</span>`;
+async function today(){const p=new URLSearchParams({min_confluence:document.getElementById('mc').value});const d=document.getElementById('dirf').value;if(d)p.set('direction',d);
+ const r=await j('/api/signals/technical?'+p);const g={};r.forEach(x=>{const k=x.symbol+'|'+x.direction;(g[k]=g[k]||{...x,list:[]}).list.push(x)});
+ const rows=Object.values(g).sort((a,b)=>b.confluence-a.confluence||b.list.length-a.list.length||a.symbol.localeCompare(b.symbol));
+ document.getElementById('asof').textContent=r.length?`· ${String(r[0].date).slice(0,10)} · ${rows.length} stocks, ${r.length} signals`:'· none yet';
+ document.getElementById('sig').innerHTML=table(['Symbol','','Signals','Entry','Stop','Target','Confluence','Evidence','Rating','Patterns'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${x.list.map(s=>`<span title="${esc(s.reason||'')}">${esc(s.name)}</span>`).join(' · ')}</td><td>${n(x.entry,2)}</td><td>${n(x.stop,2)}</td><td>${n(x.target,2)}</td><td><b>${x.confluence}</b>/6</td><td class="muted">${Object.entries(x.evidence||{}).filter(([k,v])=>v).map(([k])=>esc(k)).join(', ')}</td><td style="white-space:nowrap">${esc((x.tech_rating_label||'').replace('_',' '))}</td><td class="muted">${esc(x.patterns||'')}</td></tr>`))}
+async function rec(){const r=await j('/api/signals/technical/stats?min_confluence='+document.getElementById('rc').value);
+ document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))}
+async function runNow(){document.getElementById('ro').textContent=' computing…';try{const o=await post('/api/signals/technical/run');document.getElementById('ro').textContent=` ${o.rows} stocks, ${o.signals} signals (${o.as_of})`;today()}catch(e){document.getElementById('ro').textContent=' '+e.message}}
+show('today');
+</script></body></html>"""
+
+
+PULSE = _HEAD + r"""
+<div class="wrap">
+<div class="card"><h3>Market context <span id="ctx"></span> <span class="muted" id="asof"></span></h3>
+<div id="reasons"></div>
+<div style="margin-top:6px"><button onclick="act('/api/market-pulse/gift','captured')">Capture GIFT Nifty now</button><button onclick="act('/api/market-pulse/refresh','refreshed')">Fetch NSE positioning + Nifty history</button><button onclick="act('/api/orderbook/snapshot','polled')">Poll order book now</button><span id="ao" class="muted"></span></div>
+<div class="muted" style="margin-top:4px">Built from ATIP's own models and stored data; each part reports its own track record. Not advice.</div></div>
+<div class="two"><div class="card"><h3>Global cues → Nifty</h3><div id="glob" class="sx"></div></div>
+<div class="card"><h3>FII / DII money</h3><div id="fii" class="sx"></div></div></div>
+<div class="two"><div class="card"><h3>Derivatives positioning</h3><div id="pos" class="sx"></div></div>
+<div class="card"><h3>Pending orders across the market</h3><div id="book" class="sx"></div></div></div>
+<div class="card"><h3>Your pending orders</h3><div id="mine" style="overflow-x:auto"></div></div>
+</div><div id="tip"></div>
+<script>""" + _JS_COMMON + r"""
+const lab=s=>s?`<span class="pill ${/POSITIVE|INFLOW|RISK_ON|COVERING/.test(s)?'BUY':/NEGATIVE|OUTFLOW|RISK_OFF|CROWDED/.test(s)?'SELL':'NOT_RATED'}">${esc(s.replaceAll('_',' '))}</span>`:'';
+const kv=rows=>table(['',''],rows.filter(r=>r[1]!==undefined).map(([a,b])=>`<tr><td class="muted">${a}</td><td>${b}</td></tr>`)).replace('<thead><tr><th></th><th></th></tr></thead>','');
+const cr=v=>v==null||isNaN(v)?'—':(v<0?'−':'')+'₹'+n(Math.abs(v),0)+' cr';
+const bar=(v,max)=>{const w=Math.min(100,Math.abs(v)/max*100);return `<div style="display:flex;align-items:center;gap:4px"><div style="width:120px;height:8px;background:#0f172a;border-radius:4px;position:relative"><div style="position:absolute;${v>=0?'left:50%':'right:50%'};width:${w/2}%;height:8px;border-radius:4px;background:${v>=0?'#3987e5':'#d95926'}"></div></div><span>${v>=0?'+':'−'}${n(Math.abs(v),3)}%</span></div>`};
+async function load(){const p=await j('/api/market-pulse');document.getElementById('asof').textContent='· '+p.as_of.replace('T',' ');
+ document.getElementById('ctx').innerHTML=lab(p.context)+(p.context_score!=null?` <span class="muted">score ${p.context_score}</span>`:'');
+ document.getElementById('reasons').innerHTML=p.reasons.length?`<ul class="b">${p.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="muted">Not enough stored data yet.</span>';
+ const g=p.global_model,t=p.gift_today,gr=p.gap_record||{};let h='';
+ if(t)h+=kv([['GIFT Nifty move since yesterday 15:30',`${pct(t.gift_move_pct)} <span class="muted">(${esc(t.gift_ref_source||'')})</span>`],['Expected open',t.expected_gap_pct==null?'—':`${pct(t.expected_gap_pct)} · ${n(t.expected_gap_pts,0)} pts`],['Captured',esc(String(t.captured_at).slice(11,16))]]);
+ if(g.status==='OK'){h+=`<div style="margin:6px 0">Last night's global moves imply a Nifty move of <b>${pct(g.expected_move_pct)}</b> ${lab(g.cue_label)} <span class="muted">(daily σ ${g.nifty_sigma_pct}%, R² ${g.r2})</span></div>`;
+  const mx=Math.max(0.01,...Object.values(g.contributions_pct).map(Math.abs));
+  h+=table(['Factor','Last move','Contribution','Sensitivity','Corr 60d'],Object.entries(g.contributions_pct).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${g.inputs[k]?(g.inputs[k].move>0?'+':'')+n(g.inputs[k].move,2)+' '+g.inputs[k].unit:'—'}</td><td>${bar(v,mx)}</td><td class="muted">${g.sensitivity[k]?n(g.sensitivity[k].value,3)+' '+esc(g.sensitivity[k].unit):''}</td><td>${g.corr_60d[k]!=null?n(g.corr_60d[k],2):'—'}</td></tr>`));
+  const w=g.walk_forward;h+=`<div class="muted" style="margin-top:6px">Walk-forward, last ${w.sessions} sessions: direction right ${w.direction_hit_rate_pct??'—'}% of days that moved > 0.2%; RMSE ${w.rmse_pct}% vs ${w.rmse_zero_forecast_pct}% for "no change" (${w.beats_zero?'beats':'does not beat'} it).</div>`}
+ else h+=`<div class="muted">${esc(g.reason||g.status)}</div>`;
+ if(gr.gift||gr.global_model)h+=`<div class="muted">Open-gap record: GIFT ${gr.gift?gr.gift.direction_hit_rate_pct+'% right over '+gr.gift.mornings+' mornings':'—'} · model ${gr.global_model?gr.global_model.direction_hit_rate_pct+'% over '+gr.global_model.mornings:'—'}</div>`;
+ document.getElementById('glob').innerHTML=h;
+ const f=p.fii;document.getElementById('fii').innerHTML=f.status!=='OK'?`<span class="muted">${esc(f.reason||f.status)}</span>`:
+  `<div style="margin-bottom:6px">Flow pressure ${lab(f.pressure_label)} <span class="muted">score ${f.pressure_score??'—'}</span></div>`+
+  kv([['FII / DII net ('+esc(f.as_of)+')',`${cr(f.fii_net_cr)} / ${cr(f.dii_net_cr)}`],['FII 5-day',`${cr(f.fii_5d_cr)} <span class="muted">z ${f.z_fii_5d??'—'}</span>`],['Flow surprise (vs what returns explain)',f.z_surprise==null?'—':`z ${f.z_surprise}`],['FII selling streak',f.selling_streak_days+' days'],['DII absorption (20d)',f.dii_absorption_20d==null?'—':f.dii_absorption_20d+'× FII selling'],['Month to date FII / DII',`${cr(f.fii_mtd_cr)} / ${cr(f.dii_mtd_cr)}`],['Year to date FII / DII',`${cr(f.fii_ytd_cr)} / ${cr(f.dii_ytd_cr)}`],['USD/INR',f.usd_inr?`${f.usd_inr} <span class="muted">(${pct(f.usd_inr_20d_pct)} in 20 days)</span>`:'—']])+
+  `<details><summary class="muted">Last 10 days</summary>${table(['Date','FII (₹ cr)','DII (₹ cr)'],f.last_10.map(x=>`<tr><td>${esc(x.date)}</td><td>${n(x.fii_net_cr,0)}</td><td>${n(x.dii_net_cr,0)}</td></tr>`))}</details>`;
+ const o=p.positioning,fi=o.fii,nf=o.nifty_futures,pc=o.pcr;let ph='',pr=[];
+ if(fi){ph+=`<div style="margin-bottom:6px">${lab(o.read)} <span class="muted">${esc(o.read_note||'')}</span></div>`;pr.push(['FII index futures long %',`${fi.index_futures_long_pct}% <span class="muted">(${fi.change_5d_pp==null?'':(fi.change_5d_pp>0?'+':'')+fi.change_5d_pp+' pp in 5 days, '}percentile ${fi.percentile??'—'} of ${fi.history_days} days)</span>`],['FII net index futures',n(fi.net_index_futures,0)+' contracts'],['FII net index calls / puts',`${n(fi.net_index_calls,0)} / ${n(fi.net_index_puts,0)}`],['Client index futures long %',o.client_index_futures_long_pct==null?'—':o.client_index_futures_long_pct+'%'])}
+ else ph+='<div class="muted">No participant OI stored yet: "Fetch NSE positioning" above (NSE serves it to Indian connections).</div>';
+ if(nf)pr.push(['Nifty futures ('+esc(nf.as_of)+')',`${esc(nf.buildup.replaceAll('_',' ').toLowerCase())} <span class="muted">price ${pct(nf.price_chg_pct)}, OI ${pct(nf.oi_chg_pct)}</span>`]);
+ if(pc)pr.push(['Nifty PCR (OI)',`${pc.value} <span class="muted">z ${pc.z??'—'}, max pain ${n(pc.max_pain,0)}</span>`]);
+ if(pr.length)ph+=kv(pr);
+ const W=Object.entries(p.oi_walls||{});if(W.length)ph+=table(['Index','Expiry','Spot','Put wall (support)','Call wall (resistance)'],W.map(([k,x])=>`<tr><td>${k}</td><td>${esc(x.expiry)}</td><td>${n(x.spot,0)}</td><td>${x.support?n(x.support.strike,0)+' <span class="muted">('+pct(x.support.distance_pct)+')</span>':'—'}</td><td>${x.resistance?n(x.resistance.strike,0)+' <span class="muted">('+pct(x.resistance.distance_pct)+')</span>':'—'}</td></tr>`));
+ document.getElementById('pos').innerHTML=ph;
+ const b=p.order_book;let bh='';
+ if(b&&b.stocks){bh+=kv([['As of',esc(b.as_of)],['Market-wide pending buy / sell',b.market_buy_sell_ratio==null?'—':b.market_buy_sell_ratio+'×'],['Stocks with buyers / sellers dominant',`${b.buyers_dominant} / ${b.sellers_dominant} of ${b.stocks}`],['Persistent buyers',esc(b.persistent_buyers.join(', ')||'none')],['Persistent sellers',esc(b.persistent_sellers.join(', ')||'none')]]);
+  const [bu,se]=await Promise.all([j('/api/orderbook/pressure?side=buy&limit=8'),j('/api/orderbook/pressure?side=sell&limit=8')]);
+  const q=v=>v==null?'—':v>=1e5?n(v/1e5,1)+' L':v>=1e3?n(v/1e3,0)+'k':n(v,0);
+  const row=x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${q(x.total_buy_qty)}</td><td>${q(x.total_sell_qty)}</td><td>${n(x.total_imbalance,2)}</td><td>${pct(x.chg_pct)}</td></tr>`;
+  bh+=`<div class="two" style="margin-top:6px"><div class="sx">${table(['Most bid','Buy','Sell','Imb.','Chg'],bu.map(row))}</div><div class="sx">${table(['Most offered','Buy','Sell','Imb.','Chg'],se.map(row))}</div></div><div class="muted">Buy / Sell: total quantity waiting in the book (L = lakh shares). Imb. = (buy − sell) / (buy + sell).</div><div class="note" style="margin-top:4px">${esc(b.caveat)}</div>`}
+ else bh='<span class="muted">No order-book polls today (market hours, needs the Dhan Data API).</span>';
+ document.getElementById('book').innerHTML=bh;
+ mine()}
+async function mine(){const w=await j('/api/brokers/open-orders');const br=w.broker;let h=`<div class="muted">Dhan: ${esc(br.status)}${br.reason?' · '+esc(br.reason):''}${(br.errors||[]).length?' · '+esc(br.errors.join('; ')):''}</div>`;
+ h+=table(['Kind','Symbol','Side','Type','Product','Qty','Filled','Price','Trigger','Status','Created'],br.orders.map(o=>`<tr><td>${esc(o.kind)}</td><td>${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.order_type)}</td><td>${esc(o.product)}</td><td>${n(o.quantity,0)}</td><td>${n(o.filled,0)}</td><td>${n(o.price,2)}</td><td>${n(o.trigger_price,2)}</td><td>${esc(o.status)}</td><td class="muted">${esc(o.created||'')}</td></tr>`));
+ const a=w.atip;h+=`<div class="muted" style="margin-top:8px">ATIP paper orders resting: ${a.paper_orders.length} · ATIP target / stop rules waiting: ${a.order_rules.length}</div>`;
+ if(a.order_rules.length)h+=table(['Symbol','Side','Role','Trigger price','Status'],a.order_rules.slice(0,30).map(r=>`<tr><td>${esc(r.symbol)}</td><td>${esc(r.side)}</td><td>${esc(r.role||'')}</td><td>${n(r.resolved_trigger_price,2)}</td><td>${esc(r.status)}</td></tr>`));
+ document.getElementById('mine').innerHTML=h}
+async function act(u,word){document.getElementById('ao').textContent=' working…';try{const r=await post(u);document.getElementById('ao').textContent=' '+word+': '+esc(JSON.stringify(r).slice(0,140));load()}catch(e){document.getElementById('ao').textContent=' '+e.message}}
+load();
+</script></body></html>"""
+
+
+def render_pulse(token: str) -> str:
+    return (PULSE.replace("__STYLE__", _STYLE + _EXTRA).replace("__TOKEN__", json.dumps(token))
+            .replace("__TITLE__", "ATIP Market pulse").replace("__SUB__", "Market pulse (W39)"))
+
+
+def render_signals(token: str) -> str:
+    return (SIGNALS.replace("__STYLE__", _STYLE + _EXTRA).replace("__TOKEN__", json.dumps(token))
+            .replace("__TITLE__", "ATIP Signals").replace("__SUB__", "Technical signals (W39)"))
+
+
 def render_screener(token: str) -> str:
     return (SCREENER.replace("__STYLE__", _STYLE + _EXTRA).replace("__TOKEN__", json.dumps(token))
-            .replace("__TITLE__", "ATIP Screener").replace("__SUB__", "Fundamental screener (W39)"))
+            .replace("__TITLE__", "ATIP Screener").replace("__SUB__", "Stock screener (W39)"))
 
 
 def render_research(token: str) -> str:

@@ -6569,6 +6569,411 @@
     }
    }
   },
+  "/market-pulse": {
+   "get": {
+    "summary": "Page Market Pulse",
+    "operationId": "page_market_pulse_market_pulse_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse": {
+   "get": {
+    "summary": "Api Pulse",
+    "operationId": "api_pulse_api_market_pulse_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/global": {
+   "get": {
+    "summary": "Api Pulse Global",
+    "operationId": "api_pulse_global_api_market_pulse_global_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/fii": {
+   "get": {
+    "summary": "Api Pulse Fii",
+    "operationId": "api_pulse_fii_api_market_pulse_fii_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/positioning": {
+   "get": {
+    "summary": "Api Pulse Positioning",
+    "operationId": "api_pulse_positioning_api_market_pulse_positioning_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/gift": {
+   "post": {
+    "summary": "Api Pulse Gift",
+    "operationId": "api_pulse_gift_api_market_pulse_gift_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/refresh": {
+   "post": {
+    "summary": "Api Pulse Refresh",
+    "operationId": "api_pulse_refresh_api_market_pulse_refresh_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/pressure": {
+   "get": {
+    "summary": "Api Book Pressure",
+    "operationId": "api_book_pressure_api_orderbook_pressure_get",
+    "parameters": [
+     {
+      "name": "side",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Side"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 100,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/pressure/{symbol}": {
+   "get": {
+    "summary": "Api Book Symbol",
+    "operationId": "api_book_symbol_api_orderbook_pressure__symbol__get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/snapshot": {
+   "post": {
+    "summary": "Api Book Snapshot",
+    "operationId": "api_book_snapshot_api_orderbook_snapshot_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/brokers/open-orders": {
+   "get": {
+    "summary": "Api Open Orders",
+    "operationId": "api_open_orders_api_brokers_open_orders_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/signals": {
+   "get": {
+    "summary": "Page Signals",
+    "operationId": "page_signals_signals_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/technical": {
+   "get": {
+    "summary": "Api Tech Signals",
+    "operationId": "api_tech_signals_api_signals_technical_get",
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Date"
+      }
+     },
+     {
+      "name": "direction",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Direction"
+      }
+     },
+     {
+      "name": "min_confluence",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Min Confluence"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 300,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/technical/stats": {
+   "get": {
+    "summary": "Api Tech Signal Stats",
+    "operationId": "api_tech_signal_stats_api_signals_technical_stats_get",
+    "parameters": [
+     {
+      "name": "min_confluence",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Min Confluence"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/technical/symbol/{symbol}": {
+   "get": {
+    "summary": "Api Tech Symbol",
+    "operationId": "api_tech_symbol_api_signals_technical_symbol__symbol__get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/technical/run": {
+   "post": {
+    "summary": "Api Tech Run",
+    "operationId": "api_tech_run_api_signals_technical_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/screener": {
    "get": {
     "summary": "Page Screener",
