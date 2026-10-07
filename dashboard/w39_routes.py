@@ -22,6 +22,7 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/screener/fields                        field catalogue (groups, units, aliases), presets, operators
     GET  /api/screener/run?query&sort&desc&limit&columns     run a screen (read-only)
     GET  /api/screener/run.csv?...                   the same, as CSV
+    POST /api/screener/ask                           {text} English -> a screener query (Claude when enabled, else rules); not run
     GET  /api/screener/saved                         saved screens; POST {name, query, sort?, desc?, columns?, notify?, screen_id?}
     GET  /api/screener/saved/{id}/run                run a saved screen; reports new / dropped matches since its last run
     POST /api/screener/saved/{id}/delete
@@ -494,6 +495,15 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_screener_saved():
         from research.screener import list_screens
         return await run(list_screens)
+
+    @app.post("/api/screener/ask", dependencies=guard)
+    async def api_screener_ask(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from research.screener_nl import translate
+            return translate(conn, b.get("text"))
+        return await run(f)
 
     @app.post("/api/screener/saved", dependencies=guard)
     async def api_screener_save(request: Req):

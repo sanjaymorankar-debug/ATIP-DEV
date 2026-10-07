@@ -79,7 +79,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 
 | Feature | Brokers | ATIP | Gap |
 |---|---|---|---|
-| Official MCP server (Claude, Cursor) | Kite MCP (May 2025); Dhan MCP (May 2026, places orders) | ❌ | An **ATIP MCP server** exposing research reports, scores and the options analyser would make ATIP usable from Claude. The Dhan MCP already covers orders. |
+| Official MCP server (Claude, Cursor) | Kite MCP (May 2025); Dhan MCP (May 2026, places orders) | 🆕 | W39 `tools/atip_mcp.py`: a **read-only ATIP MCP server** (stdio) with 12 tools: screener fields and runs, signals and their records, intraday scans, stock technicals, market pulse and gate, research reports, the scorecard, the event calendar, open orders. Its database connection cannot write. The Dhan MCP covers orders. |
 | AI concall and earnings summaries | Zerodha via Tijori | 🟡 | `data/announcements.py` PDF → Claude is built, but the Anthropic key returns 401 (KD-001) |
 | AI assistant | Dhan support bot only | 🟡 | `ml/chat.py` with 7 read-only tools; same key problem |
 | Natural language → screen or strategy | Neither broker (verified); TradingView, Trendlyne and Screener.in ship it | ❌ | Plan Phase 4 (`docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`) |
@@ -134,7 +134,7 @@ Ranked by value to this owner (single user, Dhan account, research-led) against 
 3. **Mutual fund analytics** (your note in `ATIP-.txt`): returns, rolling returns, XIRR and SIP tracking on the AMFI NAVs already stored; let the wealth ledger hold MFs.
 4. **Tax P&L** (STCG/LTCG with grandfathering, FIFO lots) from the holdings and trade ledger.
 5. **Charts:** indicator overlays and drawing the detected candle patterns on the stock view; intraday chart once the 15-minute bar job is fixed (W9-J1).
-6. **ATIP MCP server:** read-only tools (report, ratings, scores, options analysis, coverage) so Claude can work with ATIP the way it works with Kite MCP and Dhan MCP.
+6. **ATIP MCP server: done in W39** (Phase 4): read-only tools so Claude can work with ATIP the way it works with Kite MCP and Dhan MCP (`tools/atip_mcp.py`).
 7. **Earnings surprise / PEAD and a revisions proxy** from ATIP's own quarterly EPS history.
 8. **Live execution with broker-held orders** (Dhan super order, forever / GTT order, order-update WebSocket, algo-ID, per-second throttle, static IP). **This is real-money work and needs your explicit go-ahead and a test plan.** Until then ATIP stays paper-first, which is the safer default given SEBI's finding that 91 % of individual F&O traders lost money in FY25.
 9. Factor risk model, CPCV / PBO, meta-labelling: research hardening.

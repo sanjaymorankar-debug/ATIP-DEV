@@ -39,7 +39,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 **The best plan from here** (section 8):
 - **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes, an explainable fundamental composite and an event calendar (all **built**, see §8).
 - **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
-- **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
+- **Phase 4:** natural-language screening and a read-only ATIP MCP server (**built**; English screening works without a working Anthropic key through a rule translator, and better with one).
 - **Phase 5:** live execution, only with your explicit go-ahead.
 
 ---
@@ -231,8 +231,8 @@ They use synthetic series with known answers. Examples:
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
 | ~~Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze~~ | Chartink, Streak | 3: **built** |
 | Depth-weighted imbalance from 20-level depth (**built**, Phase 3); order-flow imbalance (OFI) from quote changes | Institutional microstructure | 3 (OFI: later) |
-| English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
-| ATIP MCP server | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4 |
+| ~~English → screener query~~ | TradingView AI Screener, Trendlyne, Screener.in | 4: **built** |
+| ~~ATIP MCP server~~ | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4: **built** (read-only) |
 | ~~Event calendar (FOMC, US CPI, RBI) widening the gap forecast~~ | Institutional desks | 2: **built** |
 | Consensus estimates and revisions | Zacks, StarMine | Needs a licensed feed |
 | Live orders from signals | Streak, Trade Ideas | 5, with your go-ahead |
@@ -319,12 +319,17 @@ They use synthetic series with known answers. Examples:
    - Each morning: the log moves from India's close to 08:45 against the Nifty's opening gap (first reading 09:15–09:30). Ridge regression once 40 mornings exist, walk-forward against "no change" and against the GIFT estimate on the same mornings.
    - `capture_gift` stores its estimate next to GIFT's and the daily-close model's, and the open-gap record scores all three. Until 40 mornings exist the page says how many are stored.
 
-### Phase 4: AI as the interface (needs the Anthropic key fixed, KD-001)
-1. **English → screener query.** The model writes ATIP's query language, and the safe parser validates it, so nothing is eval'd. The user sees and can edit the query before it runs.
-2. **ATIP MCP server**, read-only:
-   - tools: screener run, signals today, signal track record, market pulse, research report, open orders;
-   - lets you use ATIP from Claude, alongside the Dhan MCP.
-3. **LLM explanations** of a signal or report, citing the stored numbers, with look-ahead-bias controls before any LLM output is backtested.
+### Phase 4: AI as the interface
+1. **English → screener query. Built** (`research/screener_nl.py`).
+   - "Ask in English" on `/screener` writes a query in ATIP's language into the query box; it never runs it. The safe parser validates it, and the page says what was not understood.
+   - **Claude path** (`config.json` `"screener_ai"`, off by default, its own daily cost cap): one structured-output request with the field catalogue, presets and industries as a cached system prompt; a query the parser rejects goes back once with the parser's error. Usage goes to `ai_usage_log`.
+   - **Rule path**, always available and used whenever Claude is off, over its cap, refused (the current key returns 401, KD-001) or wrong twice: preset names, "<field> above / below / at least / between … <number>" (1,000 crore, 20 %), phrases such as debt-free, no pledge, near the 52-week high, above the 200-DMA, scan names, industries, size groups, "sorted by …", "cheapest first".
+2. **ATIP MCP server. Built** (`tools/atip_mcp.py`), read-only:
+   - MCP over stdio (JSON-RPC 2.0, protocol 2025-06-18 / 2025-03-26 / 2024-11-05), written to the specification without a new package.
+   - 12 tools: screener fields and runs, signals today and their record, intraday scans, stock technicals, market pulse, market gate, research report, scorecard, event calendar, open orders. All annotated read-only.
+   - The SQLite connection runs with `PRAGMA query_only`, so no tool can write even by a bug; stdout carries only protocol messages.
+   - Lets you use ATIP from Claude, alongside the Dhan MCP (configuration in the module docstring and the handoff).
+3. **LLM explanations** of a signal or report: covered by the W36 assistant (`ml/chat.py`, read-only tools over ATIP's tables) and now by Claude over the MCP server, both answering from the stored numbers. Rule kept for later: no LLM output is backtested without look-ahead-bias controls (only data available on the day, model knowledge cutoff after the test window ruled out).
 
 ### Phase 5: execution (only with your explicit go-ahead and a test plan)
 - Signals → Dhan super orders or forever orders with the signal's stop and target.

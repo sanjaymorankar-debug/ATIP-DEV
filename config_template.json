@@ -172,6 +172,7 @@
   "_w35_note": "Tick capture: live_feed.capture_ticks true (needs live_feed.stocks_enabled). Lake files are Parquet when pyarrow is installed, else csv.gz; pip install pyarrow duckdb for Parquet + SQL queries.",
 
   "_SECTION_17": "W36 AI assistant (off by default)",
+  "screener_ai": {"enabled": false, "model": "claude-sonnet-5-5", "daily_cost_cap_usd": 0.5},
   "assistant": {"enabled": false, "model": "claude-opus-5-5", "effort": "medium", "daily_cost_cap_usd": 2.0, "max_tool_rounds": 6, "history_turns": 6},
   "_assistant_note": "enabled=true lets /assistant answer with Claude using read-only tools over ATIP data; needs ANTHROPIC_API_KEY. Own daily cap, separate from news AI. Off: rule-based answers.",
 

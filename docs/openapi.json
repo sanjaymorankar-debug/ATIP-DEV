@@ -7662,6 +7662,22 @@
     }
    }
   },
+  "/api/screener/ask": {
+   "post": {
+    "summary": "Api Screener Ask",
+    "operationId": "api_screener_ask_api_screener_ask_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/screener/saved/{screen_id}/run": {
    "get": {
     "summary": "Api Screener Run Saved",

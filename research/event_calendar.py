@@ -108,8 +108,13 @@ def ensure_tables(conn, seed: bool = True):
             if k not in KINDS:
                 log.warning(f"  event calendar: unknown kind {k!r} in config")
                 continue
-            n += conn.execute("INSERT OR IGNORE INTO macro_event (event_date, kind, title, source, created_at) "
-                              "VALUES (?,?,?,?,?)", (d, k, title, src, datetime.now())).rowcount or 0
+            try:
+                n += conn.execute("INSERT OR IGNORE INTO macro_event (event_date, kind, title, source, created_at) "
+                                  "VALUES (?,?,?,?,?)", (d, k, title, src, datetime.now())).rowcount or 0
+            except Exception as e:                 # a read-only connection (tools/atip_mcp.py) reads what is there
+                log.debug(f"  event calendar: seeding skipped ({e})")
+                _SEEDED.discard(key)
+                return
         if n:
             conn.commit()
 

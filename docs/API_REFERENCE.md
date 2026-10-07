@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 20:19 by `python -m ops api-docs` from the running application (552 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running application (553 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -646,6 +646,7 @@ Generated 2026-10-07 20:19 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| POST | `/api/screener/ask` | workspace:write | token |  | {text} English -> a screener query (Claude when enabled, else rules); not run |
 | GET | `/api/screener/fields` | dashboard:read |  |  | field catalogue (groups, units, aliases), presets, operators |
 | GET | `/api/screener/run` | dashboard:read |  | `query`, `sort`, `desc`=1, `limit`=200, `columns` | run a screen (read-only) |
 | GET | `/api/screener/run.csv` | dashboard:read |  | `query`, `sort`, `desc`=1, `limit`=2000, `columns` | the same, as CSV |

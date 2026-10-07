@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 204 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 222 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -561,6 +561,35 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Also fixed:** `evaluate_gaps` took the first Nifty reading from 09:15 with no upper bound, so a morning whose early readings were missing would have recorded a midday price as the open. It now uses only 09:15–09:30, as the new model does.
 
+## NL-01..NL-03: English → screener query (`research/screener_nl.py`), Phase 4 item 1
+
+**What it does:** turns a request such as "debt-free capital goods companies with ROCE above 20 % near their 52-week high" into `debt_equity < 0.1 AND from_52w_high_pct > -5 AND industry IN ("Capital Goods") AND roce_pct > 20`. It only ever writes ATIP's query language, which the screener's safe parser validates. Nothing runs until the user has seen, and can edit, the query.
+
+**Claude path (NL-01):**
+- `config.json` `"screener_ai": {"enabled": false, "model": "claude-sonnet-5-5", "daily_cost_cap_usd": 0.5}` (in `config_template.json`).
+- One `messages.create` with a cached system prompt (grammar, every field with unit and aliases, scans, presets, the industries in the snapshot) and a JSON-schema structured output: `{query, sort, desc, explanation, unmatched}`.
+- A query the parser rejects is sent back once with the parser's error; a second failure falls back to the rules. An unknown sort field is dropped.
+- Usage and cost go to `ai_usage_log` (purpose `screener_nl`) and count against this feature's own daily cap. A 401 is reported as "Anthropic API key rejected (401)".
+
+**Rule path (NL-02):** always available. Preset names (only when the request is the preset's name); "<field> above / below / at least / at most / between … and … <number>" with %, crore and 1,000-style numbers; phrases (debt-free, low debt, no pledge, near the 52-week high / low, above / below the 200-DMA, profitable, dividend payers, high ROCE / ROE / growth / dividend, low P/E, undervalued, uptrend, oversold, large / mid / small caps); scan names; industries; "sorted by …", "cheapest first". What it could not map is returned as `unmatched`.
+
+**Page and API (NL-03):** "Ask in English" on `/screener` fills the query box and the sort, says whether Claude or the rules wrote it (and why Claude was not used), and lists what was not understood. `POST /api/screener/ask {text}` (`workspace:write`, token), 400 on empty or 500+ characters.
+
+## MC-01..MC-03: read-only ATIP MCP server (`tools/atip_mcp.py`), Phase 4 item 2
+
+**Transport (MC-01):** MCP over stdio, one JSON-RPC 2.0 message per line: `initialize` (protocol 2025-06-18, 2025-03-26 or 2024-11-05, echoed when supported), `ping`, `tools/list`, `tools/call`; notifications get no reply. Written to the specification directly, so no new dependency. Stdout carries only protocol messages: `sys.stdout` is pointed at stderr while serving, because some modules print on import.
+
+**Tools (MC-02):** `screener_fields`, `screener_run`, `signals_today`, `signal_track_record`, `intraday_signals`, `stock_technicals`, `market_pulse`, `market_gate`, `research_report` (today's stored report, else built and not saved), `scorecard`, `event_calendar`, `open_orders` (reads the Dhan order book). All annotated `readOnlyHint`, none destructive; only `open_orders` is open-world. Bad arguments and missing data come back as tool errors (`isError`), not protocol errors; results over 200,000 characters are truncated with a note.
+
+**Read-only by construction (MC-03):** the SQLite connection runs with `PRAGMA query_only`, so a reader that tried to write would fail rather than write. `CREATE TABLE IF NOT EXISTS` on existing tables still passes, so the existing readers work. The event calendar's one-time seeding now skips quietly on such a connection. MySQL / PostgreSQL deployments are read-only by the tool set alone.
+
+**Set-up** (Claude Desktop `claude_desktop_config.json`, or `.mcp.json` for Claude Code):
+```json
+{"mcpServers": {"atip": {"command": "/path/to/ATIP-DEV/.venv/bin/python",
+                         "args": ["/path/to/ATIP-DEV/tools/atip_mcp.py"],
+                         "env": {"ATIP_DB_PATH": "/path/to/ATIP-DEV/atip_data/atip.db"}}}}
+```
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -596,6 +625,8 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_screener_nl.py` | 11 | five everyday phrasings to exact queries (units, 1,000 crore, between, sorted by, cheapest first, industries, scans); presets only when named outright; unmatched words; Claude path with a fake client: cached catalogue, structured output, usage logged; a rejected query retried once with the parser's error, twice falls back; 401, the cost cap and the off switch fall back with the reason; empty / long text; API, token, page |
+| `tests/test_w39_mcp.py` | 7 | handshake, version negotiation, ping, notifications, unknown methods; 12 tools all annotated read-only; screener tools and their errors; stock tools and missing data as tool errors; market tools on a query-only connection, which rejects an INSERT; stdout carries only protocol messages even when a module prints; a real subprocess session over stdio |
 | `tests/test_w39_depth20.py` | 9 | binary frames with bid and ask messages and a truncated tail; DWI against a hand calculation, the far level excluded; sampling every 15 s, storage, the subscription message; Dhan's 806 parks the feed with its reason; a session subscribes then reads frames; batches of 50; persistent flag; validation recovers a planted slope and calls noise not predictive; API, page, permissions |
 | `tests/test_w39_global_sync.py` | 7 | capture and a failed fetch; morning moves from the previous session's close, across a holiday; the gap needs a reading by 09:30; COLLECTING under 40 mornings; a planted sensitivity recovered walk-forward, beating "no change" and a noisier GIFT; capture_gift stores the estimate and the record scores it; API and permissions; the open check ignores a reading after 09:30 |
 | `tests/test_w39_intraday.py` | 10 | opening-range breakout needs 1.5× slot volume and a first close beyond the range by 11:30, 30-minute range, breakdown; open = low / high on the first hour, broken and too-small cases; squeeze after 6 tight bars released up and down, not without history; only completed 15-minute bars load; stored once, seen at the bar's completion, record to the close vs the Nifty with best / worst; a short gains on a fall; alerts held until a positive 30-hit record; the existing scanner no longer mixes 1-minute bars; API and page; permissions |
@@ -649,6 +680,13 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Market volume is the volume of the stocks ATIP stores, not exchange-wide volume; days with fewer than 10 common stocks have no comparison.
 - Stalling days and the intraday-low rule for rally attempts are not modelled (closes only).
 
+**English → screener query:**
+- The rule translator knows the phrasings listed above; anything else is reported as not understood rather than guessed. The Claude path needs a working Anthropic key (KD-001).
+
+**MCP server:**
+- Local stdio only (no hosted / HTTP transport); it reads the same database the platform writes.
+- `open_orders` and `research_report` can be slow (a broker call; a report built on the fly).
+
 **20-level depth:**
 - Off by default; it needs the Dhan Data API and one connection (Dhan allows a limited number at once).
 - No order-flow imbalance (OFI) from quote changes yet; DWI is a static measure of the book.
@@ -676,6 +714,5 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - The early-October 2026 market figures in the plan doc are press reports, not verified.
 
 **Next on the roadmap** (details and order in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8):
-- English → screener query and an ATIP MCP server (Anthropic key)
 - MF analytics / SIP, tax P&L, earnings-surprise signal
 - Live execution only with the owner's explicit go-ahead

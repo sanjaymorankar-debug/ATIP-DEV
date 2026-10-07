@@ -203,6 +203,8 @@ SCREENER = _HEAD + r"""
 <div class="wrap"><div class="card"><h3>Stock screener</h3>
 <div class="muted">Filter every stock ATIP tracks on fundamentals, technicals or both, Screener.in / Chartink style: <code>roce_pct &gt; 20 AND debt_equity &lt; 0.5 AND (pe &lt; 25 OR peg &lt; 1)</code>, <code>scan_golden_cross = 1 AND rs_rating &gt;= 80</code>, <code>patterns CONTAINS "engulfing" AND rsi_14 &lt; 40</code>, <code>industry IN ("Capital Goods")</code>. Percentages are in %, money in ₹ crore where the field ends in _cr. A stock missing a field never matches a condition on it.</div>
 <div id="presets" style="margin:8px 0;display:flex;flex-wrap:wrap;gap:4px"></div>
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><input id="nl" style="flex:1;min-width:220px" placeholder="Ask in English: debt-free capital goods companies with ROCE above 20% near their 52-week high" onkeydown="if(event.key==='Enter')ask()"><button onclick="ask()">Write the query</button></div>
+<div id="nlo" class="muted" style="margin-bottom:6px"></div>
 <textarea id="q" rows="3" style="width:100%;font-family:ui-monospace,monospace;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" placeholder="roce_pct > 20 AND debt_equity < 0.5"></textarea>
 <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
 <select id="bf"></select><select id="bo"><option>&gt;</option><option>&gt;=</option><option>&lt;</option><option>&lt;=</option><option>=</option><option>!=</option></select>
@@ -235,6 +237,11 @@ function addCond(join){const f=val('bf'),o=val('bo'),v=val('bv').trim();if(!v)re
  const lit=isText&&!/^".*"$/.test(v)?`"${v.replace(/"/g,'')}"`:v;const q=document.getElementById('q');q.value=(q.value.trim()?q.value.trim()+` ${join} `:'')+`${f} ${o} ${lit}`;document.getElementById('bv').value=''}
 const val=id=>document.getElementById(id).value;
 function params(extra){const p=new URLSearchParams({query:val('q').trim(),desc:val('dir'),limit:'500',...(extra||{})});if(val('sort'))p.set('sort',val('sort'));return p}
+async function ask(){const t=val('nl').trim();if(!t)return;const o=document.getElementById('nlo');o.textContent='Translating…';
+ try{const r=await post('/api/screener/ask',{text:t});document.getElementById('q').value=r.query||'';
+  if(r.sort){const s=document.getElementById('sort');if(![...s.options].some(x=>x.value===r.sort))s.add(new Option(r.sort,r.sort));s.value=r.sort;document.getElementById('dir').value=r.desc?'1':'0'}
+  o.innerHTML=`${r.mode==='claude'?'Written by Claude':'Written by the rule translator'+(r.fallback_reason?` <span title="${esc(r.fallback_reason)}">(Claude not used: ${esc(r.fallback_reason)})</span>`:'')}. ${r.valid?'Check the query, then <b>Run screen</b>.':`<span class="bad">${esc(r.error||'not a valid query')}</span>`}${r.explanation?' · '+esc(r.explanation):''}${(r.unmatched||[]).length?` · <span class="note">not understood: ${esc(r.unmatched.join(', '))}</span>`:''}`}
+ catch(e){o.innerHTML=`<span class="bad">${esc(e.message)}</span>`}}
 async function go(){const q=val('q').trim();if(!q)return;const el=document.getElementById('res');el.innerHTML='<span class="muted">Running…</span>';
  document.getElementById('csv').href='/api/screener/run.csv?'+params({limit:'2000'});
  try{draw(await j('/api/screener/run?'+params()))}catch(e){el.innerHTML=`<span class="bad">${esc(e.message)}</span>`;document.getElementById('rh').textContent='Results'}}
