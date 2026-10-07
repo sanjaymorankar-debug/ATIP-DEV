@@ -67,9 +67,51 @@ An audit found none of the 14 requirements missing outright, but most were only 
   - Checked in headless Chromium.
 - **DP-21, AMFI.** This already existed (`mf_nav`, daily); the tracker now says so.
 
-## Batch 3 — feature map
+## Batch 3 — feature map and the remaining PERF-001 gaps
 
-_See the section added below once the four parallel workstreams are merged._
+**Risk (RK-21, central pre-trade gateway).**
+- **Price band.** The W4 risk engine and the manual / rule order path compare a priced order with the live LTP, or else the last close. Beyond `max_price_band_pct` (default 20) the order is refused, BUY or SELL.
+- **NSE circuit limits.** The Dhan REST quote's upper / lower circuit is now stored in `live_quotes`. A LIMIT / SL price or SL-M trigger outside today's circuit is refused (`circuit_check`). It catches an 8% price on a 5% circuit stock, which the 20% band lets through. `risk_limits.enforce_circuit_limits=false` switches it off.
+- **Gross exposure.** Gross exposure counts the paper futures notional, and the manual path gets a gross-exposure limit.
+
+**Factors and portfolio.**
+- **AF-09.** `tsmom_12m` (sign of the 12-1 return × 40% target vol / 60-day vol, capped at 2) and `mom_12_1_vol_adj`. Both are in the daily set, which becomes `atip_factors@2`.
+- **PF-14.** A turnover penalty κ‖w − w0‖₁ in the optimiser, solved with an exact proximal step. κ = 0 is byte-identical to before. The route falls back to the book's current weights.
+- **PF-15.** Factor neutrality in two places: equality constraints B'w = target in the optimiser, and a `neutralize` normalization spec (OLS residual on numeric exposures and sector dummies). The quant engine supplies the named factors' raw values of the same date.
+- **Bug (PF-10):** the sector-cap projection (Dykstra, stopped early) could return weights over the sector cap. In a random check 29 of 294 cases broke the cap, the worst by 48 points. It is now the exact KKT projection: feasible every time, and about 10× faster.
+
+**Technical analysis.**
+- **TA-08b.** Relative strength vs the stock's sector index over 63 / 126 sessions, plus the percentile within the industry. The NSE industry maps to the sector index; NIFTY50 is the fallback, and the row says so.
+- **TA-05.** Swing-anchored Fibonacci: the last two 5-bar pivots within 120 sessions, the 38.2 / 50 / 61.8 levels, and the nearest level.
+- Both are stored in `technical_ext` and shown in the stock panel. Neither feeds a score.
+
+**ML, derivatives and backtesting.**
+- **ML-17.** A numpy Gaussian HMM regime as regime provider `hmm`. It is opt-in.
+- **ML-18.** Model lineage: the code version plus a data / feature / parameter manifest.
+- **AF-10.** A volatility surface and term structure from `fo_contract_daily`.
+- **BT-18.** Purge / embargo sessions in the walk-forward.
+- **BT-19.** A cost-multiplier stress sweep with the break-even multiplier.
+
+**PERF-001 gaps closed this round.**
+- **-03:** an optional square-root market-impact slippage (`slippage_model=impact`), using spread and volatility known at the signal date.
+- **-06:** broker files that itemise charges store the split per trade (brokerage, STT, exchange, SEBI, stamp, GST, DP). A contract-note charges file becomes FEE rows and is refused where it would double count.
+- **-13:** a printable HTML report for Print / Save as PDF, drawn from the same sections as the CSV.
+
+**API-03.**
+- `docs/API_VERSIONING_POLICY.md` sets out the policy.
+- A deprecation registry drives the `Deprecation` / `Sunset` / `Link` headers, marks the operation `deprecated` in OpenAPI, and answers 410 `GONE` after the sunset date.
+- At least 180 days' notice is enforced by a test.
+
+**Scope note.** ENT-12's remaining "tax report" is not built: the owner's workbook lists Tax under Scope Exclusions.
+
+**Tests:**
+- `tests/test_w39_quant_portfolio.py`
+- `tests/test_w39_technical_rs_fib.py`
+- `tests/test_w39_contract_note_fees.py`
+- `tests/test_w39_risk_gateway.py`
+- `tests/test_w39_ml_regime_lineage_surface.py`
+- `tests/test_w39_backtest.py`
+- the API-03 and PERF-001 tests in `tests/test_w39_exec_data_tests.py` and `tests/test_w39_performance_detail.py`
 
 ## Batch 4 — Zerodha / Dhan parity and UX
 
