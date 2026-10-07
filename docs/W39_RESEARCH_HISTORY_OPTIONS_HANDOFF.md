@@ -6,7 +6,7 @@
 - The owner's notes (`ATIP-.txt`): compare with Zerodha and Dhan, show stock history, store 7 years of data.
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 
-**Status:** developed. 39 new tests and the full suite pass. The two pages were rendered in a headless browser on seeded data, including a 390 px phone width. Not merged and not deployed. Nothing in this wave places an order.
+**Status:** developed. 58 new test cases and the full suite pass. The three pages (/research, /screener, /options-builder) were rendered in a headless browser on seeded data, the options page also at a 390 px phone width. Not merged and not deployed. Nothing in this wave places an order.
 
 ## DP-11: 7 years of daily history
 
@@ -102,6 +102,53 @@
 
 **Page:** `/research`.
 
+## SC-20: fundamental screener (`research/screener.py`)
+
+**Snapshot:** one row per stock that has fundamentals and a price, about 50 fields:
+- Valuation: price, market cap (price × shares / 10⁷), P/E, P/B, PEG, earnings / dividend / FCF yield.
+- Profitability: ROE, ROCE, ROA, net and operating margin.
+- Growth: revenue, profit and EPS, YoY and QoQ.
+- Size and balance sheet: revenue, profit, EPS, book value, debt/equity, current ratio, interest cover, cash, FCF.
+- Ownership: promoter %, its change over the latest quarter, pledge, FPI, MF.
+- Price: 1-year return, 3-year CAGR (from the 7-year history), distance from the 52-week high / low.
+- Technical: RSI(14), above the 200-DMA.
+- ATIP: score and signal.
+- Research model: rating, upside, fair value, moat proxy, quality score.
+- **Magic-formula rank:** Greenblatt's earnings-yield rank + ROCE rank, approximated with E/P; financials excluded.
+
+**Units:** percentages in %, `_cr` fields in ₹ crore.
+
+**Cache:** the snapshot is cached for 10 minutes per database.
+
+**Query language:**
+- A small recursive-descent parser. No `eval` and no SQL from the query.
+- `AND` binds tighter than `OR`; `NOT`, parentheses and `IN (...)` are supported.
+- Text matching is case-insensitive.
+- Field names and aliases (`ROCE`, `PE`, `mcap`, `debt_to_equity`, ...) are case-insensitive.
+- A stock missing a field never matches a condition on it.
+- Bad queries return a 400 that names the problem.
+
+**12 presets:** quality compounders, value, GARP, dividend, debt-free, promoters adding, undervalued by ATIP's model, strong near the 52-week high, turnaround, magic formula top 30, oversold quality, pledge risk.
+
+**Saved screens:**
+- Table `research_screen`, class OWNER.
+- Name, query, sort, columns, notify flag, and the last matches. Each run reports **new** and **dropped** stocks.
+- Job `saved_screens` runs at 20:50 on market days, after the research reports. It alerts (alert log + Telegram when configured) on new matches for screens with notify on.
+
+**CLI:** `python -m research.screener "roce_pct > 20 AND debt_equity < 0.5" [--sort ...] [--csv]` or `--preset quality_compounders`.
+
+**API:**
+- `GET /api/screener/fields`
+- `GET /api/screener/run`
+- `GET /api/screener/run.csv`
+- `GET` / `POST /api/screener/saved`
+- `GET /api/screener/saved/{id}/run`
+- `POST /api/screener/saved/{id}/delete`
+
+Saving and deleting require `workspace:write` and the token; running is a read.
+
+**Page:** `/screener`: presets, query box, condition builder, sortable results linking to `/research?symbol=...`, CSV, saved screens.
+
 ## OP-01..OP-05: options strategy builder (`quant/options_strategy.py`)
 
 **Legs:** CE / PE / FUT, buy or sell, strike, expiry, lots, premium, IV.
@@ -141,8 +188,8 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`), applied by `db/schema.py`. Scoping: GLOBAL. Privacy inventory: classified by the existing rules.
-- Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz: one new rule for `POST /api/options/(build|analyse)`; the rest is covered by the existing `/api/research/` and `/api/data/` rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`), applied by `db/schema.py`. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: classified by the existing rules.
+- Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz: two new rules, `POST /api/options/(build|analyse)` → `research:run` and `POST /api/screener/` → `workspace:write`; the rest is covered by the existing `/api/research/` and `/api/data/` rules.
 - `docs/API_REFERENCE.md` and `docs/openapi.json` regenerated. They were also stale from W34–W38: 402 → 511 routes.
 - `db/sql/*.sql` are pinned snapshots (master @ 6896bea) and were not regenerated. The new tables are created on first start like any additive migration.
 
@@ -152,6 +199,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 |---|---|---|
 | `tests/test_w39_history.py` | 8 | retention tiers and config; backfill walk-back, listing stop, resume; refusal vs listing; parking; exception tagging; schedule |
 | `tests/test_w39_research.py` | 20 | DCF = Gordon invariant; scenarios; sensitivity monotonicity; growth caps; justified P/B; unit normalisation; rating hurdles; peers; financials; blend; quality; end-to-end report on a seeded DB; calls and hit rate; split-adjusted outcome; batch run; single-report read limited to the stock and its peers; API and token; authz; table classification |
+| `tests/test_w39_screener.py` | 19 | query precedence / NOT / IN / aliases; missing values; malicious and malformed queries refused; presets valid; snapshot fields on a seeded DB; magic rank; filter / sort / columns / CSV; cache; saved screens with new matches and an alert; API and token; permissions and classification |
 | `tests/test_w39_options.py` | 11 | payoff and breakevens; unlimited flags; condor risk = width − credit; every template; POP sanity; time value; implied IV; validation; chain pricing; API |
 
 ## Known limits and next steps
@@ -171,7 +219,6 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 **Options builder:** analysis only. One-click execution would need the live OMS (gap analysis §4, item 8), which needs the owner's explicit go-ahead.
 
 **Next on the roadmap:**
-- Fundamental screener
 - MF analytics / SIP
 - Tax P&L
 - Chart overlays / patterns

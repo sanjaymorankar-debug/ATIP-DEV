@@ -111,6 +111,7 @@ ROUTE_RULES = [
     # W39: the options builder only analyses (nothing is ordered); research reports and the history
     # backfill are covered by the /api/research/ and /api/data/ rules below
     ("POST", r"^/api/options/(build|analyse)$", "research:run"),
+    ("POST", r"^/api/screener/", "workspace:write"),            # saved screens; running one is a GET
     # W22 research platform
     ("POST", r"^/api/quant/approvals/", "strategy:lifecycle"),
     ("POST", r"^/api/quant/research-report$", "research:run"),

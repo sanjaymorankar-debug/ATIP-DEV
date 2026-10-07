@@ -67,7 +67,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Rule-based strike selection (Dhan "Quant Mode") | Dhan | ❌ | — |
 | Option chain with PCR, max pain, IV, IV percentile | Both | ✅ | Chain snapshot off by default; Greeks not computed per chain row |
 | Real-time technical screener, 200+ filters, saved screens | ScanX, Streak, Kite Screener (July 2026) | 🟡 | 5 fixed intraday scans; builder preview runs on latest-session data only |
-| Fundamental multi-filter screener | ScanX, Kite Screener | ❌ | Next on the roadmap |
+| Fundamental multi-filter screener, saved screens | ScanX, Kite Screener, Screener.in | 🆕 | W39 `/screener`: ~50 fields (valuation, profitability, growth, balance sheet, ownership, price, technical, ATIP score, research rating), a safe query language with AND / OR / NOT / IN, 12 presets including a magic-formula rank, sortable results, CSV export, saved screens with daily new-match alerts |
 | Price and indicator alerts | Both | 🟡 | Needs `enterprise.enabled`; Telegram not configured |
 | FII/DII, pre-market dashboard, heatmaps | Both | ✅ | `/market` |
 
@@ -125,7 +125,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 Ranked by value to this owner (single user, Dhan account, research-led) against risk:
 
 1. **Done in W39:** 7-year history (purge fix + backfill), valuation and research reports with tracked calls, and the options strategy builder.
-2. **Fundamental screener** (Screener.in / ScanX style): filters over the latest fundamentals, scores, valuation ratings and technicals, saved screens. Low risk, high daily value.
+2. **Done in W39 (follow-up):** fundamental screener (Screener.in / ScanX style) with presets, saved screens and new-match alerts.
 3. **Mutual fund analytics** (your note in `ATIP-.txt`): returns, rolling returns, XIRR and SIP tracking on the AMFI NAVs already stored; let the wealth ledger hold MFs.
 4. **Tax P&L** (STCG/LTCG with grandfathering, FIFO lots) from the holdings and trade ledger.
 5. **Charts:** indicator overlays and candlestick-pattern detection on the stock view; intraday chart once the 15-minute bar job is fixed (W9-J1).

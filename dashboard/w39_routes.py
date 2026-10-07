@@ -3,7 +3,8 @@ W39 API and pages: equity research reports (RS), the 7-year price history (DP-11
 options strategy builder (OP). JSON; 400 invalid; 404 unknown; token on every POST.
 Authz (enterprise/authz.py): GET /api/research/ -> research:read, POST -> research:run;
 GET /api/data/ -> dashboard:read, POST -> research:run; POST /api/options/(build|analyse) ->
-research:run (analysis only: nothing is ordered); other GETs -> dashboard:read.
+research:run (analysis only: nothing is ordered); POST /api/screener/ -> workspace:write (saved
+screens); other GETs -> dashboard:read.
 
     GET  /research                                   the research page (dashboard/w39_page.py)
     GET  /api/research/equity?rating=BUY             latest rating per symbol
@@ -14,6 +15,13 @@ research:run (analysis only: nothing is ordered); other GETs -> dashboard:read.
     GET  /api/research/hit-rate                      closed calls by rating
     GET  /api/data/history/coverage                  how much of the universe reaches back 7 years
     POST /api/data/history/backfill                  {symbols?, max?, years?} one budgeted backfill pass
+    GET  /screener                                   the fundamental screener page
+    GET  /api/screener/fields                        field catalogue (groups, units, aliases), presets, operators
+    GET  /api/screener/run?query&sort&desc&limit&columns     run a screen (read-only)
+    GET  /api/screener/run.csv?...                   the same, as CSV
+    GET  /api/screener/saved                         saved screens; POST {name, query, sort?, desc?, columns?, notify?, screen_id?}
+    GET  /api/screener/saved/{id}/run                run a saved screen; reports new / dropped matches since its last run
+    POST /api/screener/saved/{id}/delete
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates
     GET  /api/options/chain/{symbol}                 spot, lot size, expiries and strikes ATIP has stored
@@ -148,6 +156,83 @@ def register(app, guard, Req, get_connection, json_safe):
                 out.pop("results")
             return out
         return await run(f)
+
+    # ── fundamental screener ──
+    @app.get("/screener", response_class=HTMLResponse)
+    async def page_screener():
+        from dashboard.security import token
+        from dashboard.w39_page import render_screener
+        return HTMLResponse(render_screener(token()))
+
+    @app.get("/api/screener/fields")
+    async def api_screener_fields():
+        from research.screener import catalog
+        return JSONResponse(catalog())
+
+    def _screen(query, sort, desc, limit, columns):
+        from research.screener import ScreenError, run_screen
+        if not query or len(query) > 2000:
+            raise ScreenError("query is required (up to 2000 characters)")
+        cols = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
+        return lambda c: run_screen(c, query, sort or None, bool(desc), max(1, min(int(limit), 2000)), cols)
+
+    @app.get("/api/screener/run")
+    async def api_screener_run(query: str = "", sort: str = None, desc: int = 1, limit: int = 200,
+                               columns: str = None):
+        from research.screener import ScreenError
+        try:
+            fn = _screen(query, sort, desc, limit, columns)
+        except ScreenError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return await run(fn)
+
+    @app.get("/api/screener/run.csv")
+    async def api_screener_csv(query: str = "", sort: str = None, desc: int = 1, limit: int = 2000,
+                               columns: str = None):
+        from fastapi.responses import Response
+        from research.screener import ScreenError, to_csv
+        try:
+            fn = _screen(query, sort, desc, limit, columns)
+        except ScreenError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+        def f():
+            conn = get_connection()
+            try:
+                return to_csv(fn(conn))
+            finally:
+                conn.close()
+        try:
+            text = await run_in_threadpool(f)
+        except ScreenError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return Response(text, media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="atip_screen.csv"'})
+
+    @app.get("/api/screener/saved")
+    async def api_screener_saved():
+        from research.screener import list_screens
+        return await run(list_screens)
+
+    @app.post("/api/screener/saved", dependencies=guard)
+    async def api_screener_save(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from research.screener import save_screen
+            return save_screen(conn, b.get("name"), b.get("query") or "", b.get("sort"), b.get("desc", True),
+                               b.get("columns"), bool(b.get("notify")), b.get("screen_id"))
+        return await run(f)
+
+    @app.get("/api/screener/saved/{screen_id}/run")
+    async def api_screener_run_saved(screen_id: str):
+        from research.screener import run_saved
+        return await run(lambda c: run_saved(c, screen_id))
+
+    @app.post("/api/screener/saved/{screen_id}/delete", dependencies=guard)
+    async def api_screener_delete(screen_id: str):
+        from research.screener import delete_screen
+        return await run(lambda c: delete_screen(c, screen_id))
 
     # ── options strategy builder ──
     @app.get("/api/options/templates")

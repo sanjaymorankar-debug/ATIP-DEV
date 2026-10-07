@@ -1,6 +1,7 @@
 """
-W39 pages: /research (equity research reports, ratings, hit rate, 7-year history coverage) and
-/options-builder (multi-leg strategy builder with a payoff chart). Both read the W39 API
+W39 pages: /research (equity research reports, ratings, hit rate, 7-year history coverage),
+/screener (fundamental screener with presets and saved screens) and /options-builder
+(multi-leg strategy builder with a payoff chart). Both read the W39 API
 (dashboard/w39_routes.py); the options page only analyses -- it has no order button.
 
 Payoff chart colours: categorical slots 1 and 2 of the dataviz reference palette, dark steps
@@ -29,7 +30,7 @@ ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-co
 _HEAD = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title><style>__STYLE__</style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">__SUB__</span></div>
-<div><a href="/research">Research</a><a href="/options-builder">Options builder</a><a href="/">← Dashboard</a></div></div>"""
+<div><a href="/screener">Screener</a><a href="/research">Research</a><a href="/options-builder">Options builder</a><a href="/">← Dashboard</a></div></div>"""
 
 _JS_COMMON = r"""
 const TOKEN=__TOKEN__;
@@ -92,6 +93,7 @@ async function runAll(){if(!confirm('Rebuild today\'s report for every tracked s
 async function his(){const c=await j('/api/data/history/coverage');document.getElementById('cov').innerHTML=`<div class="grid"><div class="stat"><div class="k">Target</div><div class="v">${esc(c.target)}</div></div><div class="stat"><div class="k">Complete</div><div class="v">${c.complete} / ${c.symbols}</div></div><div class="stat"><div class="k">Listed later</div><div class="v">${c.listed_later}</div></div><div class="stat"><div class="k">Pending</div><div class="v">${c.pending}</div></div><div class="stat"><div class="k">Parked (errors)</div><div class="v">${c.parked}</div></div><div class="stat"><div class="k">Oldest bar</div><div class="v">${esc(c.oldest_bar||'—')}</div></div></div>`}
 async function backfill(){document.getElementById('bfo').textContent=' running…';try{const o=await post('/api/data/history/backfill',{max:10});document.getElementById('bfo').textContent=` ${o.status}: ${o.symbols??0} stocks, ${o.rows??0} bars, ${o.remaining??0} to go`;his()}catch(e){document.getElementById('bfo').textContent=' '+e.message}}
 show('rep');
+{const q=new URLSearchParams(location.search).get('symbol');if(q){document.getElementById('sym').value=q;load()}}
 </script></body></html>"""
 
 OPTIONS = _HEAD + r"""
@@ -161,6 +163,61 @@ function chart(r){LAST=r;const W=Math.max(280,document.getElementById('chart').c
   tip.innerHTML=`<b>Spot ${n(xs[i],2)}</b> <span class="muted">(${pct((xs[i]/r.spot-1)*100)})</span><br><span style="color:#3987e5">━</span> At expiry: ${rs(e[i])}<br><span style="color:#d95926">┅</span> On ${esc(r.target_date)}: ${rs(t[i])}`};
  hit.onmouseleave=()=>{tip.style.display='none';['xh','d1','d2'].forEach(id=>document.getElementById(id).setAttribute('opacity',0))}}
 </script></body></html>"""
+
+
+SCREENER = _HEAD + r"""
+<div class="wrap"><div class="card"><h3>Fundamental screener</h3>
+<div class="muted">Filter every stock ATIP has fundamentals for, Screener.in style: <code>roce_pct &gt; 20 AND debt_equity &lt; 0.5 AND (pe &lt; 25 OR peg &lt; 1)</code>, <code>industry IN ("Capital Goods")</code>, <code>research_rating = "BUY"</code>. Percentages are in %, money in ₹ crore where the field ends in _cr. A stock missing a field never matches a condition on it.</div>
+<div id="presets" style="margin:8px 0;display:flex;flex-wrap:wrap;gap:4px"></div>
+<textarea id="q" rows="3" style="width:100%;font-family:ui-monospace,monospace;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" placeholder="roce_pct > 20 AND debt_equity < 0.5"></textarea>
+<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+<select id="bf"></select><select id="bo"><option>&gt;</option><option>&gt;=</option><option>&lt;</option><option>&lt;=</option><option>=</option><option>!=</option></select>
+<input id="bv" style="width:110px" placeholder="value"><button onclick="addCond('AND')">+ AND</button><button onclick="addCond('OR')">+ OR</button>
+<span class="muted" style="margin-left:10px">sort</span><select id="sort"><option value="">first field</option></select>
+<select id="dir"><option value="1">high → low</option><option value="0">low → high</option></select>
+<button onclick="go()">Run screen</button><a id="csv" href="#" style="color:var(--accent);margin-left:6px">CSV</a></div>
+<details style="margin-top:8px"><summary class="muted">All fields</summary><div id="help" class="scroll" style="margin-top:6px"></div></details></div>
+<div class="card"><h3 id="rh">Results</h3><div id="res" style="overflow-x:auto"><span class="muted">Pick a preset or write a query.</span></div></div>
+<div class="card"><h3>Saved screens</h3>
+<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input id="sn" placeholder="Name this screen" style="width:220px">
+<label class="muted"><input type="checkbox" id="snt"> alert me on new matches (daily 20:50)</label><button onclick="save()">Save current query</button><span id="so" class="muted"></span></div>
+<div id="saved" style="margin-top:8px"></div></div></div><div id="tip"></div>
+<script>""" + _JS_COMMON + r"""
+let CAT=null,LAST=null,SORT=null,DESC=1;
+const fmt=(k,v)=>{if(v==null)return '<span class="muted">—</span>';const f=CAT.fields[k]||{};
+ if(k==='symbol')return `<a href="/research?symbol=${encodeURIComponent(v)}" style="color:var(--accent)">${esc(v)}</a>`;
+ if(k==='research_rating')return pill(v);if(f.kind==='text')return esc(v);
+ if(f.unit==='%')return n(v,1)+'%';if(f.unit==='pts')return (v>0?'+':'')+n(v,2);if(f.unit==='₹ cr')return n(v,0);if(f.unit==='₹')return n(v,2);if(f.unit==='x')return n(v,2);return n(v,2)};
+(async()=>{const c=await j('/api/screener/fields');CAT={...c,fields:{}};
+ Object.values(c.groups).flat().forEach(f=>CAT.fields[f.key]=f);
+ const opts=Object.entries(c.groups).map(([g,fs])=>`<optgroup label="${esc(g)}">${fs.map(f=>`<option value="${f.key}">${esc(f.label)}${f.unit?' ('+esc(f.unit)+')':''}</option>`).join('')}</optgroup>`).join('');
+ document.getElementById('bf').innerHTML=opts;document.getElementById('bf').value='roce_pct';document.getElementById('sort').innerHTML='<option value="">first field</option>'+opts;
+ document.getElementById('presets').innerHTML=c.presets.map((p,i)=>`<button title="${esc(p.description)}" onclick="preset(${i})" style="background:var(--panel);border:1px solid var(--line)">${esc(p.name)}</button>`).join('');
+ document.getElementById('help').innerHTML=Object.entries(c.groups).map(([g,fs])=>`<h3 style="margin-top:6px">${esc(g)}</h3>`+table(['Field','Name','Unit','Notes'],fs.map(f=>`<tr><td><code>${f.key}</code></td><td>${esc(f.label)}</td><td>${esc(f.unit||f.kind)}</td><td class="muted">${esc([f.description,f.aliases.length?'also: '+f.aliases.join(', '):''].filter(Boolean).join(' · '))}</td></tr>`))).join('');
+ saved();const q=new URLSearchParams(location.search).get('q');if(q){document.getElementById('q').value=q;go()}})();
+function preset(i){const p=CAT.presets[i];document.getElementById('q').value=p.query;document.getElementById('sort').value=p.sort||'';document.getElementById('dir').value=p.desc===false?'0':'1';go()}
+function addCond(join){const f=val('bf'),o=val('bo'),v=val('bv').trim();if(!v)return;const isText=CAT.fields[f].kind==='text';
+ const lit=isText&&!/^".*"$/.test(v)?`"${v.replace(/"/g,'')}"`:v;const q=document.getElementById('q');q.value=(q.value.trim()?q.value.trim()+` ${join} `:'')+`${f} ${o} ${lit}`;document.getElementById('bv').value=''}
+const val=id=>document.getElementById(id).value;
+function params(extra){const p=new URLSearchParams({query:val('q').trim(),desc:val('dir'),limit:'500',...(extra||{})});if(val('sort'))p.set('sort',val('sort'));return p}
+async function go(){const q=val('q').trim();if(!q)return;const el=document.getElementById('res');el.innerHTML='<span class="muted">Running…</span>';
+ document.getElementById('csv').href='/api/screener/run.csv?'+params({limit:'2000'});
+ try{draw(await j('/api/screener/run?'+params()))}catch(e){el.innerHTML=`<span class="bad">${esc(e.message)}</span>`;document.getElementById('rh').textContent='Results'}}
+function draw(r,note){LAST=r;document.getElementById('rh').innerHTML=`Results: <b>${r.count}</b> of ${r.universe} stocks${r.count>r.rows.length?` (showing ${r.rows.length})`:''} <span class="muted">sorted by ${esc((CAT.fields[r.sort]||{}).label||r.sort)} ${r.desc?'↓':'↑'}</span>${note||''}`;
+ const head=r.columns.map(c=>`<th style="cursor:pointer" onclick="resort('${c}')" title="${esc((CAT.fields[c]||{}).description||'')}">${esc((CAT.fields[c]||{}).label||c)}${r.sort===c?(r.desc?' ↓':' ↑'):''}</th>`).join('');
+ document.getElementById('res').innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>${r.rows.map(x=>`<tr>${r.columns.map(c=>`<td>${fmt(c,x[c])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${r.columns.length}" class="muted">no stock matches</td></tr>`}</tbody></table>`}
+function resort(c){const s=document.getElementById('sort');document.getElementById('dir').value=(s.value===c&&val('dir')==='1')?'0':'1';s.value=c;go()}
+async function saved(){const d=await j('/api/screener/saved');document.getElementById('saved').innerHTML=table(['Name','Query','Last run','Matches','Alerts',''],d.map(x=>`<tr><td>${esc(x.name)}</td><td><code>${esc(x.query)}</code></td><td>${esc(String(x.last_run_at||'—').slice(0,16))}</td><td>${x.last_count??'—'}</td><td>${x.notify?'on':'off'}</td><td><button onclick="runSaved('${x.screen_id}')">Run</button><button onclick="loadSaved('${x.screen_id}')">Edit</button><button onclick="del('${x.screen_id}')">✕</button></td></tr>`));window.SAVED=d}
+function loadSaved(id){const x=window.SAVED.find(s=>s.screen_id===id);document.getElementById('q').value=x.query;document.getElementById('sort').value=x.sort||'';document.getElementById('dir').value=x.descending?'1':'0';document.getElementById('sn').value=x.name;document.getElementById('snt').checked=!!x.notify;window.EDIT=id}
+async function runSaved(id){try{const r=await j(`/api/screener/saved/${id}/run`);loadSaved(id);draw(r,r.new.length||r.dropped.length?` · <span class="ok">new: ${esc(r.new.join(', ')||'none')}</span> · <span class="note">dropped: ${esc(r.dropped.join(', ')||'none')}</span>`:'');saved()}catch(e){alert(e.message)}}
+async function save(){try{const x=await post('/api/screener/saved',{name:val('sn').trim(),query:val('q').trim(),sort:val('sort')||null,desc:val('dir')==='1',notify:document.getElementById('snt').checked,screen_id:window.EDIT||null});window.EDIT=x.screen_id;document.getElementById('so').textContent=' saved';saved()}catch(e){document.getElementById('so').textContent=' '+e.message}}
+async function del(id){if(!confirm('Delete this saved screen?'))return;await post(`/api/screener/saved/${id}/delete`);if(window.EDIT===id)window.EDIT=null;saved()}
+</script></body></html>"""
+
+
+def render_screener(token: str) -> str:
+    return (SCREENER.replace("__STYLE__", _STYLE + _EXTRA).replace("__TOKEN__", json.dumps(token))
+            .replace("__TITLE__", "ATIP Screener").replace("__SUB__", "Fundamental screener (W39)"))
 
 
 def render_research(token: str) -> str:

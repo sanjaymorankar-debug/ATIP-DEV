@@ -1480,10 +1480,23 @@ def _schedule_w29_jobs():
 
 
 def _schedule_w39_jobs():
-    """W39: equity research reports after the evening scoring (research/report.py), and the
-    nightly, budgeted 7-year price-history backfill (data/history_backfill.py)."""
+    """W39: equity research reports after the evening scoring (research/report.py), the saved
+    fundamental screens after them (research/screener.py), and the nightly, budgeted 7-year
+    price-history backfill (data/history_backfill.py)."""
     schedule.every().day.at("20:40").do(_w39_research_reports)
+    schedule.every().day.at("20:50").do(_w39_saved_screens)
     schedule.every().day.at("22:20").do(_w39_history_backfill)
+
+
+def _w39_saved_screens():
+    """Re-run the saved fundamental screens after the research reports; alert on new matches."""
+    if not is_market_day():
+        return
+    try:
+        from research.screener import run_saved_screens
+        run_job("saved_screens", run_saved_screens)
+    except Exception as e:
+        log.warning(f"  Saved screens: {e}")
 
 
 def _w39_research_reports():

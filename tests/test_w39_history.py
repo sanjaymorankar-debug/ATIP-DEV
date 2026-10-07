@@ -227,4 +227,5 @@ def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
     fake = _Schedule()
     monkeypatch.setattr(S, "schedule", fake, raising=False)
     S._schedule_w39_jobs()
-    assert fake.jobs == [("20:40", S._w39_research_reports), ("22:20", S._w39_history_backfill)]
+    assert fake.jobs == [("20:40", S._w39_research_reports), ("20:50", S._w39_saved_screens),
+                         ("22:20", S._w39_history_backfill)]
