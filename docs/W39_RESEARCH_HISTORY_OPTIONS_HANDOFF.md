@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 150 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 162 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -439,6 +439,43 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Caveat:** a common Indian heuristic with no peer-reviewed return evidence. Its track record decides.
 
+## FS-01..FS-03: explainable fundamental scorecard (`research/scorecard.py`), Phase 2 item 7
+
+**What it is:** Simply Wall St's Snowflake layout rebuilt on ATIP's stored fundamentals: five axes of six pass / fail checks. Every check is a sentence carrying the numbers it used, for example "P/E 15.0x vs 25.0x, the median of 12 Capital Goods peers".
+
+| Axis | The six checks |
+|---|---|
+| Value | below the research model's fair value; 20 %+ below it; P/E below the market's median; P/E below its industry's median; PEG below 1; P/B below its industry's median |
+| Growth | EPS growth above a savings rate (the 7 % risk-free rate in `research/valuation.py`); above the market's median; 20 %+; revenue growth above the market's median; 20 %+; growth it can fund itself, ROE × the share of profit kept, of 10 %+ |
+| Past performance | EPS (TTM) up over 3 years; growth accelerating (this year's above the 3-year rate); EPS growth above the industry's median; net margin up on a year ago; ROE 20 %+; positive free cash flow |
+| Financial health | current ratio 1+; net debt under 40 % of equity (gross debt / equity when no debt and cash split is stored); debt / equity not up on a year ago; interest covered 3x+; free cash flow covering 20 %+ of debt; promoter pledge under 5 %. A company with practically no debt (D/E ≤ 0.05) passes the debt-rising, interest and FCF-to-debt checks outright |
+| Dividend | yield in the top 75 % of dividend payers, and the top 25 %; paid in each of the last two years; per-share dividend up on the year before; payout under 75 % of earnings; dividends covered by free cash flow |
+
+**Rules:**
+- A check is pass, fail, or unknown (no data). An unknown never counts as a pass. `checks_known` says how many could be checked.
+- Banks and NBFCs: the five debt checks and the FCF checks are unknown ("borrowing is its raw material"), so compare financials with financials.
+- A loss-maker fails the P/E, PEG, self-funded-growth and payout checks. A company paying no dividend fails the whole dividend axis, as on the Snowflake.
+- Growth uses the latest reported figures: ATIP holds no analyst forecasts.
+- Thresholds are in `config.json` `"scorecard"` (`DEFAULTS` in the module).
+
+**Inputs:**
+- The market and industry comparisons use the screener's snapshot of every stock. Industry medians exclude the stock itself and need 3+ peers; market medians need 10+ stocks.
+- The history checks read the stored quarters, point in time (period end on or before the day). A quarter counts as "a year ago" within ±50 days.
+- Dividends: the stored yield, else NSE's corporate-action calendar (`corporate_actions`, subjects like "Interim Dividend - Rs 6 Per Share", several amounts per subject summed), with old amounts adjusted for later splits and bonuses. The two-year checks stay unknown until the calendar covers two years; meanwhile "paid steadily" falls back to a stored yield in every quarter over two years.
+
+**Where it shows:**
+- Screener fields `checks_passed` (0–30), `value_checks`, `growth_checks`, `past_checks`, `health_checks`, `dividend_checks` (0–6), group "Scorecard". `checks_passed` is in the default fundamental columns.
+- Presets: "Scorecard all-rounders" (20+, no axis below 2), "Healthy and growing", "Undervalued with a clean record", "Dependable dividends".
+- `/research`: a scorecard card under the report header with a five-axis chart (one series, `#3987e5`) and every check listed with its numbers, which is also the chart's text equivalent.
+- `python -m research.scorecard show RELIANCE` prints the same.
+
+**Its own record (FS-03):**
+- The 20:50 saved-screens job first stores the day's scorecards in `fundamental_scorecard` (counts, plus pass / fail flags as JSON).
+- `record(conn, horizon)`: return minus the Nifty's over the next 20 / 60 / 120 / 250 sessions, by checks-passed band (0–10, 11–15, 16–20, 21–30). One sample per stock per calendar month, so a slow-moving score is not counted twenty times. A band needs 30 samples; the top-minus-bottom spread is only given when both ends have them.
+- `/research` → Ratings & hit rate → "Does the scorecard pay?".
+
+**API:** `GET /api/research/scorecard/{symbol}` (404 without fundamentals), `GET /api/research/scorecard-record?horizon=60` (400 on another horizon).
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -456,10 +493,10 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60) and the weekly snapshot columns to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days) and `market_cue` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60) and the weekly snapshot columns to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate` and `fundamental_scorecard` (research, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
-- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
+- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
 - `docs/API_REFERENCE.md` and `docs/openapi.json` regenerated. They were also stale from W34–W38: 402 → 511 routes.
 - `db/sql/*.sql` are pinned snapshots (master @ 6896bea) and were not regenerated. The new tables are created on first start like any additive migration.
 
@@ -474,6 +511,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
 | `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
 | `tests/test_w39_rs_line.py` | 7 | RS-line new high on the first day only; RS line leads while price is below its high, and not when price is at a high; snapshot flag; AMFI cut-offs and RS within each group; market caps from the latest shares on or before the date; run stores group and rank; screener fields and presets |
 | `tests/test_w39_patterns.py` | 11 | Darvas box and breakout, still-inside and steady-climb negatives, breakdown; VCP contractions, dry-up and volume-confirmed breakout, widening pullbacks and no dry-up rejected; double bottom breakout and uneven lows rejected; ascending triangle; head-and-shoulders breakdown; pattern scans carry their levels; snapshot lists setups; screener fields and presets; pattern alerts held until 30 closed with positive R |
@@ -499,8 +537,6 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Technical signals:**
 - End of day only; no intraday scans yet (they need the 15-minute bar job and the Dhan Data API).
-- No chart-pattern detection (Darvas, VCP, triangles, head and shoulders) yet.
-- The regime enters as one confluence factor; there is no distribution-day gate yet.
 - Track records start on the first run and are measured on ATIP's own prices. Trust a scan only after ~30 closed signals.
 
 **Chart patterns:**
@@ -512,6 +548,12 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Measured from the signal day's close, not the next open.
 - Excess is against the Nifty 50, not a sector or size benchmark.
 - With a few weeks of signals most cells are below 10. The record becomes useful after a few months.
+
+**Fundamental scorecard:**
+- Growth checks use reported growth, not forecasts; a cyclical at a peak scores well on growth just before it turns.
+- The dividend history checks need two years of NSE's corporate-action calendar; until then they use stored yields or stay unknown.
+- Banks and NBFCs miss six checks by design: their scores are only comparable with other financials.
+- Its record starts the night the 20:50 job first stores scorecards; with one sample per stock per month, a band needs months before it speaks.
 
 **Market regime gate:**
 - The thresholds are ATIP's choices in the IBD tradition, not IBD's published rules. Whether they help on Indian stocks is what "Does the market gate help?" will show once 30+ signals have closed on each side.
@@ -525,7 +567,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - The early-October 2026 market figures in the plan doc are press reports, not verified.
 
 **Next on the roadmap** (details and order in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8):
-- Regime gate (distribution days), track record by regime and horizon, weekly rating, chart patterns, RS-line highs, delivery spikes, explainable fundamental composite, event calendar
+- Event calendar (FOMC, US CPI and payrolls, RBI policy) in the gap forecast (Phase 2, item 8)
 - Intraday scans and 20-level depth imbalance (Dhan Data API)
 - English → screener query and an ATIP MCP server (Anthropic key)
 - MF analytics / SIP, tax P&L, earnings-surprise signal

@@ -37,7 +37,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 - **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
 
 **The best plan from here** (section 8):
-- **Phase 2 (uses data ATIP already has):** regime gate and a per-signal record split by regime and horizon (both **built**, see §8), weekly-timeframe rating, chart patterns, explainable fundamental composite.
+- **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes and an explainable fundamental composite (all **built**, see §8); an event calendar is next.
 - **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
 - **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
 - **Phase 5:** live execution, only with your explicit go-ahead.
@@ -228,7 +228,7 @@ They use synthetic series with known answers. Examples:
 | Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders (**built**, Phase 2); channels, wedges, inverse head and shoulders, descending triangle | Finviz, TrendSpider, StockEdge | 2 (rest: later) |
 | ~~RS-line new high; rank within cap bucket~~ | IBD, StockCharts | 2: **built** |
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
-| Explainable fundamental composite (Snowflake-style 5 × 6 checks) and a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 |
+| Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
 | Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze | Chartink, Streak | 3 |
 | Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
 | English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
@@ -283,9 +283,16 @@ They use synthetic series with known answers. Examples:
    - Scan "Delivery spike, up day": delivery % at 1.5× or more its 20-day average and 30 %+, on an up close.
    - Screener: `delivery_pct`, `delivery_ratio`, preset "Delivery spike on an up day".
    - A popular Indian heuristic (StockEdge, Chartink) with no peer-reviewed return evidence; its track record will show whether it pays.
-7. **Explainable fundamental composite.**
-   - 5 axes × 6 pass/fail checks over the stored fundamentals, shown next to the research rating;
-   - the screener gets `checks_passed` fields.
+7. **Explainable fundamental composite. Built** (`research/scorecard.py`).
+   - Five axes of six pass / fail checks over the stored fundamentals, each check a sentence with the numbers it used:
+     - **Value:** below the research model's fair value, and 20 %+ below; P/E below the market's and its industry's median; PEG below 1; P/B below its industry's median.
+     - **Growth** (the latest reported figures; ATIP has no analyst forecasts): EPS growth above a 7 % savings rate, above the market's median, 20 %+; revenue growth above the market's median, 20 %+; growth it can fund itself (ROE × profit kept) of 10 %+.
+     - **Past performance:** EPS up over 3 years; growth accelerating; EPS growth above the industry's; net margin up on a year ago; ROE 20 %+; positive free cash flow.
+     - **Financial health:** current ratio 1+; net debt under 40 % of equity; debt not rising; interest cover 3x+; free cash flow covering 20 %+ of debt (a company with no debt passes these); promoter pledge under 5 %.
+     - **Dividend:** yield in the top 75 % and top 25 % of payers; paid in each of the last two years; growing; covered by earnings (payout under 75 %) and by free cash flow. Dividend history comes from NSE's corporate-action calendar, split-adjusted.
+   - A check with no data never passes; the debt checks are not scored for banks and NBFCs; a loss-maker fails the earnings checks and a non-payer the dividend axis.
+   - Shown on `/research` under the report header, with a five-axis chart. Screener fields `checks_passed` (0–30) and one 0–6 count per axis, with presets "Scorecard all-rounders", "Healthy and growing", "Undervalued with a clean record" and "Dependable dividends".
+   - **Its own record:** the 20:50 job stores each day's scorecards; "Does the scorecard pay?" on `/research` shows return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed, one sample per stock per month, 30 samples a band before it counts.
 8. **Event calendar** (FOMC, US CPI and NFP, RBI policy) to widen the gap forecast and mark event days.
 
 ### Phase 3: intraday (needs the Dhan Data API, ₹499/month)

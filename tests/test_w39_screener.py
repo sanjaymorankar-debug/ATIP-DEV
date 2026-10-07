@@ -146,7 +146,7 @@ def test_saved_screens_report_new_matches_and_alert(db):
     db.commit()
     SC.clear_cache()
     out = SC.run_saved_screens()
-    assert out == {"status": "SUCCESS", "rows": 1, "alerted": 1, "reason": None}
+    assert out == {"status": "SUCCESS", "rows": 1, "alerted": 1, "scorecards": 4, "reason": None}
     msg = db.execute("SELECT message FROM alert_log WHERE category='screener'").fetchone()[0]
     assert "NEWCO" in msg and "Cheap and profitable" in msg
     again = SC.run_saved(db, s["screen_id"], use_cache=False)

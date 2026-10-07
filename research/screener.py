@@ -2,12 +2,13 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        120 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        126 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
                   model (rating, upside, fair value, moat proxy, quality), a magic-formula rank
-                  (Greenblatt, approximated with E/P and ROCE; financials excluded), the technical
+                  (Greenblatt, approximated with E/P and ROCE; financials excluded), the fundamental
+                  scorecard (research/scorecard.py: checks passed of 30 and per axis), the technical
                   snapshot (research/tech_signals.py: rating, weekly rating and daily / weekly agreement,
                   RS rating, RSI, MACD, ADX, Supertrend,
                   patterns, chart patterns in place, VCP setup, signals and one scan_<key> 1/0 field per
@@ -26,7 +27,8 @@ everything ATIP knows about a stock, one row per symbol.
                   dividend, debt-free, ...), technical (breakouts on volume, golden cross, Supertrend,
                   trend template, RS leaders, ...) and combined (quality stock breaking out, ...)
     saved screens research_screen: name, query, sort, columns, notify. run_saved_screens() (daily
-                  20:50, after the research reports) re-runs them and alerts on NEW matches.
+                  20:50, after the research reports) re-runs them and alerts on NEW matches; the same
+                  job stores the day's scorecards (fundamental_scorecard) for their track record.
 
 Units: percentages are in % (roce_pct 22.5 means 22.5 %); money in rupees, *_cr in crore.
 The snapshot is cached for 10 minutes per database so editing a query in the UI is instant.
@@ -39,6 +41,7 @@ import csv
 import html
 import io
 import json
+import logging
 import re
 import time
 import uuid
@@ -46,6 +49,7 @@ from datetime import date, datetime, timedelta
 
 from research import valuation as V
 
+log = logging.getLogger(__name__)
 CACHE_SECONDS = 600
 _CACHE: dict = {}
 
@@ -157,6 +161,20 @@ FIELDS = dict([
     _f("quality_score", "Quality score", "Research", aliases=("quality",)),
     _f("magic_rank", "Magic formula rank", "Research", aliases=("magic_formula",),
        desc="Greenblatt: rank by earnings yield + rank by ROCE; 1 is best; financials excluded"),
+    _f("checks_passed", "Scorecard checks passed (of 30)", "Scorecard", "0-30", aliases=("scorecard", "checks"),
+       desc="5 axes x 6 pass / fail checks (research/scorecard.py); a check with no data never passes"),
+    _f("value_checks", "Value checks (of 6)", "Scorecard", "0-6", aliases=("value_score",),
+       desc="below fair value, 20 %+ below, P/E vs market and industry, PEG < 1, P/B vs industry"),
+    _f("growth_checks", "Growth checks (of 6)", "Scorecard", "0-6", aliases=("growth_score",),
+       desc="EPS growth vs a savings rate, the market and 20 %; revenue growth vs the market and 20 %; "
+            "self-funded growth 10 %+"),
+    _f("past_checks", "Past performance checks (of 6)", "Scorecard", "0-6", aliases=("past_score",),
+       desc="EPS up over 3 years, accelerating, above the industry; net margin up; ROE 20 %+; positive FCF"),
+    _f("health_checks", "Financial health checks (of 6)", "Scorecard", "0-6", aliases=("health_score",),
+       desc="current ratio, net debt / equity, debt not rising, interest cover, FCF vs debt, promoter pledge "
+            "(the debt checks are not scored for banks and NBFCs)"),
+    _f("dividend_checks", "Dividend checks (of 6)", "Scorecard", "0-6", aliases=("dividend_score",),
+       desc="yield vs payers' quartiles, paid 2 years running, growing, covered by earnings and by FCF"),
 ])
 
 from research.technicals import SCANS as _SCANS                     # noqa: E402  (one 1/0 field per scan)
@@ -170,7 +188,8 @@ for _k, _m in FIELDS.items():
         _ALIAS[_a.lower()] = _k
 
 DEFAULT_COLUMNS = ["symbol", "industry", "price", "market_cap_cr", "pe", "roce_pct", "roe_pct", "debt_equity",
-                   "revenue_growth_pct", "eps_growth_pct", "research_rating", "research_upside_pct", "atip_score"]
+                   "revenue_growth_pct", "eps_growth_pct", "research_rating", "research_upside_pct", "checks_passed",
+                   "atip_score"]
 TECH_COLUMNS = ["symbol", "industry", "price", "tech_rating_label", "tech_rating_w_label", "rs_rating", "rsi_14", "adx_14",
                 "pct_from_sma200", "vol_ratio", "return_1m_pct", "signals"]
 COMBINED_COLUMNS = ["symbol", "industry", "price", "pe", "roce_pct", "research_rating", "research_upside_pct",
@@ -216,6 +235,19 @@ PRESETS = [
      "query": "rsi_14 < 35 AND roce_pct > 18 AND debt_equity < 0.7", "sort": "rsi_14", "desc": False},
     {"key": "pledge_risk", "name": "Pledge risk", "description": "Promoter pledge above 20%: names to be careful with",
      "query": "pledged_pct > 20", "sort": "pledged_pct"},
+    {"key": "sc_all_rounders", "name": "Scorecard all-rounders",
+     "description": "20+ of the 30 scorecard checks passed, none of the five axes below 2",
+     "query": ("checks_passed >= 20 AND value_checks >= 2 AND growth_checks >= 2 AND past_checks >= 2 AND "
+               "health_checks >= 2 AND dividend_checks >= 2"), "sort": "checks_passed"},
+    {"key": "sc_healthy_growers", "name": "Healthy and growing",
+     "description": "5+ of 6 health checks and 4+ of 6 growth checks",
+     "query": "health_checks >= 5 AND growth_checks >= 4", "sort": "growth_checks"},
+    {"key": "sc_value_quality", "name": "Undervalued with a clean record",
+     "description": "4+ value checks with 4+ past-performance and 4+ health checks",
+     "query": "value_checks >= 4 AND past_checks >= 4 AND health_checks >= 4", "sort": "value_checks"},
+    {"key": "sc_dividend", "name": "Dependable dividends",
+     "description": "5+ of 6 dividend checks: a good yield, paid steadily, covered by earnings and cash",
+     "query": "dividend_checks >= 5", "sort": "dividend_yield_pct"},
     # technical (Chartink / Finviz style; EOD, from research/technicals.py)
     {"key": "t_breakout_volume", "name": "52-week high breakout on volume", "group": "technical",
      "description": "Close above the prior 52-week high, volume over 1.5x average",
@@ -623,6 +655,14 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
             row[f"scan_{key}"] = ts.get(f"scan_{key}", 0) if ts else None
         rows.append(row)
     _magic_rank(rows)
+    from research import scorecard
+    try:
+        scorecard.apply(conn, rows, as_of, uni.fund)
+    except Exception as e:                      # the scorecard must never take the screener down
+        log.warning(f"  Scorecard unavailable: {e}")
+        for r in rows:
+            for k in scorecard.COUNT_FIELDS:
+                r.setdefault(k, None)
     return rows
 
 
@@ -797,13 +837,16 @@ def run_saved(conn, screen_id: str, use_cache=True, rows=None, record=True) -> d
 
 
 def run_saved_screens() -> dict:
-    """Daily job: re-run every saved screen; alert on new matches for screens with notify on."""
+    """Daily job: store the day's fundamental scorecards (research/scorecard.py), then re-run every saved screen;
+    alert on new matches for screens with notify on."""
     from db.schema import get_connection
     conn = get_connection()
     ran = alerted = 0
     try:
         ensure_tables(conn)
         rows, _ = snapshot(conn, use_cache=False)
+        from research import scorecard
+        stored = scorecard.store(conn, rows, date.today())
         for s in list_screens(conn):
             res = run_saved(conn, s["screen_id"], rows=rows)
             ran += 1
@@ -816,7 +859,7 @@ def run_saved_screens() -> dict:
                 alerted += 1
     finally:
         conn.close()
-    return {"status": "SUCCESS" if ran else "SKIPPED", "rows": ran, "alerted": alerted,
+    return {"status": "SUCCESS" if ran or stored else "SKIPPED", "rows": ran, "alerted": alerted, "scorecards": stored,
             "reason": None if ran else "no saved screens"}
 
 

@@ -10,6 +10,7 @@ Tables added in W39 (history, research & options tooling), applied by db/schema.
     fo_participant_oi       MP-04  NSE participant-wise open interest (Client / DII / FII / Pro)
     market_cue              MP-02  pre-open GIFT Nifty and global-model gap estimates, with the actual open
     market_regime_gate      RG-01  the Nifty market gate per session: distribution days, status, OPEN / CAUTION / CLOSED
+    fundamental_scorecard   FS-03  each stock's scorecard per day: checks passed of 30, per axis, pass / fail flags
 
 Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE ADD COLUMN):
     technical_signal        RG-03  market_gate, alignment (the gate each signal was born under)
@@ -23,6 +24,7 @@ from data.order_pressure import DDL as _BOOK
 from data.participant_oi import DDL as _POI
 from research.market_pulse import DDL as _CUE
 from research.regime_gate import DDL as _GATE
+from research.scorecard import DDL as _SCORE
 from research.tech_signals import ADDED_COLUMNS as _TECH_COLS
 
 W39_TABLES = {
@@ -35,6 +37,7 @@ W39_TABLES = {
     "fo_participant_oi": _POI,
     "market_cue": _CUE,
     "market_regime_gate": _GATE,
+    "fundamental_scorecard": _SCORE,
 }
 
 W39_COLUMNS = dict(_TECH_COLS)

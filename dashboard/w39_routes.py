@@ -14,6 +14,8 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     POST /api/research/equity/run                    {symbols?} build and store reports for the universe
     GET  /api/research/equity/{symbol}/history       rating / target calls and their outcomes
     GET  /api/research/hit-rate                      closed calls by rating
+    GET  /api/research/scorecard/{symbol}            the fundamental scorecard: 5 axes x 6 checks, each with its numbers
+    GET  /api/research/scorecard-record?horizon=60   return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed
     GET  /api/data/history/coverage                  how much of the universe reaches back 7 years
     POST /api/data/history/backfill                  {symbols?, max?, years?} one budgeted backfill pass
     GET  /screener                                   the stock screener page (fundamental + technical)
@@ -121,6 +123,22 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_research_hit_rate():
         from research.report import hit_rate
         return await run(hit_rate)
+
+    @app.get("/api/research/scorecard-record")
+    async def api_scorecard_record(horizon: int = 60):
+        from research.scorecard import record
+        return await run(lambda c: record(c, int(horizon)))
+
+    @app.get("/api/research/scorecard/{symbol}")
+    async def api_scorecard(symbol: str):
+        def f(conn):
+            from research.scorecard import for_symbol
+            s = _sym(symbol)
+            sc = for_symbol(conn, s)
+            if sc is None:
+                raise LookupError(f"no fundamentals stored for {s}")
+            return sc
+        return await run(f)
 
     @app.post("/api/research/equity/run", dependencies=guard)
     async def api_research_run(request: Req):

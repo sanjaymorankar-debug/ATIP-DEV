@@ -1,5 +1,6 @@
 """
-W39 pages: /research (equity research reports, ratings, hit rate, 7-year history coverage),
+W39 pages: /research (equity research reports with the fundamental scorecard, ratings, hit rate and
+the scorecard's record, 7-year history coverage),
 /screener (fundamental + technical stock screener with presets and saved screens), /signals
 (end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, FII
 flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
@@ -27,6 +28,12 @@ ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-co
 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
 #chart{overflow:hidden}.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin:4px 0}
 .legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+.axes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+@media(max-width:1000px){.axes{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.axes{grid-template-columns:1fr}}
+.ax{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.ax b{font-size:12.5px}
+.ax.fl{display:flex;align-items:center;justify-content:center}
+.ck{margin-top:5px;font-size:12px;line-height:1.35}.ck .d{color:var(--muted);font-size:11.5px;margin-left:16px}
+.ck i{font-style:normal;display:inline-block;width:14px;font-weight:700}
 #tip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
  font-size:12px;display:none;z-index:9}
 """
@@ -60,7 +67,9 @@ RESEARCH = _HEAD + r"""
 <div id="rep"></div></div>
 <div class="pane" id="p-rat"><div class="card"><h3>Latest ratings <select id="rf" onchange="rat()"><option value="">All</option><option>BUY</option><option>ADD</option><option>REDUCE</option><option>SELL</option><option>NOT_RATED</option></select>
 <button onclick="runAll()">Rebuild all</button></h3><div id="rat" class="scroll"></div></div>
-<div class="card"><h3>Hit rate of past calls</h3><div class="muted">A call is a new rating or a target move of more than 5%. HIT = the target was reached within 12 months.</div><div id="hit" style="margin-top:6px"></div></div></div>
+<div class="card"><h3>Hit rate of past calls</h3><div class="muted">A call is a new rating or a target move of more than 5%. HIT = the target was reached within 12 months.</div><div id="hit" style="margin-top:6px"></div></div>
+<div class="card"><h3>Does the scorecard pay? <select id="sch" onchange="screc()"><option value="20">20 sessions</option><option value="60" selected>60 sessions</option><option value="120">120 sessions</option><option value="250">250 sessions</option></select></h3>
+<div class="muted">Return minus the Nifty's after each stored scorecard, by checks passed. One sample per stock per month. A band needs 30 samples before it means anything; the record starts the day the 20:50 job first stores scorecards.</div><div id="scr" style="margin-top:6px"></div></div></div>
 <div class="pane" id="p-his"><div class="card"><h3>7-year price history</h3>
 <div class="muted">The nightly backfill (22:20) walks each tracked stock back 7 years from Dhan, 40 stocks a night. Daily prices are now kept for 7 years.</div>
 <div id="cov" style="margin-top:8px"></div><button onclick="backfill()">Run a pass now (10 stocks)</button><span id="bfo" class="muted"></span></div></div>
@@ -72,7 +81,24 @@ function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggl
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const li=xs=>xs&&xs.length?`<ul class="b">${xs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<span class="muted">none found</span>';
 async function load(rebuild){const s=document.getElementById('sym').value.trim().toUpperCase();if(!s)return;const el=document.getElementById('rep');el.innerHTML='<div class="card muted">Loading…</div>';
- try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+ try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+async function scard(s){const el=document.getElementById('scd');if(!el)return;
+ try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}}
+const AXN={value:'Value',growth:'Growth',past:'Past',health:'Health',dividend:'Dividend'};
+function flake(axes){const cx=160,cy=118,R=80,ang=i=>(-90+72*i)*Math.PI/180,pt=(i,r)=>[cx+r*Math.cos(ang(i)),cy+r*Math.sin(ang(i))];
+ const ring=k=>axes.map((_,i)=>pt(i,R*k/6).map(v=>v.toFixed(1)).join(',')).join(' ');
+ const shape=axes.map((a,i)=>pt(i,R*Math.max(a.passed,0.15)/6).map(v=>v.toFixed(1)).join(',')).join(' ');
+ const lab=axes.map((a,i)=>{const[x,y]=pt(i,R+16),an=Math.abs(x-cx)<5?'middle':x>cx?'start':'end';return `<text x="${x.toFixed(1)}" y="${(y+(y<cy-40?-2:y>cy+20?10:4)).toFixed(1)}" text-anchor="${an}" font-size="11" fill="#e2e8f0">${AXN[a.key]||esc(a.label)} <tspan fill="#94a3b8">${a.passed}/6</tspan></text>`}).join('');
+ return `<svg viewBox="0 0 320 236" width="100%" style="max-width:300px" role="img" aria-label="${esc(axes.map(a=>`${a.label} ${a.passed} of 6`).join(', '))}">
+ ${[2,4,6].map(k=>`<polygon points="${ring(k)}" fill="none" stroke="#334155"/>`).join('')}${axes.map((_,i)=>{const[x,y]=pt(i,R);return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#334155"/>`}).join('')}
+ <polygon points="${shape}" fill="#3987e5" fill-opacity="0.35" stroke="#3987e5" stroke-width="2"/>${lab}</svg>`}
+function scorecard(sc){const mark=p=>p===true?'<i class="ok">✓</i>':p===false?'<i class="bad">✗</i>':'<i class="muted">·</i>';
+ return `<div class="card"><h3>Fundamental scorecard: ${sc.checks_passed} of 30 checks passed <span class="muted">(${sc.checks_known} could be checked)</span></h3>
+ <div class="muted">Five axes of six pass / fail checks over the stored fundamentals, each with the numbers it used: <span class="ok">✓</span> pass, <span class="bad">✗</span> fail, <b>·</b> no data or not meaningful${sc.financial?' (debt checks are not scored for a bank or NBFC: compare it with other financials)':''}. Growth uses the latest reported figures: ATIP holds no analyst forecasts.</div>
+ <div class="axes"><div class="ax fl">${flake(sc.axes)}</div>${sc.axes.map(a=>`<div class="ax"><b>${esc(a.label)}</b> <span class="muted">${a.passed}/6</span>${a.checks.map(c=>`<div class="ck">${mark(c.pass)}${esc(c.label)}<div class="d">${esc(c.detail)}</div></div>`).join('')}</div>`).join('')}</div></div>`}
+async function screc(){const h=document.getElementById('sch').value;const o=await j(`/api/research/scorecard-record?horizon=${h}`);
+ document.getElementById('scr').innerHTML=table(['Checks passed','Samples','Beat the Nifty','Median excess','Mean excess'],o.bands.map(b=>`<tr><td>${esc(b.band)}</td><td>${b.n}${b.enough?'':' <span class="muted">(too few)</span>'}</td><td>${b.beat_nifty_pct==null?'—':b.beat_nifty_pct+'%'}</td><td>${pct(b.median_excess_pct)}</td><td>${pct(b.mean_excess_pct)}</td></tr>`))+
+ `<div class="muted" style="margin-top:6px">${o.top_minus_bottom_pct==null?`Top band minus bottom band: not yet (${o.stored_days} days stored).`:`Top band minus bottom band: <b>${pct(o.top_minus_bottom_pct)}</b> over ${o.horizon} sessions.`}</div>`}
 function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.key_financials||{};
  const meth=Object.entries(v.methods||{}).map(([k,m])=>`<tr><td>${esc(k.replace('_',' '))}</td><td>${rs(m.value)}</td><td>${n(m.weight*100,0)}%</td><td class="muted">${esc(m.multiple?`${m.multiple.toUpperCase()} ${m.peer_median??m.own_median}x (${m.peers??m.quarters} ${m.peers?'peers':'quarters'})`:`ke ${m.ke_pct}%`)}</td></tr>`);
  const sc=v.scenarios?['bear','base','bull'].map(k=>`<tr><td>${k}</td><td>${rs(v.scenarios[k].value)}</td><td>${v.scenarios[k].g1_pct}%</td><td>${v.scenarios[k].ke_pct}%</td><td>${v.scenarios[k].terminal_pct}%</td><td>${n(v.scenarios[k].weight*100,0)}%</td></tr>`):[];
@@ -83,6 +109,7 @@ function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.
  <div class="grid"><div class="stat"><div class="k">Price</div><div class="v">${rs(r.price)}</div></div><div class="stat"><div class="k">12-month target</div><div class="v">${rs(r.target_price)}</div></div>
  <div class="stat"><div class="k">Upside</div><div class="v">${pct(r.upside_pct)}</div></div><div class="stat"><div class="k">Fair value</div><div class="v">${rs(r.fair_value)}</div></div>
  <div class="stat"><div class="k">Uncertainty</div><div class="v">${esc((r.uncertainty||'—').replace('_',' '))}</div></div><div class="stat"><div class="k">Moat proxy / quality</div><div class="v">${esc(q.moat_proxy||'—')} / ${n(q.quality_score,0)}</div></div></div></div>
+ <div id="scd"><div class="card muted">Loading the scorecard…</div></div>
  <div class="two"><div class="card"><h3>Investment thesis</h3>${li(r.thesis)}</div><div class="card"><h3>Risks</h3>${li(r.risks)}</div></div>
  <div class="card"><h3>Catalysts</h3>${li(r.catalysts)}</div>
  <div class="two"><div class="card"><h3>Valuation methods (cost of equity ${v.cost_of_equity_pct}%)</h3>${table(['Method','Value','Weight','Basis'],meth)}</div>
@@ -93,7 +120,7 @@ function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.
  <div class="card"><h3>Peers (${esc(r.industry||'industry unknown')})</h3>${table(['Symbol','Price','P/E','P/B','ROE %','Revenue growth','M-cap ₹ cr'],peers)}</div>
  <div class="card"><h3>Shareholding (%)</h3>${table(['Quarter','Promoter','FPI','MF','Retail','Pledged'],shp)}</div>
  <div class="card"><h3>Disclosures</h3>${li(r.disclosures)}</div>`}
-async function rat(){const r=document.getElementById('rf').value;const d=await j('/api/research/equity'+(r?`?rating=${r}`:''));
+async function rat(){screc();const r=document.getElementById('rf').value;const d=await j('/api/research/equity'+(r?`?rating=${r}`:''));
  document.getElementById('rat').innerHTML=table(['Symbol','As of','Price','Target','Upside','Rating','Uncertainty','Moat','ATIP signal'],d.map(x=>`<tr><td><a href="#" style="color:var(--accent)" onclick="document.getElementById('sym').value='${esc(x.symbol)}';show('rep');load();return false">${esc(x.symbol)}</a></td><td>${esc(String(x.as_of).slice(0,10))}</td><td>${rs(x.price)}</td><td>${rs(x.target_price)}</td><td>${pct(x.upside_pct)}</td><td>${pill(x.rating)}</td><td>${esc(x.uncertainty||'')}</td><td>${esc(x.moat_proxy||'')}</td><td>${esc(x.atip_signal||'')}</td></tr>`));
  const h=await j('/api/research/hit-rate');document.getElementById('hit').innerHTML=table(['Rating','Calls','Open','Hit','Missed','Success rate','Avg return'],Object.entries(h).map(([k,o])=>`<tr><td>${pill(k)}</td><td>${o.calls}</td><td>${o.open}</td><td>${o.hit}</td><td>${o.missed}</td><td>${o.success_rate_pct==null?'—':o.success_rate_pct+'%'}</td><td>${pct(o.avg_return_pct)}</td></tr>`))}
 async function runAll(){if(!confirm('Rebuild today\'s report for every tracked stock?'))return;const o=await post('/api/research/equity/run');alert(`${o.rows} reports, ${o.calls} calls`);rat()}

@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 19:30 by `python -m ops api-docs` from the running application (540 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-07 19:47 by `python -m ops api-docs` from the running application (542 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -581,6 +581,8 @@ Generated 2026-10-07 19:30 by `python -m ops api-docs` from the running applicat
 | GET | `/api/research/equity/{symbol}/history` | research:read |  | `symbol` | rating / target calls and their outcomes |
 | POST | `/api/research/equity/{symbol}/refresh` | research:run | token | `symbol` | build and store today's report |
 | GET | `/api/research/hit-rate` | research:read |  |  | closed calls by rating |
+| GET | `/api/research/scorecard-record` | research:read |  | `horizon`=60 | return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed |
+| GET | `/api/research/scorecard/{symbol}` | research:read |  | `symbol` | the fundamental scorecard: 5 axes x 6 checks, each with its numbers |
 | GET | `/api/research/studies` | research:read |  | `status` | ?status ; POST (token) {title, hypothesis, method, tags, supersedes} |
 | POST | `/api/research/studies` | research:run | token |  |  |
 | GET | `/api/research/studies/{sid}` | research:read |  | `sid` |  |

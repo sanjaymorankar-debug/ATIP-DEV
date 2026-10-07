@@ -6400,6 +6400,81 @@
     }
    }
   },
+  "/api/research/scorecard-record": {
+   "get": {
+    "summary": "Api Scorecard Record",
+    "operationId": "api_scorecard_record_api_research_scorecard_record_get",
+    "parameters": [
+     {
+      "name": "horizon",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 60,
+       "title": "Horizon"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/scorecard/{symbol}": {
+   "get": {
+    "summary": "Api Scorecard",
+    "operationId": "api_scorecard_api_research_scorecard__symbol__get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/research/equity/run": {
    "post": {
     "summary": "Api Research Run",

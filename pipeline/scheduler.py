@@ -1484,8 +1484,8 @@ def _schedule_w39_jobs():
     GIFT / global-cue estimate at 08:45 and 09:05 and its check against the open at 09:35, NSE
     participant OI at 20:15 and the Nifty history at 23:20 (research/market_pulse.py); the
     technical snapshot and signals (research/tech_signals.py), equity research reports after the
-    evening scoring (research/report.py), the saved
-    fundamental screens after them (research/screener.py), and the nightly, budgeted 7-year
+    evening scoring (research/report.py), the day's fundamental scorecards and the saved
+    screens after them (research/scorecard.py, research/screener.py), and the nightly, budgeted 7-year
     price-history backfill (data/history_backfill.py)."""
     schedule.every(15).minutes.do(_w39_order_pressure_tick)
     schedule.every().day.at("08:45").do(_w39_gift)
@@ -1567,7 +1567,8 @@ def _w39_technical_signals():
 
 
 def _w39_saved_screens():
-    """Re-run the saved fundamental screens after the research reports; alert on new matches."""
+    """Store the day's fundamental scorecards, then re-run the saved screens after the research reports;
+    alert on new matches."""
     if not is_market_day():
         return
     try:
