@@ -432,9 +432,29 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_wealth_perf_report(request: Req):
         b = await body(request)
         args = (b.get("portfolio") or "PAPER", b.get("start"), b.get("end"), b.get("benchmark"), b.get("options"))
+        strat = b.get("strategy") or None
         if b.get("store", True) is False:
-            return run(lambda conn: PR.build(conn, owner(request), *args))
-        return run(lambda conn: PR.run(conn, owner(request), *args, actor=actor(request)))
+            return run(lambda conn: PR.build(conn, owner(request), *args, strategy=strat))
+        return run(lambda conn: PR.run(conn, owner(request), *args, actor=actor(request), strategy=strat))
+
+    @app.post("/api/wealth/performance/report/export", dependencies=guard)
+    async def api_wealth_perf_report_preview_export(request: Req):
+        """W39 (PERF-001-13): download a preview (not stored) in csv | json."""
+        b = await body(request)
+        conn = get_connection()
+        try:
+            rep = PR.build(conn, owner(request), b.get("portfolio") or "PAPER", b.get("start"), b.get("end"),
+                           b.get("benchmark"), b.get("options"), strategy=b.get("strategy") or None)
+            content, media = PR.export(rep, b.get("format") or "csv")
+        except LookupError as e:
+            return err(e, 404)
+        except BAD as e:
+            return err(e)
+        finally:
+            conn.close()
+        ext = "json" if media == "application/json" else "csv"
+        return Response(content=content, media_type=media,
+                        headers={"Content-Disposition": f'attachment; filename="atip_performance_preview.{ext}"'})
 
     @app.get("/api/wealth/performance/reports")
     async def api_wealth_perf_reports(request: Req, limit: int = 50):
@@ -443,6 +463,11 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/wealth/performance/reports/{rid}")
     async def api_wealth_perf_report_get(rid: str, request: Req):
         return run(lambda conn: PR.get(conn, owner(request), rid))
+
+    @app.get("/api/wealth/performance/reports/{rid}/verify")
+    async def api_wealth_perf_report_verify(rid: str, request: Req):
+        """W39 (PERF-001-12): rebuild a stored report from today's data and diff it."""
+        return run(lambda conn: PR.verify(conn, owner(request), rid))
 
     @app.get("/api/wealth/performance/reports/{rid}/export")
     async def api_wealth_perf_report_export(rid: str, request: Req, format: str = "csv"):

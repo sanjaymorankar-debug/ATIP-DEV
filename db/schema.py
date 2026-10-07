@@ -208,6 +208,11 @@ def _run_additive_migrations(conn):
     from db.schema_w35 import W35_TABLES                    # W35: data platform
     for name, ddls in W35_TABLES.items():
         _create_table_if_missing(conn, name, ddls)
+    from db.schema_w39 import W39_TABLES, W39_COLUMNS     # W39: tracker reconciliation (PERF-001 detail, notes)
+    for name, ddls in W39_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in W39_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing
@@ -932,6 +937,7 @@ WEALTH_TABLES = {
             source TEXT NOT NULL, source_ref TEXT NOT NULL, trade_date DATE NOT NULL, ts TEXT, kind TEXT NOT NULL,
             symbol TEXT, quantity REAL, price REAL, gross_value REAL, fees REAL, reference_price REAL,
             price_quality TEXT, strategy_id TEXT, tag TEXT, note TEXT, created_at TIMESTAMP, import_run TEXT,
+            entry_seq INTEGER, order_ref TEXT, signal_ref TEXT, fee_breakdown TEXT,
             UNIQUE(tenant_id, owner_id, source, source_ref))""",
         "CREATE INDEX IF NOT EXISTS idx_perf_ledger_pf ON perf_ledger(tenant_id, owner_id, portfolio, trade_date)",
     ),

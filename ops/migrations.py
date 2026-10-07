@@ -113,6 +113,27 @@ def _sql_0005(conn):
         conn.execute(ddl)
 
 
+def _sql_0006(conn):
+    """W39 (PERF-001-01): give every existing perf_ledger row its entry order in entry_seq.
+
+    Entry order is the same-day tie-breaker of the performance engine (a BUY then a SELL of
+    the same day). SQLite and PostgreSQL could read it from rowid / ctid; MySQL has nothing
+    equivalent, so a database copied there lost it. New rows get entry_seq at insert
+    (wealth/perf/ledger._insert); this fills the older ones from rowid. The UPDATE trigger
+    of 0005 is lifted and restored with the identical DDL inside this one transaction, and
+    only the empty entry_seq column is written -- no recorded value changes."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(perf_ledger)")}
+    if not cols:
+        return                                    # no wealth tables yet: nothing to number
+    if "entry_seq" not in cols:
+        conn.execute("ALTER TABLE perf_ledger ADD COLUMN entry_seq INTEGER")
+    trig = [d for d in TRIGGERS_0005 if "trg_perf_ledger_no_update" in d]
+    conn.execute("DROP TRIGGER IF EXISTS trg_perf_ledger_no_update")
+    conn.execute("UPDATE perf_ledger SET entry_seq=rowid WHERE entry_seq IS NULL")
+    for ddl in trig:
+        conn.execute(ddl)
+
+
 MIGRATIONS = (
     ("0001", "baseline_w1_w7", _sql_0001, "none (validation only)"),
     ("0002", "w8_ops_tables", _sql_0002, "DROP the W8 ops_* tables, enterprise_refresh_token and schema_migrations "
@@ -126,6 +147,8 @@ MIGRATIONS = (
                                                   "perf_report_run, wealth_allocation_run, wealth_goal_event; the "
                                                   "wealth tables themselves are additive (restore the pre-W20 backup "
                                                   "to remove them)"),
+    ("0006", "w39_perf_ledger_entry_seq", _sql_0006, "none needed: entry_seq is an additive column read only as an "
+                                                     "ordering key; restore the pre-W39 backup to remove it"),
 )
 
 

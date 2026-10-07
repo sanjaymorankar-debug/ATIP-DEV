@@ -20,12 +20,15 @@ EXECUTABLE RETURN (what an account could actually have done)
     exit   the session after the model exit, at its open x (1 - slippage_bps)
     costs  NSE delivery charges (backtest/costs.py) on a `notional` position each side
     liquidity  skipped (NOT_EXECUTABLE) when the notional exceeds max_adv_pct of the
-           20-session average traded value, or there is no next-session bar
+           20-session average traded value, or there is no next-session bar. W39: a
+           symbol with no volume history is kept but flagged liquidity UNKNOWN (it used
+           to pass silently), and the exit is checked too (exit_liquidity ABOVE_CAP)
     series equal weight, with entry / exit costs taken on those days
 
 SIGNAL ATTRIBUTION (per signal, against an actual portfolio's ledger)
-    entry     first BUY in the portfolio for the symbol within link_window sessions
-              on / after the signal date, not already linked to an earlier signal
+    entry     the BUY whose signal_ref is this signal (EXACT, W39), else the first BUY in
+              the portfolio for the symbol within link_window sessions on / after the
+              signal date, not already linked to an earlier signal (WINDOW)
     add-ons   further BUYs while that position is open
     exits     SELLs until the position is flat
     outcome   actual P&L (realized + unrealized) and return vs model and executable, and
@@ -40,7 +43,10 @@ POSITION ATTRIBUTION (per linked signal, in rupees on the actual quantity Q)
     costs          - fees
     The four add up exactly to actual P&L - model P&L on the same quantity.
     sizing         actual capital deployed vs the model notional, and the P&L the model
-                   return earns on each
+                   return earns on each. W39: the sizing effect in rupees,
+                   (Q - model quantity) x model P&L per share, so that
+                   actual P&L - model P&L on the model notional
+                       = entry timing + averaging + exit timing + costs + sizing
 """
 
 from __future__ import annotations
@@ -135,6 +141,9 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
             exec_trades.append(et)
             continue
         adv = prices.adv_value(sym, sd)
+        if adv is None:
+            et["liquidity"] = "UNKNOWN"
+            et["liquidity_note"] = "no volume history: the liquidity cap could not be checked"
         if adv is not None and o["notional"] > adv * o["max_adv_pct"] / 100:
             et.update({"status": "NOT_EXECUTABLE", "reason": f"notional Rs {o['notional']:,.0f} above "
                        f"{o['max_adv_pct']}% of 20-session average traded value Rs {adv:,.0f}"})
@@ -154,6 +163,12 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
         x_px = x_raw * (1 - o["slippage_bps"] / 10000) if x_raw else None
         buy_c = cm.total("BUY", o["notional"])
         qty = o["notional"] / e_px
+        if x_px and not still_open:
+            x_adv = prices.adv_value(sym, x_d)
+            if x_adv is not None and qty * x_px > x_adv * o["max_adv_pct"] / 100:
+                et["exit_liquidity"] = "ABOVE_CAP"
+            elif x_adv is None:
+                et["exit_liquidity"] = "UNKNOWN"
         sell_c = cm.total("SELL", qty * x_px) if (x_px and not still_open) else 0.0
         pnl = qty * (x_px - e_px) - buy_c - sell_c if x_px else None
         et.update({"entry_date": str(nb[0]), "entry": round(e_px, 4), "exit_date": str(x_d),
@@ -176,7 +191,9 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
                 [t for t in model_trades if t["ret"] is not None])},
             "executable": {"trades": exec_trades, "series": e_ser, "trade_stats": M.trade_stats(
                 [t for t in ok if t["ret"] is not None]),
-                "not_executable": sum(1 for t in exec_trades if t["status"] == "NOT_EXECUTABLE")}}
+                "not_executable": sum(1 for t in exec_trades if t["status"] == "NOT_EXECUTABLE"),
+                "liquidity_unknown": sum(1 for t in exec_trades if t.get("liquidity") == "UNKNOWN"),
+                "exit_above_cap": sum(1 for t in exec_trades if t.get("exit_liquidity") == "ABOVE_CAP")}}
 
 
 def _series(cal, prices, legs):
@@ -209,10 +226,12 @@ def _series(cal, prices, legs):
     return out
 
 
-def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int) -> dict:
+def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int, notional: float | None = None) -> dict:
     """Signal lifecycle + position attribution against one actual portfolio.
     txns: basis-converted ledger rows (engine._basis) of that portfolio."""
     buys = [t for t in txns if t["kind"] == "BUY"]
+    exact = {t.get("signal_ref"): t for t in buys if t.get("signal_ref")}
+    reserved = {t["txn_id"] for t in exact.values()}      # an exact buy belongs to its own signal only
     used = set()
     items = []
     by_sym = {}
@@ -223,15 +242,17 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
         sym, sd = m["symbol"], D._d(m["signal_date"])
         limit = prices.nth_session_after(sym, sd, window)
         last_ok = limit[0] if limit else date.max
-        first = next((t for t in buys if t["symbol"] == sym and sd <= t["trade_date"] <= last_ok
-                      and t["txn_id"] not in used), None)
+        first, method = exact.get(m["signal_id"]), "EXACT"
+        if first is None or first["symbol"] != sym or first["txn_id"] in used:
+            first, method = next((t for t in buys if t["symbol"] == sym and sd <= t["trade_date"] <= last_ok
+                                  and t["txn_id"] not in used and t["txn_id"] not in reserved), None), "WINDOW"
         if not first:
             continue
         seq, q, cost_in, fees, proceeds, sold_q = [], 0.0, 0.0, 0.0, 0.0, 0.0
         exits = []
         for t in by_sym[sym]:
             if t["trade_date"] < first["trade_date"] or (t["kind"] == "BUY" and t["txn_id"] != first["txn_id"]
-                                                          and t["txn_id"] in used):
+                                                          and (t["txn_id"] in used or t["txn_id"] in reserved)):
                 continue
             if t["kind"] == "BUY":
                 if q <= 1e-9 and seq:
@@ -258,13 +279,21 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
         model_pnl_q = Q * (mx - me) if mx else None
         p1 = seq[0]["p"]
         attr = None
+        vs_notional = None
         if model_pnl_q is not None:
             attr = {"entry_timing": round(Q * (me - p1), 2), "averaging": round(Q * p1 - cost_in, 2),
                     "exit_timing": round(proceeds + open_val - Q * mx, 2), "costs": round(-fees, 2)}
             attr["total"] = round(sum(attr.values()), 2)
             attr["check"] = round(actual_pnl - model_pnl_q, 2)
+            if notional and me:
+                mq = notional / me
+                model_pnl_n = mq * (mx - me)
+                sizing = (Q - mq) * (mx - me)
+                vs_notional = {"model_quantity": round(mq, 6), "model_pnl": round(model_pnl_n, 2),
+                               "sizing": round(sizing, 2), "total": round(attr["total"] + sizing, 2),
+                               "check": round(actual_pnl - model_pnl_n, 2)}
         items.append({
-            "signal_id": m["signal_id"], "symbol": sym, "signal_date": m["signal_date"],
+            "signal_id": m["signal_id"], "symbol": sym, "signal_date": m["signal_date"], "link_method": method,
             "model": {"entry": me, "exit": mx, "exit_date": m["exit_date"], "ret_pct": _p(m["ret"])},
             "entry": {"date": str(first["trade_date"]), "price": round(p1, 4), "quantity": round(first["q"], 6),
                       "delay_sessions": _sessions(prices, sym, sd, first["trade_date"])},
@@ -274,8 +303,9 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
             "actual": {"capital": round(cost_in, 2), "pnl": round(actual_pnl, 2),
                        "ret_pct": _p(actual_pnl / cost_in) if cost_in else None, "fees": round(fees, 2)},
             "position_attribution": attr,
-            "sizing": {"actual_capital": round(cost_in, 2), "model_notional": None,
+            "sizing": {"actual_capital": round(cost_in, 2), "model_notional": notional,
                        "model_pnl_on_actual_size": round(model_pnl_q, 2) if model_pnl_q is not None else None},
+            "attribution_vs_model_notional": vs_notional,
         })
     linked_buys = used
     disc = [t for t in buys if t["txn_id"] not in linked_buys]
