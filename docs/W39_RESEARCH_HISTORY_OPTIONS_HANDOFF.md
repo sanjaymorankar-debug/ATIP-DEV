@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 146 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 150 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -112,13 +112,13 @@
 - Size and balance sheet: revenue, profit, EPS, book value, debt/equity, current ratio, interest cover, cash, FCF.
 - Ownership: promoter %, its change over the latest quarter, pledge, FPI, MF.
 - Price: 1-year return, 3-year CAGR (from the 7-year history), distance from the 52-week high / low.
-- Technical (from `technical_snapshot`, see TA below): technical rating and label, RS rating 1–99, RSI, MACD histogram, ADX, Supertrend direction, ATR %, distance from the 50- and 200-DMA, Bollinger width, volume ÷ 20-day average, 3-month relative strength vs the Nifty, 1- and 3-month return, candle patterns, today's signals, chart patterns in place (`chart_patterns`, `vcp_setup`), the RS line at a high, size group and RS rank within it, and one `scan_<key>` 1/0 field for each of the 38 scans.
+- Technical (from `technical_snapshot`, see TA below): technical rating and label, RS rating 1–99, RSI, MACD histogram, ADX, Supertrend direction, ATR %, distance from the 50- and 200-DMA, Bollinger width, volume ÷ 20-day average, 3-month relative strength vs the Nifty, 1- and 3-month return, candle patterns, today's signals, chart patterns in place (`chart_patterns`, `vcp_setup`), the RS line at a high, size group and RS rank within it, NSE delivery % and its ratio to the 20-day average, and one `scan_<key>` 1/0 field for each of the 39 scans.
 - Order book (from `order_book_pressure`, see OB below): `book_imbalance`, `book_pressure`, `book_persistent`.
 - ATIP: score and signal.
 - Research model: rating, upside, fair value, moat proxy, quality score.
 - **Magic-formula rank:** Greenblatt's earnings-yield rank + ROCE rank, approximated with E/P; financials excluded.
 
-**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 117 fields in all.
+**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 120 fields in all.
 
 **Columns follow the query:** a technical-only query shows technical columns, a mixed one shows both, otherwise the fundamental set.
 
@@ -134,9 +134,9 @@
 - A stock missing a field never matches a condition on it.
 - Bad queries return a 400 that names the problem.
 
-**34 presets, in three groups:**
+**35 presets, in three groups:**
 - **Fundamental (12):** quality compounders, value, GARP, dividend, debt-free, promoters adding, undervalued by ATIP's model, strong near the 52-week high, turnaround, magic formula top 30, oversold quality, pledge risk.
-- **Technical (19):** RS line new high before price, RS leaders in their size group, 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, daily and weekly both bullish, breakout with the weekly trend, chart pattern breakouts, VCP setups, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
+- **Technical (20):** delivery spike on an up day, RS line new high before price, RS leaders in their size group, 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, daily and weekly both bullish, breakout with the weekly trend, chart pattern breakouts, VCP setups, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
 - **Combined (3):** quality stock breaking out, value stock turning up, model BUY in an up-trend.
 
 **Saved screens:**
@@ -201,7 +201,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Candle patterns** (`candles`, 19, each BULL / BEAR / NEUTRAL): engulfing, harami, marubozu, hammer and hanging man, inverted hammer and shooting star (trend-qualified), doji, morning and evening star, piercing line, dark cloud cover, three white soldiers, three black crows, inside bar, NR7.
 
-**38 scans** (`SCANS`, completed daily bars only; 26 bullish, 11 bearish, 1 neutral; the 6 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL below):
+**39 scans** (`SCANS`, completed daily bars only; 27 bullish, 11 bearish, 1 neutral; the 6 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL and the delivery spike under DL below):
 - Crosses, firing on the crossing day only: golden / death cross, EMA 9/21, price across the 200-DMA, MACD signal and zero line, RSI out of oversold / overbought and across 50, Supertrend flips.
 - Breakouts: 52-week high **on volume** (> 1.5 × the 20-day average), 52-week low, Donchian 20 and 55, 20-day breakdown.
 - Others: volume surges, TTM squeeze firing, Bollinger lower-band bounce, ADX crossing 25, Minervini trend template, RS leader, pullback to the 50-DMA in an up-trend, pocket pivot, gap up, NR7 inside bar.
@@ -425,6 +425,20 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Screener:** the three fields, with presets "RS line new high before price" (`scan_rs_line_leads = 1`) and "RS leaders in their size group" (`rs_rating_cap >= 90`).
 
+## DL-01: delivery-% spike, Phase 2 item 6
+
+**Data:** `prices_daily.delivery_pct` is already filled from NSE's bhavcopy (`DELIV_PER`, `data/bhavcopy.py`). `load_bars` now reads it.
+
+**Indicators:** when the frame carries `delivery_pct`, `indicators` adds `deliv20` (its 20-session average up to yesterday, at least 10 values) and `deliv_ratio`.
+
+**Scan** `delivery_spike_up`: `deliv_ratio` ≥ 1.5, delivery % ≥ 30, and an up close.
+
+**Stored:** `technical_snapshot.delivery_pct` and `delivery_ratio`.
+
+**Screener:** the two fields, with the preset "Delivery spike on an up day".
+
+**Caveat:** a common Indian heuristic with no peer-reviewed return evidence. Its track record decides.
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -460,6 +474,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
 | `tests/test_w39_rs_line.py` | 7 | RS-line new high on the first day only; RS line leads while price is below its high, and not when price is at a high; snapshot flag; AMFI cut-offs and RS within each group; market caps from the latest shares on or before the date; run stores group and rank; screener fields and presets |
 | `tests/test_w39_patterns.py` | 11 | Darvas box and breakout, still-inside and steady-climb negatives, breakdown; VCP contractions, dry-up and volume-confirmed breakout, widening pullbacks and no dry-up rejected; double bottom breakout and uneven lows rejected; ascending triangle; head-and-shoulders breakdown; pattern scans carry their levels; snapshot lists setups; screener fields and presets; pattern alerts held until 30 closed with positive R |
 | `tests/test_w39_weekly.py` | 10 | weekly bars aggregate and keep only completed weeks; a Friday-holiday week counts from the next Monday; the weekly rating needs 35 weeks and follows the trend; agreement truth tables; snapshot fields; run stores weekly fields and tags signals; forward split by weekly agreement; screener fields and presets; old snapshot table gets the columns; page |

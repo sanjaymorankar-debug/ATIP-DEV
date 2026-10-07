@@ -25,7 +25,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
 
 **What ATIP now does (this round):**
-- **Technical screener:** 38 end-of-day scans (6 chart-pattern breakouts and 2 RS-line scans added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 17 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
+- **Technical screener:** 39 end-of-day scans (6 chart-pattern breakouts, 2 RS-line scans and a delivery spike added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 17 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
 - **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
 - **Market pulse:**
   - a global-cue model fitted on ATIP's own data, with its walk-forward record;
@@ -185,9 +185,9 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 
 | Feature | Code | Where you see it | Schedule |
 |---|---|---|---|
-| Indicators, 38 scans (incl. 6 chart-pattern breakouts and 2 RS-line scans), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | — | — |
+| Indicators, 39 scans (incl. 6 chart-pattern breakouts, 2 RS-line scans and a delivery spike), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | — | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (117 fields, `CONTAINS`, 34 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (120 fields, `CONTAINS`, 35 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
@@ -227,7 +227,7 @@ They use synthetic series with known answers. Examples:
 | Weekly technical rating (**built**, Phase 2); 75-minute rating | TradingView any-timeframe | 3 (75-minute) |
 | Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders (**built**, Phase 2); channels, wedges, inverse head and shoulders, descending triangle | Finviz, TrendSpider, StockEdge | 2 (rest: later) |
 | ~~RS-line new high; rank within cap bucket~~ | IBD, StockCharts | 2: **built** |
-| Delivery-% spike scan (NSE `DELIV_PER`) | StockEdge, Chartink | 2 |
+| ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks) and a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 |
 | Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze | Chartink, Streak | 3 |
 | Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
@@ -278,7 +278,11 @@ They use synthetic series with known answers. Examples:
    - **RS line:** the close divided by the Nifty. The scan "RS line new high" fires on the first day it tops its prior 52-week high. "RS line new high before price" fires when it does so while the price is still below its own 52-week high (IBD's early-leadership tell). `rs_line_at_high` marks stocks currently at an RS high.
    - **Size groups (AMFI's rank rule over ATIP's universe):** large = top 100 by market cap (close × the latest shares outstanding on or before the day), mid = 101–250, small = the rest. `rs_rating_cap` is the RS rating ranked only within the stock's own group, so a mid-cap leader is not hidden behind large-cap moves.
    - **Screener:** `rs_line_at_high`, `cap_bucket`, `rs_rating_cap`. Presets "RS line new high before price" and "RS leaders in their size group".
-6. **Delivery-% spike** from NSE's full bhavcopy: delivery above 1.5 × its 20-day average on an up day.
+6. **Delivery-% spike. Built.**
+   - ATIP already stores NSE's `DELIV_PER` in `prices_daily.delivery_pct` (`data/bhavcopy.py`); the signal engine now reads it.
+   - Scan "Delivery spike, up day": delivery % at 1.5× or more its 20-day average and 30 %+, on an up close.
+   - Screener: `delivery_pct`, `delivery_ratio`, preset "Delivery spike on an up day".
+   - A popular Indian heuristic (StockEdge, Chartink) with no peer-reviewed return evidence; its track record will show whether it pays.
 7. **Explainable fundamental composite.**
    - 5 axes × 6 pass/fail checks over the stored fundamentals, shown next to the research rating;
    - the screener gets `checks_passed` fields.

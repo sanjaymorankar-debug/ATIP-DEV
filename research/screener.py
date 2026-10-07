@@ -2,7 +2,7 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        117 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        120 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
@@ -106,6 +106,10 @@ FIELDS = dict([
     _f("mtf_alignment", "Daily + weekly agreement", "Technical", kind="text", aliases=("mtf", "timeframes"),
        desc="BULL: daily and weekly both BUY / STRONG_BUY; BEAR: both SELL / STRONG_SELL; else MIXED"),
     _f("rsi_14_w", "Weekly RSI (14)", "Technical", "", aliases=("weekly_rsi",)),
+    _f("delivery_pct", "Delivery %", "Technical", "%", aliases=("deliv_pct", "delivery"),
+       desc="NSE deliverable quantity as % of traded quantity (bhavcopy)"),
+    _f("delivery_ratio", "Delivery % vs 20-day avg", "Technical", "x", aliases=("deliv_ratio",),
+       desc="today's delivery % divided by its 20-day average"),
     _f("rs_line_at_high", "RS line at a 52-week high", "Technical", "1/0", aliases=("rs_line_high", "rs_new_high"),
        desc="price / Nifty (the RS line) above its prior 52-week high today"),
     _f("cap_bucket", "Size group", "Technical", kind="text", aliases=("size", "cap_group"),
@@ -259,6 +263,9 @@ PRESETS = [
     {"key": "t_rs_in_size", "name": "RS leaders in their size group", "group": "technical",
      "description": "Top-decile relative strength among stocks of the same size (large / mid / small)",
      "query": "rs_rating_cap >= 90", "sort": "rs_rating_cap"},
+    {"key": "t_delivery_spike", "name": "Delivery spike on an up day", "group": "technical",
+     "description": "NSE delivery % at 1.5x+ its 20-day average on an up day (a heuristic; no peer-reviewed evidence)",
+     "query": "scan_delivery_spike_up = 1", "sort": "delivery_ratio"},
     {"key": "t_rs_leaders", "name": "Relative-strength leaders", "group": "technical",
      "description": "RS rating 80+ (IBD-style) and above SMA 50", "query": "rs_rating >= 80 AND pct_from_sma50 > 0",
      "sort": "rs_rating"},
@@ -607,7 +614,7 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
                   "pct_from_sma50", "pct_from_sma200", "bb_width_pct", "vol_ratio", "rs_63_pct", "return_1m_pct",
                   "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals", "tech_rating_w",
                   "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment", "chart_patterns", "vcp_setup",
-                  "rs_line_at_high", "cap_bucket", "rs_rating_cap"):
+                  "rs_line_at_high", "cap_bucket", "rs_rating_cap", "delivery_pct", "delivery_ratio"):
             row[k] = ts.get(k)
         for k in ("rsi_14", "above_200dma"):
             if ts.get(k) is not None:

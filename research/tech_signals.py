@@ -67,7 +67,8 @@ SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hi
              "pct_from_sma50", "pct_from_sma200", "above_200dma", "bb_width_pct", "vol_ratio", "rs_63_pct",
              "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals",
              "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment",
-             "chart_patterns", "vcp_setup", "rs_line_at_high", "cap_bucket", "rs_rating_cap"]
+             "chart_patterns", "vcp_setup", "rs_line_at_high", "cap_bucket", "rs_rating_cap", "delivery_pct",
+             "delivery_ratio"]
 
 DDL = (
     """CREATE TABLE IF NOT EXISTS technical_snapshot (
@@ -77,7 +78,8 @@ DDL = (
         return_1m_pct REAL, return_3m_pct REAL, patterns TEXT, signals TEXT, bull_signals INTEGER,
         bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, tech_rating_w REAL, tech_rating_w_label TEXT,
         rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, chart_patterns TEXT, vcp_setup INTEGER,
-        rs_line_at_high INTEGER, cap_bucket TEXT, rs_rating_cap INTEGER, PRIMARY KEY (symbol, date))""",
+        rs_line_at_high INTEGER, cap_bucket TEXT, rs_rating_cap INTEGER, delivery_pct REAL, delivery_ratio REAL,
+        PRIMARY KEY (symbol, date))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_snapshot_date ON technical_snapshot(date)",
     """CREATE TABLE IF NOT EXISTS technical_signal (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
@@ -100,7 +102,8 @@ ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT"
                                         "supertrend_dir_w": "INTEGER", "mtf_alignment": "TEXT",     # Phase 2 item 3
                                         "chart_patterns": "TEXT", "vcp_setup": "INTEGER",           # Phase 2 item 4
                                         "rs_line_at_high": "INTEGER", "cap_bucket": "TEXT",           # Phase 2 item 5
-                                        "rs_rating_cap": "INTEGER"}}
+                                        "rs_rating_cap": "INTEGER",
+                                        "delivery_pct": "REAL", "delivery_ratio": "REAL"}}            # Phase 2 item 6
 
 
 def ensure_tables(conn):
@@ -125,19 +128,21 @@ def _d(v):
 # ── data ─────────────────────────────────────────────────────────────────────
 
 def load_bars(conn, symbols, as_of, lookback_days=LOOKBACK_DAYS) -> dict:
-    """{symbol: DataFrame(open, high, low, close, volume) indexed by date}, oldest first."""
+    """{symbol: DataFrame(open, high, low, close, volume, delivery_pct) indexed by date}, oldest first
+    (delivery_pct is NSE's from the bhavcopy, NaN where it is not stored)."""
     out = {}
     start = str(_d(as_of) - timedelta(days=lookback_days))
     syms = sorted(set(symbols))
     for i in range(0, len(syms), 400):
         part = syms[i:i + 400]
-        q = (f"SELECT symbol, date, open, high, low, close, volume FROM prices_daily WHERE symbol IN "
+        q = (f"SELECT symbol, date, open, high, low, close, volume, delivery_pct FROM prices_daily WHERE symbol IN "
              f"({','.join('?' * len(part))}) AND date>? AND date<=? AND close>0 ORDER BY symbol, date")
         rows = conn.execute(q, part + [start, str(_d(as_of))]).fetchall()
         cur, buf = None, []
         for r in rows + [(None,)]:
             if r[0] != cur and buf:
-                df = pd.DataFrame(buf, columns=["date", "open", "high", "low", "close", "volume"])
+                df = pd.DataFrame(buf, columns=["date", "open", "high", "low", "close", "volume", "delivery_pct"])
+                df["delivery_pct"] = pd.to_numeric(df["delivery_pct"], errors="coerce")
                 df["date"] = pd.to_datetime(df["date"].astype(str).str[:10])
                 df = df.set_index("date")
                 for c in ("open", "high", "low"):

@@ -7,12 +7,13 @@ columns open, high, low, close, volume (oldest first); no database here.
     indicators(df, bench=None)   adds SMA 20/50/200, EMA 9/21, RSI(14, Wilder), MACD(12,26,9),
                                  ATR(14), ADX(14) with +DI/-DI, Supertrend(10,3), Bollinger(20,2) and
                                  bandwidth, Donchian(20/55), 52-week high / low, volume vs 20-day
-                                 average, relative strength vs a benchmark (63-day) and the RS line
-                                 (close / benchmark) with its prior 52-week high
+                                 average, relative strength vs a benchmark (63-day), the RS line
+                                 (close / benchmark) with its prior 52-week high, and NSE delivery %
+                                 vs its 20-day average when the frame carries delivery_pct
     candles(df)                  candlestick patterns on the last bar (engulfing, hammer, shooting
                                  star, doji, harami, piercing / dark cloud, morning / evening star,
                                  three soldiers / crows, marubozu, inside bar, NR7)
-    SCANS / run_scans(df)        38 named scans (Chartink / Finviz / StockCharts style): crossovers,
+    SCANS / run_scans(df)        39 named scans (Chartink / Finviz / StockCharts style): crossovers,
                                  breakouts on volume, oscillator turns, trend templates, squeezes and
                                  chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
                                  bottom, ascending triangle, head and shoulders), each with a direction
@@ -126,6 +127,12 @@ def indicators(df: pd.DataFrame, bench: pd.Series | None = None) -> pd.DataFrame
     d["prior_hi252"] = d["high"].rolling(252, min_periods=120).max().shift()
     d["vol20"] = v.rolling(20).mean()
     d["vol_ratio"] = v / d["vol20"].shift()
+    if "delivery_pct" in d:                                   # NSE delivery %, from the bhavcopy
+        dp = pd.to_numeric(d["delivery_pct"], errors="coerce")
+        d["deliv20"] = dp.rolling(20, min_periods=10).mean().shift()
+        d["deliv_ratio"] = dp / d["deliv20"]
+    else:
+        d["delivery_pct"] = d["deliv20"] = d["deliv_ratio"] = np.nan
     d["range"] = d["high"] - d["low"]
     if bench is not None and len(bench):
         b = bench.reindex(d.index).ffill()
@@ -330,6 +337,10 @@ SCANS = {
                      "up day on volume above every down-day volume of the last 10 sessions, above SMA 50 (O'Neil)"),
     "gap_up": ("Gap up", "BULL", lambda d: _gt(_v(d, "low"), _v(d, "high", -2)) and _gt(_v(d, "vol_ratio"), 1.2),
                "today's low above yesterday's high, on above-average volume"),
+    "delivery_spike_up": ("Delivery spike, up day", "BULL",
+                          lambda d: _gt(_v(d, "deliv_ratio"), 1.5) and _gt(_v(d, "delivery_pct"), 30)
+                          and _gt(_v(d, "close"), _v(d, "close", -2)),
+                          "NSE delivery % at 1.5x+ its 20-day average (and 30 %+) on an up day: buyers taking delivery"),
     "rs_line_new_high": ("RS line new high", "BULL", _rs_line_new_high,
                          "relative strength vs the Nifty (the RS line) reached a 52-week high today"),
     "rs_line_leads": ("RS line new high before price", "BULL",
@@ -489,6 +500,9 @@ def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
         "_atr": _v(d, "atr14"), "_close": c, "_low20": float(d["low"].iloc[-20:].min()),
         "_high20": float(d["high"].iloc[-20:].max()),
     }
+    dp, dr = _v(d, "delivery_pct"), _v(d, "deliv_ratio")
+    out["delivery_pct"] = round(dp, 2) if dp is not None else None
+    out["delivery_ratio"] = round(dr, 2) if dr is not None else None
     rl, rh = _v(d, "rs_line"), _v(d, "rs_line_prior_hi")
     out["rs_line_at_high"] = None if rl is None or rh is None else int(rl > rh)
     found = P.setups(d)
