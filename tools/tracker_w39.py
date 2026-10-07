@@ -245,6 +245,13 @@ NEW_ROWS += [
          "Independent QA", "backtest/robustness.py", "tests/test_w39_backtest.py"),
 ]
 
+# rows still in development when the files are generated: shown IN PROGRESS until merged
+IN_DEVELOPMENT = {"AF-09", "PF-14", "PF-15"}
+for _r in NEW_ROWS:
+    if _r["ID"] in IN_DEVELOPMENT:
+        _r.update({"Status": "IN PROGRESS", "Completion %": "60", "Completed On": "",
+                   "Notes": "W39 in development on branch claude/wizardly-curie-fbjeoa (PR #5); not merged yet"})
+
 # ── owner workbook items needing a decision (marked BLOCKED, work moved on) ───────────
 NEW_ROWS += [
     _row("EX-17", "Execution", "Aggressive exit: enable flag + CRI-spike / momentum-decay exit",
