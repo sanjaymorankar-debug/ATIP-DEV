@@ -19,6 +19,26 @@ CHECKS (PASS / FAIL): baseline return > 0; costs_x2 return > 0; slippage_x3 retu
 at least 2/3 of the subsamples positive; both halves positive; Monte Carlo P(loss) < 30%.
 score = passes / checks; verdict ROBUST (>= 0.8), FRAGILE (>= 0.5), else NOT_ROBUST.
 Refused on the test window.
+
+Transaction-cost stress (BT-19): how much worse can costs get before the edge is gone?
+
+    cost_sweep(request, multipliers=(0, 0.5, 1, 1.5, 2, 3, 5), scale="costs")
+        -> parent run_id + one point per multiplier + break_even
+
+NetPnL = gross - commissions - slippage - impact - taxes. Each multiplier x is one
+ordinary backtest (kind cost_trial under a parent of kind cost_sweep) with
+    costs      every rate AND rupee field of the resolved cost model times x, so each
+               leg's itemised charges (brokerage, STT, exchange, SEBI, stamp, GST, DP)
+               are exactly x times the base model's
+    slippage   the slippage value times x (a none model has nothing to scale)
+    both       the two together
+x = 1 is the request exactly as given -- the plain backtest. Per point: net total
+return, Sharpe, profit factor, trades, max drawdown, costs and slippage paid.
+break_even: the multiplier at which net total return first crosses zero, linearly
+interpolated between the grid points either side; None, with "positive across the
+grid" or "negative even at zero cost", when it does not cross inside the grid.
+Sizing and cash follow each run's own equity, so returns need not be exactly linear
+in x (monotone reports whether they never rise with x). Refused on the test window.
 """
 
 from __future__ import annotations
@@ -30,6 +50,29 @@ from backtest.optimize import _finish, _parent, _trial
 
 PCT_FIELDS = ("brokerage_pct", "stt_buy_pct", "stt_sell_pct", "exchange_txn_pct", "sebi_fee_pct", "stamp_buy_pct",
               "flat_pct")
+# rupee amounts of the cost model: scaled with the rates, a leg's charges scale exactly
+# (GST is a % of brokerage + exchange + SEBI, so it follows them and is never scaled itself)
+RS_FIELDS = ("brokerage_min", "brokerage_max", "dp_charge_per_sell")
+COST_SCALES = ("costs", "slippage", "both")
+SWEEP_MULTIPLIERS = (0, 0.5, 1, 1.5, 2, 3, 5)
+POINT_KEYS = ("total_return", "sharpe", "profit_factor", "trades", "max_drawdown", "costs_paid", "slippage_paid")
+
+
+def scaled_cost_overrides(snap: dict, x: float, fields: tuple = PCT_FIELDS + RS_FIELDS) -> dict:
+    """cost_overrides that multiply the resolved cost model's `fields` by x (the
+    request's own overrides kept for the rest)."""
+    from backtest.costs import cost_model
+    cm = cost_model(snap["cost_model"], snap["cost_overrides"] or None).as_dict()
+    over = dict(snap["cost_overrides"] or {})
+    for f in fields:
+        if cm.get(f):
+            over[f] = cm[f] * x
+    return over
+
+
+def scaled_slippage(snap: dict, x: float) -> dict:
+    sl = dict(snap["slippage"])
+    return {**sl, "value": (sl.get("value") or 0) * x}
 
 
 def _universe(snap):
@@ -64,7 +107,6 @@ def _regimes(run_id):
 
 def robustness(request: dict, n_subsamples: int = 3, seed: int = 42) -> dict:
     from backtest import service
-    from backtest.costs import cost_model
     if request.get("period_label") == "test" or request.get("allow_test"):
         raise ValueError("robustness testing on the test window is refused")
     if not 0 <= int(n_subsamples) <= 10:
@@ -86,12 +128,7 @@ def robustness(request: dict, n_subsamples: int = 3, seed: int = 42) -> dict:
         return trials[name]
     try:
         b = run("baseline", base)
-        cm = cost_model(snap["cost_model"], snap["cost_overrides"] or None).as_dict()
-        over = dict(snap["cost_overrides"] or {})
-        for f in PCT_FIELDS:
-            if cm.get(f):
-                over[f] = cm[f] * 2
-        run("costs_x2", {**base, "cost_overrides": over})
+        run("costs_x2", {**base, "cost_overrides": scaled_cost_overrides(snap, 2, PCT_FIELDS)})
         sl = dict(snap["slippage"])
         sl = {**sl, "value": (sl.get("value") or 0) * 3} if sl.get("kind") not in (None, "none") else \
             {"kind": "pct", "value": 0.15}
@@ -132,6 +169,88 @@ def robustness(request: dict, n_subsamples: int = 3, seed: int = 42) -> dict:
                    "score": round(score, 3), "verdict": verdict, **extra}
         _finish(pid, "COMPLETED", summary, metrics=trials["baseline"])
         return {"run_id": pid, "status": "COMPLETED", **summary}
+    except Exception as ex:
+        from backtest import store
+        from db.schema import get_connection
+        conn = get_connection()
+        try:
+            store.mark_failed(conn, pid, f"{type(ex).__name__}: {ex}")
+        finally:
+            conn.close()
+        raise
+
+
+def break_even(multipliers: list, returns: list, what: str = "cost") -> tuple:
+    """(multiplier, note) where net total return first goes from > 0 to <= 0 along the
+    grid, linearly interpolated between the two points either side; (None, note) when
+    it never crosses inside the grid. Points with a None return are skipped."""
+    pts = sorted((float(m), float(r)) for m, r in zip(multipliers, returns) if r is not None)
+    if not pts:
+        return None, "no completed runs"
+    m0, r0 = pts[0]
+    if r0 < 0:
+        return None, f"negative even at zero {what}" if m0 == 0 else f"negative even at the lowest multiplier ({m0:g}x)"
+    if r0 == 0:
+        return m0, f"net return is zero at {m0:g}x"
+    for (a, ra), (b, rb) in zip(pts, pts[1:]):
+        if rb <= 0:
+            x = a + (b - a) * ra / (ra - rb)
+            return round(x, 4), f"net return crosses zero at {x:.2f}x the configured {what}"
+    return None, "positive across the grid"
+
+
+def prepare_cost_sweep(request: dict, multipliers: list | None = None, scale: str = "costs") -> list:
+    """Validate a cost sweep without running it; returns the sorted multiplier grid."""
+    from backtest import service
+    if request.get("period_label") == "test" or request.get("allow_test"):
+        raise ValueError("cost stress on the test window is refused")
+    if scale not in COST_SCALES:
+        raise ValueError(f"scale must be one of {COST_SCALES}")
+    mults = sorted({float(m) for m in (SWEEP_MULTIPLIERS if multipliers is None else multipliers)})
+    if not 2 <= len(mults) <= 20 or mults[0] < 0 or mults[-1] > 100:
+        raise ValueError("give 2..20 distinct multipliers, each 0..100")
+    service.resolve_config(request)                 # validates the base request
+    return mults
+
+
+def cost_sweep(request: dict, multipliers: list | None = None, scale: str = "costs") -> dict:
+    from backtest import service
+    mults = prepare_cost_sweep(request, multipliers, scale)
+    snap = service.resolve_config(request)
+    pid, _ = _parent(request, "cost_sweep", {"multipliers": mults, "scale": scale})
+    base = {k: v for k, v in request.items() if k != "params"}
+    params = request.get("params") or snap["params"]
+    points = []
+    try:
+        for i, x in enumerate(mults):
+            req = dict(base)
+            if x != 1:                      # x1 is the request exactly as given: the plain backtest
+                if scale in ("costs", "both"):
+                    req["cost_overrides"] = scaled_cost_overrides(snap, x)
+                if scale in ("slippage", "both"):
+                    req["slippage"] = scaled_slippage(snap, x)
+            rid, res = _trial(req, params, "cost_trial", pid, i)
+            m = res.get("metrics") or {}
+            points.append({"multiplier": x, "run_id": rid, "status": res["status"],
+                           **{k: m.get(k) for k in POINT_KEYS}})
+        ok = [p for p in points if p["status"] == "COMPLETED" and p["total_return"] is not None]
+        what = {"costs": "cost", "slippage": "slippage", "both": "cost and slippage"}[scale]
+        if ok and not any(p["trades"] for p in ok):
+            be, note = None, "no trades: nothing to stress"
+        else:
+            be, note = break_even([p["multiplier"] for p in ok], [p["total_return"] for p in ok], what)
+        rets = [p["total_return"] for p in ok]
+        notes = []
+        if scale != "costs" and snap["slippage"].get("kind") in (None, "none"):
+            notes.append("the slippage model is none: there is no slippage to scale")
+        if len(ok) < len(points):
+            notes.append(f"{len(points) - len(ok)} run(s) did not complete and are left out of break_even")
+        summary = {"scale": scale, "multipliers": mults, "points": points, "break_even": be,
+                   "break_even_note": note, "monotone": all(b <= a for a, b in zip(rets, rets[1:])),
+                   "baseline": next((p for p in points if p["multiplier"] == 1), None), "notes": notes}
+        status = "COMPLETED" if ok else "FAILED"
+        _finish(pid, status, summary, metrics=summary["baseline"])
+        return {"run_id": pid, "status": status, **summary}
     except Exception as ex:
         from backtest import store
         from db.schema import get_connection
