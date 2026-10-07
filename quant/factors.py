@@ -111,6 +111,27 @@ def _risk_adj(c):
     return r / v if r is not None and v else None
 
 
+# W39 (AF-09): time-series momentum, Moskowitz-Ooi-Pedersen (2012): the sign of the stock's OWN 12-1
+# return (not its rank against the others) sized to a constant volatility, target / realised. MOP size
+# each asset to 40% a year on a ~60-day ex-ante estimate, so realised vol is W3 volatility_60 (annualised
+# %, as vol_60). The scale is capped: a near-flat series (suspended, illiquid) has a tiny realised vol
+# and would otherwise dominate the cross-section.
+TSMOM_TARGET_VOL = 40.0          # annualised %, MOP's per-asset target
+TSMOM_MAX_SCALE = 2.0            # cap on TSMOM_TARGET_VOL / volatility_60
+
+
+def _tsmom_12m(c):
+    r, v = _mom_12_1(c), c.feat("volatility_60")
+    if r is None or not v:
+        return None
+    return (1.0 if r > 0 else -1.0 if r < 0 else 0.0) * min(TSMOM_TARGET_VOL / v, TSMOM_MAX_SCALE)
+
+
+def _mom_12_1_vol_adj(c):
+    r, v = _mom_12_1(c), c.feat("volatility_250")
+    return r / v if r is not None and v else None
+
+
 def _beta(c, n=250):
     b = c.bars[-(n + 1):]
     pairs = [(b[i].close / b[i - 1].close - 1, c.bench[b[i].date] / c.bench[b[i - 1].date] - 1)
@@ -448,6 +469,14 @@ FACTORS += [   # W36 (AF-06) derivatives -- research factors; F&O-segment symbol
               "(fear premium)", "iv_put95 - iv_call105", ("derivatives",), 1, _iv_skew, direction=-1),
     FactorDef("max_pain_gap", "distance from max pain", "derivatives", "spot vs the near-expiry max-pain strike, %",
               "(spot/max_pain-1)*100", ("derivatives",), 1, _max_pain_gap, direction=-1),
+]
+FACTORS += [   # W39 (AF-09) momentum variants -- bars only, so part of the daily set (atip_factors' next version)
+    FactorDef("tsmom_12m", "time-series momentum (vol-scaled)", "momentum",
+              "sign of the 12-1 month return x (40% target vol / annualised volatility_60), scale capped at 2",
+              "sign(close[-22]/close[-253]-1)*min(40/volatility_60,2)", ("bars",), 253, _tsmom_12m),
+    FactorDef("mom_12_1_vol_adj", "volatility-adjusted 12-1 momentum", "momentum",
+              "12-1 month return / annualised 250-session volatility", "mom_12_1/volatility_250", ("bars",), 253,
+              _mom_12_1_vol_adj),
 ]
 REGISTRY = {f.factor_id: f for f in FACTORS}
 CATEGORIES = sorted({f.category for f in FACTORS})

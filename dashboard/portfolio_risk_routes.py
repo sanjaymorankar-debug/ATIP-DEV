@@ -7,7 +7,10 @@ Nothing here places a LIVE order.
     GET  /api/risk/portfolio/snapshots        ?book&limit  stored post-market headlines
     POST /api/risk/portfolio/what-if          (token) {weights: {sym: w}, value?}
     POST /api/risk/optimize                   (token) {symbols? | book?, objective, max_weight?, sector_cap?,
-                                              min_weight?, risk_aversion?, expected?, lookback?, shrinkage?}
+                                              min_weight?, risk_aversion?, expected?, lookback?, shrinkage?,
+                                              turnover_penalty?, current_weights?, neutral_to?, neutral_targets?}
+                                              W39: turnover_penalty without current_weights uses the book's
+                                              position weights (book_snapshot); neutral_to {name: {sym: x}}
     GET  /api/risk/optimize/{opt_id}
     POST /api/risk/frontier                   (token) {symbols? | book?, points?, ...}
     POST /api/risk/rebalance-plan             (token) {opt_id | weights, book?, band_pct?, min_trade_value?,
@@ -86,6 +89,31 @@ def register(app, guard, Req, get_connection, json_safe):
             kw["expected"] = b["expected"]
         return kw
 
+    def _pf_kw(conn, b):
+        """W39 (PF-14 / PF-15) optimise() options; validated again by optimise()."""
+        kw = {}
+        if b.get("turnover_penalty") is not None:
+            kw["turnover_penalty"] = float(b["turnover_penalty"])
+        cw = b.get("current_weights")
+        if cw is not None:
+            if not isinstance(cw, dict) or len(cw) > 500:
+                raise ValueError("current_weights must be {symbol: weight} with up to 500 names")
+            kw["current_weights"] = {str(k).strip().upper(): float(v) for k, v in cw.items()}
+        elif kw.get("turnover_penalty"):
+            snap = RK.book_snapshot(conn, _book(b.get("book")))
+            kw["current_weights"] = {p["symbol"]: float(p["weight"]) for p in snap["positions"]}
+        nt = b.get("neutral_to")
+        if nt is not None:
+            if not isinstance(nt, dict) or not all(isinstance(v, dict) and len(v) <= 500 for v in nt.values()):
+                raise ValueError("neutral_to must be {name: {symbol: exposure}}")
+            kw["neutral_to"] = {str(k): {str(s): None if x is None else float(x) for s, x in v.items()}
+                                for k, v in nt.items()}
+            if b.get("neutral_targets") is not None:
+                if not isinstance(b["neutral_targets"], dict):
+                    raise ValueError("neutral_targets must be {name: target}")
+                kw["neutral_targets"] = {str(k): float(v) for k, v in b["neutral_targets"].items()}
+        return kw
+
     @app.get("/api/risk/portfolio")
     async def api_risk_portfolio(book: str = "PAPER", lookback: int = 250, days: int = 60):
         return await run(lambda c: RK.analyse(c, _book(book), max(60, min(lookback, 1000)), max(5, min(days, 500))))
@@ -115,7 +143,8 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.post("/api/risk/optimize", dependencies=guard)
     async def api_risk_optimize(request: Req):
         b = await body(request)
-        return await run(lambda c: OPT.optimise(c, _symbols(c, b), b.get("objective", "min_variance"), **_opt_kw(b)))
+        return await run(lambda c: OPT.optimise(c, _symbols(c, b), b.get("objective", "min_variance"), **_opt_kw(b),
+                                                **_pf_kw(c, b)))
 
     @app.get("/api/risk/optimize/{opt_id}")
     async def api_risk_optimize_get(opt_id: str):
