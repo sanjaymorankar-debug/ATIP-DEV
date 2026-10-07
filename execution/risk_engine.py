@@ -29,6 +29,12 @@ value and limit, so a decision can be read back without re-deriving it.
     intent_valid         side, symbol, action, quantity sane
     intent_fresh         as_of within max_intent_age_days
     market_data          a reference price (the decision close, else the latest close)
+    max_price_band_pct   (W39, RK-21) the price the order will carry -- an execution.order_type
+                         LIMIT / SL is created at the reference price -- against the freshest
+                         live LTP, else the last close (orders/risk.py price_band); REJECTED
+                         beyond the band, BUY or SELL. MARKET, or no reference price: SKIP.
+                         The limit is w4 max_price_band_pct once execution/config.py declares
+                         it, else config.json risk_limits.max_price_band_pct (default 20)
   SELL / EXIT / REDUCE   reduce risk: only the gates and a held position are
                          required. EXIT sells everything held; REDUCE the
                          intent's quantity (else half), capped at what is held.
@@ -38,7 +44,10 @@ value and limit, so a decision can be read back without re-deriving it.
     max_order_quantity, max_order_value_pct, max_position_pct,
     max_portfolio_exposure_pct, max_sector_exposure_pct,
     max_strategy_exposure_pct, max_capital_allocation_pct (cash), per_trade_loss_pct
-                         each caps the quantity; a binding cap is a WARN (resized)
+                         each caps the quantity; a binding cap is a WARN (resized).
+                         (W39, RK-21) max_portfolio_exposure_pct counts the open paper
+                         futures notional (futures_paper.gross_notional) with the positions,
+                         and caps a SHORT leg's lots the same way
     max_open_positions, max_daily_trades
     daily_loss_limit_pct, portfolio_drawdown_limit_pct (portfolio/pnl.py risk_state)
   W8  market_data_fresh  a BUY is REJECTED when the symbol's last daily bar is more
@@ -243,6 +252,11 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
     if it.get("action") in ("SHORT", "COVER"):
         return _futures_leg(conn, it, rd, settings, add, finish)
 
+    # -- W39 (RK-21): the order's price against the market, before it is sized or sent
+    blocked = _price_band(conn, it, rd, settings, lim, add)
+    if blocked:
+        return finish(REJECTED, blocked)
+
     # -- reducing risk ----------------------------------------------------------
     if it["side"] == "SELL":
         held = P.held_quantity(conn, it["symbol"]) if own_book else TB.held_quantity(conn, tenant, it["symbol"])
@@ -321,8 +335,13 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         cap("max_position_pct", lim["max_position_pct"], equity * lim["max_position_pct"] / 100 - held_value,
             what="position % of equity")
     if lim["max_portfolio_exposure_pct"] is not None:
+        fut = _futures_notional(conn) if own_book else 0.0      # W30 futures are owner-book only
+        if fut is None:
+            add("max_portfolio_exposure_pct", FAIL, "paper futures notional cannot be measured")
+            return finish(REJECTED, "gross exposure cannot be measured (fail closed)")
         cap("max_portfolio_exposure_pct", lim["max_portfolio_exposure_pct"],
-            equity * lim["max_portfolio_exposure_pct"] / 100 - total_value, what="portfolio exposure % of equity")
+            equity * lim["max_portfolio_exposure_pct"] / 100 - total_value - fut,
+            what="portfolio exposure % of equity" + (f", incl. futures notional {fut:,.0f}" if fut else ""))
     if lim["max_sector_exposure_pct"] is not None:
         sec = P.sectors()
         if not sec:
@@ -431,7 +450,8 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return _review(finish, settings, it, add, qty)
     try:
         from orders.risk import pretrade_check
-        w1 = pretrade_check(conn, it["symbol"], "BUY", qty, qty * px, env=PAPER)
+        # gateway=False: the price band ran above and max_portfolio_exposure_pct is W4's gross limit
+        w1 = pretrade_check(conn, it["symbol"], "BUY", qty, qty * px, env=PAPER, gateway=False)
     except Exception as e:
         w1 = {"ok": False, "message": f"W1 pre-trade check failed to run: {e}"}
     if not w1["ok"]:
@@ -480,6 +500,45 @@ def _w25_limits(conn, it, lim, add, bk, order_value, equity) -> str | None:
             return f"post-trade VaR {v}% of equity > {cap_}%"
         add("max_portfolio_var_pct", PASS, f"post-trade 1-day 95% VaR {v}% of equity", v, cap_)
     return None
+
+
+def _price_band(conn, it, rd, settings, lim, add) -> str | None:
+    """RK-21: the rejection reason when the order's price is outside the band, else None.
+    The order is created at execution.order_type (order_manager.create_order): a LIMIT / SL
+    at rd.reference_price, a MARKET with no price. An order created later through the API
+    with its own limit / trigger price is not seen here."""
+    from orders.risk import gateway_limits, price_band
+    if "max_price_band_pct" not in lim:          # until RISK_DEFAULTS declares it: config.json risk_limits
+        lim["max_price_band_pct"] = gateway_limits().get("max_price_band_pct")
+    band = lim["max_price_band_pct"]
+    if band is None:
+        add("max_price_band_pct", SKIP, "limit disabled")
+        return None
+    otype = str(settings.get("order_type") or "MARKET").upper()
+    try:
+        pb = price_band(conn, it["symbol"], otype, rd.reference_price if otype in ("LIMIT", "SL") else None,
+                        None, band)
+    except Exception as e:
+        pb = {"skipped": True, "reason": f"price band not measured ({e})"}
+    if pb.get("skipped"):
+        add("max_price_band_pct", SKIP, pb["reason"], limit=band)
+        return None
+    if pb["breached"]:
+        add("max_price_band_pct", FAIL, pb["reason"], pb["value"], band)
+        return f"price band: {otype} {pb['price']:,.2f} is {pb['value']:.1f}% from {pb['reference_source']} " \
+               f"{pb['reference']:,.2f} (> {band:g}%)"
+    add("max_price_band_pct", PASS, pb["reason"], pb["value"], band)
+    return None
+
+
+def _futures_notional(conn) -> float | None:
+    """Open paper futures notional (RK-21), None when it cannot be read (the caller fails closed)."""
+    try:
+        from execution.futures_paper import gross_notional
+        return gross_notional(conn)
+    except Exception as e:
+        log.warning(f"  paper futures notional unavailable: {e}")
+        return None
 
 
 def _tenant_profile(conn, it) -> dict | None:
@@ -600,6 +659,21 @@ def _futures_leg(conn, it, rd, settings, add, finish):
         add("lot_sizing", FAIL, f"one lot is {lot_val:,.0f} > {target}% of equity ({equity * target / 100:,.0f})",
             lot_val, equity * target / 100)
         return finish(REJECTED, "one futures lot exceeds the position target")
+    gx = lim.get("max_portfolio_exposure_pct")              # W39 (RK-21): a short is gross exposure too
+    if gx is not None:
+        fut = _futures_notional(conn)
+        if fut is None:
+            add("max_portfolio_exposure_pct", FAIL, "paper futures notional cannot be measured")
+            return finish(REJECTED, "gross exposure cannot be measured (fail closed)")
+        held = sum((p.get("value") or 0.0) for p in bk.get("positions") or [])
+        fit = max(0, int((equity * gx / 100 - held - fut) // lot_val))
+        what = f"positions {held:,.0f} + futures notional {fut:,.0f} (limit {gx:g}% of equity)"
+        if fit < 1:
+            add("max_portfolio_exposure_pct", FAIL, f"no room for one lot: {what}", fit)
+            return finish(REJECTED, "no room under max_portfolio_exposure_pct")
+        add("max_portfolio_exposure_pct", WARN if fit < lots else PASS,
+            f"{'caps the short at' if fit < lots else 'room for'} {fit} lot(s): {what}", fit)
+        lots = min(lots, fit)
     fs = FP.settings()
     margin = lots * lot_val * float(fs["margin_pct"]) / 100
     cap = (cash or 0) * float(lim.get("max_capital_allocation_pct") or 95) / 100
