@@ -126,6 +126,40 @@ An audit found none of the 14 requirements missing outright, but most were only 
 - **UX-01, progressive disclosure.** A Simple / Detailed toggle on `/wealth`, where Simple hides the audit, ledger and trade-level tables.
 - **Already present, now noted in the tracker:** intraday price alerts (ENT-11) and watchlists (ENT-19).
 
+## Batch 5 — QA, partial positions, API contract
+
+**QA-001 / EX-01 / OPS-02 (QA tooling and tests).**
+- `tools/load_test.py` is a read-only load / latency test. It runs against a running dashboard or in-process on a seeded temporary install, and exits 1 on a missed target.
+  - Measured over HTTP: p95 145–184 ms at 4–8 threads, with 0 errors.
+  - `docs/W39_QA_PERFORMANCE.md` has the targets and where each comes from.
+- Playwright smoke tests cover every page and tab. They skip without Chromium.
+- A QA suite tests modules that had no tests:
+  - order rules (EX-01): triggers, the OCO / bracket lifecycle, trailing stops;
+  - the post-market pipeline end to end (OPS-02);
+  - QR-11, ML-05, MON-06, DB-17 and OPS-11.
+- **Bugs fixed:**
+  - Bracket legs were anchored on the trigger price instead of the fill.
+  - When the Nifty 500 list could not be downloaded, every caller retried NSE: 14 ms → 1.7 s per wealth page, up to ~96 s with NSE timing out. A failure is now remembered for 30 minutes, and concurrent callers share one download.
+
+**PF-06 (partial position changes in backtests).**
+- The W2 backtest simulates ADD / REDUCE: partial trade rows, an averaged entry price, the `max_position_pct` cap, and P&L that still adds up.
+- BUY / SELL-only runs are byte-identical to before: 50 runs were compared, and three result digests are pinned in the tests.
+- **Bugs fixed:**
+  - The portfolio kind's `reweight_band_pct` (W25) was refused by definition validation, so it could never run.
+  - A code strategy's ADD / REDUCE became a BUY in the live engine.
+  - The event-driven engine opened positions on ADD / REDUCE. It now refuses them and says so.
+  - Saved runs, the walk-forward stitched metrics and the Monte Carlo shuffle now count a position's rows as one trade.
+
+**API-05 (typed v1 responses).**
+- Every `/api/v1` resource declares a response schema.
+- A contract test calls each real handler on a seeded database and validates the body.
+- **Fixed:**
+  - FastAPI's 422 bypassed the error envelope; it now has the envelope, with `detail` kept.
+  - The API-key 429 lacked a `request_id`.
+  - Two resources returned JSON as text. Decoded `metrics` / `formats` fields are now added beside it.
+
+**Recorded for the owner (QR-11).** The sensitivity check ignores a neighbouring parameter value with too few trades. So a strategy that stops trading one step away is not flagged as a knife edge. This is a methodology call.
+
 ## Blocked (needs the owner) — the work moved on
 
 | ID | Exact input required |

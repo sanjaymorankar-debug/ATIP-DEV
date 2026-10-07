@@ -365,6 +365,21 @@ UPDATES = {
               "wealth performance report (PERF-001-07 / -09 / -10 on portfolio LIVE: broker_sync + PF-12 imports)"},
     "PF-11": {"Next Action / Missing Work": "Independent QA. LIVE XIRR now comes from the wealth performance ledger "
               "(PERF-001-04, portfolio LIVE: Dhan broker_sync + PF-12 broker imports)"},
+    "PF-06": {"Completion %": "90", "Current Implementation": "W25: rebalance_plan (NEW/ADD/REDUCE/EXIT/HOLD, band, "
+              "min trade, costs, turnover); portfolio kind reweight_band_pct emits ADD/REDUCE with exact quantity. W39: "
+              "the W2 backtest simulates ADD / REDUCE (partial rows, averaged entries, max_position_pct cap, P&L "
+              "conserved; BUY/SELL-only runs byte-identical); reweight_band_pct accepted by definition validation "
+              "(was refused); saved runs, walk-forward and Monte Carlo count positions",
+              "Next Action / Missing Work": "Independent QA; the event-driven engine (BT-17) still trades whole "
+              "positions (it says so)", "Key Files": "portfolio/optimize.py; strategy_engine/kinds.py; "
+              "backtest/engine.py; strategy_engine/adapter.py", "Evidence": "tests/test_w39_backtest_partial.py"},
+    "API-05": {"Completion %": "100", "Current Implementation": "W31: python -m ops api-docs (openapi.json + "
+               "API_REFERENCE.md, 362 routes with permissions). W39: every public v1 resource has a typed response "
+               "schema (openapi-v1.json) checked against the real handlers by a contract test; error bodies "
+               "(incl. 422) use the envelope",
+               "Next Action / Missing Work": "Independent QA. Per-route schemas for the internal dashboard routes "
+               "are not planned: /api/v1 is the published contract", "Evidence": "tests/test_w39_api_contract.py"},
+    "SE-01": {"Notes+": "W39: KNOWN_DEFECTS W3-L4 resolved -- ADD / REDUCE decisions are simulated in backtests"},
     "DP-21": {"Notes+": "W39 check: AMFI mutual-fund NAV ingestion (owner note 'amfi for MF data') is this row -- "
               "mf_nav daily at 23:30; MF remains outside the wealth-track mitigation scope (owner Scope Exclusions)"},
     "ENT-11": {"Notes+": "W39 check: ad-hoc intraday price alerts (Zerodha / Dhan parity) are covered here "
