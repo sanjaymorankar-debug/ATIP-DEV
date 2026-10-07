@@ -168,3 +168,66 @@ def test_lake_reads_the_version_known_at_the_time(temp_db, tmp_path, monkeypatch
     assert v.get("ok", v.get("status") in ("OK", None)) is not False
     with pytest.raises(ValueError):
         lake.write("bad name!", d, pd.DataFrame({"a": [1]}), conn=conn)
+
+
+# ── DP-05 order-book depth ─────────────────────────────────────────────
+
+def test_depth_quote_parsing_and_daily_features(temp_db):
+    from data.depth import features, parse_quote
+    from db.schema import get_connection, init_db
+    q = {"last_price": 100.05, "depth": {
+        "buy": [{"price": 100.0, "quantity": 300, "orders": 3}, {"price": 99.95, "quantity": 100, "orders": 1}],
+        "sell": [{"price": 100.10, "quantity": 100, "orders": 2}, {"price": 0, "quantity": 999}]}}
+    p = parse_quote(q)
+    assert p["best_bid"] == 100.0 and p["best_ask"] == 100.10 and p["mid"] == pytest.approx(100.05)
+    assert p["spread_bps"] == pytest.approx(round(0.10 / 100.05 * 1e4, 3))
+    assert p["bid_qty_5"] == 400 and p["ask_qty_5"] == 100 and p["imbalance"] == pytest.approx(0.6)
+    assert len(p["asks"]) == 1                                    # a zero-price level is dropped
+    assert parse_quote({"depth": {"buy": [], "sell": []}}) is None and parse_quote({}) is None
+    init_db()
+    conn = get_connection()
+    for ts, sp, imb in (("2026-10-06 10:00:00", 10.0, 0.2), ("2026-10-06 10:03:00", 20.0, 0.4),
+                        ("2026-10-06 10:04:00", 40.0, -0.1)):
+        conn.execute("INSERT INTO order_book_snapshot (symbol,ts,spread_bps,imbalance,bid_qty_5,ask_qty_5) VALUES "
+                     "('ACME',?,?,?,100,100)", (ts, sp, imb))
+    conn.commit()
+    f = features(conn, "acme", "2026-10-06")
+    # time weights: 180 s, 60 s, and 60 s for the last snapshot
+    assert f["tw_spread_bps"] == pytest.approx(round((10 * 180 + 20 * 60 + 40 * 60) / 300, 3))
+    assert f["median_imbalance"] == 0.2 and f["snapshots"] == 3
+    assert features(conn, "ACME", "2026-10-05") is None
+
+
+# ── DP-04 ticks -> 1-minute bars ───────────────────────────────────────
+
+def test_ticks_become_minute_bars(temp_db, tmp_path, monkeypatch):
+    from data import lake, ticks as T
+    from db.schema import get_connection, init_db
+    init_db()
+    monkeypatch.setattr(lake, "ROOT", tmp_path / "lake")
+    monkeypatch.setattr(T, "_buf", [])
+    conn = get_connection()
+    day = str(date.today())
+    for t, ltp, cum in (("10:00:05", 100, 1000), ("10:00:40", 102, 1500), ("10:00:59", 101, 1600),
+                        ("10:01:10", 99, 2000), ("10:01:50", 100, 2600)):
+        T.capture("ACME", {"LTT": t, "LTP": ltp, "LTQ": 1, "volume": cum})
+    assert T.flush(conn)["rows"] == 5
+    r = T.build_minute_bars(day, conn=conn)
+    assert r["status"] == "SUCCESS" and r["rows"] == 2
+    bars = conn.execute("SELECT ts, open, high, low, close, volume FROM intraday_bars WHERE symbol='ACME' AND "
+                        "interval_min=1 ORDER BY ts").fetchall()
+    assert [tuple(b)[1:5] for b in bars] == [(100, 102, 100, 101), (99, 100, 99, 100)]
+    assert [b[5] for b in bars] == [0, 1000]          # cumulative volume differenced (first bar has no base)
+
+
+# ── BT-04 deflated Sharpe ──────────────────────────────────────────────
+
+def test_deflated_sharpe_penalises_many_trials():
+    from backtest.optimize import deflated_sharpe
+    rng = np.random.default_rng(3)
+    best = list(rng.normal(0.001, 0.01, 250))
+    few = deflated_sharpe(best, [1.0, 0.5])
+    many = deflated_sharpe(best, list(np.linspace(-1.5, 1.5, 200)))
+    assert 0 <= many["dsr"] < few["dsr"] <= 1
+    assert many["expected_max_sharpe_per_session"] > few["expected_max_sharpe_per_session"]
+    assert deflated_sharpe(best[:10], [1, 2])["dsr"] is None and deflated_sharpe(best, [1.0])["dsr"] is None
