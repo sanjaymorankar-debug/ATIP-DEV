@@ -192,6 +192,9 @@ def run_montecarlo(run_id: str, method: str = "trade_shuffle", n_sims: int = 100
             raise ValueError(f"run {run_id} is not a completed backtest")
         if method == "trade_shuffle":
             trades = store.get_rows(conn, "backtest_trade", run_id)
+            if any(t.get("partial") for t in trades):           # W39 (PF-06): one trade per position
+                from backtest.engine import round_trips_from_rows
+                trades = round_trips_from_rows(trades)
             eq = {r["date"]: r["equity"] for r in store.get_rows(conn, "backtest_equity", run_id)}
             fracs = [(t["qty"] * t["entry_price"]) / eq[t["entry_date"]] for t in trades
                      if eq.get(t["entry_date"])]

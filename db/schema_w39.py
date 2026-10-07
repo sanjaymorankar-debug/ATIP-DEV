@@ -63,4 +63,6 @@ W39_COLUMNS = {
                       "rs_sector_pctile": "REAL", "fib_swing_high": "REAL", "fib_swing_low": "REAL",
                       "fib_swing_dir": "TEXT", "fib_382": "REAL", "fib_500": "REAL", "fib_618": "REAL",
                       "fib_nearest": "TEXT", "fib_nearest_dist_pct": "REAL"},
+    # PF-06 partial position changes: a REDUCE row (1), the ADD fills into its position
+    "backtest_trade": {"partial": "INTEGER", "adds": "INTEGER"},
 }

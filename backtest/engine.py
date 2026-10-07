@@ -494,6 +494,45 @@ def _not_simulated_warning(strat) -> list:
     return [f"decisions not simulated: {what} -- the backtest is a long-only cash book (no short legs)"]
 
 
+def round_trips_from_rows(rows: list) -> list:
+    """Stored / returned trade rows -> one dict per CLOSED position, for consumers of saved
+    runs (walk-forward stitched metrics, the Monte Carlo trade shuffle): a position's rows
+    -- its partial exits ("partial") and the close -- share (symbol, entry_date), since a
+    symbol holds one position at a time. Each: {"symbol", "entry_date", "exit_date",
+    "net_pnl", "return_pct", "qty", "entry_price", "rows"}; return_pct is the summed net
+    over the summed cost basis (each row's basis = net / return, else qty x entry price).
+    A position with only partial rows is still open (close_out_at_end false): left out.
+    Rows of runs without partial exits map one to one, figures unchanged."""
+    groups, order = {}, []
+    for t in rows:
+        k = (t["symbol"], str(t["entry_date"]))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(t)
+    out = []
+    for k in order:
+        g = groups[k]
+        if all(t.get("partial") for t in g):
+            continue
+        if len(g) == 1:
+            t = g[0]
+            out.append({"symbol": t["symbol"], "entry_date": t["entry_date"], "exit_date": t["exit_date"],
+                        "net_pnl": t["net_pnl"], "return_pct": t["return_pct"], "qty": t["qty"],
+                        "entry_price": t["entry_price"], "rows": 1})
+            continue
+        net = sum(t["net_pnl"] or 0 for t in g)
+        basis = sum((t["net_pnl"] / (t["return_pct"] / 100)) if t.get("return_pct") else
+                    (t["qty"] * t["entry_price"]) for t in g)
+        qty = sum(t["qty"] for t in g)
+        out.append({"symbol": g[0]["symbol"], "entry_date": g[0]["entry_date"], "exit_date": g[-1]["exit_date"],
+                    "net_pnl": round(net, 2), "return_pct": round(net / basis * 100, 4) if basis else None,
+                    "qty": qty, "entry_price": round(sum(t["qty"] * t["entry_price"] for t in g) / qty, 4),
+                    "rows": len(g)})
+    out.sort(key=lambda r: str(r["exit_date"]))
+    return out
+
+
 def _round_trips(st: SimState) -> tuple[list, list]:
     """Net P&L and return % per CLOSED position (round trip) for the trade statistics:
     a position's rows (partial exits and the close) fold into one trade. Ordered by

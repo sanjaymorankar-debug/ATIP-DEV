@@ -79,11 +79,12 @@ def save_result(conn, run_id: str, result: dict, bias_extra: dict | None = None,
         conn.execute(f"DELETE FROM {t} WHERE run_id=?", (run_id,))
     conn.executemany(
         "INSERT INTO backtest_trade (run_id,seq,symbol,entry_date,entry_price,entry_ref_price,qty,exit_date,"
-        "exit_price,exit_ref_price,exit_reason,gross_pnl,costs,net_pnl,return_pct,holding_sessions,entry_reason) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "exit_price,exit_ref_price,exit_reason,gross_pnl,costs,net_pnl,return_pct,holding_sessions,entry_reason,"
+        "partial,adds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(run_id, i, t["symbol"], str(t["entry_date"]), t["entry_price"], t["entry_ref_price"], t["qty"],
           str(t["exit_date"]), t["exit_price"], t["exit_ref_price"], t["exit_reason"], t["gross_pnl"],
-          t["costs"], t["net_pnl"], t["return_pct"], t["holding_sessions"], t.get("entry_reason"))
+          t["costs"], t["net_pnl"], t["return_pct"], t["holding_sessions"], t.get("entry_reason"),
+          1 if t.get("partial") else None, t.get("adds"))      # W39 (PF-06): partial rows / ADD fills
          for i, t in enumerate(result["trades"], 1)])
     conn.executemany(
         "INSERT INTO backtest_equity (run_id,date,cash,positions_value,equity,exposure_pct,n_positions,"

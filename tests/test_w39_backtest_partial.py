@@ -551,3 +551,129 @@ def test_adapter_maps_add_and_reduce_and_counts_what_it_cannot_trade(db):
     assert s.not_simulated == {"REDUCE (not held)": 1, "SHORT": 1}
     [w] = _not_simulated_warning(s)
     assert "REDUCE (not held) x1, SHORT x1" in w and "REDUCE / ADD" not in w
+
+
+def _pf(sid, **kw):
+    return {"strategy_id": sid, "name": sid, "version": "1.0.0", "kind": "portfolio",
+            "universe": {"type": "symbols", "symbols": list(WAVES)}, "score": {"feature": "rsi_14"},
+            "top_n": 3, "method": "equal", "rebalance_every": 1,
+            "position": {"target_position_pct": 10, "max_positions": 3, "stop_pct": 25}, **kw}
+
+
+def test_a_portfolio_version_with_a_reweight_band_validates_and_trades_its_rebalance_quantities(db):
+    """W25's reweight_band_pct (PF-06) was missing from definition.KIND_KEYS, so a stored portfolio
+    strategy carrying it was refused and the ADD / REDUCE reweight could never run."""
+    from strategy_engine.definition import DefinitionError, validate
+    for bad in (0, 150, "2", True):
+        with pytest.raises(DefinitionError, match="reweight_band_pct"):
+            validate(_pf("pf_bad", reweight_band_pct=bad))
+    assert validate(_pf("pf_ok", reweight_band_pct=2))["reweight_band_pct"] == 2
+    _seed_waves()
+    _store(_pf("pf_plain"), _pf("pf_band", reweight_band_pct=1))
+    plain, band = _run_version("pf_plain"), _run_version("pf_band")
+    assert not any(t.get("partial") or t.get("adds") for t in plain["trades"])
+    assert not any("not simulated" in w for w in band["bias_report"]["warnings"])
+    assert band["metrics"].get("partial_exits", 0) + band["metrics"].get("adds", 0) > 0, \
+        "the band must have produced ADD / REDUCE trades"
+    initial = 1_000_000.0
+    assert sum(t["net_pnl"] for t in band["trades"]) == pytest.approx(_eq(band, -1) - initial,
+                                                                      abs=0.01 * len(band["trades"]))
+
+
+def test_saved_runs_keep_partial_rows_and_downstream_stats_count_positions(db):
+    """Stored trade rows carry partial / adds, and the consumers of saved runs (Monte Carlo trade
+    shuffle, walk-forward stitched metrics) fold a position's rows into one trade like the engine."""
+    from backtest import service
+    from backtest.engine import round_trips_from_rows
+    from db.schema import get_connection
+    from backtest import store
+    _seed_waves()
+    _store(_mf("mf_reduce", reduce_threshold=45))
+    r = service.create_and_run({"strategy_id": "mf_reduce", "universe": list(WAVES), "start": LEGACY[0],
+                                "end": LEGACY[1]})
+    assert r["status"] == "COMPLETED"
+    conn = get_connection()
+    try:
+        rows = store.get_rows(conn, "backtest_trade", r["run_id"])
+    finally:
+        conn.close()
+    parts = [t for t in rows if t["partial"]]
+    assert parts and r["metrics"]["partial_exits"] == len(parts) and r["metrics"]["trade_rows"] == len(rows)
+    trips = round_trips_from_rows(rows)
+    assert len(trips) == r["metrics"]["trades"] < len(rows)
+    assert sum(t["net_pnl"] for t in trips) == pytest.approx(sum(t["net_pnl"] for t in rows), abs=0.01)
+    wins = sum(1 for t in trips if t["net_pnl"] > 0)
+    assert r["metrics"]["win_rate"] == pytest.approx(wins / len(trips), abs=1e-4)
+    mc = service.run_montecarlo(r["run_id"], n_sims=50, seed=1)
+    assert (mc.get("result") or mc)["n_trades"] == len([t for t in trips if t["return_pct"] is not None])
+
+
+def test_round_trips_from_rows_without_partials_is_one_to_one():
+    from backtest.engine import round_trips_from_rows
+    rows = [{"symbol": "A", "entry_date": "2024-01-02", "exit_date": "2024-01-09", "net_pnl": 10.0,
+             "return_pct": 1.0, "qty": 10, "entry_price": 100.0},
+            {"symbol": "B", "entry_date": "2024-01-03", "exit_date": "2024-01-05", "net_pnl": -5.0,
+             "return_pct": -0.5, "qty": 10, "entry_price": 100.0}]
+    out = round_trips_from_rows(rows)
+    assert [(t["symbol"], t["net_pnl"], t["return_pct"]) for t in out] == [("B", -5.0, -0.5), ("A", 10.0, 1.0)]
+    open_only = [{**rows[0], "partial": 1}]
+    assert round_trips_from_rows(open_only) == []                   # still open: not a closed trade
+
+
+def test_event_driven_engine_refuses_add_and_reduce_instead_of_opening_positions(db, monkeypatch):
+    """BT-17 has no partial positions: an ADD / REDUCE used to fall through to the BUY branch, so
+    one for a symbol not held opened a new position. Now it is an event plus a bias warning."""
+    from backtest import event_driven as ED
+    from db.schema import get_connection
+    _seed([(100, 100, 100, 100)] + _flat(*([100] * 15)))
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 1: [_sig("ADD", quantity=5)],
+                          2: [_sig("REDUCE", sym="QQQ", quantity=3), _sig("ADD", sym="QQQ", value=1000.0)]})
+    conn = get_connection()
+    try:
+        res = ED.run({"strategy_id": "scripted", "universe": ["PAR", "QQQ"], "start": str(_days()[0]),
+                      "end": str(_days()[15]), "initial_capital": 100_000, "sizing": dict(SIZING), **FLAT_COSTS},
+                     conn)
+    finally:
+        conn.close()
+    assert {t["symbol"] for t in res["trades"]} <= {"PAR"}, "QQQ must never be bought"
+    ev = [e["event"] for e in res["events"] if "not simulated" in e["event"]]
+    assert len(ev) == 3
+    assert any("ADD x2" in w and "REDUCE x1" in w for w in res["bias_report"]["warnings"])
+
+
+def test_code_strategy_add_and_reduce_become_partial_decisions_live(db):
+    """strategy_engine PythonEvaluator: a W2 code strategy's ADD / REDUCE of a held name is an ADD /
+    REDUCE decision with its quantity (it used to become a BUY); not held -> nothing."""
+    from types import SimpleNamespace
+    from backtest import strategies
+    from backtest.strategy import Signal, Strategy
+    from strategy_engine.kinds import PythonEvaluator
+
+    class Mixed(Strategy):
+        strategy_id, version, default_params = "mixed", "1", {}
+
+        def on_bar(self, ctx):
+            return [Signal("PAR", "ADD", quantity=7), Signal("QQQ", "REDUCE", fraction=0.5),
+                    Signal("ZZZ", "ADD", value=500.0)]
+
+    strategies.REGISTRY["mixed"] = Mixed
+    try:
+        ev = PythonEvaluator.__new__(PythonEvaluator)
+        ev.defn, ev.params = {"python_class": "mixed", "position": {}, "risk": {}}, {}
+        made = []
+
+        def intent(sym, as_of, act, conf, why, ctx, entry=False):
+            it = SimpleNamespace(symbol=sym, action=act, features={}, stop_price=None, target_price=None,
+                                 max_hold_sessions=None, reason=why)
+            made.append(it)
+            return it
+        ev.intent = intent
+        ev.limit_buys = lambda cands, n: [c[2] for c in cands]
+        env = SimpleNamespace(history=SimpleNamespace(view=lambda d: None), universe=["PAR", "QQQ", "ZZZ"],
+                              scores=None, context=lambda s, d: {"close": 100.0})
+        out = ev.decide(env, _days()[5], {"PAR": {"qty": 10, "entry_price": 100}, "QQQ": {"qty": 9}})
+    finally:
+        strategies.REGISTRY.pop("mixed", None)
+    acts = {(i.symbol, i.action, i.features.get("rebalance_qty")) for i in out}
+    assert ("PAR", "ADD", 7) in acts and ("QQQ", "REDUCE", 4) in acts
+    assert not any(i.symbol == "ZZZ" for i in out) and not any(i.action == "BUY" for i in out)
