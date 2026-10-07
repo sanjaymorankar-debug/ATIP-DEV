@@ -317,6 +317,15 @@ Open **http://localhost:8000** after starting ATIP.
 | CRI Risk | Crash-risk stocks (avoid) | Daily 5:00 PM |
 | News | AI-classified news with sentiment | 7:45 AM, 12:00 PM |
 
+Click any stock to open its history panel. It offers 1M to 5Y and All ranges, daily, weekly or monthly
+bars, SMA, EMA and Bollinger overlays, a log scale, and BUY / SELL signal markers.
+
+Other pages:
+- `/wealth`: the investor mode. A Simple / Detailed toggle sits in the header.
+- `/baskets`: basket orders and paper stock SIP plans.
+- `/trading`: orders and risk.
+- `/data-platform`: includes the long-history coverage.
+
 ---
 
 ## Troubleshooting
