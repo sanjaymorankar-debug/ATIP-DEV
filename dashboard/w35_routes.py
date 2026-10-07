@@ -15,6 +15,8 @@ Authz: GET /api/data -> dashboard:read; POST /api/data -> research:run (enterpri
     GET  /api/data/fo/contracts                      ?symbol&date&expiry                               DP-08
     GET  /api/data/fo/chain                          ?symbol&expiry&ts
     POST /api/data/fo/chain/snapshot                 {symbol}
+    GET  /api/data/fo/surface                        ?symbol&date  W39 (AF-10): IV surface, term structure, skew,
+                                                     per-strike Greeks (quant.derivatives.vol_surface); 404 no data
     GET  /api/data/macro                             latest point-in-time snapshot + calendar           DP-14
     GET  /api/data/macro/{series_id}                 ?as_of
     POST /api/data/macro/refresh
@@ -171,6 +173,16 @@ def register(app, guard, Req, get_connection, json_safe):
         if not b.get("symbol"):
             return JSONResponse({"error": "symbol is required"}, status_code=400)
         return await run(lambda c: snapshot_option_chain(str(b["symbol"]), c))
+
+    @app.get("/api/data/fo/surface")
+    async def fo_surface(symbol: str, date: str = None):
+        from quant.derivatives import vol_surface
+        def q(c):
+            s = vol_surface(c, symbol, date)
+            if s["status"] != "OK":
+                raise LookupError(f"{s['status']}: {s['reason']}")
+            return s
+        return await run(q)
 
     # ── DP-14 macro ──
     @app.get("/api/data/macro")

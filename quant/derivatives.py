@@ -17,6 +17,23 @@ F&O bhavcopy, or Dhan's option chain) only has to fill derivatives_quote:
   roll_yield(near, next_, days_between)      annualised near-to-next spread
   rollover_pct(oi_near, oi_next)             share of open interest in the next expiry
 
+  vol_surface(conn, symbol, as_of=None)      W39 (AF-10): the session's implied-volatility surface from
+                                             fo_contract_daily (per-contract IV of every strike of the
+                                             stored -- nearest -- expiries, data/derivatives_store.py):
+      smile          per expiry, the out-of-the-money side's IV at each strike (puts below the
+                     underlying, calls at / above; the other side when that one has none)
+      surface        IV by moneyness K/S (MONEYNESS_GRID 0.80 .. 1.20) x expiry, linear in
+                     log-moneyness between stored strikes; None outside them (no extrapolation)
+      term_structure ATM IV (the smile at K = S) per expiry, its slope (far - near, vol points)
+                     and shape CONTANGO / FLAT / BACKWARDATION
+      skew           per expiry: skew_95_105 = IV(0.95 S) - IV(1.05 S) (W30's iv_skew definition;
+                     > 0 = put skew) and rr_25d = IV(25-delta call) - IV(25-delta put)
+      strikes        per strike and side: close, OI, volume, the stored IV and greeks() at it
+                     (the underlying close, T = calendar days to expiry / 365, r = the RISK_FREE
+                     the IVs were solved with, q = 0)
+      status         OK | NO_DATA (nothing stored for the symbol / date) | NO_UNDERLYING | NO_IV
+                     (contracts but no usable implied vol), with a reason
+
 Index options on NSE are European, so Black-Scholes applies; stock options are
 also European-style settled on NSE. Nothing here invents a price or a volatility.
 """
@@ -24,6 +41,7 @@ also European-style settled on NSE. Nothing here invents a price or a volatility
 from __future__ import annotations
 
 import math
+from bisect import bisect_left
 
 DATA_STATUS = ("NSE F&O bhavcopy integrated (W27 data/derivatives.py summary, W35 data/derivatives_store.py contracts + "
                "option chains); derivatives factors in quant/factors.py (W36, AF-06)")
@@ -124,3 +142,96 @@ def analytics_for_quote(q: dict, spot: float, r: float = 0.065) -> dict:
     iv = implied_vol(q.get("price"), spot, q["strike"], T, r, q["option_type"])
     g = greeks(spot, q["strike"], T, r, iv, q["option_type"]) if iv else {}
     return {"iv": iv, **g}
+
+
+# ── W39 (AF-10): volatility surface and term structure ──
+MONEYNESS_GRID = tuple(round(0.80 + 0.05 * i, 2) for i in range(9))      # strike / underlying
+TERM_FLAT_BAND = 0.25                                                   # vol points
+
+
+def _interp(x, xs, ys):
+    """Linear interpolation on sorted xs; None outside [xs[0], xs[-1]] -- never extrapolated."""
+    if not xs or x < xs[0] - 1e-9 or x > xs[-1] + 1e-9:
+        return None
+    x = min(max(x, xs[0]), xs[-1])
+    j = bisect_left(xs, x)
+    if xs[j] == x or j == 0:
+        return ys[j]
+    return ys[j - 1] + (ys[j] - ys[j - 1]) * (x - xs[j - 1]) / (xs[j] - xs[j - 1])
+
+
+def _r3(x):
+    return None if x is None else round(x, 3)
+
+
+def vol_surface(conn, symbol: str, as_of=None, grid=MONEYNESS_GRID, r=None) -> dict:
+    from datetime import date
+    from data.derivatives import RISK_FREE
+    r = RISK_FREE if r is None else float(r)
+    sym = symbol.upper()
+    opt = "option_type IN ('CE','PE') AND strike>0"
+    d = as_of or conn.execute(f"SELECT MAX(date) FROM fo_contract_daily WHERE symbol=? AND {opt}", (sym,)).fetchone()[0]
+    if not d:
+        return {"symbol": sym, "as_of": None, "status": "NO_DATA",
+                "reason": f"no option contracts stored for {sym} (fo_contract_daily, filled by the F&O pipeline)"}
+    td = date.fromisoformat(str(d)[:10])
+    out = {"symbol": sym, "as_of": str(td)}
+    rows = conn.execute(f"SELECT expiry, strike, option_type, close, oi, volume, underlying, iv FROM fo_contract_daily "
+                        f"WHERE symbol=? AND date=? AND {opt} ORDER BY expiry, strike", (sym, str(td))).fetchall()
+    if not rows:
+        return {**out, "status": "NO_DATA", "reason": f"no option contracts stored for {sym} on {td}"}
+    und = sorted(float(x[6]) for x in rows if x[6])
+    if not und:
+        return {**out, "status": "NO_UNDERLYING", "reason": "the stored contracts carry no underlying price"}
+    S = und[len(und) // 2]
+    by_exp = {}
+    for x in rows:
+        by_exp.setdefault(str(x[0])[:10], []).append(x)
+    expiries = []
+    for e in sorted(by_exp):
+        dte = (date.fromisoformat(e) - td).days
+        if dte <= 0:                                         # expiry day: no time value left to price
+            continue
+        T = dte / 365.0
+        strikes = {}
+        for _, K, ot, close, oi, vol, _u, iv in by_exp[e]:
+            K, kind = float(K), "call" if ot == "CE" else "put"
+            x = strikes.setdefault(K, {"strike": K, "moneyness": round(K / S, 4),
+                                       "log_moneyness": round(math.log(K / S), 5)})
+            g = greeks(S, K, T, r, iv / 100, kind) if iv and iv > 0 else {}
+            x[kind] = {"iv": iv, "close": close, "oi": oi, "volume": vol, **g}
+        ks, ivs, deltas = [], [], []
+        for K in sorted(strikes):
+            x = strikes[K]
+            sides = ("put", "call") if K < S else ("call", "put")
+            iv = next((x[s_]["iv"] for s_ in sides if (x.get(s_) or {}).get("iv")), None)
+            x["smile_iv"] = iv
+            if iv:
+                ks.append(math.log(K / S))
+                ivs.append(iv)
+                deltas.append((greeks(S, K, T, r, iv / 100, "call")["delta"], iv))
+        atm = _interp(0.0, ks, ivs)
+        p95, c105 = _interp(math.log(0.95), ks, ivs), _interp(math.log(1.05), ks, ivs)
+        deltas.sort()
+        dx, dy = [a for a, _ in deltas], [b for _, b in deltas]
+        c25, p25 = _interp(0.25, dx, dy), _interp(0.75, dx, dy)      # a 25-delta put = a 75-delta call (q = 0)
+        expiries.append({"expiry": e, "dte": dte, "atm_iv": _r3(atm),
+                         "skew_95_105": _r3(p95 - c105) if p95 is not None and c105 is not None else None,
+                         "rr_25d": _r3(c25 - p25) if c25 is not None and p25 is not None else None,
+                         "iv_by_moneyness": [_r3(_interp(math.log(m), ks, ivs)) for m in grid],
+                         "points": len(ks), "strikes": [strikes[K] for K in sorted(strikes)]})
+    if not any(x["points"] for x in expiries):
+        return {**out, "status": "NO_IV", "underlying": S,
+                "reason": "contracts stored but none with an implied volatility on a live expiry (prices outside "
+                          "no-arbitrage bounds give none)"}
+    term = [{k: x[k] for k in ("expiry", "dte", "atm_iv", "skew_95_105", "rr_25d")} for x in expiries]
+    atms = [t for t in term if t["atm_iv"] is not None]
+    slope = round(atms[-1]["atm_iv"] - atms[0]["atm_iv"], 3) if len(atms) >= 2 else None
+    shape = None if slope is None else ("CONTANGO" if slope > TERM_FLAT_BAND else "BACKWARDATION"
+                                        if slope < -TERM_FLAT_BAND else "FLAT")
+    return {**out, "status": "OK", "underlying": S, "risk_free": r, "iv_unit": "% annualised",
+            "surface": {"moneyness": list(grid), "expiries": [x["expiry"] for x in expiries],
+                        "dte": [x["dte"] for x in expiries], "iv": [x["iv_by_moneyness"] for x in expiries]},
+            "term_structure": term, "term_slope": slope, "term_shape": shape, "expiries": expiries,
+            "method": "OTM-side smile per expiry, linear in log-moneyness (no extrapolation); Black-Scholes greeks at "
+                      "the stored IV, q = 0"}
