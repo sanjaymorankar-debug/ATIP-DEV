@@ -43,7 +43,7 @@
 │   macOS / Linux launchers
 ├── start_atip.sh                   ← Start ATIP
 ├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
-├── deploy/launchd/                 ← LaunchAgents: auto-start + 5-min snapshot
+├── deploy/launchd/                 ← LaunchAgents: auto-start, 5-min snapshot, Dhan token
 │
 │   Windows launchers (kept for the old machine)
 ├── install.bat                     ← Install all packages
@@ -231,9 +231,10 @@ python main.py --live-feed
 ### macOS — LaunchAgents (current machine)
 
 ```bash
-deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload
+deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload + Dhan token refresh
 deploy/launchd/install.sh platform   # just the scheduler/dashboard
 deploy/launchd/install.sh snapshot   # just the snapshot upload
+deploy/launchd/install.sh token      # just the daily Dhan token refresh
 deploy/launchd/install.sh --uninstall
 ```
 
@@ -244,15 +245,28 @@ the agents into `~/Library/LaunchAgents`, so nothing has a path baked in.
 |---|---|
 | `com.atip.platform` | Starts ATIP at login and restarts it if it exits non-zero (`KeepAlive`), which is what the Windows Task Scheduler task provided and the Startup folder could not. |
 | `com.atip.publish-snapshot` | Runs `publish_snapshot.sh` every 5 minutes. Needs `atip_data/publish.json`. |
+| `com.atip.dhan-token-refresh` | Runs `tools/dhan_token_refresh.sh` daily at 06:30 and at login: renews the 24-hour Dhan token before the 07:00 pre-market run, and saves it where ATIP reads it (`config.json`, or the vault once migrated). Replaces the Windows `ATIP_DhanTokenRefresh` task. |
 
-Both set `TZ=Asia/Kolkata` so scheduled job times match the market session
-regardless of the machine's locale.
+All set `TZ=Asia/Kolkata` so scheduled job times match the market session
+regardless of the machine's locale. The token agent's 06:30 is the exception:
+launchd reads a calendar time in the Mac's own time zone, so keep the Mac on IST.
+
+The token agent renews a token that is still valid with no extra setup. To get
+a new one after it has **expired** (the Mac was off for over a day), it logs in
+with your Dhan PIN and TOTP. Add them once to `atip_data/config.json` (or as
+`DHAN_PIN` / `DHAN_TOTP_SECRET` in ATIP's secret store):
+```json
+"dhan_pin":         "<your 6-digit Dhan PIN>",
+"dhan_totp_secret": "<the base32 secret shown when you enable TOTP at web.dhan.co>"
+```
 
 **Verify:**
 ```bash
 launchctl list | grep com.atip          # a 0 in the second column = last run exited cleanly
 tail -f atip_data/launchd.err           # ATIP's own output
 tail -f atip_data/publish.log           # snapshot uploads
+tail atip_data/dhan_token_refresh.log   # "OK: new Dhan token saved" each morning
+tools/dhan_token_refresh.sh --check     # is the current token valid?
 ```
 
 **Stop:**
@@ -301,6 +315,7 @@ Open **http://localhost:8000** after starting ATIP.
 |-------|-----|
 | `ModuleNotFoundError: No module named 'atip'` | Run from `/Users/agtci/Documents/Project_Documents/Projects/ATIP/` not from inside a package subfolder |
 | `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data/config.json` |
+| Dhan token expired / `401` from Dhan | Run `tools/dhan_token_refresh.sh` and read `atip_data/dhan_token_refresh.log`; make sure `deploy/launchd/install.sh token` was run |
 | `security_id not found` | Run `python main.py --dhan-securities` first |
 | `pandas-ta` fails on Python 3.14 | Not needed — ATIP uses `ta` (`pip install ta`); see docs/DEV_SETUP.md |
 | Dashboard empty | Run `python main.py --run postmarket` first to populate data |

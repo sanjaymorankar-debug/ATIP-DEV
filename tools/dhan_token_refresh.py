@@ -2,14 +2,19 @@
 Refresh the Dhan access token and write it into atip_data/config.json -- or, once the credentials
 were moved to the encrypted vault (python -m ops vault-migrate --apply), back into the vault.
 
-Run daily at 08:00 by the Windows scheduled task "ATIP_DhanTokenRefresh".
+Scheduled by:
+  macOS    the LaunchAgent com.atip.dhan-token-refresh (deploy/launchd/install.sh): daily at
+           06:30, before the 07:00 pre-market pipeline makes the day's first Dhan call, and at
+           login so a Mac that was off at 06:30 still gets a token.
+  Windows  the scheduled task "ATIP_DhanTokenRefresh", daily at 08:00.
 Stdlib only.
 
 Order of attempts:
   1. GET  https://api.dhan.co/v2/RenewToken   (works while the current token is
      still valid; gives a fresh 24h token)
   2. POST https://auth.dhan.co/app/generateAccessToken  (works even when the
-     token has expired; needs dhan_pin + dhan_totp_secret in config.json)
+     token has expired; needs dhan_pin + dhan_totp_secret in config.json, or
+     DHAN_PIN + DHAN_TOTP_SECRET in ATIP's secret store)
 
 One-time setup -- add to atip_data/config.json:
     "dhan_pin": "<your 6-digit Dhan trading PIN>",
@@ -65,8 +70,12 @@ def token_valid(cid, tok):
 
 
 def renew(cid, tok):
-    s, b = http("GET", "https://api.dhan.co/v2/RenewToken", {"access-token": tok, "dataAccess-clientId": cid})
-    return b.get("accessToken") or b.get("access_token") if s == 200 else None
+    # dhanClientId is the client-id header Dhan documents for RenewToken (was dataAccess-clientId).
+    s, b = http("GET", "https://api.dhan.co/v2/RenewToken", {"access-token": tok, "dhanClientId": cid})
+    new = (b.get("accessToken") or b.get("access_token")) if s == 200 else None
+    if not new:
+        log(f"RenewToken failed: HTTP {s} {b.get('errorMessage') or b.get('message') or b.get('status') or b}")
+    return new
 
 
 def generate(cid, pin, secret):
@@ -132,7 +141,8 @@ def main():
     if not new:
         pin, sec = secret(cfg, "dhan_pin", "DHAN_PIN"), secret(cfg, "dhan_totp_secret", "DHAN_TOTP_SECRET")
         if not (pin and sec):
-            log("Token expired and dhan_pin / dhan_totp_secret are not in config.json -- cannot auto-generate"); return 1
+            log("RenewToken did not give a token and dhan_pin / dhan_totp_secret are not set "
+                "(config.json or DHAN_PIN / DHAN_TOTP_SECRET in the secret store) -- cannot auto-generate"); return 1
         new, how = generate(cid, pin, sec), "generateAccessToken"
     if not new:
         return 1
