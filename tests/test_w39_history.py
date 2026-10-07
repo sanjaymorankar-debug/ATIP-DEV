@@ -197,13 +197,34 @@ def test_an_exception_in_the_fetch_is_tagged_as_an_error(monkeypatch):
     assert df.empty and df.attrs["dhan_error"] == "exception:ConnectionError"
 
 
-def test_backfill_is_scheduled_nightly():
-    import schedule
+def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
+    """Without the `schedule` package (CI leaves it out): a recorder stands in for it."""
     from pipeline import scheduler as S
-    schedule.clear()
-    try:
-        S._schedule_w39_jobs()
-        jobs = [j for j in schedule.get_jobs() if getattr(j.job_func, "func", None) is S._w39_history_backfill]
-        assert jobs and str(jobs[0].at_time) == "22:20:00"
-    finally:
-        schedule.clear()
+
+    class _Job:
+        def __init__(self, jobs):
+            self.jobs, self.t = jobs, None
+
+        @property
+        def day(self):
+            return self
+
+        def at(self, t):
+            self.t = t
+            return self
+
+        def do(self, fn, *a, **k):
+            self.jobs.append((self.t, fn))
+            return self
+
+    class _Schedule:
+        def __init__(self):
+            self.jobs = []
+
+        def every(self, *a):
+            return _Job(self.jobs)
+
+    fake = _Schedule()
+    monkeypatch.setattr(S, "schedule", fake, raising=False)
+    S._schedule_w39_jobs()
+    assert fake.jobs == [("20:40", S._w39_research_reports), ("22:20", S._w39_history_backfill)]
