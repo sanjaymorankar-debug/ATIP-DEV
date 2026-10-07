@@ -269,7 +269,7 @@ def main():
     if args.init:
         log.info("Initialising ATIP database...")
         from db.schema import init_db, seed_weights
-        db_path = init_db()
+        target = init_db()
         seed_weights()
         # Counted rather than hardcoded — the old "68 configurations" went stale
         # the moment INS, TS and PHS weights were added.
@@ -280,10 +280,10 @@ def main():
             _i = _c.execute("SELECT COUNT(DISTINCT index_name) FROM weight_config WHERE active=1").fetchone()[0]
         finally:
             _c.close()
-        print(f"\n✅  Database created  : {db_path}")
+        print(f"\n✅  Database created  : {target}")
         print(f"✅  Weights seeded    : {_n} configurations across {_i} indexes")
         print(f"\nNext steps:")
-        print(f"  1. Edit  atip_data\\config.json     ← add your API keys")
+        print(f"  1. Edit  atip_data/config.json      ← add your API keys")
         print(f"  2. python main.py --run postmarket  ← first data run")
         print(f"  3. python main.py                   ← start full system")
         return
