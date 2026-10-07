@@ -142,6 +142,7 @@ def test_token_renewal_is_scheduled_and_runs_at_start_only_when_needed(monkeypat
     lines = J.schedule_jobs(s, lambda *a, **k: None)
     assert "dhan_token_refresh daily 06:40" in lines and "06:40" in s.log
     assert any(x.startswith("history_backfill Sunday") for x in lines)
+    assert any(x.startswith("sip_run daily 09:30") for x in lines)
     J.startup(lambda name, fn, **kw: fn(**kw))
     assert seen == [True]
     assert J.dhan_token_refresh()["status"] == "SUCCESS" and seen == [True, False]
@@ -149,7 +150,8 @@ def test_token_renewal_is_scheduled_and_runs_at_start_only_when_needed(monkeypat
 
 def test_token_renewal_switches_off_and_skips_without_a_client(monkeypatch):
     from pipeline import w39_jobs as J
-    monkeypatch.setattr(J, "config", lambda: {"dhan_token_auto_refresh": False, "history_backfill_weekly": False})
+    monkeypatch.setattr(J, "config", lambda: {"dhan_token_auto_refresh": False, "history_backfill_weekly": False,
+                                              "sip_enabled": False})
     assert J.schedule_jobs(None, None) == []
     monkeypatch.setattr(J, "config", lambda: {})
     monkeypatch.setattr(J, "_vaulted_client_id", lambda: False)

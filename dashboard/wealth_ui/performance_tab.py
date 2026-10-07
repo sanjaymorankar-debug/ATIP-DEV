@@ -11,15 +11,15 @@ HTML = r"""
 <h2>Actual portfolio</h2><div id="prf_act"></div>
 <h2>Cost attribution</h2><div id="prf_cost"></div>
 <h2>Contribution (portfolio attribution)</h2><div id="prf_contrib"></div>
-<h2>Risk contribution</h2><div id="prf_risk"></div>
+<div class="adv"><h2>Risk contribution</h2><div id="prf_risk"></div></div>
 <h2>Cash account</h2><div id="prf_acct" class="muted"></div>
 <h2>Signal attribution</h2><div id="prf_sig"></div>
-<h2>Model &amp; executable trades</h2><div id="prf_trades" class="scroll"></div>
-<h2>Audit</h2><div id="prf_audit" class="muted" style="font-size:11.5px;overflow-wrap:anywhere"></div>
-<h2>Ledger</h2>
+<div class="adv"><h2>Model &amp; executable trades</h2><div id="prf_trades" class="scroll"></div>
+<h2>Audit</h2><div id="prf_audit" class="muted" style="font-size:11.5px;overflow-wrap:anywhere"></div></div>
+<div class="adv"><h2>Ledger</h2>
 <div class="row"><select id="x_pf"><option>MANUAL</option><option>LIVE</option></select><input id="x_date" type="date"><select id="x_kind"><option>BUY</option><option>SELL</option><option>OPENING</option><option>DIVIDEND</option><option>FEE</option><option>DEPOSIT</option><option>WITHDRAWAL</option></select>
 <input id="x_sym" placeholder="symbol" style="width:110px"><input id="x_qty" type="number" step="any" placeholder="qty" style="width:80px"><input id="x_px" type="number" step="any" placeholder="price" style="width:90px"><input id="x_fees" type="number" step="any" placeholder="fees" style="width:80px"><input id="x_gross" type="number" step="any" placeholder="amount (dividend / fee / cash)" style="width:180px"><input id="x_sig" placeholder="signal id (optional)" style="width:140px"><button onclick="prfAddTxn()">Add transaction</button></div>
-<div id="prf_ledger" class="scroll" style="margin-top:6px"></div>
+<div id="prf_ledger" class="scroll" style="margin-top:6px"></div></div>
 <h2>Saved reports</h2><div id="prf_hist"></div>
 """
 

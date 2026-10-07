@@ -7,6 +7,8 @@ W39 scheduled jobs (owner notes, 2026-10-07).
                          while it is valid, else TOTP + PIN (tools/dhan_token_refresh.py).
                          Until W39 only a Windows scheduled task did this, so on the macOS
                          machine the token simply expired every 24 hours.
+    sip_run              EX-20   due stock-SIP plans at config "sip_time" (default 09:30) on
+                         market days, PAPER only (orders/sip.py); a no-op without plans.
     history_backfill     DP-23   weekly top-up of the long daily history (Sunday,
                          config "history_backfill_time", default 06:00): only what is
                          missing, so after the first run it is a few calls for new symbols.
@@ -18,6 +20,7 @@ Switches (atip_data/config.json):
     "history_backfill_weekly": true      (default true)
     "history_backfill_time": "06:00"
     "history_years": 7
+    "sip_enabled": true, "sip_time": "09:30"
 """
 
 from __future__ import annotations
@@ -84,6 +87,16 @@ def history_backfill() -> dict:
             f"{sum(1 for x in r.get('results', []) if x.get('status') == 'FAILED')} window(s) failed"}
 
 
+def sip_run() -> dict:
+    """EX-20: due stock-SIP plans, on market days only (orders/sip.py; PAPER only)."""
+    from datetime import date
+    from utils.trading_calendar import is_trading_day
+    if not is_trading_day(date.today()):
+        return {"status": "SKIPPED", "reason": "not a market day"}
+    from orders.sip import run_due
+    return run_due()
+
+
 def schedule_jobs(schedule, run_job) -> list:
     """Register the W39 jobs; returns what was registered (for the start-up log)."""
     cfg = config()
@@ -92,6 +105,10 @@ def schedule_jobs(schedule, run_job) -> list:
         t = _hhmm(cfg.get("dhan_token_refresh_time"), "06:45")
         schedule.every().day.at(t).do(run_job, "dhan_token_refresh", dhan_token_refresh)
         out.append(f"dhan_token_refresh daily {t}")
+    if cfg.get("sip_enabled", True):
+        t = _hhmm(cfg.get("sip_time"), "09:30")
+        schedule.every().day.at(t).do(run_job, "sip_run", sip_run)
+        out.append(f"sip_run daily {t} (market days, PAPER)")
     if cfg.get("history_backfill_weekly", True):
         t = _hhmm(cfg.get("history_backfill_time"), "06:00")
         schedule.every().sunday.at(t).do(run_job, "history_backfill", history_backfill)
