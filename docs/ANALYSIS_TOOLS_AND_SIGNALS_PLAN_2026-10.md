@@ -230,7 +230,7 @@ They use synthetic series with known answers. Examples:
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
 | ~~Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze~~ | Chartink, Streak | 3: **built** |
-| Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
+| Depth-weighted imbalance from 20-level depth (**built**, Phase 3); order-flow imbalance (OFI) from quote changes | Institutional microstructure | 3 (OFI: later) |
 | English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
 | ATIP MCP server | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4 |
 | ~~Event calendar (FOMC, US CPI, RBI) widening the gap forecast~~ | Institutional desks | 2: **built** |
@@ -309,8 +309,15 @@ They use synthetic series with known answers. Examples:
    - **Calibration:** on random-walk bars without the filters, the breakout fired on ~78 % of stocks a day per side; with them ~8–10 %, the squeeze under 2 %.
    - **Record:** each hit is stored once per stock and day, with the price when ATIP saw it (bars arrive every 30 minutes), and measured from that price to the close, against the Nifty over the same minutes, with its best and worst move. A scan alerts only after 30 closed hits with a positive mean excess. `/signals` → Intraday.
    - Also fixed: the existing intraday scanner (`strategy/intraday_scan.py`) read every interval from `intraday_bars`, so 1-minute bars from tick capture would have been mixed into its 15-minute series.
-2. **20-level depth** WebSocket for up to 50 watchlist stocks: depth-weighted imbalance (levels within 50 bp, weights e^(−0.5(k−1))), flagged when |DWI| > 0.3 for 3 or more snapshots. Validate with logistic regression of the next 1-minute and 5-minute move.
-3. Swap the daily-close global model for one built on synchronised moves (15:30 → 08:45) once intraday global quotes are stored.
+2. **20-level depth. Built** (`data/depth20.py`).
+   - Dhan's 20-level WebSocket (`wss://depth-api-feed.dhan.co/twentydepth`, up to 50 stocks per connection), frames parsed with the layout of dhanhq's `fulldepth.py` (12-byte header, 20 × price / quantity / orders; bids and asks as separate messages).
+   - **DWI:** the levels within 50 bp of the mid, level k weighted e^(−0.5(k−1)), stored every 15 seconds per stock beside the best-level and plain 20-level imbalances. Flagged when |DWI| > 0.3 in 3 snapshots running.
+   - **Validation:** logistic regression of the direction of the mid's next 1- and 5-minute move on each measure; "predictive" only with 500+ snapshots and |z| ≥ 2. A planted effect is recovered in the tests and noise is not.
+   - Off by default (`depth20.enabled`), started with the other feeds by `main.py`, trading hours only, parks on Dhan's refusals (e.g. 806: no Data API subscription) with the reason. `/market-pulse` → "20-level depth".
+3. **Synchronised global moves. Built** (`research/global_sync.py`).
+   - Global snapshots at 15:31 and 08:42 IST on trading days: S&P 500 and Nasdaq 100 futures, the Nikkei and Hang Seng (trading by 08:45 IST), Brent and gold futures, the dollar index and USD/INR, from Yahoo.
+   - Each morning: the log moves from India's close to 08:45 against the Nifty's opening gap (first reading 09:15–09:30). Ridge regression once 40 mornings exist, walk-forward against "no change" and against the GIFT estimate on the same mornings.
+   - `capture_gift` stores its estimate next to GIFT's and the daily-close model's, and the open-gap record scores all three. Until 40 mornings exist the page says how many are stored.
 
 ### Phase 4: AI as the interface (needs the Anthropic key fixed, KD-001)
 1. **English → screener query.** The model writes ATIP's query language, and the safe parser validates it, so nothing is eval'd. The user sees and can edit the query before it runs.

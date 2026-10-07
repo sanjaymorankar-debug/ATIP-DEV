@@ -6742,6 +6742,38 @@
     }
    }
   },
+  "/api/market-pulse/global-sync": {
+   "get": {
+    "summary": "Api Global Sync",
+    "operationId": "api_global_sync_api_market_pulse_global_sync_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/global-sync/capture": {
+   "post": {
+    "summary": "Api Global Sync Capture",
+    "operationId": "api_global_sync_capture_api_market_pulse_global_sync_capture_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/market-pulse/events": {
    "get": {
     "summary": "Api Pulse Events",
@@ -6885,6 +6917,60 @@
       "schema": {
        "type": "string",
        "title": "Symbol"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/depth20": {
+   "get": {
+    "summary": "Api Depth20",
+    "operationId": "api_depth20_api_orderbook_depth20_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/depth20/validation": {
+   "get": {
+    "summary": "Api Depth20 Validation",
+    "operationId": "api_depth20_validation_api_orderbook_depth20_validation_get",
+    "parameters": [
+     {
+      "name": "horizon",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 1,
+       "title": "Horizon"
       }
      }
     ],

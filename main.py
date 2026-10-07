@@ -466,6 +466,12 @@ def _start_index_feed():
         start_stock_feed()
     except Exception as e:
         log.warning(f"  Stock live feed did not start ({e})")
+    # W39 (DP-01): Dhan's 20-level depth for the watchlist -- only when config.json depth20.enabled
+    try:
+        from data.depth20 import start_depth20
+        start_depth20()
+    except Exception as e:
+        log.warning(f"  20-level depth feed did not start ({e})")
 
 
 def _start_dashboard(port: int = 8000):

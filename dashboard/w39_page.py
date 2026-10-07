@@ -345,6 +345,9 @@ PULSE = _HEAD + r"""
 <div class="card"><h3>FII / DII money</h3><div id="fii" class="sx"></div></div></div>
 <div class="two"><div class="card"><h3>Derivatives positioning</h3><div id="pos" class="sx"></div></div>
 <div class="card"><h3>Pending orders across the market</h3><div id="book" class="sx"></div></div></div>
+<div class="card"><h3>20-level depth (watchlist)</h3>
+<div class="muted">Dhan's 20-level order book for up to 50 watchlist stocks, sampled every 15 seconds. DWI weighs the levels within 0.5 % of the mid, nearest first (e<sup>−0.5(k−1)</sup>): +1 all bids, −1 all asks. A stock is flagged when |DWI| &gt; 0.3 in its last 3 snapshots. Research on NSE stocks finds order-book imbalance predictive for minutes at most; the check below says whether it is on ATIP's own data. Context, not a signal.</div>
+<div id="d20" class="sx" style="margin-top:6px"></div></div>
 <div class="card"><h3>Your pending orders</h3><div id="mine" style="overflow-x:auto"></div></div>
 </div><div id="tip"></div>
 <script>""" + _JS_COMMON + r"""
@@ -373,7 +376,10 @@ async function load(){const p=await j('/api/market-pulse');evCard(p);document.ge
   const w=g.walk_forward;h+=`<div class="muted" style="margin-top:6px">Walk-forward, last ${w.sessions} sessions: direction right ${w.direction_hit_rate_pct??'—'}% of days that moved > 0.2%; RMSE ${w.rmse_pct}% vs ${w.rmse_zero_forecast_pct}% for "no change" (${w.beats_zero?'beats':'does not beat'} it).</div>`}
  else h+=`<div class="muted">${esc(g.reason||g.status)}</div>`;
  if((g.stale_factors||[]).length)h+=`<div class="note" style="margin-top:4px">Left out because their data stopped updating over a week ago: ${esc(g.stale_factors.join(', '))}</div>`;
- if(gr.gift||gr.global_model)h+=`<div class="muted">Open-gap record: GIFT ${gr.gift?gr.gift.direction_hit_rate_pct+'% right over '+gr.gift.mornings+' mornings':'—'} · model ${gr.global_model?gr.global_model.direction_hit_rate_pct+'% over '+gr.global_model.mornings:'—'}</div>`;
+ const gs=p.global_sync||{};
+ if(gs.status==='OK'){const w=gs.walk_forward;h+=`<div style="margin-top:6px">Synchronised model (15:30 → 08:45 moves of ${esc(gs.inputs.join(', '))}): ${gs.today?`expected open <b>${pct(gs.today.expected_gap_pct)}</b>`:'no morning snapshot yet'} <span class="muted">· walk-forward over ${w.mornings} mornings: RMSE ${w.rmse_pct}% vs ${w.rmse_zero_pct}% for "no change"${w.rmse_gift_pct!=null?`, ${w.rmse_same_mornings_pct}% vs GIFT's ${w.rmse_gift_pct}%`:''}</span></div>`}
+ else if(gs.status)h+=`<div class="muted" style="margin-top:6px">Synchronised model (15:30 → 08:45 moves): ${esc(gs.reason||gs.status)}</div>`;
+ if(gr.gift||gr.global_model||gr.synchronised)h+=`<div class="muted">Open-gap record: GIFT ${gr.gift?gr.gift.direction_hit_rate_pct+'% right over '+gr.gift.mornings+' mornings':'—'} · daily model ${gr.global_model?gr.global_model.direction_hit_rate_pct+'% over '+gr.global_model.mornings:'—'} · synchronised ${gr.synchronised?gr.synchronised.direction_hit_rate_pct+'% over '+gr.synchronised.mornings:'—'}</div>`;
  document.getElementById('glob').innerHTML=h;
  const f=p.fii;document.getElementById('fii').innerHTML=f.status!=='OK'?`<span class="muted">${esc(f.reason||f.status)}</span>`:
   `<div style="margin-bottom:6px">Flow pressure ${lab(f.pressure_label)} <span class="muted">score ${f.pressure_score??'—'}</span></div>`+
@@ -395,7 +401,13 @@ async function load(){const p=await j('/api/market-pulse');evCard(p);document.ge
   bh+=`<div class="two" style="margin-top:6px"><div class="sx">${table(['Most bid','Buy','Sell','Imb.','Chg'],bu.map(row))}</div><div class="sx">${table(['Most offered','Buy','Sell','Imb.','Chg'],se.map(row))}</div></div><div class="muted">Buy / Sell: total quantity waiting in the book (L = lakh shares). Imb. = (buy − sell) / (buy + sell).</div><div class="note" style="margin-top:4px">${esc(b.caveat)}</div>`}
  else bh='<span class="muted">No order-book polls today (market hours, needs the Dhan Data API).</span>';
  document.getElementById('book').innerHTML=bh;
- mine()}
+ mine();depth20().catch(()=>{})}
+async function depth20(){const o=await j('/api/orderbook/depth20');let h='';
+ if(!o.rows.length)h=`<span class="muted">No depth snapshots today. Feed: ${esc(o.feed.detail||o.feed.mode||'')}</span>`;
+ else{h=table(['Symbol','Mid','Spread','DWI','Best level','All 20','Persistent'],o.rows.slice(0,30).map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${n(x.mid,2)}</td><td>${n(x.spread_bp,1)} bp</td><td>${n(x.dwi,2)}</td><td>${n(x.imb_l1,2)}</td><td>${n(x.imb_20,2)}</td><td>${x.persistent?`<span class="${x.persistent==='BUYERS'?'ok':'bad'}">${esc(x.persistent.toLowerCase())}</span>`:''}</td></tr>`));
+  const v=await j('/api/orderbook/depth20/validation?horizon=1'),N={dwi:'DWI',imb_l1:'best level',imb_20:'all 20 levels'};
+  h+=`<div class="muted" style="margin-top:6px">Does it predict the next minute? ${Object.entries(v.measures).map(([k,m])=>`${N[k]}: ${m.z==null?'too few':`z ${m.z}, sign right ${m.sign_right_pct??'—'}%`}${m.predictive?' <b>(predictive)</b>':''}`).join(' · ')} <span>(${v.n} snapshot pairs a minute apart; ${v.min_n} and |z| ≥ 2 needed)</span></div>`}
+ document.getElementById('d20').innerHTML=h}
 async function mine(){const w=await j('/api/brokers/open-orders');const br=w.broker;let h=`<div class="muted">Dhan: ${esc(br.status)}${br.reason?' · '+esc(br.reason):''}${(br.errors||[]).length?' · '+esc(br.errors.join('; ')):''}</div>`;
  h+=table(['Kind','Symbol','Side','Type','Product','Qty','Filled','Price','Trigger','Status','Created'],br.orders.map(o=>`<tr><td>${esc(o.kind)}</td><td>${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.order_type)}</td><td>${esc(o.product)}</td><td>${n(o.quantity,0)}</td><td>${n(o.filled,0)}</td><td>${n(o.price,2)}</td><td>${n(o.trigger_price,2)}</td><td>${esc(o.status)}</td><td class="muted">${esc(o.created||'')}</td></tr>`));
  const a=w.atip;h+=`<div class="muted" style="margin-top:8px">ATIP paper orders resting: ${a.paper_orders.length} · ATIP target / stop rules waiting: ${a.order_rules.length}</div>`;

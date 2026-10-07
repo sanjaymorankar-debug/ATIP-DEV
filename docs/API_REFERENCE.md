@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 20:10 by `python -m ops api-docs` from the running application (548 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-07 20:19 by `python -m ops api-docs` from the running application (552 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -321,6 +321,8 @@ Generated 2026-10-07 20:10 by `python -m ops api-docs` from the running applicat
 | GET | `/api/market-pulse/fii` | dashboard:read |  |  |  |
 | POST | `/api/market-pulse/gift` | research:run | token |  | capture the GIFT Nifty / global-model gap estimate now |
 | GET | `/api/market-pulse/global` | dashboard:read |  |  | \| /fii \| /positioning   the parts |
+| GET | `/api/market-pulse/global-sync` | dashboard:read |  |  | the 15:30 -> 08:45 synchronised model: record and today's estimate |
+| POST | `/api/market-pulse/global-sync/capture` | research:run | token |  | {label: close \| pre} take the global snapshot now |
 | GET | `/api/market-pulse/positioning` | dashboard:read |  |  |  |
 | POST | `/api/market-pulse/refresh` | research:run | token |  | fetch NSE participant OI (7 days) and the Nifty history now |
 
@@ -467,6 +469,8 @@ Generated 2026-10-07 20:10 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI per watchlist stock, persistent flags, feed |
+| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes? |
 | GET | `/api/orderbook/pressure` | dashboard:read |  | `side`, `limit`=100 | latest pending buy / sell totals per stock today |
 | GET | `/api/orderbook/pressure/{symbol}` | dashboard:read |  | `symbol` | today's polls for one stock |
 | POST | `/api/orderbook/snapshot` | research:run | token |  | poll the whole universe now |

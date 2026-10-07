@@ -80,6 +80,7 @@ SHORT_RETENTION_TABLES = {
     "option_chain_snapshot": "ts",       # W35 (DP-08); history stays in lake "option_chain"
     "fo_contract_daily": "date",         # W35 (DP-08); every contract stays in lake "fo_bhavcopy"
     "order_book_pressure": "ts",         # W39 (OB-01): intraday context, 15-minute polls
+    "depth20_snapshot": "ts",            # W39 (DP-01): 20-level depth snapshots, every 15 s per stock
 }
 
 HISTORY_YEARS = 7

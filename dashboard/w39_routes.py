@@ -44,11 +44,15 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/market-pulse/global | /fii | /positioning   the parts
     POST /api/market-pulse/gift                      capture the GIFT Nifty / global-model gap estimate now
     POST /api/market-pulse/refresh                   fetch NSE participant OI (7 days) and the Nifty history now
+    GET  /api/market-pulse/global-sync               the 15:30 -> 08:45 synchronised model: record and today's estimate
+    POST /api/market-pulse/global-sync/capture       {label: close | pre} take the global snapshot now
     GET  /api/market-pulse/events?days=30            FOMC / US CPI / payrolls / RBI dates, the session each hits, today's band
     POST /api/market-pulse/events                    {date, kind, title?} add an event; POST .../events/delete {date, kind}
     GET  /api/orderbook/pressure?side=buy|sell&limit  latest pending buy / sell totals per stock today
     GET  /api/orderbook/pressure/{symbol}            today's polls for one stock
     POST /api/orderbook/snapshot                     poll the whole universe now
+    GET  /api/orderbook/depth20                      20-level depth: latest DWI per watchlist stock, persistent flags, feed
+    GET  /api/orderbook/depth20/validation?horizon=1 does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes?
     GET  /api/brokers/open-orders                    your pending orders at Dhan (read-only) + ATIP's resting ones
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates
@@ -246,6 +250,20 @@ def register(app, guard, Req, get_connection, json_safe):
             return capture_gift(conn)
         return await run(f)
 
+    @app.get("/api/market-pulse/global-sync")
+    async def api_global_sync():
+        from research.global_sync import model
+        return await run(model)
+
+    @app.post("/api/market-pulse/global-sync/capture", dependencies=guard)
+    async def api_global_sync_capture(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from research.global_sync import capture
+            return capture(conn, str(b.get("label") or ""))
+        return await run(f)
+
     @app.get("/api/market-pulse/events")
     async def api_pulse_events(days: int = 30):
         def f(conn):
@@ -291,6 +309,18 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_book_symbol(symbol: str):
         from data.order_pressure import intraday
         return await run(lambda c: intraday(c, _sym(symbol)))
+
+    @app.get("/api/orderbook/depth20")
+    async def api_depth20():
+        def f(conn):
+            from data.depth20 import feed_status, latest
+            return {"rows": latest(conn), "feed": feed_status()}
+        return await run(f)
+
+    @app.get("/api/orderbook/depth20/validation")
+    async def api_depth20_validation(horizon: int = 1):
+        from data.depth20 import validate
+        return await run(lambda c: validate(c, int(horizon)))
 
     @app.post("/api/orderbook/snapshot", dependencies=guard)
     async def api_book_snapshot():

@@ -165,6 +165,7 @@
 
   "_SECTION_16": "W35 data platform (all off / safe by default)",
   "depth": {"enabled": false, "symbols": [], "max_symbols": 25, "interval_seconds": 60},
+  "depth20": {"enabled": false, "symbols": [], "max_symbols": 50, "sample_seconds": 15, "band_bp": 50, "decay": 0.5},
   "derivatives": {"option_chain_enabled": false, "chain_symbols": ["NIFTY", "BANKNIFTY"], "chain_minutes": 15, "nearest_expiries": 2},
   "altdata": {"enabled": ["news_attention", "announcement_intensity"], "max_entities": 500, "sources": {"wiki_pageviews": {"max_entities": 100, "map": {}}}},
   "multi_asset": {"add": {}},

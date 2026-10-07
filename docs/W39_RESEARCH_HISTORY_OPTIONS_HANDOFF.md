@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 188 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 204 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -528,6 +528,39 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Fixed on the way:** `strategy/intraday_scan.py load_bars` read every interval from `intraday_bars`. With tick capture on, 1-minute bars (source `ticks`) would have been mixed into the 15-minute series of the five existing intraday scans; it now reads one interval.
 
+## DP-01..DP-03: 20-level depth and a depth-weighted imbalance (`data/depth20.py`), Phase 3 item 2
+
+**Feed (DP-01):**
+- `wss://depth-api-feed.dhan.co/twentydepth?token&clientId&authType=2` (Dhan Data API), subscribed with `{"RequestCode": 23, "InstrumentCount", "InstrumentList": [{"ExchangeSegment": "NSE_EQ", "SecurityId"}]}`, 50 per message (Dhan's limit per connection).
+- Frames follow dhanhq's `fulldepth.py` (fetched 2026-10-07): each message is a 12-byte header `<hBBiI` (length, code 41 bid / 51 ask / 50 disconnect, segment, security id, sequence or disconnect reason) and 20 levels of `<dII` (price, quantity, orders). One frame can carry several messages.
+- `Depth20Feed`: resolves the watchlist (config `depth20.symbols`, else `data/stock_feed.default_symbols`: holdings, open positions, active rules, top ATIP scores), runs on trading days 09:00–15:45, reconnects with backoff up to 5 minutes, and parks on Dhan's refusals 805–809 with the reason (806: subscribe to the Data APIs). Started by `main.py` with the index and stock feeds, only when `depth20.enabled` (off by default; `config_template.json`).
+
+**Measures (DP-02):**
+- `dwi`: levels within `band_bp` (50 bp) of the mid, level k weighted e^(−`decay`(k−1)), (Σ w·bid − Σ w·ask) / (Σ w·bid + Σ w·ask).
+- Stored beside it: `imb_l1` (best level), `imb_20` (all 20 levels, unweighted), mid, spread in bp, total quantities, levels.
+- One snapshot per stock every `sample_seconds` (15), written every 10 seconds to `depth20_snapshot` (SHORT retention, 90 days).
+- `persistent()`: |DWI| > 0.3 in each of the stock's last 3 snapshots → BUYERS / SELLERS.
+
+**Validation (DP-03):** `validate(conn, 1 | 5)` pairs each snapshot with the same stock's snapshot 1 or 5 minutes later (within 2 minutes) and fits a logistic regression of the direction of the mid's move on each measure (Newton's method, no new dependency). It reports n, slope, z and how often the sign was right (|measure| > 0.1). A measure is called predictive only with 500+ pairs, |z| ≥ 2 and a positive slope.
+
+**Page and API:** `/market-pulse` → "20-level depth (watchlist)"; `GET /api/orderbook/depth20` (latest per stock, flags, feed status), `GET /api/orderbook/depth20/validation?horizon=1|5`.
+
+## GS-01..GS-03: the global-cue model on synchronised moves (`research/global_sync.py`), Phase 3 item 3
+
+**Why:** the daily-close model regresses the Nifty's close-to-close move on the previous session's closes. Markets close at different hours, so part of that is already priced by India's close. This model uses only what moved between India's close and the next morning.
+
+**Snapshots (GS-01):** at 15:31 ("close") and 08:42 ("pre") on trading days, the last 5-minute price of S&P 500 futures (ES=F), Nasdaq 100 futures (NQ=F), the Nikkei and the Hang Seng (both trading by 08:45 IST), Brent and gold futures, the dollar index and USD/INR, from Yahoo through `data/markets.py`'s wrapper (breaker and retry). Table `global_snapshot`.
+
+**Model (GS-02):**
+- One row per morning: each series' log move from the previous session's 15:30 snapshot to that morning's 08:45 one. The target is the Nifty's opening gap: the first `index_levels` reading between 09:15 and 09:30 against the previous session's last reading up to 15:30.
+- Ridge regression (standardised inputs, like the daily model) once 40 mornings exist. Until then the status is COLLECTING, with the count.
+- Walk-forward over the latest 60 mornings, each fitted only on the mornings before it (30 at least): RMSE against "no change" and against the GIFT estimate on the same mornings, plus the direction hit rate.
+- Today's expected gap, with each series' contribution.
+
+**Use (GS-03):** `capture_gift` stores the estimate in `market_cue.sync_expected_pct`; `gap_record()` scores GIFT, the daily model and this one; `/market-pulse` shows it in the global-cues card. API: `GET /api/market-pulse/global-sync`, `POST /api/market-pulse/global-sync/capture {label}`.
+
+**Also fixed:** `evaluate_gaps` took the first Nifty reading from 09:15 with no upper bound, so a morning whose early readings were missing would have recorded a midday price as the open. It now uses only 09:15–09:30, as the new model does.
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -545,10 +578,10 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`, `intraday_signal`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event` and `intraday_signal` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`, `intraday_signal`, `depth20_snapshot`, `global_snapshot`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` / `sync_expected_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event` and `intraday_signal` (research, kept), `depth20_snapshot` (market, 90 days) and `global_snapshot` (market, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
-- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; intraday scans every 15 minutes 09:45–15:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
+- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; intraday scans every 15 minutes 09:45–15:50; global snapshots 15:31 and 08:42; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
 - `docs/API_REFERENCE.md` and `docs/openapi.json` regenerated. They were also stale from W34–W38: 402 → 511 routes.
 - `db/sql/*.sql` are pinned snapshots (master @ 6896bea) and were not regenerated. The new tables are created on first start like any additive migration.
 
@@ -563,6 +596,8 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_depth20.py` | 9 | binary frames with bid and ask messages and a truncated tail; DWI against a hand calculation, the far level excluded; sampling every 15 s, storage, the subscription message; Dhan's 806 parks the feed with its reason; a session subscribes then reads frames; batches of 50; persistent flag; validation recovers a planted slope and calls noise not predictive; API, page, permissions |
+| `tests/test_w39_global_sync.py` | 7 | capture and a failed fetch; morning moves from the previous session's close, across a holiday; the gap needs a reading by 09:30; COLLECTING under 40 mornings; a planted sensitivity recovered walk-forward, beating "no change" and a noisier GIFT; capture_gift stores the estimate and the record scores it; API and permissions; the open check ignores a reading after 09:30 |
 | `tests/test_w39_intraday.py` | 10 | opening-range breakout needs 1.5× slot volume and a first close beyond the range by 11:30, 30-minute range, breakdown; open = low / high on the first hour, broken and too-small cases; squeeze after 6 tight bars released up and down, not without history; only completed 15-minute bars load; stored once, seen at the bar's completion, record to the close vs the Nifty with best / worst; a short gains on a fall; alerts held until a positive 30-hit record; the existing scanner no longer mixes 1-minute bars; API and page; permissions |
 | `tests/test_w39_event_calendar.py` | 16 | New York → IST across daylight saving, the Fed after midnight in winter; the session each event hits (next open, holidays skipped; RBI intraday); seeded dates by session and upcoming; config events, bad kinds and dates, add, soft delete that survives re-seeding; band = usual miss, assumed ×1.5, measured ×2.5 once enough mornings, RBI not widened; old mornings looked up; capture stores events and band, pulse explains; old market_cue gets the columns; API, token, 400 / 404, page; permissions and classification |
 | `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
@@ -614,6 +649,16 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Market volume is the volume of the stocks ATIP stores, not exchange-wide volume; days with fewer than 10 common stocks have no comparison.
 - Stalling days and the intraday-low rule for rally attempts are not modelled (closes only).
 
+**20-level depth:**
+- Off by default; it needs the Dhan Data API and one connection (Dhan allows a limited number at once).
+- No order-flow imbalance (OFI) from quote changes yet; DWI is a static measure of the book.
+- Snapshots every 15 seconds miss faster changes; the 1-minute validation is the shortest horizon it supports.
+
+**Synchronised global model:**
+- Needs 40 mornings of both snapshots (about two months) before it gives an estimate.
+- Yahoo's futures quotes can lag by up to 10–15 minutes; the snapshot stores each quote's own time.
+- The dollar index and USD/INR barely move overnight; the ridge penalty keeps their weights small when they carry nothing.
+
 **Intraday scans:**
 - They need the Dhan Data API (the 15-minute bar job) and 3 sessions of stored bars before the volume filter can work.
 - Bars arrive every 30 minutes, so a hit is seen up to 30 minutes after its bar; the record is measured from the price when it was seen.
@@ -631,7 +676,6 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - The early-October 2026 market figures in the plan doc are press reports, not verified.
 
 **Next on the roadmap** (details and order in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8):
-- 20-level depth imbalance and synchronised global moves (Dhan Data API)
 - English → screener query and an ATIP MCP server (Anthropic key)
 - MF analytics / SIP, tax P&L, earnings-surprise signal
 - Live execution only with the owner's explicit go-ahead

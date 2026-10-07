@@ -67,6 +67,8 @@ INVENTORY = {
     "strategy": ("research", False, "tenant lifetime"),
     "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
     "order_book_pressure": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
+    "depth20_snapshot": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
+    "global_snapshot": ("market", False, "kept: two rows per series a day, the synchronised model's history"),
     "market_cue": ("research", False, "kept: the record of pre-open gap estimates"),
     "market_regime_gate": ("research", False, "kept: recomputed nightly from prices (W39 regime gate)"),
     "fundamental_scorecard": ("research", False, "kept: the scorecard's own track record (W39)"),

@@ -1486,7 +1486,8 @@ def _schedule_w39_jobs():
     technical snapshot and signals (research/tech_signals.py), equity research reports after the
     evening scoring (research/report.py), the day's fundamental scorecards and the saved
     screens after them (research/scorecard.py, research/screener.py), intraday scans on the stored 15-minute
-    bars every 15 minutes in the session (research/intraday_signals.py), and the nightly, budgeted 7-year
+    bars every 15 minutes in the session (research/intraday_signals.py), global snapshots at 15:31 and
+    08:42 for the synchronised gap model (research/global_sync.py), and the nightly, budgeted 7-year
     price-history backfill (data/history_backfill.py)."""
     schedule.every(15).minutes.do(_w39_order_pressure_tick)
     schedule.every().day.at("08:45").do(_w39_gift)
@@ -1499,6 +1500,19 @@ def _schedule_w39_jobs():
     schedule.every().day.at("20:50").do(_w39_saved_screens)
     schedule.every().day.at("22:20").do(_w39_history_backfill)
     schedule.every(15).minutes.do(_w39_intraday_tick)
+    schedule.every().day.at("15:31").do(_w39_global_sync, "close")
+    schedule.every().day.at("08:42").do(_w39_global_sync, "pre")
+
+
+def _w39_global_sync(label):
+    """Global futures, Asia and FX at India's close and before the open (research/global_sync.py)."""
+    if not is_market_day():
+        return
+    try:
+        from research.global_sync import run_capture
+        run_job(f"global_sync_{label}", run_capture, label)
+    except Exception as e:
+        log.warning(f"  Global snapshot ({label}): {e}")
 
 
 def _w39_intraday_tick():

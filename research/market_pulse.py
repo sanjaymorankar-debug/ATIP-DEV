@@ -78,7 +78,8 @@ DDL = (
         actual_gap_pct REAL, evaluated_at TIMESTAMP, PRIMARY KEY (date, captured_at))""",
 )
 # EV-02: the macro events that hit the morning (research/event_calendar.py) and the band given with the estimate
-ADDED_COLUMNS = {"market_cue": {"events": "TEXT", "band_pct": "REAL"}}
+# GS-03: the synchronised (15:30 -> 08:45) model's estimate, research/global_sync.py
+ADDED_COLUMNS = {"market_cue": {"events": "TEXT", "band_pct": "REAL", "sync_expected_pct": "REAL"}}
 
 
 def ensure_tables(conn):
@@ -328,16 +329,23 @@ def capture_gift(conn=None, quotes=None) -> dict:
             log.warning(f"  event calendar: {e}")
             band = {"events": [], "band_pct": None}
         kinds = ",".join(e["kind"] for e in band["events"])
+        try:
+            from research.global_sync import model as sync_model
+            sync = (sync_model(conn, today).get("today") or {}).get("expected_gap_pct")
+        except Exception as e:
+            log.warning(f"  synchronised global model: {e}")
+            sync = None
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute("""INSERT OR REPLACE INTO market_cue (date, captured_at, gift_now, gift_ref, gift_ref_source,
                             nifty_prev_close, gift_move_pct, gift_beta, expected_gap_pct, expected_gap_pts,
-                            model_expected_pct, cue_score, cue_label, contributions_json, events, band_pct)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            model_expected_pct, cue_score, cue_label, contributions_json, events, band_pct,
+                            sync_expected_pct)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      (str(today), now, gift, ref, src, prev_close, round(move, 3) if move is not None else None,
                       round(beta, 3), round(exp, 3) if exp is not None else None,
                       round(prev_close * exp / 100, 1) if (prev_close and exp is not None) else None,
                       model.get("expected_move_pct"), model.get("cue_score"), model.get("cue_label"),
-                      json.dumps(model.get("contributions_pct") or {}), kinds, band["band_pct"]))
+                      json.dumps(model.get("contributions_pct") or {}), kinds, band["band_pct"], sync))
         conn.commit()
         return {"status": "SUCCESS" if gift or model.get("status") == "OK" else "EMPTY", "rows": 1,
                 "gift_move_pct": move, "expected_gap_pct": exp, "model": model.get("status"),
@@ -348,7 +356,7 @@ def capture_gift(conn=None, quotes=None) -> dict:
 
 
 def evaluate_gaps(conn=None) -> dict:
-    """Fill today's actual open (first Nifty reading from 09:15) into the morning's market_cue rows."""
+    """Fill the actual open (the first Nifty reading between 09:15 and 09:30) into the mornings' market_cue rows."""
     from db.schema import get_connection
     own = conn is None
     conn = conn or get_connection()
@@ -356,8 +364,8 @@ def evaluate_gaps(conn=None) -> dict:
     try:
         ensure_tables(conn)
         for r in _rows(conn, "SELECT date, captured_at, nifty_prev_close FROM market_cue WHERE actual_open IS NULL"):
-            o = _rows(conn, "SELECT nifty50 FROM index_levels WHERE date=? AND time>='09:15' AND nifty50>0 "
-                            "ORDER BY time LIMIT 1", (str(r["date"])[:10],))
+            o = _rows(conn, "SELECT nifty50 FROM index_levels WHERE date=? AND time>='09:15' AND time<='09:30' "
+                            "AND nifty50>0 ORDER BY time LIMIT 1", (str(r["date"])[:10],))   # a later reading is not the open
             if not o or not r["nifty_prev_close"]:
                 continue
             opn = float(o[0]["nifty50"])
@@ -375,7 +383,7 @@ def evaluate_gaps(conn=None) -> dict:
 
 def gap_record(conn) -> dict:
     """How the stored morning estimates did against the actual open."""
-    rows = _rows(conn, "SELECT expected_gap_pct, model_expected_pct, actual_gap_pct FROM market_cue "
+    rows = _rows(conn, "SELECT expected_gap_pct, model_expected_pct, sync_expected_pct, actual_gap_pct FROM market_cue "
                        "WHERE actual_gap_pct IS NOT NULL")
     def score(key):
         pts = [(r[key], r["actual_gap_pct"]) for r in rows if r[key] is not None]
@@ -385,7 +393,8 @@ def gap_record(conn) -> dict:
         return {"mornings": len(pts),
                 "direction_hit_rate_pct": round(100 * sum(1 for p, a in big if p * a > 0) / len(big), 1) if big else None,
                 "mean_abs_error_pct": round(sum(abs(p - a) for p, a in pts) / len(pts), 3)}
-    out = {"gift": score("expected_gap_pct"), "global_model": score("model_expected_pct")}
+    out = {"gift": score("expected_gap_pct"), "global_model": score("model_expected_pct"),
+           "synchronised": score("sync_expected_pct")}
     try:
         from research.event_calendar import _misses, widen_factor
         ev_m, no_m = _misses(conn)
@@ -642,8 +651,17 @@ def pulse(conn) -> dict:
             "reasons": reasons, "global_model": gm, "gift_today": cue[0] if cue else None,
             "gap_record": gap_record(conn), "fii": fp, "positioning": pos, "oi_walls": walls, "order_book": book,
             "market_health": mh[0] if mh else None, "market_gate": gate if gate and gate.get("gate") else None,
-            "events": events,
+            "events": events, "global_sync": _sync_summary(conn),
             "disclaimer": "Context from ATIP's own models and stored data; not advice."}
+
+
+def _sync_summary(conn) -> dict:
+    try:
+        from research.global_sync import model as sync_model
+        return sync_model(conn)
+    except Exception as e:
+        log.debug(f"synchronised global model: {e}")
+        return {"status": "UNAVAILABLE", "reason": str(e)[:160]}
 
 
 def main(argv=None):
