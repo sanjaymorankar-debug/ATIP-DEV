@@ -24,6 +24,7 @@ _EXTRA = """
 ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:800px){.two{grid-template-columns:1fr}}
 .two>*{min-width:0}.pill{white-space:nowrap}.sx{overflow-x:auto}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
 #chart{overflow:hidden}.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin:4px 0}
 .legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 #tip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
@@ -45,6 +46,9 @@ const pill=s=>`<span class="pill ${esc(s)}">${esc(String(s||'').replace('_',' ')
 const n=(v,d=2)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:0});
 const pct=v=>v==null?'—':(v>0?'+':'')+n(v,1)+'%';
 const rs=v=>v==null||isNaN(v)?'—':(v<0?'−':'')+'₹'+Math.abs(Number(v)).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const gpill=g=>g?`<span class="pill ${g==='OPEN'?'BUY':g==='CAUTION'?'REDUCE':'SELL'}">${g==='OPEN'?'● open':g==='CAUTION'?'◐ caution':'○ closed'}</span>`:'<span class="pill NOT_RATED">unknown</span>';
+const apill=a=>a?`<span class="pill ${a==='WITH'?'BUY':a==='MIXED'?'REDUCE':'SELL'}">${a==='WITH'?'with market':a==='MIXED'?'mixed':'against market'}</span>`:'<span class="muted">—</span>';
+const stl=s=>String(s||'').replaceAll('_',' ').toLowerCase();
 """
 
 RESEARCH = _HEAD + r"""
@@ -222,15 +226,20 @@ async function del(id){if(!confirm('Delete this saved screen?'))return;await pos
 SIGNALS = _HEAD + r"""
 <div class="wrap"><div class="tabs" id="tabs"></div>
 <div class="pane" id="p-today"><div class="card"><h3>Technical signals <span class="muted" id="asof"></span></h3>
-<div class="muted">End-of-day scans for the next session (research/technicals.py): crossovers, breakouts on volume, oscillator turns, Supertrend, squeezes, trend templates. Each signal has an entry (the close), a stop 2×ATR away and a target 4×ATR away (2R), and a <b>confluence</b> count of independent agreeing evidence out of 6: technical rating, volume, relative strength vs Nifty, market regime, a candle pattern, the research rating. Not advice.</div>
+<div class="muted">End-of-day scans for the next session (research/technicals.py): crossovers, breakouts on volume, oscillator turns, Supertrend, squeezes, trend templates. Each signal has an entry (the close), a stop 2×ATR away and a target 4×ATR away (2R), and a <b>confluence</b> count of independent agreeing evidence out of 6: technical rating, volume, relative strength vs Nifty, market regime, a candle pattern, the research rating. Each also carries the <b>market gate</b> it was born under: a long signal while the gate is closed is <i>against the market</i>. Not advice.</div>
+<div id="gate" style="margin-top:8px"></div>
 <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select id="dirf" onchange="today()"><option value="">Bullish and bearish</option><option value="BULL">Bullish</option><option value="BEAR">Bearish</option></select>
+<select id="alf" onchange="draw()"><option value="not_against" selected>Hide signals against the market</option><option value="">All signals</option><option value="WITH">Only with the market</option></select>
 <span class="muted">min confluence</span><select id="mc" onchange="today()"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
 <button onclick="runNow()">Recompute now</button><span id="ro" class="muted"></span></div></div>
 <div class="card"><div id="sig" style="overflow-x:auto"></div></div></div>
 <div class="pane" id="p-rec"><div class="card"><h3>Track record per scan</h3>
 <div class="muted">Every signal is followed until it reaches its target (win), its stop, or 20 sessions (expired at the close). Average R: +2 is a target, −1 a stop. Expectancy above 0 means the scan has paid on ATIP's own stocks; a few dozen closed signals are needed before trusting it.</div>
-<div style="margin-top:6px"><span class="muted">only signals with confluence ≥</span> <select id="rc" onchange="rec()"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
-<div id="stats" style="margin-top:8px;overflow-x:auto"></div></div></div>
+<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted">only signals with confluence ≥</span> <select id="rc" onchange="rec()"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
+<select id="ra" onchange="rec()"><option value="">born in any market</option><option value="WITH">born with the market</option><option value="MIXED">born in a mixed market</option><option value="AGAINST">born against the market</option></select></div>
+<h3 style="margin-top:10px">Does the market gate help?</h3><div id="geff" class="sx"></div>
+<h3 style="margin-top:10px">Per scan</h3>
+<div id="stats" style="margin-top:4px;overflow-x:auto"></div></div></div>
 </div><div id="tip"></div>
 <script>""" + _JS_COMMON + r"""
 const TABS=[['today','Today'],['rec','Track record']];const loaded={};
@@ -238,15 +247,24 @@ function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggl
  if(!loaded[id]){loaded[id]=1;({today,rec})[id]()}}
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const dpill=d=>`<span class="pill ${d==='BULL'?'BUY':d==='BEAR'?'SELL':'NOT_RATED'}">${d==='BULL'?'▲ bull':d==='BEAR'?'▼ bear':esc(d)}</span>`;
+let SIG=[];
+async function gate(){try{const g=await j('/api/market-regime');const el=document.getElementById('gate');
+ if(!g.gate){el.innerHTML=`<span class="muted">Market gate: ${esc(g.reason||'not computed yet')}</span>`;return}
+ const long=g.gate==='OPEN'?'long signals are <b>with</b> the market':g.gate==='CAUTION'?'mixed market: long signals are <b>mixed</b>, size down':'long signals are <b>against</b> the market; short signals are with it';
+ el.innerHTML=`Market gate ${gpill(g.gate)} <b>${esc(stl(g.status))}</b> since ${esc(g.status_since||'—')} · ${g.dd_count} distribution day${g.dd_count===1?'':'s'} in ${g.rules.dd_window} sessions · Nifty ${g.above_200dma==null?'(200-DMA n/a)':g.above_200dma?'above':'below'} its 200-DMA · ${long}. <a href="/market-pulse" style="color:var(--accent)">Details</a>`}catch(e){}}
 async function today(){const p=new URLSearchParams({min_confluence:document.getElementById('mc').value});const d=document.getElementById('dirf').value;if(d)p.set('direction',d);
- const r=await j('/api/signals/technical?'+p);const g={};r.forEach(x=>{const k=x.symbol+'|'+x.direction;(g[k]=g[k]||{...x,list:[]}).list.push(x)});
+ SIG=await j('/api/signals/technical?'+p);draw()}
+function draw(){const af=document.getElementById('alf').value,r=SIG.filter(x=>!af||(af==='not_against'?x.alignment!=='AGAINST':x.alignment===af));
+ const hidden=SIG.length-r.length;const g={};r.forEach(x=>{const k=x.symbol+'|'+x.direction;(g[k]=g[k]||{...x,list:[]}).list.push(x)});
  const rows=Object.values(g).sort((a,b)=>b.confluence-a.confluence||b.list.length-a.list.length||a.symbol.localeCompare(b.symbol));
- document.getElementById('asof').textContent=r.length?`· ${String(r[0].date).slice(0,10)} · ${rows.length} stocks, ${r.length} signals`:'· none yet';
- document.getElementById('sig').innerHTML=table(['Symbol','','Signals','Entry','Stop','Target','Confluence','Evidence','Rating','Patterns'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${x.list.map(s=>`<span title="${esc(s.reason||'')}">${esc(s.name)}</span>`).join(' · ')}</td><td>${n(x.entry,2)}</td><td>${n(x.stop,2)}</td><td>${n(x.target,2)}</td><td><b>${x.confluence}</b>/6</td><td class="muted">${Object.entries(x.evidence||{}).filter(([k,v])=>v).map(([k])=>esc(k)).join(', ')}</td><td style="white-space:nowrap">${esc((x.tech_rating_label||'').replace('_',' '))}</td><td class="muted">${esc(x.patterns||'')}</td></tr>`))}
-async function rec(){const r=await j('/api/signals/technical/stats?min_confluence='+document.getElementById('rc').value);
+ document.getElementById('asof').textContent=SIG.length?`· ${String(SIG[0].date).slice(0,10)} · ${rows.length} stocks, ${r.length} signals${hidden?` (${hidden} hidden by the market filter)`:''}`:'· none yet';
+ document.getElementById('sig').innerHTML=table(['Symbol','','Market','Signals','Entry','Stop','Target','Confluence','Evidence','Rating','Patterns'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${apill(x.alignment)}</td><td>${x.list.map(s=>`<span title="${esc(s.reason||'')}">${esc(s.name)}</span>`).join(' · ')}</td><td>${n(x.entry,2)}</td><td>${n(x.stop,2)}</td><td>${n(x.target,2)}</td><td><b>${x.confluence}</b>/6</td><td class="muted">${Object.entries(x.evidence||{}).filter(([k,v])=>v).map(([k])=>esc(k)).join(', ')}</td><td style="white-space:nowrap">${esc((x.tech_rating_label||'').replace('_',' '))}</td><td class="muted">${esc(x.patterns||'')}</td></tr>`))}
+async function rec(){const mc=document.getElementById('rc').value,al=document.getElementById('ra').value;
+ const [r,ge]=await Promise.all([j('/api/signals/technical/stats?min_confluence='+mc+(al?'&alignment='+al:'')),j('/api/signals/technical/gate-effect?min_confluence='+mc)]);
+ document.getElementById('geff').innerHTML=table(['Signals born','Open','Closed','Win rate','Avg R','Avg return'],ge.groups.map(o=>`<tr><td>${o.alignment==='UNKNOWN'?'<span class="muted">before the gate</span>':apill(o.alignment)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))+`<div class="muted" style="margin-top:4px">${esc(ge.verdict||ge.note)}</div>`;
  document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))}
-async function runNow(){document.getElementById('ro').textContent=' computing…';try{const o=await post('/api/signals/technical/run');document.getElementById('ro').textContent=` ${o.rows} stocks, ${o.signals} signals (${o.as_of})`;today()}catch(e){document.getElementById('ro').textContent=' '+e.message}}
-show('today');
+async function runNow(){document.getElementById('ro').textContent=' computing…';try{const o=await post('/api/signals/technical/run');document.getElementById('ro').textContent=` ${o.rows} stocks, ${o.signals} signals (${o.as_of})`;gate();today()}catch(e){document.getElementById('ro').textContent=' '+e.message}}
+gate();show('today');
 </script></body></html>"""
 
 
@@ -254,8 +272,14 @@ PULSE = _HEAD + r"""
 <div class="wrap">
 <div class="card"><h3>Market context <span id="ctx"></span> <span class="muted" id="asof"></span></h3>
 <div id="reasons"></div>
-<div style="margin-top:6px"><button onclick="act('/api/market-pulse/gift','captured')">Capture GIFT Nifty now</button><button onclick="act('/api/market-pulse/refresh','refreshed')">Fetch NSE positioning + Nifty history</button><button onclick="act('/api/orderbook/snapshot','polled')">Poll order book now</button><span id="ao" class="muted"></span></div>
+<div style="margin-top:6px"><button onclick="act('/api/market-pulse/gift','captured')">Capture GIFT Nifty now</button><button onclick="act('/api/market-regime/run','gate recomputed').then(gateCard)">Recompute market gate</button><button onclick="act('/api/market-pulse/refresh','refreshed')">Fetch NSE positioning + Nifty history</button><button onclick="act('/api/orderbook/snapshot','polled')">Poll order book now</button><span id="ao" class="muted"></span></div>
 <div class="muted" style="margin-top:4px">Built from ATIP's own models and stored data; each part reports its own track record. Not advice.</div></div>
+<div class="card"><h3>Market gate <span id="gpill"></span> <span class="muted" id="gsince"></span></h3>
+<div class="muted">Should new long signals be taken? An IBD-style read of the Nifty from ATIP's data: distribution days (down sessions on higher market volume), corrections, rally attempts and follow-through days, plus the 200-DMA. <a href="/signals" style="color:var(--accent)">Signals</a> are tagged with, mixed or against it, and the track record shows whether that helps.</div>
+<div class="two" style="margin-top:8px"><div id="gsum" class="sx"></div><div id="gchanges" class="sx"></div></div>
+<div id="gchart" style="margin-top:6px;position:relative"></div>
+<div class="legend"><span><i style="border-color:#3987e5"></i>Nifty 50</span><span><i style="border-color:#d95926;border-top-style:dashed"></i>200-DMA</span><span style="color:var(--text)">▼</span><span>distribution day</span><span style="color:var(--text)">▲</span><span>follow-through day</span><span><b class="sw" style="background:#0ca30c"></b>gate open</span><span><b class="sw" style="background:#fab219"></b>caution</span><span><b class="sw" style="background:#d03b3b"></b>closed</span></div>
+<details><summary class="muted">Table view (last 30 sessions)</summary><div id="gtable" class="sx"></div></details></div>
 <div class="two"><div class="card"><h3>Global cues → Nifty</h3><div id="glob" class="sx"></div></div>
 <div class="card"><h3>FII / DII money</h3><div id="fii" class="sx"></div></div></div>
 <div class="two"><div class="card"><h3>Derivatives positioning</h3><div id="pos" class="sx"></div></div>
@@ -277,6 +301,7 @@ async function load(){const p=await j('/api/market-pulse');document.getElementBy
   h+=table(['Factor','Last move','Contribution','Sensitivity','Corr 60d'],Object.entries(g.contributions_pct).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${g.inputs[k]?(g.inputs[k].move>0?'+':'')+n(g.inputs[k].move,2)+' '+g.inputs[k].unit:'—'}</td><td>${bar(v,mx)}</td><td class="muted">${g.sensitivity[k]?n(g.sensitivity[k].value,3)+' '+esc(g.sensitivity[k].unit):''}</td><td>${g.corr_60d[k]!=null?n(g.corr_60d[k],2):'—'}</td></tr>`));
   const w=g.walk_forward;h+=`<div class="muted" style="margin-top:6px">Walk-forward, last ${w.sessions} sessions: direction right ${w.direction_hit_rate_pct??'—'}% of days that moved > 0.2%; RMSE ${w.rmse_pct}% vs ${w.rmse_zero_forecast_pct}% for "no change" (${w.beats_zero?'beats':'does not beat'} it).</div>`}
  else h+=`<div class="muted">${esc(g.reason||g.status)}</div>`;
+ if((g.stale_factors||[]).length)h+=`<div class="note" style="margin-top:4px">Left out because their data stopped updating over a week ago: ${esc(g.stale_factors.join(', '))}</div>`;
  if(gr.gift||gr.global_model)h+=`<div class="muted">Open-gap record: GIFT ${gr.gift?gr.gift.direction_hit_rate_pct+'% right over '+gr.gift.mornings+' mornings':'—'} · model ${gr.global_model?gr.global_model.direction_hit_rate_pct+'% over '+gr.global_model.mornings:'—'}</div>`;
  document.getElementById('glob').innerHTML=h;
  const f=p.fii;document.getElementById('fii').innerHTML=f.status!=='OK'?`<span class="muted">${esc(f.reason||f.status)}</span>`:
@@ -305,8 +330,49 @@ async function mine(){const w=await j('/api/brokers/open-orders');const br=w.bro
  const a=w.atip;h+=`<div class="muted" style="margin-top:8px">ATIP paper orders resting: ${a.paper_orders.length} · ATIP target / stop rules waiting: ${a.order_rules.length}</div>`;
  if(a.order_rules.length)h+=table(['Symbol','Side','Role','Trigger price','Status'],a.order_rules.slice(0,30).map(r=>`<tr><td>${esc(r.symbol)}</td><td>${esc(r.side)}</td><td>${esc(r.role||'')}</td><td>${n(r.resolved_trigger_price,2)}</td><td>${esc(r.status)}</td></tr>`));
  document.getElementById('mine').innerHTML=h}
+let GH=null;
+async function gateCard(){try{const [g,h]=await Promise.all([j('/api/market-regime'),j('/api/market-regime/history?days=250')]);
+ const el=document.getElementById('gsum');
+ if(!g.gate){el.innerHTML=`<span class="muted">${esc(g.reason||'Not computed yet: it runs nightly with the technical signals.')}</span>`;return}
+ document.getElementById('gpill').innerHTML=gpill(g.gate);
+ document.getElementById('gsince').textContent=`· ${stl(g.status)} since ${g.status_since||'—'}`;
+ el.innerHTML=kv([['Why',esc(g.reason||'')],[`Distribution days (last ${g.rules.dd_window} sessions)`,`${g.dd_count}${g.dd_dates.length?' <span class="muted">('+g.dd_dates.map(esc).join(', ')+')</span>':''}`],['Nifty vs 200-DMA',g.sma200==null?'—':`${n(g.nifty_close,0)} vs ${n(g.sma200,0)} <span class="muted">(${pct((g.nifty_close/g.sma200-1)*100)})</span>`],['Last follow-through day',esc(g.ftd_date||'—')],['Rules',`<span class="muted">distribution day: Nifty down ${g.rules.dd_drop_pct}% or more on higher market volume; under pressure at ${g.rules.pressure_dd}, correction at ${g.rules.correction_dd} or ${g.rules.correction_drawdown_pct}% off the high; follow-through: day ${g.rules.ftd_min_day}+ of a rally attempt, up ${g.rules.ftd_pct}% on higher volume</span>`]]);
+ document.getElementById('gchanges').innerHTML=table(['Changed','Status','Gate','Why'],g.changes.map(c=>`<tr><td style="white-space:nowrap">${esc(c.date)}</td><td>${esc(stl(c.status))}</td><td>${gpill(c.gate)}</td><td class="muted">${esc(c.reason||'')}</td></tr>`));
+ GH=h;drawGate();
+ document.getElementById('gtable').innerHTML=table(['Date','Nifty','Change','Volume vs prev.','Distribution day','Count','Status','Gate'],h.slice(-30).reverse().map(r=>`<tr><td>${esc(r.date)}</td><td>${n(r.nifty_close,2)}</td><td>${pct(r.change_pct)}</td><td>${r.volume_ratio==null?'—':n(r.volume_ratio,2)+'×'}</td><td>${r.distribution_day?'yes':''}</td><td>${r.dd_count}</td><td>${esc(stl(r.status))}</td><td>${r.gate?gpill(r.gate):''}</td></tr>`))
+}catch(e){document.getElementById('gsum').innerHTML=`<span class="bad">${esc(e.message)}</span>`}}
+const GC={OPEN:'#0ca30c',CAUTION:'#fab219',CLOSED:'#d03b3b'};
+function drawGate(){const h=GH,el=document.getElementById('gchart');if(!h||h.length<2){el.innerHTML='';return}
+ const W=Math.max(300,el.clientWidth),H=250,ST=8,ml=48,mr=70,mt=16,mb=20,ph=H-mt-mb-ST-8,pw=W-ml-mr,N=h.length;
+ const vals=h.flatMap(r=>[r.nifty_close,r.sma200]).filter(v=>v!=null);let lo=Math.min(...vals),hi=Math.max(...vals);const pad=(hi-lo)*.06||1;lo-=pad;hi+=pad;
+ const X=i=>ml+i*pw/(N-1),Y=v=>mt+(hi-v)/(hi-lo)*ph;
+ const raw=(hi-lo)/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),stp=[1,2,2.5,5,10].map(m=>m*mag).find(m=>m>=raw);
+ let svg=`<svg width="${W}" height="${H}" role="img" aria-label="Nifty 50 with its 200-day average, distribution days and the market gate">`;
+ for(let t=Math.ceil(lo/stp)*stp;t<=hi;t+=stp)svg+=`<line x1="${ml}" x2="${ml+pw}" y1="${Y(t)}" y2="${Y(t)}" stroke="rgba(255,255,255,.07)"/><text x="${ml-6}" y="${Y(t)+3.5}" text-anchor="end" font-size="10.5" fill="#94a3b8">${n(t,0)}</text>`;
+ const path=k=>{let d='',pen=false;h.forEach((r,i)=>{const v=r[k];if(v==null){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1);pen=true});return d};
+ svg+=`<path d="${path('sma200')}" fill="none" stroke="#d95926" stroke-width="2" stroke-dasharray="6 4"/><path d="${path('nifty_close')}" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round"/>`;
+ h.forEach((r,i)=>{const x=X(i),y=Y(r.nifty_close);
+  if(r.distribution_day)svg+=`<polygon points="${x-4.5},${y-15} ${x+4.5},${y-15} ${x},${y-6}" fill="#e2e8f0" stroke="#1e293b" stroke-width="2" paint-order="stroke"/>`;
+  if(r.follow_through)svg+=`<polygon points="${x-4.5},${y+15} ${x+4.5},${y+15} ${x},${y+6}" fill="#e2e8f0" stroke="#1e293b" stroke-width="2" paint-order="stroke"/>`});
+ const sy=mt+ph+8,half=pw/(N-1)/2;let a=0;
+ for(let i=1;i<=N;i++){if(i===N||h[i].gate!==h[a].gate){const g=h[a].gate;if(g){const x0=Math.max(ml,X(a)-half)+(a?1:0),x1=Math.min(ml+pw,X(i-1)+half)-(i<N?1:0);
+   svg+=`<rect x="${x0}" y="${sy}" width="${Math.max(1,x1-x0)}" height="${ST}" rx="2" fill="${GC[g]}"/>`}a=i}}
+ const L=h[N-1];let yn=Y(L.nifty_close),ys=L.sma200==null?null:Y(L.sma200);if(ys!=null&&Math.abs(yn-ys)<13){const m=(yn+ys)/2;if(yn<ys){yn=m-7;ys=m+7}else{yn=m+7;ys=m-7}}
+ svg+=`<text x="${ml+pw+6}" y="${yn+4}" font-size="11" fill="#e2e8f0">Nifty 50</text>`+(ys==null?'':`<text x="${ml+pw+6}" y="${ys+4}" font-size="11" fill="#e2e8f0">200-DMA</text>`);
+ [0,.25,.5,.75,1].forEach(f=>{const i=Math.round(f*(N-1));svg+=`<text x="${X(i)}" y="${H-4}" text-anchor="${f===0?'start':f===1?'end':'middle'}" font-size="10.5" fill="#94a3b8">${esc(h[i].date)}</text>`});
+ svg+=`<line id="gxh" y1="${mt}" y2="${sy+ST}" stroke="#94a3b8" stroke-width="1" opacity="0"/><circle id="gd1" r="4" fill="#3987e5" stroke="#1e293b" stroke-width="2" opacity="0"/><circle id="gd2" r="4" fill="#d95926" stroke="#1e293b" stroke-width="2" opacity="0"/>`;
+ svg+=`<rect id="ghit" x="${ml}" y="${mt}" width="${pw}" height="${sy+ST-mt}" fill="transparent"/></svg>`;
+ el.innerHTML=svg;const hit=document.getElementById('ghit'),tip=document.getElementById('tip');
+ hit.onmousemove=ev=>{const b=hit.getBoundingClientRect(),i=Math.max(0,Math.min(N-1,Math.round((ev.clientX-b.left)/b.width*(N-1)))),r=h[i],x=X(i);
+  const xh=document.getElementById('gxh');xh.setAttribute('x1',x);xh.setAttribute('x2',x);xh.setAttribute('opacity',.6);
+  const d1=document.getElementById('gd1');d1.setAttribute('cx',x);d1.setAttribute('cy',Y(r.nifty_close));d1.setAttribute('opacity',1);
+  const d2=document.getElementById('gd2');if(r.sma200!=null){d2.setAttribute('cx',x);d2.setAttribute('cy',Y(r.sma200));d2.setAttribute('opacity',1)}else d2.setAttribute('opacity',0);
+  tip.style.display='block';tip.style.left=Math.min(ev.clientX+14,window.innerWidth-230)+'px';tip.style.top=(ev.clientY+10)+'px';
+  tip.innerHTML=`<b>${esc(r.date)}</b><br><span style="color:#3987e5">━</span> Nifty ${n(r.nifty_close,2)} <span class="muted">(${pct(r.change_pct)})</span><br><span style="color:#d95926">┅</span> 200-DMA ${n(r.sma200,0)}<br>Volume vs previous ${r.volume_ratio==null?'—':n(r.volume_ratio,2)+'×'}${r.distribution_day?' · <b>distribution day</b>':''}${r.follow_through?' · <b>follow-through day</b>':''}<br>${r.dd_count} distribution days · ${esc(stl(r.status))} · gate ${esc(r.gate||'—')}`};
+ hit.onmouseleave=()=>{tip.style.display='none';['gxh','gd1','gd2'].forEach(id=>document.getElementById(id).setAttribute('opacity',0))}}
+window.addEventListener('resize',()=>{clearTimeout(window._gr);window._gr=setTimeout(drawGate,150)});
 async function act(u,word){document.getElementById('ao').textContent=' working…';try{const r=await post(u);document.getElementById('ao').textContent=' '+word+': '+esc(JSON.stringify(r).slice(0,140));load()}catch(e){document.getElementById('ao').textContent=' '+e.message}}
-load();
+load();gateCard();
 </script></body></html>"""
 
 

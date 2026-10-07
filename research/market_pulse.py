@@ -43,8 +43,8 @@ data, and every model reports how well it has done.
 6. Order book (data/order_pressure.py): market-wide pending buy / sell ratio and the stocks with
    persistent one-sided books -- context with a spoofing caveat.
 
-pulse(conn) assembles all of it with an overall context (RISK_ON / NEUTRAL / RISK_OFF) and the
-reasons. Nothing here is advice or an order.
+pulse(conn) assembles all of it, plus ATIP's regime and the market gate (research/regime_gate.py),
+into an overall context (RISK_ON / NEUTRAL / RISK_OFF) and the reasons. Nothing here is advice or an order.
 CLI: python -m research.market_pulse [pulse|gift|evaluate|nifty-history]
 """
 
@@ -158,23 +158,34 @@ def _global_moves(conn) -> pd.DataFrame:
     return out
 
 
+STALE_DAYS = 7                 # a factor with no new close for this long before the last Nifty session is dropped
+
+
 def design(conn) -> tuple:
-    """(X, y): for each Nifty session t, each factor's latest move dated strictly before t."""
+    """(X, y): for each Nifty session t, each factor's latest move dated strictly before t.
+    A move is carried over a few rows at most (weekends, a holiday in one market); a factor whose
+    data stopped updating is left out rather than repeating its last move (X.attrs['stale'])."""
     nifty = nifty_closes(conn)
     moves = _global_moves(conn)
     if len(nifty) < 30 or moves.empty:
         return pd.DataFrame(), pd.Series(dtype=float)
     y = np.log(nifty / nifty.shift()).dropna()
     X = pd.DataFrame(index=y.index)
+    stale = []
     for s in moves.columns:
         col = moves[s].dropna()
         if col.empty:
             continue
+        if (y.index[-1] - col.index[-1]).days > STALE_DAYS:
+            stale.append(s)
+            continue
         shifted = col.copy()
         shifted.index = shifted.index + pd.Timedelta(days=1)       # usable from the next calendar day on
-        X[s] = shifted.reindex(X.index.union(shifted.index)).ffill().reindex(X.index)
+        X[s] = shifted.reindex(X.index.union(shifted.index)).ffill(limit=4).reindex(X.index)
     keep = X.notna().all(axis=1)
-    return X[keep], y[keep]
+    X, y = X[keep], y[keep]
+    X.attrs["stale"] = stale
+    return X, y
 
 
 def _ridge(X: np.ndarray, y: np.ndarray, lam=RIDGE):
@@ -188,8 +199,9 @@ def _ridge(X: np.ndarray, y: np.ndarray, lam=RIDGE):
 
 def global_cue_model(conn, today_moves: dict | None = None) -> dict:
     X, y = design(conn)
+    stale = [FACTORS[s][0] for s in X.attrs.get("stale", [])]
     if len(X) < 80:
-        return {"status": "INSUFFICIENT", "observations": len(X),
+        return {"status": "INSUFFICIENT", "observations": len(X), "stale_factors": stale,
                 "reason": "needs 80+ sessions of Nifty and global closes (python -m research.market_pulse nifty-history; "
                           "data.markets.backfill_global_history)"}
     cols = list(X.columns)
@@ -223,7 +235,11 @@ def global_cue_model(conn, today_moves: dict | None = None) -> dict:
     sigma = float(np.std(yv[-w:]))
     score = float(np.clip(pred / sigma, -3, 3)) if sigma else None
     beta_per_unit = {s: float(b[i] / sd[i]) for i, s in enumerate(cols)}
-    corr60 = {s: float(np.corrcoef(Xv[-60:, i], yv[-60:])[0, 1]) for i, s in enumerate(cols)} if n >= 60 else {}
+    corr60 = {}
+    if n >= 60:
+        for i, s in enumerate(cols):
+            xs = Xv[-60:, i]
+            corr60[s] = float(np.corrcoef(xs, yv[-60:])[0, 1]) if np.std(xs) > 0 and np.std(yv[-60:]) > 0 else None
     return {
         "status": "OK", "observations": n, "window": w, "r2": round(float(r2), 3),
         "expected_move_pct": round(pred * 100, 3), "nifty_sigma_pct": round(sigma * 100, 3),
@@ -238,7 +254,8 @@ def global_cue_model(conn, today_moves: dict | None = None) -> dict:
                                         if FACTORS[s][1] == "bp" else
                                         {"value": round(v, 3), "unit": "Nifty % per 1% move"})
                         for s, v in beta_per_unit.items()},
-        "corr_60d": {FACTORS[s][0]: round(v, 3) for s, v in corr60.items()},
+        "corr_60d": {FACTORS[s][0]: (round(v, 3) if v is not None else None) for s, v in corr60.items()},
+        "stale_factors": stale,
         "walk_forward": {"sessions": len(acts), "direction_hit_rate_pct": round(hit * 100, 1) if hit is not None else None,
                          "rmse_pct": round(rmse * 100, 3), "rmse_zero_forecast_pct": round(rmse0 * 100, 3),
                          "beats_zero": rmse < rmse0},
@@ -564,13 +581,23 @@ def pulse(conn) -> dict:
         reg = (mh[0].get("regime") or "").upper()
         votes.append({"STRONG_BULL": 1.0, "BULL": 0.5, "NEUTRAL": 0.0, "BEAR": -0.5, "HIGH_RISK": -1.0}.get(reg, 0.0))
         reasons.append(f"ATIP market regime {reg or 'unknown'}")
+    gate = None
+    try:
+        from research.regime_gate import current as gate_now
+        gate = gate_now(conn)
+    except Exception as e:
+        log.debug(f"market gate: {e}")
+    if gate and gate.get("gate") in ("OPEN", "CAUTION", "CLOSED"):
+        votes.append({"OPEN": 0.5, "CAUTION": 0.0, "CLOSED": -0.5}[gate["gate"]])
+        reasons.append(f"market gate {gate['gate']}: {str(gate.get('status') or '').replace('_', ' ').lower()} "
+                       f"({gate.get('reason') or ''})")
     ctx = sum(votes) / len(votes) if votes else None
     return {"as_of": datetime.now().isoformat(timespec="minutes"),
             "context_score": round(ctx, 2) if ctx is not None else None,
             "context": None if ctx is None else ("RISK_ON" if ctx > 0.25 else "RISK_OFF" if ctx < -0.25 else "NEUTRAL"),
             "reasons": reasons, "global_model": gm, "gift_today": cue[0] if cue else None,
             "gap_record": gap_record(conn), "fii": fp, "positioning": pos, "oi_walls": walls, "order_book": book,
-            "market_health": mh[0] if mh else None,
+            "market_health": mh[0] if mh else None, "market_gate": gate if gate and gate.get("gate") else None,
             "disclaimer": "Context from ATIP's own models and stored data; not advice."}
 
 

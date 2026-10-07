@@ -208,9 +208,11 @@ def _run_additive_migrations(conn):
     from db.schema_w35 import W35_TABLES                    # W35: data platform
     for name, ddls in W35_TABLES.items():
         _create_table_if_missing(conn, name, ddls)
-    from db.schema_w39 import W39_TABLES                    # W39: history, research & options
+    from db.schema_w39 import W39_TABLES, W39_COLUMNS       # W39: history, research & options
     for name, ddls in W39_TABLES.items():
         _create_table_if_missing(conn, name, ddls)
+    for table, cols in W39_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing

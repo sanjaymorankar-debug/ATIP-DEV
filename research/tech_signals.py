@@ -18,15 +18,20 @@ actually work on Indian stocks.
                              research rating (BUY/ADD for a long, REDUCE/SELL for a short)
                          -- a high-confluence signal is the "confirmed" one the literature recommends
                          over raw single-indicator triggers.
+                         plus the MARKET GATE it was born under (research/regime_gate.py: OPEN / CAUTION /
+                         CLOSED) and its ALIGNMENT with the market (WITH / MIXED / AGAINST). A long signal
+                         while the gate is CLOSED is flagged "against the market" and never alerted.
     evaluate_signals     OPEN signals are marked TARGET / STOPPED (a bar touching both counts as
                          STOPPED: conservative) or EXPIRED at the horizon with the return and R
-    scan_stats           per scan: closed signals, win rate, average R, expectancy
+    scan_stats           per scan: closed signals, win rate, average R, expectancy (optionally for one
+                         alignment); gate_effect: the same split WITH / MIXED / AGAINST the market, which
+                         is the honest test of whether the gate earns its place
 
 Benchmark for relative strength: the Nifty 50 daily close from market_health, else index_levels,
 else NIFTYBEES from prices_daily, else none.
 EOD only: signals are computed after the close, for the next session. Nothing here orders.
 Scheduled at 20:30 on market days (before the 20:40 research reports and 20:50 saved screens).
-CLI: python -m research.tech_signals run | evaluate | stats | today
+CLI: python -m research.tech_signals run | evaluate | stats | gate-effect | today
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
+from research import regime_gate as RG
 from research import technicals as T
 
 log = logging.getLogger(__name__)
@@ -61,15 +67,25 @@ DDL = (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
         direction TEXT NOT NULL, reason TEXT, entry REAL, stop REAL, target REAL, atr REAL, horizon INTEGER,
         confluence INTEGER, evidence_json TEXT, status TEXT NOT NULL DEFAULT 'OPEN', outcome_date DATE,
-        outcome_price REAL, return_pct REAL, r_multiple REAL, created_at TIMESTAMP, UNIQUE (symbol, date, scan))""",
+        outcome_price REAL, return_pct REAL, r_multiple REAL, created_at TIMESTAMP, market_gate TEXT, alignment TEXT,
+        UNIQUE (symbol, date, scan))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_signal_date ON technical_signal(date)",
     "CREATE INDEX IF NOT EXISTS idx_technical_signal_status ON technical_signal(status)",
 )
 
 
+ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT"}}   # RG-03, after TA-06 shipped
+
+
 def ensure_tables(conn):
     for d in DDL:
         conn.execute(d)
+    try:
+        from db.schema import _add_missing_columns
+        for table, cols in ADDED_COLUMNS.items():
+            _add_missing_columns(conn, table, cols)
+    except Exception as e:
+        log.debug(f"technical_signal column migration: {e}")
 
 
 def _d(v):
@@ -213,6 +229,7 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
         bars = load_bars(conn, symbols, as_of)
         bench = benchmark(conn, as_of)
         ctx = _context(conn, as_of)
+        gate = _gate(conn, as_of)
         n = sigs = 0
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         snaps = {}
@@ -236,14 +253,18 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
                     continue
                 stop, target = levels(direction, snap["_close"], snap["_atr"])
                 cnt, ev = confluence(direction, snap, ctx["regime"], ctx["research"].get(sym))
+                g = (gate or {}).get("gate")
                 conn.execute("""INSERT INTO technical_signal (signal_id, symbol, date, scan, name, direction, reason,
-                                    entry, stop, target, atr, horizon, confluence, evidence_json, status, created_at)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?)
+                                    entry, stop, target, atr, horizon, confluence, evidence_json, status, created_at,
+                                    market_gate, alignment)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?,?)
                                 ON CONFLICT(symbol, date, scan) DO UPDATE SET entry=excluded.entry,
                                     stop=excluded.stop, target=excluded.target, confluence=excluded.confluence,
-                                    evidence_json=excluded.evidence_json""",
+                                    evidence_json=excluded.evidence_json, market_gate=excluded.market_gate,
+                                    alignment=excluded.alignment""",
                              (uuid.uuid4().hex[:16], sym, str(as_of), key, name, direction, reason, snap["_close"],
-                              stop, target, snap["_atr"], HORIZON, cnt, json.dumps(ev), now))
+                              stop, target, snap["_atr"], HORIZON, cnt, json.dumps(ev), now, g,
+                              RG.alignment(direction, g)))
                 sigs += 1
         conn.commit()
         ev = evaluate_signals(conn)
@@ -251,7 +272,37 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
         if own:
             conn.close()
     return {"status": "SUCCESS" if n else "EMPTY", "rows": n, "signals": sigs, "as_of": str(as_of),
-            "benchmark": bench is not None, "evaluated": ev}
+            "benchmark": bench is not None, "evaluated": ev,
+            "market_gate": {k: (gate or {}).get(k) for k in ("date", "gate", "status", "dd_count")} if gate else None}
+
+
+def _gate(conn, as_of) -> dict | None:
+    """Refresh the market regime gate up to as_of, tag older signals that predate it, return as_of's row."""
+    try:
+        RG.update(conn, as_of)
+        backfill_gate(conn)
+        return RG.gate_on(conn, as_of)
+    except Exception as e:
+        log.warning(f"  market regime gate: {e}")
+        return None
+
+
+def backfill_gate(conn) -> int:
+    """Give signals stored before the gate existed the gate of their own date (the series is causal)."""
+    ensure_tables(conn)
+    rows = conn.execute("SELECT signal_id, date, direction FROM technical_signal WHERE market_gate IS NULL").fetchall()
+    if not rows:
+        return 0
+    gates = {str(d)[:10]: g for d, g in conn.execute("SELECT date, gate FROM market_regime_gate WHERE gate IS NOT NULL")}
+    n = 0
+    for sid, d, direction in rows:
+        g = gates.get(str(d)[:10])
+        if g:
+            conn.execute("UPDATE technical_signal SET market_gate=?, alignment=? WHERE signal_id=?",
+                         (g, RG.alignment(direction, g), sid))
+            n += 1
+    conn.commit()
+    return n
 
 
 def evaluate_signals(conn) -> dict:
@@ -292,13 +343,17 @@ def evaluate_signals(conn) -> dict:
     return done
 
 
-def scan_stats(conn, min_confluence: int = 0) -> list:
-    """Per scan: closed signals, win rate (TARGET share), average R, average return, expectancy in R."""
+def scan_stats(conn, min_confluence: int = 0, alignment: str | None = None) -> list:
+    """Per scan: closed signals, win rate (TARGET share), average R, average return, expectancy in R.
+    alignment WITH / MIXED / AGAINST keeps only signals born that way relative to the market gate."""
     ensure_tables(conn)
     out = {}
-    for scan, name, direction, status, r, ret in conn.execute(
-            "SELECT scan, name, direction, status, r_multiple, return_pct FROM technical_signal WHERE confluence>=?",
-            (int(min_confluence),)):
+    sql = "SELECT scan, name, direction, status, r_multiple, return_pct FROM technical_signal WHERE confluence>=?"
+    args = [int(min_confluence)]
+    if alignment:
+        sql += " AND alignment=?"
+        args.append(alignment.upper())
+    for scan, name, direction, status, r, ret in conn.execute(sql, args):
         o = out.setdefault(scan, {"scan": scan, "name": name, "direction": direction, "open": 0, "closed": 0,
                                   "target": 0, "stopped": 0, "expired": 0, "_r": [], "_ret": []})
         if status == "OPEN":
@@ -320,18 +375,72 @@ def scan_stats(conn, min_confluence: int = 0) -> list:
     return sorted(rows, key=lambda o: (-(o["avg_r"] if o["avg_r"] is not None else -99), -o["closed"]))
 
 
-def todays_signals(conn, as_of=None, direction=None, min_confluence=0, limit=300) -> list:
+def gate_effect(conn, min_confluence: int = 0) -> dict:
+    """Closed-signal results split by alignment with the market gate: does trading WITH the market pay more?"""
+    ensure_tables(conn)
+    groups, r_by = {}, {}
+    for al, status, r, ret in conn.execute(
+            "SELECT alignment, status, r_multiple, return_pct FROM technical_signal WHERE confluence>=?",
+            (int(min_confluence),)):
+        g = groups.setdefault(al or "UNKNOWN", {"alignment": al or "UNKNOWN", "open": 0, "closed": 0, "target": 0,
+                                                 "_r": [], "_ret": []})
+        if status == "OPEN":
+            g["open"] += 1
+            continue
+        g["closed"] += 1
+        g["target"] += status == "TARGET"
+        if r is not None:
+            g["_r"].append(r)
+            r_by.setdefault(al or "UNKNOWN", []).append(r)
+        if ret is not None:
+            g["_ret"].append(ret)
+    rows = []
+    for key in ("WITH", "MIXED", "AGAINST", "UNKNOWN"):
+        g = groups.get(key)
+        if not g:
+            continue
+        rs, rets = g.pop("_r"), g.pop("_ret")
+        g["win_rate_pct"] = round(g["target"] / g["closed"] * 100, 1) if g["closed"] else None
+        g["avg_r"] = round(sum(rs) / len(rs), 2) if rs else None
+        g["avg_return_pct"] = round(sum(rets) / len(rets), 2) if rets else None
+        rows.append(g)
+    verdict, t = None, None
+    rw, ra = r_by.get("WITH", []), r_by.get("AGAINST", [])
+    if len(rw) >= 30 and len(ra) >= 30:
+        mw, ma = sum(rw) / len(rw), sum(ra) / len(ra)
+        vw = sum((x - mw) ** 2 for x in rw) / (len(rw) - 1)
+        va = sum((x - ma) ** 2 for x in ra) / (len(ra) - 1)
+        se = (vw / len(rw) + va / len(ra)) ** 0.5
+        t = round((mw - ma) / se, 2) if se else None
+        gap = f"{mw:+.2f} R with the market vs {ma:+.2f} R against it ({len(rw)} and {len(ra)} closed signals)"
+        if t is None or abs(t) < 2:
+            verdict = f"no clear difference yet: {gap}; the gap is within noise (t = {t})"
+        elif t > 0:
+            verdict = f"the gate helps: {gap} (t = {t})"
+        else:
+            verdict = f"the gate has hurt so far: {gap} (t = {t})"
+    return {"groups": rows, "verdict": verdict, "t_stat": t,
+            "note": "needs 30+ closed signals on each side, and a gap beyond noise (|t| >= 2), before it says anything"}
+
+
+def todays_signals(conn, as_of=None, direction=None, min_confluence=0, limit=300, alignment=None) -> list:
+    """The day's signals. alignment: WITH / MIXED / AGAINST, or "not_against" to drop signals against the gate."""
     ensure_tables(conn)
     d = as_of or (conn.execute("SELECT MAX(date) FROM technical_signal").fetchone() or [None])[0]
     if not d:
         return []
     sql = ("SELECT s.symbol, s.date, s.scan, s.name, s.direction, s.reason, s.entry, s.stop, s.target, s.confluence, "
-           "s.evidence_json, s.status, t.tech_rating_label, t.patterns FROM technical_signal s LEFT JOIN "
-           "technical_snapshot t ON t.symbol=s.symbol AND t.date=s.date WHERE s.date=? AND s.confluence>=?")
+           "s.evidence_json, s.status, s.market_gate, s.alignment, t.tech_rating_label, t.patterns FROM technical_signal s "
+           "LEFT JOIN technical_snapshot t ON t.symbol=s.symbol AND t.date=s.date WHERE s.date=? AND s.confluence>=?")
     args = [str(d)[:10], int(min_confluence)]
     if direction:
         sql += " AND s.direction=?"
         args.append(direction.upper())
+    if alignment == "not_against":
+        sql += " AND (s.alignment IS NULL OR s.alignment<>'AGAINST')"
+    elif alignment:
+        sql += " AND s.alignment=?"
+        args.append(alignment.upper())
     sql += " ORDER BY s.confluence DESC, s.symbol LIMIT ?"
     args.append(int(limit))
     cur = conn.execute(sql, args)
@@ -365,15 +474,20 @@ def latest_snapshot(conn, symbols=None, as_of=None) -> dict:
 
 
 def alert_top(conn, as_of=None, min_confluence=4, limit=10) -> dict:
-    sig = [s for s in todays_signals(conn, as_of, min_confluence=min_confluence) if s["direction"] in ("BULL", "BEAR")]
+    """Alert the day's strongest signals; signals AGAINST the market gate are never alerted."""
+    sig = [s for s in todays_signals(conn, as_of, min_confluence=min_confluence, alignment="not_against")
+           if s["direction"] in ("BULL", "BEAR")]
     if not sig:
         return {"alerted": 0}
     from alerts.telegram import notify
+    gate = sig[0].get("market_gate")
     lines = [f"{'▲' if s['direction'] == 'BULL' else '▼'} {s['symbol']}: {s['name']} (confluence {s['confluence']}/6, "
              f"entry {s['entry']:.2f}, stop {s['stop']:.2f}, target {s['target']:.2f})" for s in sig[:limit]]
-    notify("<b>Technical signals</b> (EOD, for the next session; not advice)\n" + "\n".join(lines),
-           category="signals", severity="info", key=f"tech_signals:{sig[0]['date']}")
-    return {"alerted": len(lines)}
+    head = "<b>Technical signals</b> (EOD, for the next session; not advice)"
+    if gate:
+        head += f"\nMarket gate: <b>{gate}</b>" + (" (mixed market: smaller size)" if gate == "CAUTION" else "")
+    notify(head + "\n" + "\n".join(lines), category="signals", severity="info", key=f"tech_signals:{sig[0]['date']}")
+    return {"alerted": len(lines), "market_gate": gate}
 
 
 def run_job() -> dict:
@@ -400,6 +514,7 @@ def main(argv=None):
     r.add_argument("--date")
     sub.add_parser("evaluate")
     sub.add_parser("stats")
+    sub.add_parser("gate-effect")
     t = sub.add_parser("today")
     t.add_argument("--min-confluence", type=int, default=0)
     a = ap.parse_args(argv)
@@ -410,6 +525,7 @@ def main(argv=None):
         conn = get_connection()
         try:
             out = {"evaluate": lambda: evaluate_signals(conn), "stats": lambda: scan_stats(conn),
+                   "gate-effect": lambda: gate_effect(conn),
                    "today": lambda: todays_signals(conn, min_confluence=a.min_confluence)}[a.cmd]()
         finally:
             conn.close()

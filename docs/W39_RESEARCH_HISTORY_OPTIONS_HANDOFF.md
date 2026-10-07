@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 91 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 112 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -265,6 +265,61 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Page:** `/market-pulse`.
 
+## RG-01..RG-04: market regime gate (`research/regime_gate.py`), Phase 2 item 1
+
+**What it answers:** should new long (or short) signals be taken today? It gives an IBD-style read of the Nifty, replayed one session at a time from ATIP's data. It is causal: row t uses only data up to t, which a test checks.
+
+**Rules** (`config.json` `"regime_gate"`, defaults shown):
+- **Distribution day:** the Nifty closes down ≥ 0.2 % on higher market volume than the session before.
+  - It is active for 25 sessions, or until the Nifty closes 5 % above that day's close.
+  - Market volume is the summed volume of every stock in `prices_daily` that traded on both days, so a stock joining the universe cannot move the ratio. It falls back to NIFTYBEES under 20 stocks.
+  - A day without a volume comparison counts as neither a distribution day nor a follow-through day.
+- **Status:**
+  - CONFIRMED_UPTREND: fewer than 4 active distribution days.
+  - UPTREND_UNDER_PRESSURE: 4 or 5.
+  - CORRECTION: 6 or more; or the Nifty 10 % below the uptrend's highest close; or, after a follow-through, a close below the correction low it launched from.
+  - RALLY_ATTEMPT: in a correction, the first up close after the lowest close is day 1; a lower close resets it.
+  - A follow-through day (day 4 or later, Nifty up ≥ 1.25 % on higher volume) restores the uptrend and clears the count.
+- **Gate:**
+  - OPEN: confirmed uptrend above the 200-DMA.
+  - CAUTION: under pressure, or a confirmed uptrend still below the 200-DMA.
+  - CLOSED: correction or rally attempt.
+  - The first 60 sessions of history are warm-up (gate unknown).
+- **Nifty closes:** `global_market_history` `nifty50` (5 years from Yahoo), extended with `market_health.nifty_close` for later days; else `market_health`; else NIFTYBEES.
+
+**Table** `market_regime_gate`, one row per session. It holds: close, change, volume ratio, distribution day, the active count and dates, SMA 50/200, drawdown, status, gate, rally day, follow-through, reason, volume source. It is recomputed by `run_technical` before the 20:30 signals, so no separate job is needed.
+
+**Signals:**
+- `technical_signal` gains `market_gate` and `alignment`: WITH, MIXED or AGAINST.
+  - A BULL signal is WITH the market when the gate is OPEN, MIXED on CAUTION, and AGAINST when CLOSED. A BEAR signal is the reverse.
+  - The columns are added by `ALTER TABLE` on existing databases (`W39_COLUMNS`).
+  - A signal keeps the gate it was born under. `backfill_gate` gives older signals the gate of their own date.
+- `alert_top` never alerts AGAINST signals, and the alert names the gate.
+- `todays_signals(alignment=...)` and `scan_stats(alignment=...)` filter by alignment.
+- `gate_effect` compares closed signals WITH, MIXED and AGAINST the market. It gives a verdict only with 30+ closed signals on each side and a gap beyond noise (Welch t, |t| ≥ 2).
+- `market_pulse.pulse` adds the gate to the context score and reasons.
+
+**CLI:**
+- `python -m research.regime_gate [now | history --days 60 | run --date YYYY-MM-DD]`
+- `python -m research.tech_signals gate-effect`
+
+**API:**
+- `GET /api/market-regime`: today, the change log and the rules.
+- `GET /api/market-regime/history?days=250`
+- `POST /api/market-regime/run` (`research:run`, token).
+- `GET /api/signals/technical?alignment=WITH|MIXED|AGAINST|not_against`
+- `GET /api/signals/technical/stats?alignment=`
+- `GET /api/signals/technical/gate-effect`
+
+**Pages:**
+- `/market-pulse` has a Market gate card: status, why, distribution days, Nifty vs 200-DMA, last follow-through, the rules and the recent changes. Its chart shows the Nifty and the 200-DMA (dashed) over 250 sessions, with distribution days (▼) and follow-through days (▲), a gate strip (open / caution / closed in the reserved status colours, with labels), crosshair tooltip, legend and table view.
+- `/signals` has a gate banner and a market filter. "Hide signals against the market" is the default and shows how many it hid. Each signal has a Market column. The Track record tab has "Does the market gate help?" and a "born with / mixed / against" filter.
+
+**Also fixed while rendering it:**
+- A global factor whose data stopped updating used to have its last move repeated forever, and its zero-variance 60-day correlation (NaN) made `/api/market-pulse` answer 400.
+- `design()` now leaves a factor out after 7 days without data (`stale_factors`, shown on the page).
+- W39 routes turn any NaN or inf into null.
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -282,9 +337,9 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`), applied by `db/schema.py`. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days) and `market_cue` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` to databases created before the gate. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days) and `market_cue` (research, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
-- Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
+- Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
 - Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
 - `docs/API_REFERENCE.md` and `docs/openapi.json` regenerated. They were also stale from W34–W38: 402 → 511 routes.
 - `db/sql/*.sql` are pinned snapshots (master @ 6896bea) and were not regenerated. The new tables are created on first start like any additive migration.
@@ -298,7 +353,9 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_screener.py` | 19 | query precedence / NOT / IN / aliases; missing values; malicious and malformed queries refused; presets valid; snapshot fields on a seeded DB; magic rank; filter / sort / columns / CSV; cache; saved screens with new matches and an alert; API and token; permissions and classification |
 | `tests/test_w39_options.py` | 11 | payoff and breakevens; unlimited flags; condor risk = width − credit; every template; POP sanity; time value; implied IV; validation; chain pricing; API |
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
-| `tests/test_w39_market_pulse.py` | 14 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
+| `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
+
+| `tests/test_w39_regime_gate.py` | 20 | distribution day needs the drop and higher volume; expiry after 25 sessions or a 5 % rally; pressure → correction → rally attempt → follow-through day with the count cleared; no follow-through before day 4 or without volume; a lower close resets the rally; a 10 % slide is a correction; a failed follow-through; 200-DMA and warm-up; replay is point-in-time; alignment truth table; market volume over stocks on both days; storage with Yahoo + market_health; signals tagged and against-market ones never alerted; old signals get their own day's gate; gate-effect only speaks beyond noise; old table gets the new columns; pulse; API, token and 400s; permissions |
 
 ## Known limits and next steps
 
@@ -321,6 +378,11 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - No chart-pattern detection (Darvas, VCP, triangles, head and shoulders) yet.
 - The regime enters as one confluence factor; there is no distribution-day gate yet.
 - Track records start on the first run and are measured on ATIP's own prices. Trust a scan only after ~30 closed signals.
+
+**Market regime gate:**
+- The thresholds are ATIP's choices in the IBD tradition, not IBD's published rules. Whether they help on Indian stocks is what "Does the market gate help?" will show once 30+ signals have closed on each side.
+- Market volume is the volume of the stocks ATIP stores, not exchange-wide volume; days with fewer than 10 common stocks have no comparison.
+- Stalling days and the intraday-low rule for rally attempts are not modelled (closes only).
 
 **Market pulse:**
 - The global model uses daily closes (previous session), not synchronised 15:30 → 08:45 moves; it needs the Nifty and global history loaded.

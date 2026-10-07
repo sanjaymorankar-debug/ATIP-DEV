@@ -57,6 +57,17 @@ def test_global_model_recovers_a_planted_us_effect(db):
     assert m["cue_label"] in ("STRONG_POSITIVE", "POSITIVE", "FLAT", "NEGATIVE", "STRONG_NEGATIVE")
 
 
+def test_a_factor_that_stops_updating_is_left_out_not_repeated(db):
+    from research import market_pulse as MP
+    days, _ = _seed_global(db)
+    db.execute("DELETE FROM global_market_history WHERE series='crude_brent' AND date>?", (str(days[-40]),))
+    db.commit()
+    m = MP.global_cue_model(db)
+    assert m["status"] == "OK" and m["stale_factors"] == ["Brent crude"]
+    assert "Brent crude" not in m["contributions_pct"] and "Brent crude" not in m["corr_60d"]
+    assert all(v is None or abs(v) <= 1 for v in m["corr_60d"].values())
+
+
 def test_global_model_says_when_history_is_short(db):
     from research import market_pulse as MP
     _seed_global(db, n=40)

@@ -37,7 +37,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 - **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
 
 **The best plan from here** (section 8):
-- **Phase 2 (next, uses data ATIP already has):** regime gate, a per-signal record split by regime, weekly-timeframe rating, chart patterns, explainable fundamental composite.
+- **Phase 2 (uses data ATIP already has):** regime gate (**built**, see §8), a per-signal record split by regime, weekly-timeframe rating, chart patterns, explainable fundamental composite.
 - **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
 - **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
 - **Phase 5:** live execution, only with your explicit go-ahead.
@@ -106,7 +106,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 | Rank, don't threshold | IBD, SCTR, Seeking Alpha | ✅ RS rating 1–99 across ATIP's universe (0.4 ROC63 + 0.2 ROC126 + 0.2 ROC189 + 0.2 ROC252, the community replica of IBD). 🟡 No cap-bucket ranking yet. |
 | Volume confirmation | StockCharts, O'Neil | ✅ 52-week breakout needs volume > 1.5 × the 20-day average; pocket pivot needs volume above the largest down-day volume of the last 10 sessions; volume > 1.5 × counts as confluence |
 | Completed candles only | Dhan ScanX | ✅ Scans run at 20:30 on stored daily bars; a stock with no bar for the day is skipped rather than reusing yesterday's |
-| Regime gate | IBD | 🟡 ATIP's regime (`market_health`) counts as one confluence factor; signals against the regime lose it. No distribution-day count yet (Phase 2). |
+| Regime gate | IBD | ✅ `research/regime_gate.py` (Phase 2, item 1): distribution days, correction / rally attempt / follow-through day and the 200-DMA give an OPEN / CAUTION / CLOSED gate. Every signal carries the gate it was born under; signals against it are hidden by default and never alerted. ATIP's `market_health` regime still counts as one confluence factor. |
 | Independent confluence | Trade Ideas, analysts | ✅ Out of 6: technical rating, volume, relative strength, regime, a candle pattern, ATIP's research rating |
 | Track record per signal | Tickeron, Danelfin, Holly | ✅ `technical_signal`: each signal closes as TARGET, STOPPED or EXPIRED (20 sessions); per-scan win rate, average R and average return, filterable by minimum confluence. A bar touching both levels counts as STOPPED (conservative). 🟡 Not yet split by regime, no forward returns vs Nifty at 5/20/60 days. |
 
@@ -192,6 +192,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
 | Your open orders | `portfolio/open_orders.py` | `/market-pulse` | On page load |
+| Market regime gate (Phase 2, item 1) | `research/regime_gate.py` (`market_regime_gate`; `technical_signal.market_gate`, `alignment`) | `/market-pulse` (gate card and chart), `/signals` (banner, filter, "Does the market gate help?") | With the 20:30 signal run |
 
 **API:**
 - `GET /api/signals/technical[...]`
@@ -219,7 +220,7 @@ They use synthetic series with known answers. Examples:
 
 | Gap | Best-in-class | Phase |
 |---|---|---|
-| Distribution-day regime gate; follow-through day | IBD / MarketSmith | 2 |
+| ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
 | Track record by regime; forward returns at 5/20/60 days vs Nifty | Tickeron, Danelfin | 2 |
 | Weekly (and later 75-minute) technical rating | TradingView any-timeframe | 2 / 3 |
 | Chart patterns: Darvas box, VCP, triangles, double bottom, head and shoulders, channels | Finviz, TrendSpider, StockEdge | 2 |
@@ -244,9 +245,11 @@ They use synthetic series with known answers. Examples:
 - Technical screener, signal engine with track record, market pulse, participant OI, order-book pressure, open-orders view.
 
 ### Phase 2: next, using data ATIP already stores (no new subscriptions)
-1. **Regime gate.**
-   - Count Nifty distribution days (down ≥ 0.2 % on higher volume) over 25 sessions, track the follow-through day, and record Nifty above or below its 200-DMA.
-   - Bullish signals need the gate open, or show "against the market".
+1. **Regime gate. Built** (`research/regime_gate.py`).
+   - **Distribution day:** the Nifty down ≥ 0.2 % on higher market volume (the summed volume of the stocks ATIP stores, compared like for like). It counts for 25 sessions, or until the Nifty closes 5 % above it.
+   - **Status:** confirmed uptrend; under pressure at 4 distribution days; correction at 6, at 10 % off the uptrend's high, or on a close below the low a follow-through day launched from. In a correction, the first up close after the low starts a rally attempt. A follow-through day (day 4 or later, Nifty up ≥ 1.25 % on higher volume) restores the uptrend and clears the count.
+   - **Gate:** OPEN (confirmed uptrend above the 200-DMA), CAUTION (under pressure, or an uptrend still below the 200-DMA), CLOSED (correction or rally attempt). Thresholds are configurable (`config.json` `"regime_gate"`).
+   - **Signals:** each carries the gate it was born under and its alignment (with, mixed or against the market). Signals against the market are hidden on `/signals` by default and never alerted. "Does the market gate help?" compares their results. It only gives a verdict once both sides have 30 closed signals and the gap is beyond noise (|t| ≥ 2).
    - *Why first:* it is the single filter every successful retail method uses, and it is cheap.
 2. **Track record by regime and horizon.**
    - Forward returns at 5, 20 and 60 sessions vs the Nifty for every scan, split by regime and confluence.

@@ -4,7 +4,7 @@ options strategy builder (OP). JSON; 400 invalid; 404 unknown; token on every PO
 Authz (enterprise/authz.py): GET /api/research/ -> research:read, POST -> research:run;
 GET /api/data/ -> dashboard:read, POST -> research:run; POST /api/options/(build|analyse) ->
 research:run (analysis only: nothing is ordered); POST /api/screener/ -> workspace:write (saved
-screens); POST /api/signals/, /api/market-pulse/, /api/orderbook/ -> research:run;
+screens); POST /api/signals/, /api/market-pulse/, /api/orderbook/, /api/market-regime/ -> research:run;
 GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
 
     GET  /research                                   the research page (dashboard/w39_page.py)
@@ -24,10 +24,14 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/screener/saved/{id}/run                run a saved screen; reports new / dropped matches since its last run
     POST /api/screener/saved/{id}/delete
     GET  /signals                                    technical signals page (today, track record)
-    GET  /api/signals/technical?date&direction&min_confluence    signals with entry / stop / target, confluence
-    GET  /api/signals/technical/stats?min_confluence  track record per scan: win rate, average R
+    GET  /api/signals/technical?date&direction&min_confluence&alignment    signals with levels, confluence, market gate
+    GET  /api/signals/technical/stats?min_confluence&alignment  track record per scan: win rate, average R
+    GET  /api/signals/technical/gate-effect?min_confluence     closed signals WITH / MIXED / AGAINST the market gate
     GET  /api/signals/technical/symbol/{symbol}      latest technical snapshot + recent signals for one stock
     POST /api/signals/technical/run                  {symbols?} compute today's snapshot and signals now
+    GET  /api/market-regime                          the market gate today: status, distribution days, 200-DMA, changes
+    GET  /api/market-regime/history?days=250         one row per session (Nifty, DMAs, distribution days, gate)
+    POST /api/market-regime/run                      recompute the gate now
     GET  /market-pulse                               global cues, FII flows, positioning, order book, your orders
     GET  /api/market-pulse                           everything + the overall context and its reasons
     GET  /api/market-pulse/global | /fii | /positioning   the parts
@@ -45,6 +49,7 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
+import math
 from datetime import date
 
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -54,10 +59,20 @@ from starlette.concurrency import run_in_threadpool
 def register(app, guard, Req, get_connection, json_safe):
     from quant.options_strategy import StrategyError
 
+    def finite(obj):
+        """NaN / inf -> None, so one bad number cannot turn a whole response into a 400."""
+        if isinstance(obj, dict):
+            return {k: finite(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [finite(v) for v in obj]
+        if isinstance(obj, float) and not math.isfinite(obj):
+            return None
+        return obj
+
     def call(fn):
         conn = get_connection()
         try:
-            return JSONResponse(json_safe(fn(conn)))
+            return JSONResponse(finite(json_safe(fn(conn))))
         except LookupError as e:
             return JSONResponse({"error": str(e)}, status_code=404)
         except (StrategyError, ValueError, TypeError, KeyError) as e:
@@ -245,18 +260,30 @@ def register(app, guard, Req, get_connection, json_safe):
         from dashboard.w39_page import render_signals
         return HTMLResponse(render_signals(token()))
 
+    _ALIGN = ("WITH", "MIXED", "AGAINST")
+
     @app.get("/api/signals/technical")
-    async def api_tech_signals(date: str = None, direction: str = None, min_confluence: int = 0, limit: int = 300):
+    async def api_tech_signals(date: str = None, direction: str = None, min_confluence: int = 0, limit: int = 300,
+                               alignment: str = None):
         from research.tech_signals import todays_signals
         if direction and direction.upper() not in ("BULL", "BEAR"):
             return JSONResponse({"error": "direction must be BULL or BEAR"}, status_code=400)
+        if alignment and alignment != "not_against" and alignment.upper() not in _ALIGN:
+            return JSONResponse({"error": "alignment must be WITH, MIXED, AGAINST or not_against"}, status_code=400)
         return await run(lambda c: todays_signals(c, date, direction, max(0, int(min_confluence)),
-                                                   max(1, min(int(limit), 2000))))
+                                                   max(1, min(int(limit), 2000)), alignment))
 
     @app.get("/api/signals/technical/stats")
-    async def api_tech_signal_stats(min_confluence: int = 0):
+    async def api_tech_signal_stats(min_confluence: int = 0, alignment: str = None):
         from research.tech_signals import scan_stats
-        return await run(lambda c: scan_stats(c, max(0, int(min_confluence))))
+        if alignment and alignment.upper() not in _ALIGN:
+            return JSONResponse({"error": "alignment must be WITH, MIXED or AGAINST"}, status_code=400)
+        return await run(lambda c: scan_stats(c, max(0, int(min_confluence)), alignment))
+
+    @app.get("/api/signals/technical/gate-effect")
+    async def api_tech_gate_effect(min_confluence: int = 0):
+        from research.tech_signals import gate_effect
+        return await run(lambda c: gate_effect(c, max(0, int(min_confluence))))
 
     @app.get("/api/signals/technical/symbol/{symbol}")
     async def api_tech_symbol(symbol: str):
@@ -282,6 +309,27 @@ def register(app, guard, Req, get_connection, json_safe):
         def f(_conn):
             from research.tech_signals import run_technical
             return run_technical(syms)
+        return await run(f)
+
+    # ── market regime gate ──
+    @app.get("/api/market-regime")
+    async def api_regime():
+        from research.regime_gate import current
+        return await run(current)
+
+    @app.get("/api/market-regime/history")
+    async def api_regime_history(days: int = 250):
+        from research.regime_gate import history
+        return await run(lambda c: history(c, max(1, min(int(days), 2000))))
+
+    @app.post("/api/market-regime/run", dependencies=guard)
+    async def api_regime_run():
+        def f(conn):
+            from research.regime_gate import update
+            from research.tech_signals import backfill_gate
+            out = update(conn)
+            out["signals_tagged"] = backfill_gate(conn)
+            return out
         return await run(f)
 
     # ── stock screener (fundamental + technical) ──

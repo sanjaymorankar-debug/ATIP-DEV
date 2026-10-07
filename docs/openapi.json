@@ -6859,6 +6859,15 @@
        "default": 300,
        "title": "Limit"
       }
+     },
+     {
+      "name": "alignment",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Alignment"
+      }
      }
     ],
     "responses": {
@@ -6887,6 +6896,53 @@
    "get": {
     "summary": "Api Tech Signal Stats",
     "operationId": "api_tech_signal_stats_api_signals_technical_stats_get",
+    "parameters": [
+     {
+      "name": "min_confluence",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Min Confluence"
+      }
+     },
+     {
+      "name": "alignment",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Alignment"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/technical/gate-effect": {
+   "get": {
+    "summary": "Api Tech Gate Effect",
+    "operationId": "api_tech_gate_effect_api_signals_technical_gate_effect_get",
     "parameters": [
      {
       "name": "min_confluence",
@@ -6962,6 +7018,76 @@
    "post": {
     "summary": "Api Tech Run",
     "operationId": "api_tech_run_api_signals_technical_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-regime": {
+   "get": {
+    "summary": "Api Regime",
+    "operationId": "api_regime_api_market_regime_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-regime/history": {
+   "get": {
+    "summary": "Api Regime History",
+    "operationId": "api_regime_history_api_market_regime_history_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 250,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-regime/run": {
+   "post": {
+    "summary": "Api Regime Run",
+    "operationId": "api_regime_run_api_market_regime_run_post",
     "responses": {
      "200": {
       "description": "Successful Response",
