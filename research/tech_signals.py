@@ -25,7 +25,9 @@ actually work on Indian stocks.
                          STOPPED: conservative) or EXPIRED at the horizon with the return and R
     scan_stats           per scan: closed signals, win rate, average R, expectancy (optionally for one
                          alignment); gate_effect: the same split WITH / MIXED / AGAINST the market, which
-                         is the honest test of whether the gate earns its place
+                         is the honest test of whether the gate earns its place. Chart-pattern scans
+                         (research/patterns.py) are tracked like the rest but alert only once their own
+                         record has 30 closed signals with a positive average R (proven_scans)
     evaluate_forward     (Phase 2) each signal's return 5, 20 and 60 sessions after its close and that
                          return minus the Nifty's (excess), both signed for its direction, filled in as
                          the sessions pass -- independent of the stop / target outcome
@@ -64,7 +66,8 @@ STOP_ATR, TARGET_ATR, HORIZON = 2.0, 4.0, 20
 SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
              "pct_from_sma50", "pct_from_sma200", "above_200dma", "bb_width_pct", "vol_ratio", "rs_63_pct",
              "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals",
-             "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment"]
+             "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment",
+             "chart_patterns", "vcp_setup"]
 
 DDL = (
     """CREATE TABLE IF NOT EXISTS technical_snapshot (
@@ -73,7 +76,8 @@ DDL = (
         pct_from_sma200 REAL, above_200dma INTEGER, bb_width_pct REAL, vol_ratio REAL, rs_63_pct REAL,
         return_1m_pct REAL, return_3m_pct REAL, patterns TEXT, signals TEXT, bull_signals INTEGER,
         bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, tech_rating_w REAL, tech_rating_w_label TEXT,
-        rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, PRIMARY KEY (symbol, date))""",
+        rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, chart_patterns TEXT, vcp_setup INTEGER,
+        PRIMARY KEY (symbol, date))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_snapshot_date ON technical_snapshot(date)",
     """CREATE TABLE IF NOT EXISTS technical_signal (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
@@ -93,7 +97,8 @@ FWD_COLS = {f"{k}_{h}d": "REAL" for h in HORIZONS for k in ("ret", "excess")}
 ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT", "market_status": "TEXT", **FWD_COLS,
                                       "weekly_agrees": "INTEGER"},
                  "technical_snapshot": {"tech_rating_w": "REAL", "tech_rating_w_label": "TEXT", "rsi_14_w": "REAL",
-                                        "supertrend_dir_w": "INTEGER", "mtf_alignment": "TEXT"}}   # Phase 2 item 3
+                                        "supertrend_dir_w": "INTEGER", "mtf_alignment": "TEXT",     # Phase 2 item 3
+                                        "chart_patterns": "TEXT", "vcp_setup": "INTEGER"}}           # Phase 2 item 4
 
 
 def ensure_tables(conn):
@@ -516,8 +521,22 @@ def scan_stats(conn, min_confluence: int = 0, alignment: str | None = None) -> l
         o["win_rate_pct"] = round(o["target"] / o["closed"] * 100, 1) if o["closed"] else None
         o["avg_r"] = round(sum(rs) / len(rs), 2) if rs else None
         o["avg_return_pct"] = round(sum(rets) / len(rets), 2) if rets else None
+        o["pattern"] = o["scan"] in T.PATTERN_SCANS
+        o["alerts"] = "on" if not o["pattern"] or _proven(o) else "held"
         rows.append(o)
     return sorted(rows, key=lambda o: (-(o["avg_r"] if o["avg_r"] is not None else -99), -o["closed"]))
+
+
+PROVE_CLOSED = 30           # a chart-pattern scan alerts only after this many closed signals with avg R > 0
+
+
+def _proven(o) -> bool:
+    return o["closed"] >= PROVE_CLOSED and (o["avg_r"] or 0) > 0
+
+
+def proven_scans(conn) -> set:
+    """Chart-pattern scans whose own record (all signals) has earned alerts."""
+    return {o["scan"] for o in scan_stats(conn) if o["pattern"] and _proven(o)}
 
 
 def gate_effect(conn, min_confluence: int = 0) -> dict:
@@ -629,9 +648,11 @@ def latest_snapshot(conn, symbols=None, as_of=None) -> dict:
 
 
 def alert_top(conn, as_of=None, min_confluence=4, limit=10) -> dict:
-    """Alert the day's strongest signals; signals AGAINST the market gate are never alerted."""
+    """Alert the day's strongest signals. Signals AGAINST the market gate are never alerted, and a chart-pattern
+    scan is held back until its own record has PROVE_CLOSED closed signals with a positive average R."""
+    proven = proven_scans(conn)
     sig = [s for s in todays_signals(conn, as_of, min_confluence=min_confluence, alignment="not_against")
-           if s["direction"] in ("BULL", "BEAR")]
+           if s["direction"] in ("BULL", "BEAR") and (s["scan"] not in T.PATTERN_SCANS or s["scan"] in proven)]
     if not sig:
         return {"alerted": 0}
     from alerts.telegram import notify

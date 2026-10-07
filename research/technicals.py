@@ -11,9 +11,11 @@ columns open, high, low, close, volume (oldest first); no database here.
     candles(df)                  candlestick patterns on the last bar (engulfing, hammer, shooting
                                  star, doji, harami, piercing / dark cloud, morning / evening star,
                                  three soldiers / crows, marubozu, inside bar, NR7)
-    SCANS / run_scans(df)        ~30 named scans (Chartink / Finviz / StockCharts style): crossovers,
-                                 breakouts on volume, oscillator turns, trend templates, squeezes,
-                                 each with a direction (BULL / BEAR) and a one-line reason
+    SCANS / run_scans(df)        36 named scans (Chartink / Finviz / StockCharts style): crossovers,
+                                 breakouts on volume, oscillator turns, trend templates, squeezes and
+                                 chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
+                                 bottom, ascending triangle, head and shoulders), each with a direction
+                                 (BULL / BEAR) and a one-line reason
     snapshot(df, bench)          one flat dict per stock for the screener: latest indicator values,
                                  scan hits as 0/1 fields, today's patterns, a technical rating, and
                                  the same rating on weekly bars with the daily / weekly agreement
@@ -36,6 +38,8 @@ import math
 
 import numpy as np
 import pandas as pd
+
+from research import patterns as P
 
 MIN_BARS = 60          # below this the long indicators are meaningless; snapshot returns None
 MIN_WEEKS = 35         # completed weekly bars needed for a weekly rating (MACD 26 + 9)
@@ -314,6 +318,21 @@ SCANS = {
                      "up day on volume above every down-day volume of the last 10 sessions, above SMA 50 (O'Neil)"),
     "gap_up": ("Gap up", "BULL", lambda d: _gt(_v(d, "low"), _v(d, "high", -2)) and _gt(_v(d, "vol_ratio"), 1.2),
                "today's low above yesterday's high, on above-average volume"),
+    # chart patterns (research/patterns.py): found on the bars before today, broken on today's close
+    "darvas_breakout": ("Darvas box breakout", "BULL", lambda d: P.breakout(d, "darvas_breakout"),
+                        "closed above a Darvas box top"),
+    "darvas_breakdown": ("Darvas box breakdown", "BEAR", lambda d: P.breakout(d, "darvas_breakdown"),
+                         "closed below a Darvas box bottom"),
+    "vcp_breakout": ("VCP breakout", "BULL", lambda d: P.breakout(d, "vcp_breakout"),
+                     "closed above a volatility-contraction pivot on 1.4x+ volume"),
+    "double_bottom_breakout": ("Double bottom breakout", "BULL", lambda d: P.breakout(d, "double_bottom_breakout"),
+                               "closed above a double bottom's neckline"),
+    "ascending_triangle_breakout": ("Ascending triangle breakout", "BULL",
+                                    lambda d: P.breakout(d, "ascending_triangle_breakout"),
+                                    "closed above an ascending triangle's flat resistance"),
+    "head_shoulders_breakdown": ("Head and shoulders breakdown", "BEAR",
+                                 lambda d: P.breakout(d, "head_shoulders_breakdown"),
+                                 "closed below a head-and-shoulders neckline"),
     "nr7_inside": ("NR7 inside bar", "NEUTRAL",
                    lambda d: d["range"].iloc[-1] == d["range"].iloc[-7:].min()
                    and d["high"].iloc[-1] < d["high"].iloc[-2] and d["low"].iloc[-1] > d["low"].iloc[-2],
@@ -321,13 +340,19 @@ SCANS = {
 }
 
 
+PATTERN_SCANS = frozenset(("darvas_breakout", "darvas_breakdown", "vcp_breakout", "double_bottom_breakout",
+                           "ascending_triangle_breakout", "head_shoulders_breakdown"))
+
+
 def run_scans(d: pd.DataFrame) -> list:
-    """[(key, name, direction, reason)] for the scans that hit on the last bar of an indicators() frame."""
+    """[(key, name, direction, reason)] for the scans that hit on the last bar of an indicators() frame.
+    A rule may return the reason text itself (the chart patterns name their levels)."""
     out = []
     for key, (name, direction, rule, desc) in SCANS.items():
         try:
-            if rule(d):
-                out.append((key, name, direction, desc))
+            hit = rule(d)
+            if hit:
+                out.append((key, name, direction, hit if isinstance(hit, str) else desc))
         except (IndexError, KeyError, TypeError, ValueError):
             continue
     return out
@@ -447,6 +472,9 @@ def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
         "_atr": _v(d, "atr14"), "_close": c, "_low20": float(d["low"].iloc[-20:].min()),
         "_high20": float(d["high"].iloc[-20:].max()),
     }
+    found = P.setups(d)
+    out["chart_patterns"] = "; ".join(t for _, t in found) or None
+    out["vcp_setup"] = int(any(lbl == "VCP setup" for lbl, _ in found))
     wk = weekly_rating(df)
     out.update({k: wk[k] for k in ("tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w")})
     out["mtf_alignment"] = mtf_alignment(label, wk["tech_rating_w_label"])

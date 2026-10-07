@@ -25,7 +25,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
 
 **What ATIP now does (this round):**
-- **Technical screener:** 30 end-of-day scans and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 15 technical and 3 combined presets (Phase 2 added a weekly rating and the daily / weekly agreement).
+- **Technical screener:** 36 end-of-day scans (6 of them chart-pattern breakouts, added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 17 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
 - **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
 - **Market pulse:**
   - a global-cue model fitted on ATIP's own data, with its walk-forward record;
@@ -185,9 +185,9 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 
 | Feature | Code | Where you see it | Schedule |
 |---|---|---|---|
-| Indicators, 30 scans, 19 candle patterns, technical rating | `research/technicals.py` | — | — |
+| Indicators, 36 scans (incl. 6 chart-pattern breakouts), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | — | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (104 fields, `CONTAINS`, 30 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (112 fields, `CONTAINS`, 32 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
@@ -225,7 +225,7 @@ They use synthetic series with known answers. Examples:
 | ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
 | ~~Track record by regime; forward returns at 5/20/60 days vs Nifty~~ | Tickeron, Danelfin | 2: **built** |
 | Weekly technical rating (**built**, Phase 2); 75-minute rating | TradingView any-timeframe | 3 (75-minute) |
-| Chart patterns: Darvas box, VCP, triangles, double bottom, head and shoulders, channels | Finviz, TrendSpider, StockEdge | 2 |
+| Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders (**built**, Phase 2); channels, wedges, inverse head and shoulders, descending triangle | Finviz, TrendSpider, StockEdge | 2 (rest: later) |
 | RS-line new high; SCTR-style rank within cap bucket | IBD, StockCharts | 2 |
 | Delivery-% spike scan (NSE `DELIV_PER`) | StockEdge, Chartink | 2 |
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks) and a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 |
@@ -263,10 +263,17 @@ They use synthetic series with known answers. Examples:
    - It needs 35+ weeks of history. The 200-week votes stay absent until ~4 years are stored.
    - `mtf_alignment`: BULL when the daily and weekly ratings are both BUY / STRONG_BUY, BEAR when both are SELL / STRONG_SELL, else MIXED. It is a screener field, with presets "Daily and weekly both bullish" and "Breakout with the weekly trend".
    - Each signal records `weekly_agrees` (the weekly rating on its side or not). This is kept out of the confluence count, so "Does the weekly trend add?" can test whether the agreement improves results.
-4. **Chart patterns** from swing pivots:
-   - Darvas box and VCP (the volatility contraction pattern) first, as the easiest to define precisely;
-   - then double bottom, ascending triangle, head and shoulders;
-   - each with its own track record before alerts.
+4. **Chart patterns. Built** (`research/patterns.py`).
+   - Detected from confirmed swing pivots (3 bars each side) on the bars **before** today; only today's close decides a breakout, so the triggering bar never shapes the pattern.
+   - **Darvas box:** a new high near the 52-week high, not exceeded for 3+ sessions, with a bottom that held 3 sessions. The box spans 5+ sessions and is at most 25 % tall. Breakout above the top, or breakdown below the bottom.
+   - **VCP:** 2–4 pullbacks, each shallower than the last (last ≤ 12 %), highs within 15 % of the base top, volume drying up (10-day below 85 % of 50-day), in an up-trend. Breakout above the last pullback's high on 1.4x+ volume.
+   - **Double bottom:** two lows within 3 %, 10–60 sessions apart (the second within 30), after a 10 % decline. Breakout above a neckline 6 %+ above them.
+   - **Ascending triangle:** 2+ flat highs (within 1.5 %) over 10+ sessions with rising lows. Breakout above the resistance.
+   - **Head and shoulders:** a head 3 %+ above two shoulders within 8 % of each other, after an advance. Breakdown below the neckline extended to today.
+   - **Signals:** each breakout is a scan, so it gets levels, confluence, the market gate, the forward record and a screener field like the rest. Its reason names the pattern's own levels.
+   - **Alerts:** a pattern scan only alerts once 30 of its signals have closed with a positive average R. The Track record shows "held · n/30" until then.
+   - **Screener:** `chart_patterns` lists patterns in place near their trigger (upper half of the box / base, within 3 % of a triangle's resistance) with their levels. `vcp_setup` flags a VCP below its pivot. Presets: "Chart pattern breakouts" and "VCP setups".
+   - **Calibration:** on random-walk prices, each breakout fires on 0.02–1.2 % of stock-days, and setups are listed on 0.2–7 %. Patterns are rare, as intended.
 5. **RS-line new high**, and percentile ranks within large, mid and small cap.
 6. **Delivery-% spike** from NSE's full bhavcopy: delivery above 1.5 × its 20-day average on an up day.
 7. **Explainable fundamental composite.**

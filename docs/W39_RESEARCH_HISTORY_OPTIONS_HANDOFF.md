@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 128 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 139 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -112,13 +112,13 @@
 - Size and balance sheet: revenue, profit, EPS, book value, debt/equity, current ratio, interest cover, cash, FCF.
 - Ownership: promoter %, its change over the latest quarter, pledge, FPI, MF.
 - Price: 1-year return, 3-year CAGR (from the 7-year history), distance from the 52-week high / low.
-- Technical (from `technical_snapshot`, see TA below): technical rating and label, RS rating 1–99, RSI, MACD histogram, ADX, Supertrend direction, ATR %, distance from the 50- and 200-DMA, Bollinger width, volume ÷ 20-day average, 3-month relative strength vs the Nifty, 1- and 3-month return, candle patterns, today's signals, and one `scan_<key>` 1/0 field for each of the 30 scans.
+- Technical (from `technical_snapshot`, see TA below): technical rating and label, RS rating 1–99, RSI, MACD histogram, ADX, Supertrend direction, ATR %, distance from the 50- and 200-DMA, Bollinger width, volume ÷ 20-day average, 3-month relative strength vs the Nifty, 1- and 3-month return, candle patterns, today's signals, chart patterns in place (`chart_patterns`, `vcp_setup`), and one `scan_<key>` 1/0 field for each of the 36 scans.
 - Order book (from `order_book_pressure`, see OB below): `book_imbalance`, `book_pressure`, `book_persistent`.
 - ATIP: score and signal.
 - Research model: rating, upside, fair value, moat proxy, quality score.
 - **Magic-formula rank:** Greenblatt's earnings-yield rank + ROCE rank, approximated with E/P; financials excluded.
 
-**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 104 fields in all.
+**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 112 fields in all.
 
 **Columns follow the query:** a technical-only query shows technical columns, a mixed one shows both, otherwise the fundamental set.
 
@@ -134,9 +134,9 @@
 - A stock missing a field never matches a condition on it.
 - Bad queries return a 400 that names the problem.
 
-**30 presets, in three groups:**
+**32 presets, in three groups:**
 - **Fundamental (12):** quality compounders, value, GARP, dividend, debt-free, promoters adding, undervalued by ATIP's model, strong near the 52-week high, turnaround, magic formula top 30, oversold quality, pledge risk.
-- **Technical (15):** 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, daily and weekly both bullish, breakout with the weekly trend, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
+- **Technical (17):** 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, daily and weekly both bullish, breakout with the weekly trend, chart pattern breakouts, VCP setups, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
 - **Combined (3):** quality stock breaking out, value stock turning up, model BUY in an up-trend.
 
 **Saved screens:**
@@ -201,7 +201,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Candle patterns** (`candles`, 19, each BULL / BEAR / NEUTRAL): engulfing, harami, marubozu, hammer and hanging man, inverted hammer and shooting star (trend-qualified), doji, morning and evening star, piercing line, dark cloud cover, three white soldiers, three black crows, inside bar, NR7.
 
-**30 scans** (`SCANS`, completed daily bars only; 20 bullish, 9 bearish, 1 neutral):
+**36 scans** (`SCANS`, completed daily bars only; 24 bullish, 11 bearish, 1 neutral; the 6 chart-pattern breakouts are described under CP below):
 - Crosses, firing on the crossing day only: golden / death cross, EMA 9/21, price across the 200-DMA, MACD signal and zero line, RSI out of oversold / overbought and across 50, Supertrend flips.
 - Breakouts: 52-week high **on volume** (> 1.5 × the 20-day average), 52-week low, Donchian 20 and 55, 20-day breakdown.
 - Others: volume surges, TTM squeeze firing, Bollinger lower-band bounce, ADX crossing 25, Minervini trend template, RS leader, pullback to the 50-DMA in an up-trend, pocket pivot, gap up, NR7 inside bar.
@@ -378,6 +378,37 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Alerts note "weekly trend agrees".
 - `forward_stats` adds `by_weekly`: agrees / disagrees / no weekly rating × gate. It is shown on the Track record tab as "Does the weekly trend add?".
 
+## CP-01..CP-03: chart patterns (`research/patterns.py`), Phase 2 item 4
+
+**Pivots:**
+- `swings(high, low, k=3)`: a swing high is higher than the 3 bars before and not exceeded by the 3 after, so it is confirmed 3 sessions later. Lows are mirrored.
+- Every pattern is found on the bars **before** today (`_base`). Today's close only decides the breakout, so the trigger bar never shapes the pattern, and a stored signal reproduces from its day's bars.
+
+**Patterns** (thresholds are ATIP's, in the module docstring):
+- **Darvas box:** the latest 20-session high, within 3 % of the 52-week high, not exceeded since (3+ sessions). The bottom is the lowest low since, which must have held 3 sessions. 5+ sessions, ≤ 25 % tall.
+- **VCP:** 2–4 pullbacks (swing high to the lowest swing low before the next swing high), each shallower than the one before, the last ≤ 12 % and the first ≤ 40 %, highs within 15 % of the base top. Volume 10-day < 85 % of 50-day. Above the 50-DMA, with the 50-DMA above the 200-DMA when known. Pivot = the last pullback's high, not closed above since.
+- **Double bottom:** two swing lows within 3 %, 10–60 sessions apart, the second within 30 sessions, after a 10 % decline. The neckline (middle peak) is 6 %+ above them and not closed above since.
+- **Ascending triangle:** 2+ swing highs within 1.5 % of the resistance, spread over 10+ sessions, the last being the latest swing high. Rising swing lows (+1 % each) since the first touch.
+- **Head and shoulders top:** the last three swing highs, the head 3 %+ above both shoulders, the shoulders within 8 % of each other, after an advance. The neckline through the two troughs is extended to today and was not broken before today.
+
+**Scans:**
+- `darvas_breakout`, `darvas_breakdown`, `vcp_breakout` (needs ≥ 1.4x volume), `double_bottom_breakout`, `ascending_triangle_breakout`, `head_shoulders_breakdown`.
+- Each rule returns its reason text with the pattern's levels; `run_scans` now accepts a string reason.
+- `detect(d)` computes all patterns once per frame. The cache is keyed to the frame's last bar, because pandas copies `attrs` onto slices.
+
+**Alerts:**
+- `T.PATTERN_SCANS` alert only after `PROVE_CLOSED` (30) closed signals with average R > 0 (`proven_scans`).
+- `scan_stats` rows carry `pattern` and `alerts` (`on` / `held`). The Track record shows "held · n/30".
+
+**Snapshot and screener:**
+- `chart_patterns`: patterns in place near their trigger, with levels: the upper half of a Darvas box or double-bottom base, within 3 % of a triangle's resistance, any VCP below its pivot, a head and shoulders above its neckline.
+- `vcp_setup` 1/0.
+- Presets: "Chart pattern breakouts" and "VCP setups (not yet broken out)".
+
+**Calibration:**
+- On 4,800 random-walk stock-days, breakouts fired on 0.02 % (VCP) to 1.2 % (Darvas breakdown) of days.
+- Setups were listed on 0.2 % (VCP) to 7 % (Darvas box).
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -413,6 +444,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_patterns.py` | 11 | Darvas box and breakout, still-inside and steady-climb negatives, breakdown; VCP contractions, dry-up and volume-confirmed breakout, widening pullbacks and no dry-up rejected; double bottom breakout and uneven lows rejected; ascending triangle; head-and-shoulders breakdown; pattern scans carry their levels; snapshot lists setups; screener fields and presets; pattern alerts held until 30 closed with positive R |
 | `tests/test_w39_weekly.py` | 10 | weekly bars aggregate and keep only completed weeks; a Friday-holiday week counts from the next Monday; the weekly rating needs 35 weeks and follows the trend; agreement truth tables; snapshot fields; run stores weekly fields and tags signals; forward split by weekly agreement; screener fields and presets; old snapshot table gets the columns; page |
 | `tests/test_w39_track_record.py` | 6 | forward returns signed for direction and measured against the Nifty on the same sessions; filled as sessions pass, never rewritten; stats by scan × gate and by confluence band with n / beat % / median / mean; today's signals carry their scan's record in today's market; gate and status at birth for older signals; API and 400 |
 | `tests/test_w39_regime_gate.py` | 20 | distribution day needs the drop and higher volume; expiry after 25 sessions or a 5 % rally; pressure → correction → rally attempt → follow-through day with the count cleared; no follow-through before day 4 or without volume; a lower close resets the rally; a 10 % slide is a correction; a failed follow-through; 200-DMA and warm-up; replay is point-in-time; alignment truth table; market volume over stocks on both days; storage with Yahoo + market_health; signals tagged and against-market ones never alerted; old signals get their own day's gate; gate-effect only speaks beyond noise; old table gets the new columns; pulse; API, token and 400s; permissions |
@@ -438,6 +470,11 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - No chart-pattern detection (Darvas, VCP, triangles, head and shoulders) yet.
 - The regime enters as one confluence factor; there is no distribution-day gate yet.
 - Track records start on the first run and are measured on ATIP's own prices. Trust a scan only after ~30 closed signals.
+
+**Chart patterns:**
+- Rule-based approximations of patterns drawn by eye; they will miss some textbook shapes and catch some that a trader would reject.
+- Closes only for breakouts (no intraday trigger).
+- Inverse head and shoulders, descending triangles, channels and wedges are not built yet.
 
 **Track record by horizon:**
 - Measured from the signal day's close, not the next open.
