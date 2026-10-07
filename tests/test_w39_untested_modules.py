@@ -231,3 +231,68 @@ def test_deflated_sharpe_penalises_many_trials():
     assert 0 <= many["dsr"] < few["dsr"] <= 1
     assert many["expected_max_sharpe_per_session"] > few["expected_max_sharpe_per_session"]
     assert deflated_sharpe(best[:10], [1, 2])["dsr"] is None and deflated_sharpe(best, [1.0])["dsr"] is None
+
+
+# ── DP-01 stock live feed: supervisor failover ─────────────────────────
+
+class _FakeThread:
+    def __init__(self, alive):
+        self.alive = alive
+
+    def is_alive(self):
+        return self.alive
+
+
+def _feed(monkeypatch, window=True):
+    from data import stock_feed as SF
+    monkeypatch.setattr(SF, "feed_window_open", lambda: window)
+    m = SF.StockFeedManager(symbols=["ACME"], cfg={"rest_seconds": 0})
+    m._sid_to_sym = {11: "ACME"}
+    polled = []
+    monkeypatch.setattr(m, "_rest_poll", lambda: polled.append(1))
+    return SF, m, polled
+
+
+def test_feed_parks_to_rest_with_doubling_backoff_and_idles_outside_the_session(monkeypatch):
+    SF, m, polled = _feed(monkeypatch)
+    monkeypatch.setattr(SF, "HAS_MARKETFEED", False)                 # no SDK: WebSocket cannot start
+    m._supervise_once()
+    assert m.mode == "REST" and polled and m._backoff == 2 * SF.BACKOFF_START
+    m._cooldown_until = 0
+    m._supervise_once()
+    assert m._backoff == min(4 * SF.BACKOFF_START, SF.BACKOFF_MAX)
+    monkeypatch.setattr(SF, "feed_window_open", lambda: False)
+    m._supervise_once()
+    assert m.mode == "IDLE" and m._backoff == SF.BACKOFF_START       # reset for the next session
+
+
+def test_feed_parks_a_dead_thread_and_an_error_burst(monkeypatch):
+    import time as _t
+    SF, m, polled = _feed(monkeypatch)
+
+    class Feed:
+        closed = False
+
+        def close_connection(self):
+            Feed.closed = True
+    m._feed, m._sdk_thread = Feed(), _FakeThread(False)
+    m._supervise_once()
+    assert Feed.closed and m._feed is None and "thread died" in m.detail and m.mode == "REST"
+    m._feed, m._sdk_thread, m._cooldown_until = Feed(), _FakeThread(True), _t.monotonic() + 999
+    m._connected_since = _t.monotonic()
+    for _ in range(SF.ERROR_BURST):
+        m._on_error(None, "boom")
+    m._supervise_once()
+    assert m._feed is None and "errors in" in m.detail
+
+
+def test_feed_messages_update_quotes_by_security_id(monkeypatch):
+    SF, m, _ = _feed(monkeypatch)
+    m._on_message(None, {"type": "Previous Close", "security_id": "11", "prev_close": "98.5"})
+    m._on_message(None, {"type": "Quote Data", "security_id": 11, "LTP": "100.5", "open": "99", "high": "101",
+                         "low": "98.8", "volume": "12345", "total_buy_quantity": 500, "total_sell_quantity": 300})
+    m._on_message(None, {"type": "Quote Data", "security_id": 99, "LTP": "1"})            # unknown id: ignored
+    m._on_message(None, "not a dict")
+    snap = m.snapshot()
+    assert list(snap) == ["ACME"] and snap["ACME"]["ltp"] == 100.5 and snap["ACME"]["prev_close"] == 98.5
+    assert snap["ACME"]["src"] == "ws" and snap["ACME"]["buy_qty"] == 500 and m._ticks == 1
