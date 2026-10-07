@@ -787,6 +787,37 @@ def test_missing_wrong_revoked_or_expired_keys_are_refused(v1):
     assert client.get("/api/v1/strategy-decisions", headers=h).status_code == 401
 
 
+def test_a_deprecated_v1_resource_warns_then_answers_410_after_sunset(v1, monkeypatch):
+    """W39 (API-03): the deprecation policy -- RFC 9745 Deprecation, RFC 8594 Sunset, a successor link,
+    the OpenAPI operation marked deprecated, and 410 GONE once the sunset date has passed."""
+    from datetime import date as _date
+    from enterprise import public_api as PA
+    client, conn, u, k = v1
+    h = {"Authorization": f"ApiKey {k['api_key']}"}
+    today = _date.today()
+    key = ("GET", "/api/strategies/{strategy_id}")
+    dep = {"deprecated": str(today - timedelta(days=10)), "sunset": str(today + timedelta(days=200)),
+           "successor": "/api/v2/strategies/{strategy_id}", "reason": "test"}
+    assert PA.validate_deprecations({key: dep}) == [] and PA.validate_deprecations() == []
+    assert "days after deprecation" in PA.validate_deprecations({key: {**dep, "sunset": str(today)}})[0]
+    assert "not a v1 resource" in PA.validate_deprecations({("GET", "/api/nope"): dep})[0]
+    monkeypatch.setitem(PA.DEPRECATIONS, key, dep)
+    r = client.get("/api/v1/strategies/S1", headers=h)
+    assert r.status_code == 200 and r.headers["deprecation"].startswith("@")
+    assert r.headers["sunset"].endswith("GMT") and 'rel="successor-version"' in r.headers["link"]
+    assert "deprecation" not in client.get("/api/v1/strategy-decisions", headers=h).headers   # other resources
+    from dashboard import server
+    op = PA.openapi_v1(server.app)["paths"]["/strategies/{strategy_id}"]["get"]
+    assert op["deprecated"] is True and op["x-sunset"] == dep["sunset"] and "410" in op["responses"]
+    monkeypatch.setitem(PA.DEPRECATIONS, key, {**dep, "deprecated": str(today - timedelta(days=200)),
+                                               "sunset": str(today)})
+    r = client.get("/api/v1/strategies/S1", headers=h)
+    assert r.status_code == 410 and r.json()["error"]["code"] == "GONE"
+    assert "/api/v2/strategies/{strategy_id}" in r.json()["error"]["message"]
+    monkeypatch.setitem(PA.DEPRECATIONS, key, {**dep, "deprecated": str(today + timedelta(days=5))})
+    assert "deprecation" not in client.get("/api/v1/strategies/S1", headers=h).headers        # not yet announced
+
+
 def test_api_key_rate_limit_and_daily_quota_answer_429(v1):
     client, conn, u, k = v1
     from enterprise import apikeys

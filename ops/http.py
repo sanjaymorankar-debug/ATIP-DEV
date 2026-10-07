@@ -8,6 +8,8 @@ Per request:
      carried into logs (ops/context.py)
   2. API versioning: /api/v1/<x> is served by /api/<x> (the current contract = v1);
      responses carry API-Version: v1. Unversioned /api stays for the existing pages.
+     W39 (API-03): a v1 resource listed in enterprise/public_api.DEPRECATIONS gets
+     Deprecation / Sunset / Link headers, and 410 GONE once past its sunset date.
   3. request size: bodies over ops.max_request_bytes (2 MB) -> 413 (also chunked bodies)
   4. JSON validation: a non-empty body on POST/PUT/PATCH/DELETE under /api must be
      application/json and parse -> else 415 / 400
@@ -131,6 +133,15 @@ class OpsMiddleware:
             path, version = scope["path"], "v1"
         extra = [(b"x-request-id", rid.encode()), (b"x-correlation-id", corr.encode())] + \
             _security_headers(path, cfg) + ([(b"api-version", b"v1")] if path.startswith("/api/") else [])
+        dep = None
+        if version == "v1":                    # W39 (API-03): a deprecated v1 resource (enterprise/public_api.py)
+            try:
+                from enterprise.public_api import deprecation_for
+                dep = deprecation_for(method, path)
+            except Exception:
+                dep = None
+            if dep:
+                extra += [(k.encode(), v.encode("latin-1")) for k, v in dep["headers"]]
         if version is None and path.startswith("/api/") and \
                 (headers.get("authorization") or "").lower().startswith("apikey "):
             # W9: API-key clients should call the frozen /api/v1 contract
@@ -146,6 +157,11 @@ class OpsMiddleware:
                         + extra + list(more)})
             await send({"type": "http.response.body", "body": body})
             state["status"] = status
+
+        if dep and dep["gone"]:
+            metrics.inc("atip_http_gone_total")
+            return await reply(410, envelope("GONE", f"{dep['resource']} was retired on {dep['sunset']}"
+                                             + (f"; use {dep['successor']}" if dep.get("successor") else ""), rid))
 
         # -- request body (mutating API requests are buffered: size, JSON, idempotency) -------------
         body, buffered = b"", False

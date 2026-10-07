@@ -13,9 +13,19 @@ permission (enterprise/authz.py ROUTE_RULES); an API key's scopes must include i
 Limits per API key (W9): enterprise_api_key.rate_limit_per_minute (default
 saas.api.key_rate_per_minute, 60) and daily_quota (default saas.api.key_daily_quota,
 10,000), plus the tenant plan's max_api_calls_per_day -> 429 with Retry-After.
-Versioning policy: additive changes (new fields / resources) keep v1; a breaking change
-ships as /api/v2 while v1 keeps working for at least 6 months. Unversioned /api/... called
-with an API key answers with Deprecation: true and a Link to the /api/v1 successor.
+Versioning policy (docs/API_VERSIONING_POLICY.md): additive changes (new fields / resources)
+keep v1; a breaking change ships as /api/v2 while v1 keeps working for at least 6 months.
+Unversioned /api/... called with an API key answers with Deprecation: true and a Link to the
+/api/v1 successor.
+
+Deprecating one v1 resource (W39, API-03): an entry in DEPRECATIONS. From its `deprecated`
+date every response carries
+    Deprecation: @<unix time of that date>        (RFC 9745)
+    Sunset: <HTTP date of `sunset`>                (RFC 8594)
+    Link: <successor>; rel="successor-version", </docs/API_VERSIONING_POLICY.md>; rel="deprecation"
+the OpenAPI operation is marked deprecated (with x-sunset / x-successor), and from the sunset
+date the resource answers 410 GONE with the standard error envelope. validate_deprecations()
+(run by the tests) refuses an entry whose notice is under MIN_NOTICE_DAYS.
 """
 
 from __future__ import annotations
@@ -25,6 +35,12 @@ import json
 from pathlib import Path
 
 VERSION = "1.0.0"
+MIN_NOTICE_DAYS = 180           # deprecated -> sunset: at least 6 months
+
+# (method, path under /api as in RESOURCES) -> {"deprecated": "YYYY-MM-DD", "sunset": "YYYY-MM-DD",
+#                                               "successor": "/api/v2/..." | None, "reason": "..."}
+# Nothing in v1 is deprecated yet.
+DEPRECATIONS: dict = {}
 
 # (method, path under /api, permission, summary, widget)
 RESOURCES = [
@@ -87,6 +103,67 @@ def _match(app_path, res_path):
     return norm(app_path) == norm(res_path)
 
 
+def _day(v):
+    from datetime import date
+    return v if isinstance(v, date) else date.fromisoformat(str(v)[:10])
+
+
+def validate_deprecations(deps=None) -> list:
+    """Problems with the registry (empty = fine): unknown resource, bad dates, notice under
+    MIN_NOTICE_DAYS, missing reason."""
+    deps = DEPRECATIONS if deps is None else deps
+    known = {(m, p) for m, p, *_ in RESOURCES}
+    out = []
+    for key, d in deps.items():
+        if key not in known:
+            out.append(f"{key}: not a v1 resource")
+            continue
+        try:
+            a, b = _day(d["deprecated"]), _day(d["sunset"])
+        except Exception:
+            out.append(f"{key}: deprecated / sunset must be YYYY-MM-DD dates")
+            continue
+        if (b - a).days < MIN_NOTICE_DAYS:
+            out.append(f"{key}: sunset {b} is {(b - a).days} days after deprecation; the policy is >= "
+                       f"{MIN_NOTICE_DAYS}")
+        if not str(d.get("reason") or "").strip():
+            out.append(f"{key}: give a reason")
+    return out
+
+
+def _concrete(template, path) -> bool:
+    import re
+    rx = "^" + re.sub(r"\\\{[^}]+\\\}", "[^/]+", re.escape(template)) + "$"
+    return re.match(rx, path) is not None
+
+
+def deprecation_for(method, path, today=None, deps=None) -> dict | None:
+    """The DEPRECATIONS entry for a request (path under /api, i.e. after the /api/v1 alias), with
+    "headers" (list of (name, value)) and "gone" (past the sunset), or None when the resource is
+    not deprecated or its deprecation date has not come."""
+    from datetime import date, datetime, time, timezone
+    from email.utils import format_datetime
+    deps = DEPRECATIONS if deps is None else deps
+    if not deps:
+        return None
+    today = today or date.today()
+    m = str(method).upper()
+    for (dm, dp), d in deps.items():
+        if dm != m or not _concrete(dp, path):
+            continue
+        a, b = _day(d["deprecated"]), _day(d["sunset"])
+        if today < a:
+            return None
+        ts = int(datetime.combine(a, time(0), tzinfo=timezone.utc).timestamp())
+        links = ([f'<{d["successor"]}>; rel="successor-version"'] if d.get("successor") else []) + \
+            ['</docs/API_VERSIONING_POLICY.md>; rel="deprecation"']
+        return {**d, "resource": f"{dm} {dp}", "gone": today >= b,
+                "headers": [("deprecation", f"@{ts}"),
+                            ("sunset", format_datetime(datetime.combine(b, time(0), tzinfo=timezone.utc), usegmt=True)),
+                            ("link", ", ".join(links))]}
+    return None
+
+
 def openapi_v1(app) -> dict:
     full = app.openapi()
     out = {"openapi": "3.1.0",
@@ -124,6 +201,11 @@ def openapi_v1(app) -> dict:
         op.setdefault("responses", {}).update({
             "401": {"description": "UNAUTHENTICATED"}, "403": {"description": "PERMISSION_DENIED / scope missing"},
             "429": {"description": "RATE_LIMITED (per key, per tenant plan)"}})
+        dep = DEPRECATIONS.get((method, path))
+        if dep:
+            op.update({"deprecated": True, "x-deprecated-on": str(dep["deprecated"]), "x-sunset": str(dep["sunset"]),
+                       "x-successor": dep.get("successor"), "x-deprecation-reason": dep.get("reason")})
+            op["responses"]["410"] = {"description": "GONE: past the sunset date"}
         out["paths"].setdefault(path[len("/api"):], {})[method.lower()] = op
     out["x-atip-unresolved"] = missing
     return out

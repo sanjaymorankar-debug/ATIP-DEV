@@ -7,6 +7,7 @@ AtipError(message, code=..., status=..., retryable=..., user_message=...)
     PermissionDenied      PERMISSION_DENIED       403
     NotFound              NOT_FOUND               404
     Conflict              CONFLICT                409  (duplicate / idempotency clash)
+    (GONE                 410  a v1 resource past its sunset date -- ops/http.py, W39)
     PayloadTooLarge       PAYLOAD_TOO_LARGE       413
     RateLimited           RATE_LIMITED            429  retryable (after Retry-After)
     DependencyUnavailable DEPENDENCY_UNAVAILABLE  503  retryable (broker / data source / db)
