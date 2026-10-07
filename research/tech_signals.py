@@ -67,7 +67,7 @@ SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hi
              "pct_from_sma50", "pct_from_sma200", "above_200dma", "bb_width_pct", "vol_ratio", "rs_63_pct",
              "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals",
              "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment",
-             "chart_patterns", "vcp_setup"]
+             "chart_patterns", "vcp_setup", "rs_line_at_high", "cap_bucket", "rs_rating_cap"]
 
 DDL = (
     """CREATE TABLE IF NOT EXISTS technical_snapshot (
@@ -77,7 +77,7 @@ DDL = (
         return_1m_pct REAL, return_3m_pct REAL, patterns TEXT, signals TEXT, bull_signals INTEGER,
         bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, tech_rating_w REAL, tech_rating_w_label TEXT,
         rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, chart_patterns TEXT, vcp_setup INTEGER,
-        PRIMARY KEY (symbol, date))""",
+        rs_line_at_high INTEGER, cap_bucket TEXT, rs_rating_cap INTEGER, PRIMARY KEY (symbol, date))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_snapshot_date ON technical_snapshot(date)",
     """CREATE TABLE IF NOT EXISTS technical_signal (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
@@ -98,7 +98,9 @@ ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT"
                                       "weekly_agrees": "INTEGER"},
                  "technical_snapshot": {"tech_rating_w": "REAL", "tech_rating_w_label": "TEXT", "rsi_14_w": "REAL",
                                         "supertrend_dir_w": "INTEGER", "mtf_alignment": "TEXT",     # Phase 2 item 3
-                                        "chart_patterns": "TEXT", "vcp_setup": "INTEGER"}}           # Phase 2 item 4
+                                        "chart_patterns": "TEXT", "vcp_setup": "INTEGER",           # Phase 2 item 4
+                                        "rs_line_at_high": "INTEGER", "cap_bucket": "TEXT",           # Phase 2 item 5
+                                        "rs_rating_cap": "INTEGER"}}
 
 
 def ensure_tables(conn):
@@ -221,14 +223,56 @@ def confluence(direction, snap, regime, research_rating) -> tuple:
     return sum(ev.values()), ev
 
 
-def rs_rank(snaps: dict):
-    """IBD-style RS rating 1-99: percentile of rs_raw across today's universe (99 = strongest)."""
-    raw = sorted((s["_rs_raw"], sym) for sym, s in snaps.items() if s.get("_rs_raw") is not None)
+def _percentile(snaps: dict, syms, key: str):
+    raw = sorted((snaps[s]["_rs_raw"], s) for s in syms if snaps[s].get("_rs_raw") is not None)
     n = len(raw)
     for i, (_, sym) in enumerate(raw):
-        snaps[sym]["rs_rating"] = max(1, min(99, int(round((i + 1) / n * 99)))) if n > 1 else 50
+        snaps[sym][key] = max(1, min(99, int(round((i + 1) / n * 99)))) if n > 1 else 50
+
+
+def rs_rank(snaps: dict):
+    """IBD-style RS rating 1-99: percentile of rs_raw across today's universe (99 = strongest)."""
+    _percentile(snaps, list(snaps), "rs_rating")
     for s in snaps.values():
         s.setdefault("rs_rating", None)
+
+
+CAP_BUCKETS = ((100, "LARGE"), (250, "MID"))         # AMFI: top 100 by market cap large, 101-250 mid, rest small
+
+
+def market_caps(conn, symbols, as_of, closes: dict) -> dict:
+    """{symbol: market cap in Rs crore} from the latest shares outstanding on or before as_of x the close."""
+    shares = {}
+    syms = sorted(set(symbols))
+    for i in range(0, len(syms), 400):
+        part = syms[i:i + 400]
+        try:
+            for sym, sh in conn.execute(
+                    f"SELECT symbol, shares_out FROM fundamental_data WHERE symbol IN ({','.join('?' * len(part))}) "
+                    f"AND shares_out>0 AND COALESCE(period_end, report_date)<=? "
+                    f"ORDER BY symbol, COALESCE(period_end, report_date), id", part + [str(as_of)]):
+                shares[sym] = float(sh)                 # last one wins: the newest
+        except Exception as e:
+            log.debug(f"shares_out: {e}")
+            return {}
+    return {s: closes[s] * sh / 1e7 for s, sh in shares.items() if closes.get(s)}
+
+
+def cap_rank(snaps: dict, mcaps: dict):
+    """cap_bucket (LARGE / MID / SMALL by AMFI's rank rule over ATIP's universe) and rs_rating_cap: the RS
+    rating within the stock's own size group, so a mid-cap leader is not hidden behind large-cap moves."""
+    ranked = sorted((m, s) for s, m in mcaps.items() if s in snaps and m)
+    ranked.reverse()
+    groups = {}
+    for i, (_, s) in enumerate(ranked):
+        b = next((name for cut, name in CAP_BUCKETS if i < cut), "SMALL")
+        snaps[s]["cap_bucket"] = b
+        groups.setdefault(b, []).append(s)
+    for b, syms in groups.items():
+        _percentile(snaps, syms, "rs_rating_cap")
+    for s in snaps.values():
+        s.setdefault("cap_bucket", None)
+        s.setdefault("rs_rating_cap", None)
 
 
 def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
@@ -264,6 +308,7 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
             if snap:
                 snaps[sym] = snap
         rs_rank(snaps)
+        cap_rank(snaps, market_caps(conn, list(snaps), as_of, {s: v["_close"] for s, v in snaps.items()}))
         for sym, snap in snaps.items():
             conn.execute(f"""INSERT INTO technical_snapshot (symbol, date, close, {', '.join(SNAP_COLS)}, scans_json,
                              created_at) VALUES ({','.join('?' * (len(SNAP_COLS) + 5))})

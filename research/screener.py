@@ -2,7 +2,7 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        112 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        117 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
@@ -106,6 +106,12 @@ FIELDS = dict([
     _f("mtf_alignment", "Daily + weekly agreement", "Technical", kind="text", aliases=("mtf", "timeframes"),
        desc="BULL: daily and weekly both BUY / STRONG_BUY; BEAR: both SELL / STRONG_SELL; else MIXED"),
     _f("rsi_14_w", "Weekly RSI (14)", "Technical", "", aliases=("weekly_rsi",)),
+    _f("rs_line_at_high", "RS line at a 52-week high", "Technical", "1/0", aliases=("rs_line_high", "rs_new_high"),
+       desc="price / Nifty (the RS line) above its prior 52-week high today"),
+    _f("cap_bucket", "Size group", "Technical", kind="text", aliases=("size", "cap_group"),
+       desc="LARGE (top 100 by market cap) / MID (101-250) / SMALL, AMFI's rule over ATIP's universe"),
+    _f("rs_rating_cap", "RS rating in size group (1-99)", "Technical", "", aliases=("rs_cap", "rs_in_group"),
+       desc="the RS rating ranked only against stocks of the same size group"),
     _f("chart_patterns", "Chart patterns in place", "Technical", kind="text", aliases=("chart_pattern",),
        desc="Darvas box / VCP setup / double bottom / ascending triangle / head and shoulders formed and not yet "
             "triggered, with their levels (research/patterns.py)"),
@@ -247,6 +253,12 @@ PRESETS = [
     {"key": "t_vcp_setups", "name": "VCP setups (not yet broken out)", "group": "technical",
      "description": "Volatility contraction below its pivot with volume drying up, strongest relative strength first",
      "query": "vcp_setup = 1", "sort": "rs_rating"},
+    {"key": "t_rs_line_leads", "name": "RS line new high before price", "group": "technical",
+     "description": "Relative strength vs the Nifty at a 52-week high while the price is not: early leadership (IBD)",
+     "query": "scan_rs_line_leads = 1", "sort": "rs_rating"},
+    {"key": "t_rs_in_size", "name": "RS leaders in their size group", "group": "technical",
+     "description": "Top-decile relative strength among stocks of the same size (large / mid / small)",
+     "query": "rs_rating_cap >= 90", "sort": "rs_rating_cap"},
     {"key": "t_rs_leaders", "name": "Relative-strength leaders", "group": "technical",
      "description": "RS rating 80+ (IBD-style) and above SMA 50", "query": "rs_rating >= 80 AND pct_from_sma50 > 0",
      "sort": "rs_rating"},
@@ -594,7 +606,8 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
         for k in ("tech_rating", "tech_rating_label", "rs_rating", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
                   "pct_from_sma50", "pct_from_sma200", "bb_width_pct", "vol_ratio", "rs_63_pct", "return_1m_pct",
                   "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals", "tech_rating_w",
-                  "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment", "chart_patterns", "vcp_setup"):
+                  "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment", "chart_patterns", "vcp_setup",
+                  "rs_line_at_high", "cap_bucket", "rs_rating_cap"):
             row[k] = ts.get(k)
         for k in ("rsi_14", "above_200dma"):
             if ts.get(k) is not None:
