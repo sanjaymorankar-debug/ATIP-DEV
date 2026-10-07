@@ -14,6 +14,17 @@ Two ways in:
            holdings rows   -> OPENING positions on `as_of` at the file's average cost, ONLY for
                               symbols with no earlier ledger history from that broker (so a later
                               holdings file never opens a position twice)
+           charge columns  (W39, PERF-001-06) brokerage / STT / exchange transaction charges /
+                              SEBI fee / stamp duty / GST (CGST + SGST + IGST) / DP charges / other,
+                              matched by FEE_ALIASES, are stored per trade as its fee_breakdown. The
+                              trade's fees are the file's total-charges column when there is one (a
+                              total above the parts puts the difference in "other"; a total below
+                              them is a broken row: total kept, breakdown dropped, reported), else
+                              the sum of the parts.
+           charges rows    a contract-note charges file (date + charge columns, no buy/sell or
+                              quantity): one FEE row per contract note / date carrying the split, for
+                              brokers whose tradebook has no charges. A date whose imported trades
+                              from that broker already carry fees is refused (double count) unless forced.
   API    import_from_broker(conn, owner, tenant, user, broker) -> today's trade book (+ holdings the first
          time) through the read-only connector (BR-07) and the user's vault credential (ENT-06).
 
@@ -56,6 +67,63 @@ ALIASES = {
     "fees": ["brokerage", "brokerage incl. gst", "total charges", "charges", "fees"],
     "exchange": ["exchange", "exch"],
 }
+# W39 (PERF-001-06): contract-note charge columns -> wealth.perf.ledger.FEE_COMPONENTS
+FEE_ALIASES = {
+    "brokerage": ["brokerage", "brokerage amount", "brokerage charges", "brok", "brokerage amt"],
+    "stt": ["stt", "stt/ctt", "stt amount", "stt charges", "securities transaction tax", "ctt"],
+    "exchange": ["exchange transaction charges", "exchange txn charges", "exchange charges", "transaction charges",
+                 "txn charges", "exch txn charges", "exchange turnover charges", "turnover charges",
+                 "nse transaction charges", "exchange transaction charge"],
+    "sebi": ["sebi fees", "sebi fee", "sebi turnover fees", "sebi turnover fee", "sebi charges", "sebi turnover charges"],
+    "stamp": ["stamp duty", "stamp", "stamp charges", "stamp duty charges"],
+    "gst": ["gst", "igst", "cgst", "sgst", "utgst", "total gst", "gst on charges", "gst amount", "igst amount",
+            "cgst amount", "sgst amount"],
+    "dp": ["dp charges", "dp charge", "depository charges", "demat charges"],
+    "other": ["other charges", "clearing charges", "ipft", "ipft charges", "investor protection fund"],
+}
+NOTE_NO_ALIASES = ["contract note no", "contract note no.", "contract note number", "contract no", "contract no.",
+                   "contract note", "cn no", "cn no.", "note no", "note number"]
+TOTAL_FEE_ALIASES = ["total charges", "charges", "total fees", "fees", "net charges", "total brokerage and charges",
+                     "brokerage incl. gst"]
+
+
+def _fee_columns(headers) -> tuple:
+    """({component: [header, ...]}, total_header | None). GST may come as CGST + SGST + IGST columns:
+    all of them sum into "gst"."""
+    hn = {_norm(h): h for h in headers}
+    comps = {}
+    for comp, names in FEE_ALIASES.items():
+        hs = [hn[n] for n in names if n in hn]
+        if hs:
+            comps[comp] = hs if comp == "gst" else hs[:1]
+    used = {h for hs in comps.values() for h in hs}
+    total = next((hn[n] for n in TOTAL_FEE_ALIASES if n in hn and hn[n] not in used), None)
+    return comps, total
+
+
+def _fees_of(r, comps, total_col, fallback_col, line, warnings):
+    """(fees, breakdown) for one row; see the module docstring."""
+    bd = {}
+    for comp, hs in comps.items():
+        vals = [abs(v) for v in (_num(r.get(h)) for h in hs) if v is not None]
+        if vals:
+            bd[comp] = round(sum(vals), 4)
+    total = _num(r.get(total_col)) if total_col else None
+    if total is None:
+        if bd:
+            return round(sum(bd.values()), 4), bd
+        return abs(_num(r.get(fallback_col)) or 0.0) if fallback_col else 0.0, {}
+    total = abs(total)
+    diff = round(total - sum(bd.values()), 4)
+    if bd and diff > 0.01:
+        bd["other"] = round(bd.get("other", 0.0) + diff, 4)
+    elif bd and diff < -0.01:
+        warnings.append({"line": line, "problem": f"charges add up to {sum(bd.values()):.2f} but the total is "
+                         f"{total:.2f}: total kept, breakdown not stored"})
+        bd = {}
+    return total, bd
+
+
 SIGNATURES = [("zerodha", {"trade_type", "order_execution_time"}), ("groww", {"execution date and time"}),
               ("icici", {"order ref.", "settlement"}), ("upstox", {"trade num", "scrip code"}),
               ("angel", {"buy/sell", "trade id"})]
@@ -161,11 +229,17 @@ def parse(content: bytes | str, filename: str = "") -> dict:
     cols = _map_columns(headers)
     hn = {_norm(h) for h in headers}
     broker = next((b for b, sig in SIGNATURES if sig <= hn), "generic")
-    kind = "tradebook" if "side" in cols else ("holdings" if "quantity" in cols and "price" in cols else None)
+    comps, total_col = _fee_columns(headers)
+    fallback_fee_col = None if comps or total_col else cols.get("fees")
+    kind = "tradebook" if "side" in cols else ("holdings" if "quantity" in cols and "price" in cols else
+                                               "charges" if (comps or total_col) and ("date" in cols or
+                                                                                       "datetime" in cols) else None)
     if kind is None:
-        raise ValueError(f"cannot tell what this file is: need a buy/sell column (tradebook) or quantity + average "
-                         f"price (holdings). Columns seen: {headers[:15]}")
-    rows, errors = [], []
+        raise ValueError(f"cannot tell what this file is: need a buy/sell column (tradebook), quantity + average "
+                         f"price (holdings) or a date + charge columns (contract-note charges). Columns seen: "
+                         f"{headers[:15]}")
+    rows, errors, warnings = [], [], []
+    note_col = None
     for n, r in enumerate(reader, start=start + 2):
         if not any((v or "").strip() for v in r.values() if isinstance(v, str)):
             continue
@@ -186,11 +260,25 @@ def parse(content: bytes | str, filename: str = "") -> dict:
             if problem:
                 errors.append({"line": n, "problem": problem, "row": {k: r[k] for k in list(r)[:8]}})
                 continue
+            fees, bd = _fees_of(r, comps, total_col, fallback_fee_col, n, warnings)
             rows.append({"line": n, "symbol": sym, "date": str(d), "ts": str(r.get(cols.get("datetime")) or "")[:19],
                          "side": side, "quantity": abs(qty), "price": round(px, 4),
-                         "fees": _num(r.get(cols.get("fees"))) or 0.0,
+                         "fees": fees, "fee_breakdown": bd,
                          "trade_id": (r.get(cols.get("trade_id")) or "").strip() or None,
                          "order_id": (r.get(cols.get("order_id")) or "").strip() or None})
+        elif kind == "charges":
+            if note_col is None:
+                note_col = next((h for h in headers if _norm(h) in NOTE_NO_ALIASES), "") or cols.get("order_id") or \
+                    cols.get("trade_id") or ""
+            d = _date(r.get(cols.get("date"))) or _date(r.get(cols.get("datetime")))
+            fees, bd = _fees_of(r, comps, total_col, None, n, warnings)
+            if not d:
+                errors.append({"line": n, "problem": "no date", "row": {k: r[k] for k in list(r)[:8]}})
+                continue
+            if fees <= 0:
+                continue
+            rows.append({"line": n, "date": str(d), "fees": round(fees, 4), "fee_breakdown": bd,
+                         "note_no": (r.get(note_col) or "").strip() or None if note_col else None})
         else:
             if not sym or not qty or qty <= 0:
                 errors.append({"line": n, "problem": "symbol not recognised" if not sym else "no quantity",
@@ -198,10 +286,14 @@ def parse(content: bytes | str, filename: str = "") -> dict:
                 continue
             rows.append({"line": n, "symbol": sym, "quantity": qty, "avg_price": round(px, 4) if px else None})
     return {"kind": kind, "broker_detected": broker, "columns": cols, "rows": rows, "errors": errors[:200],
-            "summary": {"rows": len(rows), "errors": len(errors),
-                        "symbols": len({r["symbol"] for r in rows}),
+            "fee_columns": {"components": comps, "total": total_col}, "warnings": warnings[:200],
+            "summary": {"rows": len(rows), "errors": len(errors), "warnings": len(warnings),
+                        "symbols": len({r["symbol"] for r in rows if r.get("symbol")}),
+                        "fees": round(sum(r.get("fees") or 0 for r in rows), 2),
+                        "fees_with_breakdown": round(sum(r.get("fees") or 0 for r in rows if r.get("fee_breakdown")), 2),
                         "date_range": [min((r["date"] for r in rows), default=None),
-                                       max((r["date"] for r in rows), default=None)] if kind == "tradebook" else None}}
+                                       max((r["date"] for r in rows), default=None)]
+                        if kind in ("tradebook", "charges") else None}}
 
 
 def _ref(r):
@@ -229,7 +321,24 @@ def commit(conn, owner: dict, parsed: dict, broker: str | None = None, as_of=Non
         for r in sorted(parsed["rows"], key=lambda x: (x["date"], x["ts"], x["line"])):
             ok = _insert(conn, owner, "LIVE", source, _ref(r), r["date"], r["ts"] or r["date"], r["side"], r["symbol"],
                          r["quantity"], r["price"], r["fees"], tag=broker, note=f"imported from {filename or broker}",
-                         run_id=run_id)
+                         run_id=run_id, fee_breakdown=r.get("fee_breakdown") or None)
+            added, skipped = added + ok, skipped + (not ok)
+    elif parsed["kind"] == "charges":
+        charged = {str(x[0])[:10] for x in conn.execute(
+            "SELECT DISTINCT trade_date FROM perf_ledger WHERE tenant_id=? AND owner_id=? AND portfolio='LIVE' AND "
+            "source=? AND kind IN ('BUY','SELL') AND fees>0", (owner["tenant_id"], owner["owner_id"], source))}
+        clash = sorted({r["date"] for r in parsed["rows"]} & charged)
+        if clash and not force:
+            raise ValueError(f"{len(clash)} date(s) already have {broker} trades carrying charges (e.g. {clash[0]}); "
+                             f"importing the contract-note charges too would double count. Use force only if those "
+                             f"trades' fees are not the contract-note charges.")
+        for r in parsed["rows"]:
+            ref = f"FEE:{r['note_no']}" if r.get("note_no") else \
+                "FEE:" + hashlib.sha1(f"{r['date']}|{r['fees']}|{r['line']}".encode()).hexdigest()[:20]
+            ok = _insert(conn, owner, "LIVE", source, ref, r["date"], r["date"], "FEE", None, None, None, 0.0,
+                         gross=round(r["fees"], 4), tag=broker, run_id=run_id, fee_breakdown=r.get("fee_breakdown") or None,
+                         note=f"contract-note charges imported from {filename or broker}"
+                              + (f" (note {r['note_no']})" if r.get("note_no") else ""))
             added, skipped = added + ok, skipped + (not ok)
     else:
         d = str(as_of or date.today())[:10]

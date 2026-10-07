@@ -531,10 +531,11 @@ def _fee_components(txns, start) -> dict:
     for t in txns:
         if t["trade_date"] < start or t["kind"] in ("DEPOSIT", "WITHDRAWAL"):
             continue
-        fees_all += t["fees"]
+        amt = float((t.get("gross_value") or t["fees"] or 0) if t["kind"] == "FEE" else (t["fees"] or 0))
+        fees_all += amt                 # a FEE row's amount is its gross_value (as in ledger_fees)
         bd = C.loads(t.get("fee_breakdown"), None)
         if bd:
-            fees_cov += t["fees"]
+            fees_cov += amt
             for k, v in bd.items():
                 rec[k] = round(rec.get(k, 0.0) + float(v or 0), 2)
         elif cm and t["kind"] in ("BUY", "SELL") and t.get("q") and t.get("p"):
