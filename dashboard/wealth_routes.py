@@ -63,7 +63,9 @@ intent, a risk decision or an order rule.
     POST /api/wealth/performance/ledger/{txn_id}/void   (token) {reason}
     POST /api/wealth/performance/report     (token) {portfolio, start, end, benchmark, options, store}
     GET  /api/wealth/performance/reports    ; GET .../reports/{id}
-    GET  /api/wealth/performance/reports/{id}/export?format=csv|json
+    GET  /api/wealth/performance/reports/{id}/export?format=csv|json|html
+    POST /api/wealth/performance/report/export  (token) preview export, same body + format
+    GET  /api/wealth/performance/reports/{id}/verify   rebuild and diff a stored report
 
     W16 Advisor (explainable; cannot place orders)
     POST /api/wealth/advisor/ask            (token) {question, topic?, narrate?} -> claims + evidence,
@@ -437,9 +439,17 @@ def register(app, guard, Req, get_connection, json_safe):
             return run(lambda conn: PR.build(conn, owner(request), *args, strategy=strat))
         return run(lambda conn: PR.run(conn, owner(request), *args, actor=actor(request), strategy=strat))
 
+    def _export_response(content, media, stem):
+        """csv / json download as an attachment; the printable html (PERF-001-13) opens inline, ready
+        for the browser's Print / Save as PDF."""
+        ext = {"application/json": "json", "text/html": "html"}.get(media, "csv")
+        disp = "inline" if ext == "html" else "attachment"
+        return Response(content=content, media_type=media,
+                        headers={"Content-Disposition": f'{disp}; filename="{stem}.{ext}"'})
+
     @app.post("/api/wealth/performance/report/export", dependencies=guard)
     async def api_wealth_perf_report_preview_export(request: Req):
-        """W39 (PERF-001-13): download a preview (not stored) in csv | json."""
+        """W39 (PERF-001-13): download a preview (not stored) in csv | json | html."""
         b = await body(request)
         conn = get_connection()
         try:
@@ -452,9 +462,7 @@ def register(app, guard, Req, get_connection, json_safe):
             return err(e)
         finally:
             conn.close()
-        ext = "json" if media == "application/json" else "csv"
-        return Response(content=content, media_type=media,
-                        headers={"Content-Disposition": f'attachment; filename="atip_performance_preview.{ext}"'})
+        return _export_response(content, media, "atip_performance_preview")
 
     @app.get("/api/wealth/performance/reports")
     async def api_wealth_perf_reports(request: Req, limit: int = 50):
@@ -480,9 +488,7 @@ def register(app, guard, Req, get_connection, json_safe):
             return err(e)
         finally:
             conn.close()
-        ext = "json" if media == "application/json" else "csv"
-        return Response(content=content, media_type=media,
-                        headers={"Content-Disposition": f'attachment; filename="atip_performance_{rid}.{ext}"'})
+        return _export_response(content, media, f"atip_performance_{rid}")
 
     # ── W16 Advisor ─────────────────────────────────────────────────────────
     @app.post("/api/wealth/advisor/ask", dependencies=guard)

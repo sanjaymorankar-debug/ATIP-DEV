@@ -337,6 +337,58 @@ def test_export_carries_every_section_with_the_reports_numbers(temp_db):
     assert jm == "application/json" and json.loads(j)["comparison"] == stored["comparison"]
 
 
+def test_printable_html_has_the_csv_sections_and_numbers_and_escapes_text(temp_db):
+    from html.parser import HTMLParser
+    conn, ds = fresh(temp_db)
+    _signal(conn, "S1", ds[100])
+    _txn(conn, ds[101], "BUY", 10, 150, fees=2)
+    _txn(conn, ds[130], "SELL", 4, 160, fees=3)
+    stored = R.get(conn, OWNER, R.run(conn, OWNER, "MANUAL", ds[0], ds[-1])["report_id"])
+    page, media = R.export(stored, "html")
+    text, _ = R.export(stored, "csv")
+    assert media == "text/html" and page.startswith("<!DOCTYPE html>") and "@media print" in page
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.h2, self.tables, self._tag, self._row = [], [], None, None
+
+        def handle_starttag(self, tag, a):
+            self._tag = tag
+            if tag == "table":
+                self.tables.append([])
+            elif tag == "tr":
+                self._row = []
+                self.tables[-1].append(self._row)
+
+        def handle_data(self, d):
+            if self._tag == "h2":
+                self.h2.append(d)
+            elif self._tag in ("td", "th") and self._row is not None:
+                self._row.append(d)
+
+        def handle_endtag(self, tag):
+            self._tag = None
+    p = P()
+    p.feed(page)
+    csv_titles = [r[0][2:] for r in csv.reader(io.StringIO(text)) if r and r[0].startswith("# ")]
+    assert p.h2 == csv_titles                                       # one renderer, same sections, same order
+    cmp = p.tables[0]
+    hdr = [x.replace(" ", "_") for x in cmp[0]]                     # headers print with spaces
+    for k, c in enumerate(stored["comparison"]):
+        got = dict(zip(hdr, cmp[k + 1]))
+        assert got["return"] == c["return"]
+        want = c["total_return_pct"]
+        if want is None:
+            assert got["total_return_pct"] == "\u2014"
+        else:
+            assert float(got["total_return_pct"].replace(",", "")) == pytest.approx(want, abs=1e-4)
+    bad = dict(stored, strategy="<script>alert(1)</script>")
+    assert "<script>" not in R.export(bad, "html")[0] and "&lt;script&gt;" in R.export(bad, "html")[0]
+    with pytest.raises(ValueError, match="csv, json or html"):
+        R.export(stored, "pdf")
+
+
 def test_verify_reproduces_and_detects_changed_inputs(temp_db):
     conn, ds = fresh(temp_db)
     _txn(conn, ds[10], "BUY", 10, 100)
@@ -382,6 +434,11 @@ def test_routes_export_a_preview_and_verify_a_saved_report(tmp_path, monkeypatch
     assert c.get(f"/api/wealth/performance/reports/{rid}/verify").json()["match"] is True
     ex = c.get(f"/api/wealth/performance/reports/{rid}/export?format=json")
     assert ex.status_code == 200 and ex.json()["report_id"] == rid
+    pr = c.get(f"/api/wealth/performance/reports/{rid}/export?format=html")
+    assert pr.status_code == 200 and pr.headers["content-type"].startswith("text/html")
+    assert pr.headers["content-disposition"].startswith("inline") and "<h2>comparison</h2>" in pr.text
+    assert c.get(f"/api/wealth/performance/reports/{rid}/export?format=csv").headers[
+        "content-disposition"].startswith("attachment")
 
 
 # ── PERF-001-14 edge cases ──────────────────────────────────────────────

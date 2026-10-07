@@ -299,35 +299,38 @@ def list_reports(conn, owner, limit=50) -> list:
 
 
 def export(rep: dict, fmt: str = "csv") -> tuple[str, str]:
-    """(content, media_type). JSON: the report exactly as stored / shown. CSV: every section
-    of the page as a labelled block -- the comparison, the gaps, the actual summary,
-    positions, round trips, costs (with components and the statutory estimate),
-    contribution by symbol / sector / asset class, risk contribution, the cash account,
-    data quality, model and executable trades, signal attribution and the audit block --
-    with the numbers copied from the report, never recomputed, so they match the page."""
+    """(content, media_type). JSON: the report exactly as stored / shown. CSV and HTML: every
+    section of the page -- the comparison, the gaps, the actual summary, positions, round
+    trips, costs (with components and the statutory estimate), contribution by symbol /
+    sector / asset class, risk contribution, the cash account, data quality, model and
+    executable trades, signal attribution and the audit block -- rendered from ONE list of
+    sections (_sections) with the numbers copied from the report, never recomputed, so both
+    match the page and each other. HTML (W39, PERF-001-13) is a self-contained, print-styled
+    page: open it and print / "Save as PDF" for the downloadable PDF report."""
     if fmt == "json":
         return C.dumps(rep), "application/json"
-    if fmt != "csv":
-        raise ValueError("format must be csv or json")
-    buf = io.StringIO()
-    w = csv.writer(buf)
+    if fmt not in ("csv", "html"):
+        raise ValueError("format must be csv, json or html")
+    secs = _sections(rep)
+    return (_csv(rep, secs), "text/csv") if fmt == "csv" else (_html(rep, secs), "text/html")
+
+
+def _header(rep) -> list:
+    return ["ATIP performance report", rep.get("report_id", "(not stored)"), rep["portfolio"],
+            rep["period"]["start"], rep["period"]["end"], "benchmark", rep["benchmark"],
+            "strategy", rep.get("strategy") or "(all)"]
+
+
+def _sections(rep) -> list:
+    """[("table", title, cols, rows) | ("kv", title, [(key, value)])] in page order."""
+    out = []
 
     def block(title, cols, rows):
-        w.writerow([])
-        w.writerow([f"# {title}"])
-        w.writerow(cols)
-        for r in rows:
-            w.writerow([_cell(r.get(c)) for c in cols])
+        out.append(("table", title, cols, [[r.get(c) for c in cols] for r in rows]))
 
     def kv(title, d):
-        w.writerow([])
-        w.writerow([f"# {title}"])
-        for k, v in d.items():
-            w.writerow([k, _cell(v)])
+        out.append(("kv", title, list(d.items())))
 
-    w.writerow(["ATIP performance report", rep.get("report_id", "(not stored)"), rep["portfolio"],
-                rep["period"]["start"], rep["period"]["end"], "benchmark", rep["benchmark"],
-                "strategy", rep.get("strategy") or "(all)"])
     block("comparison", ["return", "definition", "total_return_pct", "annualized_pct", "xirr_pct", "volatility_pct",
                          "sharpe", "sortino", "max_drawdown_pct", "alpha_annual_pct", "beta", "days_invested",
                          "trades", "win_rate_pct"], rep["comparison"])
@@ -385,20 +388,84 @@ def export(rep: dict, fmt: str = "csv") -> tuple[str, str]:
                                       "discretionary_pnl": S["discretionary_pnl"], "total_pnl": S["total_pnl"],
                                       "linked_signals": len(S["linked"]), "discretionary_buys": S["discretionary_buys"],
                                       "source": S["source"]})
-    w.writerow([])
-    w.writerow(["# signal attribution"])
-    w.writerow(["signal_id", "symbol", "signal_date", "link_method", "entry_date", "entry_price", "delay_sessions",
-                "add_ons", "exits", "open_quantity", "model_ret_pct", "actual_pnl", "entry_timing", "averaging",
-                "exit_timing", "costs", "sizing_vs_model_notional"])
+    rows = []
     for x in S["linked"]:
         a = x.get("position_attribution") or {}
         vn = x.get("attribution_vs_model_notional") or {}
-        w.writerow([x["signal_id"], x["symbol"], x["signal_date"], x.get("link_method"), x["entry"]["date"],
-                    x["entry"]["price"], x["entry"]["delay_sessions"], len(x.get("add_ons") or []),
-                    len(x.get("exits") or []), x.get("open_quantity"), x["model"]["ret_pct"], x["actual"]["pnl"],
-                    a.get("entry_timing"), a.get("averaging"), a.get("exit_timing"), a.get("costs"), vn.get("sizing")])
+        rows.append([x["signal_id"], x["symbol"], x["signal_date"], x.get("link_method"), x["entry"]["date"],
+                     x["entry"]["price"], x["entry"]["delay_sessions"], len(x.get("add_ons") or []),
+                     len(x.get("exits") or []), x.get("open_quantity"), x["model"]["ret_pct"], x["actual"]["pnl"],
+                     a.get("entry_timing"), a.get("averaging"), a.get("exit_timing"), a.get("costs"), vn.get("sizing")])
+    out.append(("table", "signal attribution",
+                ["signal_id", "symbol", "signal_date", "link_method", "entry_date", "entry_price", "delay_sessions",
+                 "add_ons", "exits", "open_quantity", "model_ret_pct", "actual_pnl", "entry_timing", "averaging",
+                 "exit_timing", "costs", "sizing_vs_model_notional"], rows))
     kv("audit", rep["audit"])
-    return buf.getvalue(), "text/csv"
+    return out
+
+
+def _csv(rep, secs) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_header(rep))
+    for sec in secs:
+        w.writerow([])
+        w.writerow([f"# {sec[1]}"])
+        if sec[0] == "table":
+            w.writerow(sec[2])
+            for r in sec[3]:
+                w.writerow([_cell(v) for v in r])
+        else:
+            for k, v in sec[2]:
+                w.writerow([k, _cell(v)])
+    return buf.getvalue()
+
+
+_HTML_CSS = """body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:11px;color:#111;margin:18px}
+h1{font-size:17px;margin:0 0 4px}h2{font-size:12.5px;margin:16px 0 4px;border-bottom:1px solid #999;
+text-transform:capitalize}.meta{color:#444;margin-bottom:8px}.disc{color:#555;font-size:10px;margin-top:16px}
+table{border-collapse:collapse;width:100%;margin:2px 0}th,td{border:1px solid #ccc;padding:2px 4px;text-align:left;
+vertical-align:top;overflow-wrap:break-word}th{background:#eee}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.kv td:first-child{width:28%;color:#333}.noprint{margin:8px 0}
+@media print{.noprint{display:none}body{margin:0}h2{break-after:avoid}tr{break-inside:avoid}}
+@page{size:A4 landscape;margin:12mm}"""
+
+
+def _html(rep, secs) -> str:
+    import html as H
+
+    def cell(v):
+        v = _cell(v)
+        if v is None:
+            return "<td>&mdash;</td>"
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return f'<td class="n">{v:,}</td>' if isinstance(v, int) else f'<td class="n">{v:,.4g}</td>' \
+                if abs(v) >= 1e6 or (v and abs(v) < 1e-3) else f'<td class="n">{round(v, 4):,}</td>'
+        return f"<td>{H.escape(str(v))}</td>"
+    h = _header(rep)
+    parts = [f"<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>ATIP performance report "
+             f"{H.escape(str(h[1]))}</title><style>{_HTML_CSS}</style></head><body>",
+             '<div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>',
+             "<h1>ATIP performance report</h1>",
+             f'<div class="meta">{H.escape(str(h[2]))} &middot; {H.escape(str(h[3]))} &rarr; {H.escape(str(h[4]))} '
+             f"&middot; benchmark {H.escape(str(h[6]))} &middot; strategy {H.escape(str(h[8]))} &middot; report "
+             f"{H.escape(str(h[1]))} &middot; methodology {H.escape(str(rep['audit'].get('methodology_version')))} "
+             f"&middot; calculation {H.escape(str(rep['audit'].get('calculation_version')))}</div>"]
+    for sec in secs:
+        parts.append(f"<h2>{H.escape(sec[1])}</h2>")
+        if sec[0] == "table":
+            if not sec[3]:
+                parts.append("<p>none</p>")
+                continue
+            parts.append("<table><thead><tr>" + "".join(f"<th>{H.escape(c.replace('_', ' '))}</th>" for c in sec[2]) +
+                         "</tr></thead><tbody>" + "".join("<tr>" + "".join(cell(v) for v in r) + "</tr>"
+                                                         for r in sec[3]) + "</tbody></table>")
+        else:
+            parts.append('<table class="kv"><tbody>' + "".join(f"<tr><td>{H.escape(str(k))}</td>{cell(v)}</tr>"
+                                                              for k, v in sec[2]) + "</tbody></table>")
+    parts.append(f'<p class="disc">{H.escape(str(rep.get("disclaimer") or C.DISCLAIMER))}</p></body></html>')
+    return "".join(parts)
 
 
 def _cell(v):
