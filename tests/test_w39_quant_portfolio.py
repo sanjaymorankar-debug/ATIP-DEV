@@ -373,3 +373,31 @@ def test_optimize_route_accepts_turnover_and_neutrality(market, tmp_path, monkey
     for bad in bad_bodies:
         r = client.post("/api/risk/optimize", headers=h, json={**body, **bad})
         assert r.status_code == 400, (bad, r.text)
+
+
+def test_projection_never_breaks_a_sector_cap_and_is_the_nearest_feasible_point():
+    """Regression: the old Dykstra loop stopped when its sector step stopped moving and returned the
+    other iterate, which broke the cap in ~10% of random cases (by up to 48 points)."""
+    import numpy as np
+    from portfolio import optimize as O
+    rng = np.random.default_rng(7)
+    checked = 0
+    for _ in range(300):
+        k, g = int(rng.integers(4, 30)), int(rng.integers(2, 6))
+        lab = rng.integers(0, g, k)
+        groups = {j: np.where(lab == j)[0] for j in range(g) if (lab == j).any()}
+        ub, lb = np.full(k, rng.uniform(1.0 / k + 0.02, 0.5)), np.zeros(k)
+        caps = {j: rng.uniform(min(1.0 / len(groups) + 0.01, 0.59), 0.6) for j in groups}
+        if sum(min(caps[j], ub[i].sum()) for j, i in groups.items()) < 1:
+            continue
+        v = rng.normal(0, 0.3, k)
+        w = O._project(v, ub, lb, groups, caps)
+        checked += 1
+        assert abs(w.sum() - 1) < 1e-9 and (w >= lb - 1e-12).all() and (w <= ub + 1e-12).all()
+        assert all(w[i].sum() <= caps[j] + 1e-9 for j, i in groups.items())
+        # nearest: no feasible point on a random segment towards another feasible point is closer to v
+        u = O._project(rng.normal(0, 0.3, k), ub, lb, groups, caps)
+        for a in (1e-3, 0.1, 0.5):
+            x = (1 - a) * w + a * u
+            assert ((x - v) ** 2).sum() >= ((w - v) ** 2).sum() - 1e-12
+    assert checked > 250

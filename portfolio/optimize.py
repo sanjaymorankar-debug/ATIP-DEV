@@ -102,22 +102,15 @@ def _proj_sectors(u, groups, caps):
     return u
 
 
-def _project(v, ub, lb, groups, caps, iters=500):
-    """Exact Euclidean projection onto box-simplex AND sector caps (Dykstra)."""
+def _project(v, ub, lb, groups, caps):
+    """Exact Euclidean projection onto box-simplex AND sector caps. W39: this was Dykstra's
+    alternating projection, stopped when the sector step stopped moving and returning the
+    box-simplex iterate -- which could still break a sector cap (by up to 48 points in a random
+    check). It is now the exact KKT solve in _prox_caps (one budget shift, plus a shift per
+    over-cap sector), with no tolerance or iteration limit."""
     if not caps:
         return _proj_box_simplex(v, ub, lb)
-    x, p, q = v.copy(), np.zeros_like(v), np.zeros_like(v)
-    y = x
-    for _ in range(iters):
-        y = _proj_box_simplex(x + p, ub, lb)
-        p = x + p - y
-        z = _proj_sectors(y + q, groups, caps)
-        q = y + q - z
-        if np.abs(z - x).max() < 1e-9:
-            x = z
-            break
-        x = z
-    return y
+    return _prox_caps(v, ub, lb, np.zeros_like(v), 0.0, groups, caps)[0]
 
 
 # -- W39 (PF-14 / PF-15): the proximal step for a turnover penalty and neutrality equalities ---------
