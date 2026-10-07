@@ -5,6 +5,11 @@
   "dhan_client_id":     "YOUR_DHAN_CLIENT_ID",
   "dhan_access_token":  "YOUR_DHAN_ACCESS_TOKEN",
   "_get_dhan":          "Login at https://web.dhanhq.com → My Profile → Apps → Create App. FREE for personal use.",
+  "dhan_pin":           "",
+  "dhan_totp_secret":   "",
+  "_dhan_totp":         "Token auto-renewal (W39): the scheduler renews the 24-hour Dhan token every day at dhan_token_refresh_time and at start-up if it expired. An EXPIRED token can only be regenerated with your 6-digit Dhan PIN and the base32 TOTP secret shown when you enable TOTP at web.dhan.co > Profile > DhanHQ Trading APIs. Better: move both into the encrypted vault (python -m ops vault-migrate --apply).",
+  "dhan_token_auto_refresh":  true,
+  "dhan_token_refresh_time":  "06:45",
 
   "_SECTION_2": "=== ANTHROPIC (Claude API — News AI sentiment) ===",
   "_get_anthropic":     "Set as environment variable: ANTHROPIC_API_KEY=sk-ant-... from console.anthropic.com",
@@ -29,6 +34,10 @@
   "universe":                 "nifty500",
   "max_stocks_to_score":      500,
   "min_data_days":            60,
+  "history_years":            7,
+  "_history_years":           "W39: years of daily price history to fetch (python main.py --backfill-history) and keep (the weekly purge keeps prices_daily this long). The scheduler tops up what is missing every Sunday at history_backfill_time.",
+  "history_backfill_weekly":  true,
+  "history_backfill_time":    "06:00",
 
   "_SECTION_7": "=== SCHEDULE TIMES (IST) ===",
   "schedule_premarket_time":  "07:00",

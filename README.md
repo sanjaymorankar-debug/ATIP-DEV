@@ -27,6 +27,8 @@
 | Fundamental data (ROE, EPS, D/E etc.) | **Alpha Vantage** | Weekly | Saturday 08:00 |
 | Accuracy audit (prediction vs actual) | **Computed** | Weekly | Saturday 09:00 |
 | Dhan security master list | **Dhan API** | Weekly | Saturday 08:30 |
+| Dhan access token renewal (RenewToken, else TOTP + PIN) | **Dhan auth** | Daily + at start-up if expired | 06:45 |
+| Long price history top-up (`history_years`, default 7) | **Dhan API** | Weekly (only what is missing) | Sunday 06:00 |
 
 ---
 
@@ -146,6 +148,8 @@ cd D:\Projects\ATIP
 python main.py --init                    # Create database (first time)
 python main.py --dhan-securities         # Download Dhan security ID list (first time)
 python main.py --dhan-history            # Download 1-year historical prices
+python main.py --backfill-history        # Fetch the missing years of daily history (7 by default)
+python main.py --backfill-history --history-years 7 --backfill-dry-run   # just the plan
 
 # Daily usage
 python main.py                           # Start scheduler + dashboard (default)
@@ -215,6 +219,26 @@ python main.py --dhan-history
 # 4. Start live feed (during market hours only)
 python main.py --live-feed
 ```
+
+### Token renewal (TOTP)
+Dhan access tokens last 24 hours. The scheduler renews the token every day at
+`dhan_token_refresh_time` (06:45 IST, before the pre-market jobs) and at start-up if
+it has expired. A valid token is renewed with `RenewToken`. An expired one can only be
+regenerated with your trading PIN and TOTP secret, so add both once:
+```json
+"dhan_pin":         "<6-digit Dhan PIN>",
+"dhan_totp_secret": "<base32 secret shown when you enable TOTP at web.dhan.co>"
+```
+It is better to move them into the encrypted vault with `python -m ops vault-migrate --apply`.
+Set `"dhan_token_auto_refresh": false` to turn renewal off. To run it by hand:
+`python tools/dhan_token_refresh.py` (or `--check`).
+
+### Long history (7 years)
+`python main.py --backfill-history` fetches the missing years of daily OHLCV for the
+tracked universe and the benchmark / sector indices. It works one year-window at a time,
+can be resumed, and asks only for what is missing. The weekly purge keeps `prices_daily`
+for `history_years`, while the other tables keep their 600-day window. Progress is
+shown at `GET /api/data/history/status`.
 
 ### Dhan Rate Limits
 | API | Limit | ATIP Usage |

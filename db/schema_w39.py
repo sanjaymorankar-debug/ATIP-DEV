@@ -6,10 +6,22 @@ db/schema.py.
     perf_ledger (+ columns)   PERF-001-01  entry_seq (portable entry order: MySQL has no rowid),
                                            order_ref / signal_ref (exact order and signal links),
                                            fee_breakdown (JSON: brokerage / stt / exchange / sebi /
-                                           stamp / gst / other, when the source gives it)
+                                           stamp / gst / dp / other, when the source gives it)
+    history_backfill_run      DP-23  every long-history backfill run (data/history_backfill.py)
+    history_backfill_symbol   DP-23  the date before which the broker has no bar for a symbol
 """
 
-W39_TABLES = {}
+W39_TABLES = {
+    "history_backfill_run": (
+        """CREATE TABLE IF NOT EXISTS history_backfill_run (
+            run_id TEXT PRIMARY KEY, started_at TIMESTAMP, finished_at TIMESTAMP, years INTEGER, target_start DATE,
+            symbols INTEGER, windows INTEGER, rows_stored INTEGER, status TEXT, detail_json TEXT)""",
+    ),
+    "history_backfill_symbol": (
+        """CREATE TABLE IF NOT EXISTS history_backfill_symbol (
+            symbol TEXT PRIMARY KEY, exhausted_before DATE, checked_at TIMESTAMP, note TEXT)""",
+    ),
+}
 
 W39_COLUMNS = {
     "perf_ledger": {"entry_seq": "INTEGER", "order_ref": "TEXT", "signal_ref": "TEXT", "fee_breakdown": "TEXT"},

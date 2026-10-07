@@ -987,7 +987,8 @@ def get_tracked_symbols(conn=None) -> list:
 
 
 def run_historical_pipeline(symbols: list = None, days: int = 365,
-                             interval_min: int = 0, end_date: date = None) -> dict:
+                             interval_min: int = 0, end_date: date = None,
+                             start_date: date = None, basis_date: date = None) -> dict:
     """
     Download historical data for all symbols and store in prices_daily.
     interval_min=0 → daily data
@@ -997,6 +998,12 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
     post-market pipeline pass the resolved trading-day target so a run before
     4 PM IST (when today's EOD data isn't published yet) doesn't try to pull
     a partial/nonexistent "today".
+    start_date (W39, DP-23): an explicit window start instead of end - days, for the
+    long-history backfill (data/history_backfill.py), which fetches year by year.
+    basis_date: the date Dhan's returned basis refers to -- always the day of the
+    fetch (Dhan adjusts its whole history as of today). Defaults to end_date, which
+    is the same thing for every ordinary run; a backfill window ending years ago must
+    pass today, or the "recent unreconciled ex-date" rule would test old events.
     """
     if not HAS_DHAN:
         return {"status": "FAILED", "error": "pip install dhanhq"}
@@ -1007,7 +1014,8 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
         log.error(str(e)); return {"status": "FAILED", "error": str(e)}
 
     end_dt   = end_date or date.today()
-    start_dt = end_dt - timedelta(days=days)
+    start_dt = start_date or (end_dt - timedelta(days=days))
+    basis_dt = basis_date or end_dt
 
     if not symbols:
         # Use the curated tracked universe, NOT "every symbol currently in
@@ -1015,7 +1023,7 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
         # dump and would otherwise balloon this into thousands of symbols.
         symbols = get_tracked_symbols()
 
-    log.info(f"📥 Dhan historical ({interval_min or 'daily'}): {len(symbols)} symbols, {days} days")
+    log.info(f"📥 Dhan historical ({interval_min or 'daily'}): {len(symbols)} symbols, {start_dt} -> {end_dt}")
     conn  = get_connection()
     count = 0
     errors= 0
@@ -1074,7 +1082,7 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                     bar = (row.get("open"), row.get("high"), row.get("low"),
                            row.get("close"), row.get("volume"))
                     if events:
-                        bar = to_stored_basis(date_str, bar, stored.get(date_str), events, end_dt)
+                        bar = to_stored_basis(date_str, bar, stored.get(date_str), events, basis_dt)
                         if bar is None:
                             held += 1
                             continue

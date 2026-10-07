@@ -1800,6 +1800,15 @@ def start_scheduler():
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
 
+    # ── W39: Dhan token renewal (TOTP) and the weekly long-history top-up ───
+    try:
+        from pipeline import w39_jobs
+        for line in w39_jobs.schedule_jobs(schedule, run_job):
+            log.info(f"  W39 job: {line}")
+        w39_jobs.startup(run_job)            # a dead token is renewed before the catch-ups fetch
+    except Exception as e:
+        log.warning(f"  W39 jobs not scheduled: {e}")
+
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)

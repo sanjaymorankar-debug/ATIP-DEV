@@ -2,7 +2,11 @@
 Refresh the Dhan access token and write it into atip_data/config.json -- or, once the credentials
 were moved to the encrypted vault (python -m ops vault-migrate --apply), back into the vault.
 
-Run daily at 08:00 by the Windows scheduled task "ATIP_DhanTokenRefresh".
+Run daily at 08:00 by the Windows scheduled task "ATIP_DhanTokenRefresh" on the old machine.
+W39: on every platform (macOS launchd, Linux, the container) the ATIP scheduler itself runs
+run() every day at config "dhan_token_refresh_time" (default 06:45 IST, before the 07:00
+pre-market jobs) and once at start-up when the token no longer works -- set
+"dhan_token_auto_refresh": false to turn that off.
 Stdlib only.
 
 Order of attempts:
@@ -117,15 +121,23 @@ def save(cfg, tok):
 
 
 def main():
+    return run(check="--check" in sys.argv)
+
+
+def run(check: bool = False, only_if_invalid: bool = False) -> int:
+    """0 = the token is valid (check) / was renewed, 1 = failed. only_if_invalid (W39, the
+    scheduler's start-up call): renew only when the current token no longer works."""
     os.chdir(ROOT)                      # ops/* resolve atip_data/ relative to the repository
     cfg = json.loads(CFG.read_text(encoding="utf-8"))
     cid = secret(cfg, "dhan_client_id", "DHAN_CLIENT_ID")
     tok = secret(cfg, "dhan_access_token", "DHAN_ACCESS_TOKEN")
     if not cid:
         log("dhan_client_id missing in config.json"); return 1
-    if "--check" in sys.argv:
+    if check or only_if_invalid:
         ok = bool(tok) and token_valid(cid, tok)
-        log(f"token check: {'VALID' if ok else 'INVALID/EXPIRED'}"); return 0 if ok else 1
+        log(f"token check: {'VALID' if ok else 'INVALID/EXPIRED'}")
+        if check or ok:
+            return 0 if ok else 1
 
     new = renew(cid, tok) if tok else None
     how = "RenewToken"

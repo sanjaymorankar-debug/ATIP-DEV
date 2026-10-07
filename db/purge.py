@@ -17,6 +17,10 @@ Two retention tiers by default:
         600 days would balloon the database for no analytical benefit —
         nothing reads a live tick from 18 months ago.
 
+  HISTORY (W39, DP-23) — prices_daily, the stock / index price history, is kept for
+        config "history_years" (default 7 years; never less than the LONG tier), so the
+        long backfill of data/history_backfill.py survives the weekly purge.
+
 Run standalone:
     python -m db.purge                  # dry-run — reports what WOULD be removed
     python -m db.purge --apply           # actually delete + VACUUM
@@ -70,6 +74,19 @@ SHORT_RETENTION_TABLES = {
 DEFAULT_LONG_DAYS  = 600
 DEFAULT_SHORT_DAYS = 90
 
+# W39 (DP-23): daily price history is kept for config "history_years" (default 7), never
+# less than the long tier. Before W39 it shared the 600-day tier, so the weekly purge
+# deleted every bar older than ~20 months and a long backfill could not be kept.
+HISTORY_TABLES = ("prices_daily",)
+
+
+def history_days() -> int:
+    try:
+        from data.history_backfill import history_years
+        return int(round(history_years() * 365.25)) + 7
+    except Exception:
+        return int(round(7 * 365.25)) + 7
+
 
 def _purge_table(conn, table, date_col, cutoff, dry_run):
     try:
@@ -83,7 +100,7 @@ def _purge_table(conn, table, date_col, cutoff, dry_run):
 
 
 def purge_old_data(long_days: int = DEFAULT_LONG_DAYS, short_days: int = DEFAULT_SHORT_DAYS,
-                    dry_run: bool = True) -> dict:
+                    dry_run: bool = True, history_days_: int | None = None) -> dict:
     """
     Delete rows older than the retention window for each table.
     Returns {table: rows_removed_or_error}.
@@ -93,12 +110,15 @@ def purge_old_data(long_days: int = DEFAULT_LONG_DAYS, short_days: int = DEFAULT
     """
     long_cutoff  = str(date.today() - timedelta(days=long_days))
     short_cutoff = str(date.today() - timedelta(days=short_days))
+    hist_days    = max(long_days, history_days_ if history_days_ is not None else history_days())
+    hist_cutoff  = str(date.today() - timedelta(days=hist_days))
 
     conn = get_connection()
     results = {}
     try:
         for table, col in LONG_RETENTION_TABLES.items():
-            results[table] = _purge_table(conn, table, col, long_cutoff, dry_run)
+            cut = hist_cutoff if table in HISTORY_TABLES else long_cutoff
+            results[table] = _purge_table(conn, table, col, cut, dry_run)
         for table, col in SHORT_RETENTION_TABLES.items():
             results[table] = _purge_table(conn, table, col, short_cutoff, dry_run)
 
@@ -107,7 +127,8 @@ def purge_old_data(long_days: int = DEFAULT_LONG_DAYS, short_days: int = DEFAULT
             conn.commit()
             conn.execute("VACUUM")  # reclaim disk space after a real delete
         log.info(f"  {'Would remove' if dry_run else 'Removed'} {total} rows total "
-                 f"(long-retention cutoff {long_cutoff} / {long_days}d, "
+                 f"(price history cutoff {hist_cutoff} / {hist_days}d, "
+                 f"long-retention cutoff {long_cutoff} / {long_days}d, "
                  f"short-retention cutoff {short_cutoff} / {short_days}d)")
         log_job("db_purge", "DRY_RUN" if dry_run else "SUCCESS", total)
     except Exception as e:

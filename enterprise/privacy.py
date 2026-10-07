@@ -309,7 +309,7 @@ RULES = [
      "derived research: kept"),
     (r"^(ops_|pipeline_log|alert_log|job_recovery|compliance_|regulatory_|schema_migrations|ai_usage_log|"
      r"broker_health_check|"
-     r"live_feed_status|tick_capture_status|latency_rollup|audit_export)", "operational", False,
+     r"live_feed_status|tick_capture_status|latency_rollup|audit_export|history_backfill_)", "operational", False,
      "operational logs: kept / rotated by ops jobs"),
 ]
 DSR_SLA_DAYS = 30
