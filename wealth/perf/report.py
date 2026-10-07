@@ -132,7 +132,9 @@ def build(conn, owner, portfolio: str = "PAPER", start=None, end=None, benchmark
         row("MODEL", "ATIP BUY signals at the signal price, model exit rule, gross, equal weight", m_metrics,
             {"xirr_pct": None, "trades": mdl["model"]["trade_stats"].get("trades"),
              "win_rate_pct": mdl["model"]["trade_stats"].get("win_rate_pct")}),
-        row("EXECUTABLE", "same signals at next-session open, slippage, NSE costs, liquidity cap, equal weight",
+        row("EXECUTABLE", "same signals at next-session open, " + ("square-root market-impact slippage"
+            if mdl["options"].get("slippage_model") == "impact" else "slippage") + ", NSE costs, liquidity cap, "
+            "equal weight",
             e_metrics, {"xirr_pct": None, "trades": mdl["executable"]["trade_stats"].get("trades"),
                         "win_rate_pct": mdl["executable"]["trade_stats"].get("win_rate_pct")}),
         row("ACTUAL", f"your {pf} portfolio: ledger quantities, prices, fees, cash flows (time-weighted)", at,
@@ -382,7 +384,8 @@ def _sections(rep) -> list:
     block("model trades", ["signal_id", "symbol", "signal_date", "entry", "exit_date", "exit", "exit_reason", "ret",
                            "pnl"], rep["model"]["trades"])
     block("executable trades", ["signal_id", "symbol", "status", "reason", "entry_date", "entry", "exit_date", "exit",
-                                "costs", "pnl", "ret", "liquidity", "exit_liquidity"], rep["executable"]["trades"])
+                                "slippage_bps", "exit_slippage_bps", "slippage_source", "costs", "pnl", "ret",
+                                "liquidity", "exit_liquidity"], rep["executable"]["trades"])
     S = rep["signal_attribution"]
     kv("signal attribution summary", {"signal_driven_pnl": S["signal_driven_pnl"],
                                       "discretionary_pnl": S["discretionary_pnl"], "total_pnl": S["total_pnl"],

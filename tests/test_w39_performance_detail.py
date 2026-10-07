@@ -148,6 +148,36 @@ def test_executable_applies_slippage_costs_and_the_liquidity_cap(temp_db):
     assert u["executable"]["trades"][0]["liquidity"] == "UNKNOWN" and u["executable"]["liquidity_unknown"] == 1
 
 
+def test_impact_slippage_uses_the_square_root_estimate_known_at_the_signal(temp_db):
+    from execution import impact as IM
+    conn, ds = fresh(temp_db)
+    _signal(conn, "S1", ds[60])
+    P = D.Prices(conn, ds[0], ds[-1])
+    m = MD.build(conn, ds[0], ds[-1], P, {"slippage_model": "impact", "impact_y": 0.9})
+    e = m["executable"]["trades"][0]
+    nxt_open = conn.execute("SELECT open FROM prices_daily WHERE symbol='ACME' AND date=?", (str(ds[61]),)).fetchone()[0]
+    est = IM.estimate(conn, "ACME", round(100000 / nxt_open), "BUY", price=nxt_open, as_of=ds[60], y=0.9)
+    assert est["ok"] and est["inputs"]["as_of"] == str(ds[60])                 # nothing after the signal
+    assert e["slippage_source"] == "impact" and e["slippage_bps"] == pytest.approx(est["total_bps"])
+    assert e["entry"] == pytest.approx(round(nxt_open * (1 + est["total_bps"] / 1e4), 4))
+    assert e["slippage_detail"]["entry"]["impact_bps"] == pytest.approx(est["impact_bps"])
+    assert m["options"]["impact_y_used"] == 0.9 and m["options"]["impact_y_source"] == "given"
+    # impact grows with size (square root), the fixed model does not
+    big = MD.build(conn, ds[0], ds[-1], P, {"slippage_model": "impact", "impact_y": 0.9, "notional": 4e5})
+    assert big["executable"]["trades"][0]["slippage_bps"] > e["slippage_bps"]
+    # missing inputs fall back to the fixed bps, labelled
+    conn.execute("UPDATE prices_daily SET volume=NULL WHERE symbol='ACME'")
+    conn.commit()
+    f = MD.build(conn, ds[0], ds[-1], D.Prices(conn, ds[0], ds[-1]), {"slippage_model": "impact", "slippage_bps": 12})
+    ft = f["executable"]["trades"][0]
+    assert ft["slippage_source"].startswith("fixed") and ft["slippage_bps"] == 12
+    assert f["options"]["impact_y_source"].startswith("default")
+    with pytest.raises(ValueError, match="slippage_model"):
+        MD.build(conn, ds[0], ds[-1], P, {"slippage_model": "vwap"})
+    rep = R.build(conn, OWNER, "MANUAL", ds[0], ds[-1], None, {"slippage_model": "impact"}, sync_first=False)
+    assert "market-impact" in [c for c in rep["comparison"] if c["return"] == "EXECUTABLE"][0]["definition"]
+
+
 # ── PERF-001-04 actual, -05 benchmark, -08 metrics ──────────────────────
 
 def test_period_scope_is_separate_from_lifetime(temp_db):
