@@ -28,7 +28,31 @@ config technical.vwap_in_score is true (see vwap_score()).
                             (the stoch / Williams %R / CCI columns of technical_indicators
                             are now filled by data/technical.py as well)
 
-compute(df_daily, bench_daily, bars_intraday=None) -> dict of the columns above.
+W39 additions -- STORED AND SHOWN ONLY: neither feeds any score, signal or strategy feature
+(the owner decides later whether they should):
+
+    TA-08b Sector-relative strength  rs_sector_63 / rs_sector_126: the stock's return over 63 /
+                            126 sessions minus its sector index's return over the same sessions,
+                            in % (date-matched, like scores/engine.compute_relative_strength's
+                            20-session RS vs NIFTY50). The sector index comes from the NSE
+                            industry (data/index_constituents.get_symbol_industry_map) through
+                            SECTOR_INDEX_BY_INDUSTRY; a stock whose sector has no stored index
+                            is measured against NIFTY50 instead and rs_sector_index says
+                            "NIFTY50". rs_sector_pctile: the stock's percentile (0 = weakest,
+                            100 = strongest) of rs_sector_126 among the stocks of the same
+                            industry and sector index on that date -- needs the whole session,
+                            so compute() leaves it None and store_sector_percentiles() fills it
+                            after the per-date batch.
+    TA-05  Swing Fibonacci  the last confirmed swing over 120 sessions from fractal pivots (the
+                            support_resistance approach, SWING_K bars each side), consecutive
+                            pivots of one kind collapsed to the more extreme one (zig-zag);
+                            fib_swing_dir UP when the swing low precedes the swing high (levels
+                            measured down from the high), DOWN otherwise (measured up from the
+                            low); fib_382 / fib_500 / fib_618 and the level nearest the close.
+                            The 52-week Fibonacci of technical_indicators (data/technical.py,
+                            same fib_* names, a different table) is unchanged.
+
+compute(df_daily, bench_daily, bars_intraday=None, sector=None) -> dict of the columns above.
 """
 
 from __future__ import annotations
@@ -38,13 +62,63 @@ import math
 import numpy as np
 import pandas as pd
 
-COLUMNS = ("vwap_20d", "vwap_session", "vwap_dev_pct", "vp_poc", "vp_vah", "vp_val", "vp_basis",
-           "sr_support", "sr_support_touches", "sr_support_dist_pct", "sr_resistance", "sr_resistance_touches",
-           "sr_resistance_dist_pct", "beta_60", "beta_downside", "beta_long", "beta_long_sessions", "bri",
-           "weekly_rsi", "weekly_trend", "monthly_trend", "mtf_alignment",
-           "supertrend", "supertrend_dir", "ichimoku_tenkan", "ichimoku_kijun", "ichimoku_span_a",
-           "ichimoku_span_b", "keltner_upper", "keltner_lower", "donchian_upper", "donchian_lower", "mfi_14",
-           "cmf_20", "roc_10", "aroon_up", "aroon_down", "psar")
+W21_COLUMNS = ("vwap_20d", "vwap_session", "vwap_dev_pct", "vp_poc", "vp_vah", "vp_val", "vp_basis",
+               "sr_support", "sr_support_touches", "sr_support_dist_pct", "sr_resistance", "sr_resistance_touches",
+               "sr_resistance_dist_pct", "beta_60", "beta_downside", "beta_long", "beta_long_sessions", "bri",
+               "weekly_rsi", "weekly_trend", "monthly_trend", "mtf_alignment",
+               "supertrend", "supertrend_dir", "ichimoku_tenkan", "ichimoku_kijun", "ichimoku_span_a",
+               "ichimoku_span_b", "keltner_upper", "keltner_lower", "donchian_upper", "donchian_lower", "mfi_14",
+               "cmf_20", "roc_10", "aroon_up", "aroon_down", "psar")
+# W39 (db/schema_w39.py W39_COLUMNS["technical_ext"]): stored and shown, never scored
+SECTOR_RS_COLUMNS = ("rs_sector_index", "rs_sector_63", "rs_sector_126", "rs_sector_pctile")
+SWING_FIB_COLUMNS = ("fib_swing_high", "fib_swing_low", "fib_swing_dir", "fib_382", "fib_500", "fib_618",
+                     "fib_nearest", "fib_nearest_dist_pct")
+COLUMNS = W21_COLUMNS + SECTOR_RS_COLUMNS + SWING_FIB_COLUMNS
+
+# ── TA-08b: NSE industry -> sector index ───────────────────────────────────
+# Keys are the Industry column of NSE's ind_nifty500list.csv (lower-cased; matching is
+# case-insensitive), values the synthetic symbols data/dhan.py stores the sector index
+# history under in prices_daily (INDEX_SERIES_SYMBOLS). Only indices ATIP actually stores
+# are used, so some pairings are the closest stored proxy rather than an exact match:
+#   Healthcare          -> NIFTYPHARMA   (Nifty Healthcare is not stored; pharma dominates it)
+#   Power               -> NIFTYENERGY   (Nifty Energy carries the power utilities)
+#   Financial Services  -> NIFTYBANK     (the only financial index stored; banks dominate the
+#                                         industry) -- the PSU banks go to NIFTYPSUBANK through
+#                                         SECTOR_INDEX_SYMBOL_OVERRIDES below
+# Industries with no stored index -- Capital Goods, Chemicals, Construction, Construction
+# Materials, Consumer Durables, Consumer Services, Diversified, Forest Materials, Media
+# Entertainment & Publication, Services, Telecommunication, Textiles -- and stocks whose
+# industry is unknown (not in the Nifty 500 list), or whose sector series is missing / stale,
+# are measured against FALLBACK_SECTOR_INDEX, and rs_sector_index records that.
+FALLBACK_SECTOR_INDEX = "NIFTY50"
+SECTOR_INDEX_BY_INDUSTRY = {
+    "information technology": "NIFTYIT",
+    "healthcare": "NIFTYPHARMA",
+    "automobile and auto components": "NIFTYAUTO",
+    "fast moving consumer goods": "NIFTYFMCG",
+    "metals & mining": "NIFTYMETAL",
+    "realty": "NIFTYREALTY",
+    "oil gas & consumable fuels": "NIFTYENERGY",
+    "power": "NIFTYENERGY",
+    "financial services": "NIFTYBANK",
+    # labels of NSE's pre-2021 industry classification, should an old list be cached
+    "it": "NIFTYIT", "pharma": "NIFTYPHARMA", "automobile": "NIFTYAUTO", "consumer goods": "NIFTYFMCG",
+    "metals": "NIFTYMETAL", "oil & gas": "NIFTYENERGY", "energy": "NIFTYENERGY",
+}
+# The Nifty PSU Bank constituents: NSE files them under Financial Services with every other
+# lender, but their own index is stored, so they are measured against it.
+SECTOR_INDEX_SYMBOL_OVERRIDES = {s: "NIFTYPSUBANK" for s in (
+    "SBIN", "BANKBARODA", "PNB", "CANBK", "UNIONBANK", "INDIANB", "BANKINDIA", "IOB", "CENTRALBK",
+    "UCOBANK", "MAHABANK", "PSB")}
+RS_SECTOR_WINDOWS = (63, 126)          # sessions (~3 and ~6 months)
+SECTOR_MAX_LAG_SESSIONS = 5            # an index series whose last bar is older than this is stale
+SECTOR_PCTILE_MIN_PEERS = 3            # fewer stocks in the group -> no percentile
+
+# ── TA-05: swing-anchored Fibonacci ────────────────────────────────────────
+FIB_SWING_LOOKBACK = 120               # sessions searched for the last swing (as support_resistance)
+SWING_K = 5                            # a swing point is the extreme of 2k+1 = 11 sessions, so a
+                                       # 2-3 day wiggle is not a swing; confirmed k sessions later
+FIB_RATIOS = (("fib_382", 0.382), ("fib_500", 0.5), ("fib_618", 0.618))
 
 
 def _f(x, nd=4):
@@ -304,8 +378,186 @@ def extended(df) -> dict:
     return out
 
 
-def compute(df, bench=None, bars=None) -> dict:
-    """df: daily bars (date, open, high, low, close, volume) ascending, >= 20 rows."""
+# ── TA-08b sector-relative strength (stored, not scored) ───────────────────
+def sector_index_for(symbol=None, industry=None) -> str | None:
+    """The stored sector index a stock is measured against: the symbol override (PSU banks),
+    else SECTOR_INDEX_BY_INDUSTRY for its NSE industry; None when its sector has no index."""
+    sym = str(symbol or "").strip().upper()
+    if sym in SECTOR_INDEX_SYMBOL_OVERRIDES:
+        return SECTOR_INDEX_SYMBOL_OVERRIDES[sym]
+    return SECTOR_INDEX_BY_INDUSTRY.get(str(industry or "").strip().lower())
+
+
+def _date_key(s):
+    return s.astype(str).str[:10]
+
+
+def _rs_vs(df, idx) -> dict | None:
+    """{63: rs, 126: rs} of the stock vs one index series (date, close), or None when the series
+    is missing, stale or too short for even the shorter window. As compute_relative_strength:
+    the two series are matched on date, and N sessions back is N rows back in the matched set."""
+    if idx is None or len(idx) == 0 or "date" not in idx.columns or "close" not in idx.columns:
+        return None
+    s = pd.DataFrame({"k": _date_key(df["date"]), "s": pd.to_numeric(df["close"], errors="coerce")})
+    b = pd.DataFrame({"k": _date_key(idx["date"]), "b": pd.to_numeric(idx["close"], errors="coerce")})
+    s, b = s[s["s"] > 0], b[b["b"] > 0]
+    m = s.merge(b, on="k").drop_duplicates("k", keep="last").sort_values("k").reset_index(drop=True)
+    if len(m) < min(RS_SECTOR_WINDOWS) + 1:
+        return None
+    if m["k"].iloc[-1] not in set(s.sort_values("k")["k"].tail(SECTOR_MAX_LAG_SESSIONS + 1)):
+        return None                                     # the index stopped updating: not a comparison
+    out = {}
+    for n in RS_SECTOR_WINDOWS:
+        if len(m) < n + 1:
+            out[n] = None
+            continue
+        s0, sn, b0, bn = m["s"].iloc[-1], m["s"].iloc[-1 - n], m["b"].iloc[-1], m["b"].iloc[-1 - n]
+        out[n] = _f(((s0 / sn - 1) - (b0 / bn - 1)) * 100, 3)
+    return out
+
+
+def sector_relative_strength(df, symbol=None, industry=None, series=None, bench=None) -> dict:
+    """rs_sector_index / rs_sector_63 / rs_sector_126 for one stock. `series` maps a sector index
+    symbol to its stored daily series (date, close); `bench` is the NIFTY50 series. A stock whose
+    sector has no index, or whose index series is missing or stale, falls back to NIFTY50 and
+    rs_sector_index says so. rs_sector_pctile is always None here (store_sector_percentiles)."""
+    out = {c: None for c in SECTOR_RS_COLUMNS}
+    series = series or {}
+    idx = sector_index_for(symbol, industry)
+    rs = _rs_vs(df, series.get(idx)) if idx else None
+    if rs is None:
+        idx = FALLBACK_SECTOR_INDEX
+        for cand in (bench, series.get(FALLBACK_SECTOR_INDEX)):
+            rs = _rs_vs(df, cand)
+            if rs is not None:
+                break
+    if rs is None:
+        return out
+    out.update({"rs_sector_index": idx, "rs_sector_63": rs.get(63), "rs_sector_126": rs.get(126)})
+    return out
+
+
+def sector_percentiles(rows, industries, min_peers=SECTOR_PCTILE_MIN_PEERS) -> dict:
+    """rows: (symbol, rs_sector_index, rs_sector_126) for one date -> {symbol: percentile or None}.
+    Peers are the stocks of the same NSE industry measured against the same index (so a PSU bank
+    is ranked among PSU banks, a fallback stock among its own industry vs NIFTY50). Percentile as
+    quant/normalize.percentile: 0-based rank (ties share the average) / (n - 1) x 100, so the
+    weakest is 0 and the strongest 100. Unknown industry or fewer than min_peers -> None."""
+    out, groups = {}, {}
+    for sym, idx, v in rows:
+        out[sym] = None
+        ind = str((industries or {}).get(sym) or "").strip().lower()
+        v = _f(v, 6)
+        if not ind or not idx or v is None:
+            continue
+        groups.setdefault((ind, idx), []).append((sym, v))
+    for members in groups.values():
+        if len(members) < max(2, min_peers):
+            continue
+        members.sort(key=lambda x: x[1])
+        i = 0
+        while i < len(members):
+            j = i
+            while j + 1 < len(members) and members[j + 1][1] == members[i][1]:
+                j += 1
+            for sym, _ in members[i:j + 1]:
+                out[sym] = round((i + j) / 2 / (len(members) - 1) * 100, 2)
+            i = j + 1
+    return out
+
+
+def load_sector_context(conn, trade_date, industries=None, rows=400) -> dict:
+    """What compute() needs for TA-08b, loaded once per run by the caller that loads the NIFTY50
+    benchmark: {"industries": symbol -> NSE industry, "series": sector index symbol -> its stored
+    daily series up to trade_date}. Never raises: missing pieces just mean the NIFTY50 fallback."""
+    if industries is None:
+        try:
+            from data.index_constituents import get_symbol_industry_map
+            industries = get_symbol_industry_map() or {}
+        except Exception:
+            industries = {}
+    series = {}
+    wanted = set(SECTOR_INDEX_BY_INDUSTRY.values()) | set(SECTOR_INDEX_SYMBOL_OVERRIDES.values())
+    for idx in sorted(wanted):
+        try:
+            s = pd.read_sql("SELECT date, close FROM prices_daily WHERE symbol=? AND date<=? AND close>0 "
+                            "ORDER BY date DESC LIMIT ?", conn, params=(idx, str(trade_date), int(rows)))
+        except Exception:
+            continue
+        if not s.empty:
+            series[idx] = s.iloc[::-1].reset_index(drop=True)
+    return {"industries": industries, "series": series}
+
+
+def sector_input(ctx, symbol) -> dict | None:
+    """compute()'s `sector` argument for one symbol from a load_sector_context() result."""
+    if not ctx:
+        return None
+    return {"symbol": symbol, "industry": (ctx.get("industries") or {}).get(symbol), "series": ctx.get("series")}
+
+
+def store_sector_percentiles(conn, trade_date, industries) -> int:
+    """After the per-date batch: rs_sector_pctile for every technical_ext row of trade_date (all
+    the rows stored for that date, so a one-symbol re-run still ranks against its stored peers).
+    Rows with no peer group are set to NULL. Returns how many got a percentile."""
+    d = str(trade_date)
+    rows = conn.execute("SELECT symbol, rs_sector_index, rs_sector_126 FROM technical_ext WHERE date=?",
+                        (d,)).fetchall()
+    pct = sector_percentiles([(r[0], r[1], r[2]) for r in rows], industries or {})
+    for sym, v in pct.items():
+        conn.execute("UPDATE technical_ext SET rs_sector_pctile=? WHERE symbol=? AND date=?", (v, sym, d))
+    return sum(1 for v in pct.values() if v is not None)
+
+
+# ── TA-05 swing-anchored Fibonacci (stored, not scored) ────────────────────
+def swing_fibonacci(df, lookback=FIB_SWING_LOOKBACK, k=SWING_K) -> dict:
+    """The last confirmed swing in `lookback` sessions and its 38.2 / 50 / 61.8 % retracements.
+    Pivots are k-bar fractals on high / low (support_resistance's test); runs of one kind are
+    collapsed to their most extreme member (a lower high after a high, with no swing low between,
+    does not end the swing), and the last two alternating pivots are the swing. UP when the low
+    came first: levels = high - (high - low) x ratio; DOWN: levels = low + (high - low) x ratio.
+    fib_nearest names the level closest to the last close; fib_nearest_dist_pct is the close's
+    distance from it, (close / level - 1) x 100, positive when the close is above it."""
+    out = {c: None for c in SWING_FIB_COLUMNS}
+    d = df.tail(lookback).reset_index(drop=True)
+    h, l_ = d["high"].astype(float).values, d["low"].astype(float).values
+    piv = []
+    for i in range(k, len(d) - k):
+        if h[i] == max(h[i - k:i + k + 1]):
+            piv.append((i, "H", float(h[i])))
+        if l_[i] == min(l_[i - k:i + k + 1]):
+            piv.append((i, "L", float(l_[i])))
+    zz = []
+    for p in piv:
+        if zz and zz[-1][1] == p[1]:
+            if (p[1] == "H" and p[2] >= zz[-1][2]) or (p[1] == "L" and p[2] <= zz[-1][2]):
+                zz[-1] = p                              # ties keep the more recent pivot
+        else:
+            zz.append(p)
+    if len(zz) < 2:
+        return out
+    a, b = zz[-2], zz[-1]
+    hi, lo = (a, b) if a[1] == "H" else (b, a)
+    high, low = hi[2], lo[2]
+    if not high > low:
+        return out
+    up = lo[0] < hi[0]
+    rng = high - low
+    levels = {name: (high - rng * r) if up else (low + rng * r) for name, r in FIB_RATIOS}
+    close = float(df["close"].iloc[-1])
+    out.update({"fib_swing_high": _f(high, 2), "fib_swing_low": _f(low, 2), "fib_swing_dir": "UP" if up else "DOWN"})
+    out.update({name: _f(v, 2) for name, v in levels.items()})
+    if close == close and close > 0:
+        name = min(levels, key=lambda x: abs(close - levels[x]))
+        out["fib_nearest"] = name
+        out["fib_nearest_dist_pct"] = _f((close / levels[name] - 1) * 100, 3) if levels[name] > 0 else None
+    return out
+
+
+def compute(df, bench=None, bars=None, sector=None) -> dict:
+    """df: daily bars (date, open, high, low, close, volume) ascending, >= 20 rows.
+    sector: optional {"symbol", "industry", "series"} (sector_input()) for TA-08b; without it
+    the rs_sector_* keys are None. Every other key is computed exactly as before."""
     df = df.copy()
     for col in ("open", "high", "low", "close", "volume"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -313,8 +565,12 @@ def compute(df, bench=None, bars=None) -> dict:
     if len(df) < 20:
         return {}
     out = {}
+    sec = sector or {}
     for fn in (lambda: vwap(df, bars), lambda: volume_profile(df, bars), lambda: support_resistance(df),
-               lambda: betas(df, bench), lambda: multi_timeframe(df), lambda: extended(df)):
+               lambda: betas(df, bench), lambda: multi_timeframe(df), lambda: extended(df),
+               lambda: (sector_relative_strength(df, sec.get("symbol"), sec.get("industry"), sec.get("series"),
+                                                 bench) if sector is not None else {}),
+               lambda: swing_fibonacci(df)):
         try:
             out.update(fn())
         except Exception:                               # one family failing never blocks the rest
