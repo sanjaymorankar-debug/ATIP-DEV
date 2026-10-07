@@ -1248,21 +1248,26 @@ def run_live_quote_refresh(symbols: list = None) -> dict:
     except Exception:
         conn.rollback()
         circuits = False
-    for _, row in df.iterrows():
-        vals = [row.get("symbol"), row.get("ltp"), row.get("open"), row.get("high"), row.get("low"),
-                row.get("prev_close"), row.get("volume"), row.get("chg_pct"),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-        if circuits:
-            conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
-                         "timestamp,upper_circuit,lower_circuit) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                         vals + [_circuit_field(row, "upper"), _circuit_field(row, "lower")])
-        else:
-            conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
-                         "timestamp) VALUES(?,?,?,?,?,?,?,?,?)", vals)
-        count += 1
-
-    conn.commit()
-    conn.close()
+    try:
+        for _, row in df.iterrows():
+            vals = [row.get("symbol"), row.get("ltp"), row.get("open"), row.get("high"), row.get("low"),
+                    row.get("prev_close"), row.get("volume"), row.get("chg_pct"),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+            if circuits:
+                conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,"
+                             "chg_pct,timestamp,upper_circuit,lower_circuit) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                             vals + [_circuit_field(row, "upper"), _circuit_field(row, "lower")])
+            else:
+                conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,"
+                             "chg_pct,timestamp) VALUES(?,?,?,?,?,?,?,?,?)", vals)
+            count += 1
+        conn.commit()
+    finally:
+        # A batch that fails part-way is rolled back now, not whenever the garbage collector reaches the
+        # connection (sqlite3 connections sit in a reference cycle): until then its write lock stalls
+        # every later writer on this thread for the full busy timeout -- run_job's FAILED pipeline_log
+        # row and its failure alert (alerts.telegram.notify) first, both then lost.
+        conn.close()
     log.info(f"  ✓ Live quotes refreshed: {count} stocks")
     log_job("dhan_live_quotes", "SUCCESS", count)
     return {"status": "SUCCESS", "rows": count}
@@ -1287,6 +1292,7 @@ def sync_dhan_portfolio(trade_date: date = None) -> dict:
         record_portfolio_sync(trade_date, "dhan", "FAILED", error=str(e))
         return {"status": "FAILED", "error": str(e)}
 
+    conn = None
     try:
         resp = dhan.get_holdings()
         if not resp or resp.get("status") == "failure":
@@ -1359,6 +1365,12 @@ def sync_dhan_portfolio(trade_date: date = None) -> dict:
         return {"status": "SUCCESS", "rows": count, "total_value": total_val}
 
     except Exception as e:
+        if conn is not None:
+            # Roll a half-written batch back now: left to the garbage collector (sqlite3 connections
+            # sit in a reference cycle), its write lock would make the FAILED row below -- and
+            # run_job's own row and failure alert (alerts.telegram.notify) -- wait out the busy
+            # timeout and be lost.
+            conn.close()
         log.error(f"  Portfolio sync failed: {e}")
         record_portfolio_sync(trade_date, "dhan", "FAILED", error=str(e))
         return {"status": "FAILED", "error": str(e)}

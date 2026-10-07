@@ -192,6 +192,11 @@ def run_due(on: date | None = None, place=None) -> dict:
             elif qty <= 0:
                 status, detail = "SKIPPED_TOO_SMALL", f"Rs.{p['amount']:,.0f} buys 0 shares at Rs.{px:,.2f}"
             else:
+                # The order path (orders.broker: order_log, the paper fill, log_job, the risk alert
+                # via alerts.telegram.notify) writes on connections of its own; an earlier plan's
+                # rows still uncommitted here would hold the write lock it waits for -- the whole
+                # busy timeout, then 'database is locked'. Each earlier plan's rows are complete.
+                conn.commit()
                 res = place(p["symbol"], int(qty), f"sip:{p['plan_id']}:{d}") or {}
                 ost, oid = res.get("status"), res.get("order_id")
                 status = "PLACED" if ost == "PLACED" else "FAILED"
