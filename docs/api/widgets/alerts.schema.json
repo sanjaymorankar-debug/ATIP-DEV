@@ -7,10 +7,90 @@
       "type": [
         "array",
         "object"
-      ]
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "kind",
+          "detail"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
     },
     "alerts": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "telegram_sent": {
+            "type": "integer"
+          },
+          "telegram_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "recovered_today": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "last_at": {
+            "type": "string"
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "problems": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
     }
   }
 }
