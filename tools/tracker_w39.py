@@ -95,10 +95,12 @@ NEW_ROWS = [
     _row("PERF-001-03", "Wealth / Performance", "Executable Return", "Realistic execution incl. slippage and "
          "liquidity", SRC_PERF, "P0", IMPL, 85,
          "next-session open x (1 + slippage bps), NSE cost model both sides, ADV cap (NOT_EXECUTABLE); W39: "
-         "liquidity UNKNOWN flag when volume is missing, exit liquidity check",
-         "Parity with the OMS paper fill model is not automated (different fill rule by design); optional "
-         "impact-based slippage (execution/impact.py)", "wealth/perf/model.py",
-         "test_executable_applies_slippage_costs_and_the_liquidity_cap"),
+         "liquidity UNKNOWN flag when volume is missing, exit liquidity check, optional square-root market-impact "
+         "slippage (slippage_model=impact: half spread + Y x sigma x sqrt(Q/ADV), inputs up to the signal date)",
+         "Parity with the OMS paper fill model is not automated (different fill rule by design)",
+         "wealth/perf/model.py; execution/impact.py",
+         "test_executable_applies_slippage_costs_and_the_liquidity_cap; "
+         "test_impact_slippage_uses_the_square_root_estimate_known_at_the_signal"),
     _row("PERF-001-04", "Wealth / Performance", "Actual Investor Return", "Actual quantities, prices, cash flows, "
          "exits; ledger-derived P&L / XIRR", SRC_PERF, "P0", IMPL, 90,
          "engine.run_actual: average cost, TWR, XIRR, PME; W39: realized P&L / fees / dividends for the period and "
@@ -116,10 +118,12 @@ NEW_ROWS = [
          "reconcile exactly to the ledger", SRC_PERF, "P0", IMPL, 90,
          "W39: fees per kind for the period (dividend TDS and capped-sell fees counted), independent SUM over "
          "perf_ledger reconciliation, recorded components (fee_breakdown), itemised NSE statutory estimate for "
-         "trades without a breakdown, slippage vs reference price", "Broker contract-note import with "
-                                                                   "component split (PF-12 imports carry totals)",
-         "wealth/perf/engine.py", "test_costs_reconcile_with_dividend_tax_fee_rows_and_a_capped_sell; "
-                                  "test_statutory_estimate_itemises_paper_brokerage_only_trades"),
+         "trades without a breakdown, slippage vs reference price; broker imports carry the contract-note split "
+         "(brokerage / STT / exchange / SEBI / stamp / GST / DP) per trade, and a contract-note charges file "
+         "becomes FEE rows (no double count)", "Independent QA with real broker contract notes",
+         "wealth/perf/engine.py; portfolio/imports.py",
+         "test_costs_reconcile_with_dividend_tax_fee_rows_and_a_capped_sell; "
+         "test_statutory_estimate_itemises_paper_brokerage_only_trades; tests/test_w39_contract_note_fees.py"),
     _row("PERF-001-07", "Wealth / Performance", "Position Attribution", "Entry / exit timing, sizing, averaging; "
          "variance from model decomposed", SRC_PERF, "P0", IMPL, 90,
          "entry timing + averaging + exit timing + costs = actual - model P&L on the same quantity; W39: + sizing "
@@ -159,9 +163,11 @@ NEW_ROWS = [
     _row("PERF-001-13", "Wealth / Performance", "Report Export", "Downloadable report for period / portfolio / "
          "strategy; matches dashboard", SRC_PERF, "P2", IMPL, 90,
          "CSV (every section, copied not recomputed) and JSON of a saved report; W39: preview export route, "
-         "strategy filter (ACTUAL limited to one strategy's trades)", "PDF export not built (CSV / JSON only)",
-         "wealth/perf/report.py; dashboard/wealth_routes.py",
-         "test_export_carries_every_section_with_the_reports_numbers; test_strategy_filter_limits_the_actual_portfolio"),
+         "strategy filter (ACTUAL limited to one strategy's trades), printable HTML report (A4, Print / Save as PDF) "
+         "rendered from the same sections as the CSV", "Owner UAT of the printed layout",
+         "wealth/perf/report.py; dashboard/wealth_routes.py; dashboard/wealth_ui/performance_tab.py",
+         "test_export_carries_every_section_with_the_reports_numbers; test_strategy_filter_limits_the_actual_portfolio; "
+         "test_printable_html_has_the_csv_sections_and_numbers_and_escapes_text"),
     _row("PERF-001-14", "Wealth / Performance", "Regression & Edge Cases", "Corporate actions, partial fills, "
          "averaging, cash flows, missing data, holidays", SRC_PERF, "P0", IMPL, 90,
          "edge-case suite: split, bonus, partial fill, averaging, intraday round trip, OPENING, cash, holiday, "
@@ -206,9 +212,11 @@ SRC_MAP = "Feature map (ATIP_Global_Algo_Trading_Features_and_Formulas)"
 NEW_ROWS += [
     _row("RK-21", "Risk Management", "Pre-trade price band + gross leverage", "Position, notional, leverage, "
          "price-band, liquidity constraints (central risk gateway)", SRC_MAP, "P0", IMPL, 85,
-         "W39: price band vs LTP / last close in the W4 risk engine and the manual / rule path; paper futures "
-         "notional in gross exposure; gross-exposure limit on the manual path",
-         "NSE circuit limits are not stored by any feed yet", "execution/risk_engine.py; orders/risk.py",
+         "W39: price band vs LTP / last close in the W4 risk engine and the manual / rule path; NSE circuit limits "
+         "(Dhan quote upper / lower circuit stored in live_quotes) refuse a price outside today's circuit; paper "
+         "futures notional in gross exposure; gross-exposure limit on the manual path",
+         "Independent QA; circuit fields confirmed against a live Dhan quote",
+         "execution/risk_engine.py; orders/risk.py; data/dhan.py",
          "tests/test_w39_risk_gateway.py"),
     _row("AF-09", "Alpha/Factor Engine", "Time-series momentum + vol-adjusted 12-1", "sign(return_n) x vol "
          "scaling; rank(12-1M) volatility-adjusted", SRC_MAP, "P1", IMPL, 85,
@@ -216,8 +224,9 @@ NEW_ROWS += [
                                                                                   "score use", "quant/factors.py",
          "tests/test_w39_quant_portfolio.py"),
     _row("PF-14", "Portfolio", "Mean-variance with turnover penalty", "max mu'w - lambda w'Sw - kappa turnover",
-         SRC_MAP, "P1", IMPL, 85, "W39: turnover_penalty + current_weights in portfolio/optimize (proximal step); "
-                                  "kappa = 0 reproduces the old solver", "Independent QA", "portfolio/optimize.py",
+         SRC_MAP, "P1", IMPL, 85, "W39: turnover_penalty + current_weights in portfolio/optimize (exact proximal step inside the "
+                                  "budget / sector-cap shifts); kappa = 0 reproduces the old solver; route falls back "
+                                  "to the book's weights", "Independent QA", "portfolio/optimize.py",
          "tests/test_w39_quant_portfolio.py"),
     _row("PF-15", "Portfolio", "Factor neutrality", "Minimise unwanted factor exposure subject to alpha", SRC_MAP,
          "P2", IMPL, 85, "W39: normalize.apply neutralize spec (OLS residual, sector dummies); optimiser neutral_to "
@@ -246,7 +255,7 @@ NEW_ROWS += [
 ]
 
 # rows still in development when the files are generated: shown IN PROGRESS until merged
-IN_DEVELOPMENT = {"AF-09", "PF-14", "PF-15"}
+IN_DEVELOPMENT: set = set()
 for _r in NEW_ROWS:
     if _r["ID"] in IN_DEVELOPMENT:
         _r.update({"Status": "IN PROGRESS", "Completion %": "60", "Completed On": "",
@@ -313,6 +322,35 @@ UPDATES = {
                 "W33 section 5) and record acceptance"},
     "QA-001": {"Next Action / Missing Work": "Independent testing (ChatGPT) per W33 handoff; the development suite "
                "now runs 600+ tests green (W39)"},
+    "TA-05": {"Current Implementation": "52-week 23.6/38.2/50/61.8 levels; W39: swing-anchored Fibonacci (last two "
+              "5-bar pivots in 120 sessions, 38.2 / 50 / 61.8 levels, nearest level and distance) in technical_ext, "
+              "shown in the stock panel", "Next Action / Missing Work": "Independent QA",
+              "Key Files": "data/technical.py; data/technical_ext.py", "Evidence": "tests/test_w39_technical_rs_fib.py"},
+    "TA-08": {"Current Implementation": "20-day RS with date-matched benchmark; W39 (TA-08b): 63 / 126-session RS vs "
+              "the stock's sector index (NSE industry -> NIFTYIT / PHARMA / AUTO / FMCG / METAL / REALTY / ENERGY / "
+              "BANK / PSUBANK, NIFTY50 fallback flagged) and percentile within the industry; display only",
+              "Next Action / Missing Work": "Independent QA; IC research before any score use",
+              "Key Files": "scores/engine.py; data/technical_ext.py", "Evidence": "tests/test_w39_technical_rs_fib.py"},
+    "PF-10": {"Notes+": "W39 fix: the sector-cap projection (Dykstra, stopped early) could return weights over the "
+              "sector cap (29 of 294 random cases, up to 48 points); replaced by the exact KKT projection "
+              "(test_projection_never_breaks_a_sector_cap_and_is_the_nearest_feasible_point)"},
+    "PF-12": {"Notes+": "W39 (PERF-001-06): contract-note charge columns stored per trade as fee_breakdown; a "
+              "charges-only file becomes FEE rows (tests/test_w39_contract_note_fees.py)"},
+    "API-03": {"Completion %": "90", "Current Implementation": "API keys with scopes + per-key limits; /api/v1 alias; "
+               "v1 OpenAPI contract written by python -m ops api-docs; W39: deprecation policy "
+               "(docs/API_VERSIONING_POLICY.md) enforced by a registry -- Deprecation / Sunset / Link headers, "
+               "deprecated in OpenAPI, 410 GONE after sunset, >= 180 days notice validated",
+               "Next Action / Missing Work": "Independent QA",
+               "Key Files": "enterprise/public_api.py; ops/http.py; ops/__main__.py; docs/API_VERSIONING_POLICY.md",
+               "Evidence": "test_a_deprecated_v1_resource_warns_then_answers_410_after_sunset"},
+    "ENT-12": {"Next Action / Missing Work": "Independent QA. Tax report content is NOT built: Tax is excluded by the "
+               "owner (deployment tracker, Scope Exclusions sheet); revisit only if the owner re-scopes it",
+               "Notes+": "W39 check: the remaining gap (tax report) is owner-excluded scope, not open work; W39 adds the "
+               "printable performance report (PERF-001-13)"},
+    "PF-08": {"Next Action / Missing Work": "Independent QA. Trade-based attribution of the LIVE book now exists in the "
+              "wealth performance report (PERF-001-07 / -09 / -10 on portfolio LIVE: broker_sync + PF-12 imports)"},
+    "PF-11": {"Next Action / Missing Work": "Independent QA. LIVE XIRR now comes from the wealth performance ledger "
+              "(PERF-001-04, portfolio LIVE: Dhan broker_sync + PF-12 broker imports)"},
     "DP-21": {"Notes+": "W39 check: AMFI mutual-fund NAV ingestion (owner note 'amfi for MF data') is this row -- "
               "mf_nav daily at 23:30; MF remains outside the wealth-track mitigation scope (owner Scope Exclusions)"},
     "ENT-11": {"Notes+": "W39 check: ad-hoc intraday price alerts (Zerodha / Dhan parity) are covered here "

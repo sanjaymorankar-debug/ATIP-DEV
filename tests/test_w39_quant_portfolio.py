@@ -401,3 +401,47 @@ def test_projection_never_breaks_a_sector_cap_and_is_the_nearest_feasible_point(
             x = (1 - a) * w + a * u
             assert ((x - v) ** 2).sum() >= ((w - v) ** 2).sum() - 1e-12
     assert checked > 250
+
+
+def test_engine_neutralizes_a_factor_on_another_factors_raw_values(temp_db, monkeypatch):
+    """PF-15 through the engine: a spec naming a numeric exposure (beta_250) gets that date's raw values,
+    computed on demand; an unknown exposure is reported per factor instead of breaking the run."""
+    import dataclasses
+    from backtest.data import is_trading_day
+    from db.schema import get_connection, init_db
+    from quant import engine as E
+    from tests._wealth_seed import sessions
+    init_db()
+    conn = get_connection()
+    try:
+        ds = [d for d in sessions(330) if is_trading_day(d)]
+        rng = np.random.default_rng(15)
+        mkt = rng.normal(0.0004, 0.01, len(ds) - 1)
+        syms = [f"S{k}" for k in range(8)]
+        for s, path in [("NIFTY50", _path(mkt))] + [
+                (s, _path(0.4 * (k + 1) * mkt / 2 + rng.normal(0.0005 * (k - 4), 0.012, len(ds) - 1)))
+                for k, s in enumerate(syms)]:
+            for d, c in zip(ds, path):
+                conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume) VALUES (?,?,?,?,?,?,?)",
+                             (s, str(d), c, c, c, c, 1_000_000))
+        conn.commit()
+        fd = F.get("mom_12_1_vol_adj")
+        monkeypatch.setitem(F.REGISTRY, fd.factor_id, dataclasses.replace(
+            fd, normalization={"method": "raw", "winsorize": 0, "neutralize": ["beta_250"]}))
+        out = E.compute(conn, ds[-1], ["mom_12_1_vol_adj"], universe=syms)
+        assert out["factors"]["mom_12_1_vol_adj"]["status"] == "OK"
+        raw = E.raw_factors(conn, ds[-1], ["mom_12_1_vol_adj", "beta_250"], syms)
+        y = np.array([raw["mom_12_1_vol_adj"][s] for s in syms])
+        X = np.column_stack([np.ones(len(syms)), [raw["beta_250"][s] for s in syms]])
+        resid = y - X @ np.linalg.lstsq(X, y, rcond=None)[0]
+        norm = dict(conn.execute("SELECT symbol, norm FROM quant_factor_score WHERE as_of=? AND factor_key=?",
+                                 (str(ds[-1]), fd.key)).fetchall())
+        assert [norm[s] for s in syms] == pytest.approx(list(resid), abs=1e-9)
+        assert abs(float(np.dot(resid, X[:, 1]))) < 1e-9                    # orthogonal to beta
+        monkeypatch.setitem(F.REGISTRY, fd.factor_id, dataclasses.replace(
+            fd, normalization={"method": "raw", "neutralize": ["no_such_factor"]}))
+        bad = E.compute(conn, ds[-1], ["mom_12_1_vol_adj"], universe=syms, store=False)
+        assert bad["factors"]["mom_12_1_vol_adj"]["status"] == "NORMALIZATION_ERROR"
+        assert "no_such_factor" in bad["factors"]["mom_12_1_vol_adj"]["error"]
+    finally:
+        conn.close()
