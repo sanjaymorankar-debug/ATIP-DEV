@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running application (402 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-07 08:47 by `python -m ops api-docs` from the running application (511 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -61,7 +61,9 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | DELETE | `/api/account/sessions/{session_id}` | workspace:write |  | `session_id` |  |
 | GET | `/api/account/vault` | workspace:write |  |  | DELETE /api/account/vault/{credential_id} |
 | POST | `/api/account/vault` | workspace:write |  |  | DELETE /api/account/vault/{credential_id} |
+| GET | `/api/account/vault/expiring` | workspace:write |  | `hours`=12 | ?hours=12 |
 | DELETE | `/api/account/vault/{credential_id}` | workspace:write |  | `credential_id` |  |
+| POST | `/api/account/vault/{credential_id}/verify` | workspace:write | token | `credential_id` | read-only connection check |
 | GET | `/api/account/watchlists` | workspace:write |  |  |  |
 | POST | `/api/account/watchlists` | workspace:write |  |  |  |
 | DELETE | `/api/account/watchlists/{item_id}` | workspace:write |  | `item_id` |  |
@@ -108,6 +110,15 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/alerts` | dashboard:read |  |  |  |
 
+## `/api/assistant`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/assistant/ask` | research:run | token |  | {question, conversation_id?} |
+| GET | `/api/assistant/conversations` | dashboard:read |  | `limit`=30 | ?limit |
+| GET | `/api/assistant/conversations/{cid}` | dashboard:read |  | `cid` |  |
+| GET | `/api/assistant/status` | dashboard:read |  |  | settings (no secrets) + today's spend |
+
 ## `/api/audit`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -139,6 +150,7 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/backtests` | research:read |  | `limit`=50, `strategy_id` |  |
 | POST | `/api/backtests` | research:run | token |  | Body: a backtest request (backtest/service.py). Returns run_id; runs in the background. |
+| POST | `/api/backtests/event-driven` | research:run | token |  | a backtest request + {"event_driven": {...}}    BT-17 |
 | POST | `/api/backtests/optimize` | research:run | token |  | Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}. |
 | POST | `/api/backtests/robustness` | research:run | token |  | Body: {request (start/end), n_subsamples?, seed?}. |
 | POST | `/api/backtests/sensitivity` | research:run | token |  | Body: {request, space, select_by?, steps?, pairwise?}. |
@@ -161,6 +173,56 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` |  |
 | POST | `/api/billing/plan` | admin:billing |  |  |  |
 
+## `/api/brokers`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/brokers` | portfolio:read |  |  | supported brokers, credential fields, live status |
+| GET | `/api/brokers/consolidated` | portfolio:read |  |  | holdings across the caller's brokers |
+| POST | `/api/brokers/payload-preview` | portfolio:manage | token |  | {order_id, broker} |
+| GET | `/api/brokers/{broker}/snapshot` | portfolio:read |  | `broker` | holdings + positions at one broker (read-only) |
+
+## `/api/compliance`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/compliance` | audit:read |  |  | latest run (checks + evidence) and run history |
+| GET | `/api/compliance/dsr` | audit:read |  |  | open data-subject requests against the SLA |
+| GET | `/api/compliance/inventory` | audit:read |  |  | every table: class / personal / retention (gaps = null) |
+| GET | `/api/compliance/regulatory` | audit:read |  |  | the ENT-14 register |
+| POST | `/api/compliance/regulatory/{item_id}` | system:operate | token | `item_id` | {status, reviewer, reference, note} |
+| POST | `/api/compliance/run` | system:operate | token |  | run every check now |
+
+## `/api/data`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/data/alt` | dashboard:read |  |  | sources, health                                   AD-01/02 |
+| POST | `/api/data/alt/{source_id}/run` | research:run | token | `source_id` | {as_of?} |
+| GET | `/api/data/alt/{source_id}/{metric}` | dashboard:read |  | `source_id`, `metric`, `entity`, `start`, `end`, `as_of` | ?entity&start&end&as_of |
+| GET | `/api/data/assets` | dashboard:read |  |  | catalogue (assets + MF)                           DP-21 |
+| POST | `/api/data/assets/refresh` | research:run | token |  |  |
+| GET | `/api/data/assets/{asset_class}/{symbol}` | dashboard:read |  | `asset_class`, `symbol`, `start`, `end` | ?start&end |
+| GET | `/api/data/depth` | dashboard:read |  | `symbol`, `limit`=200 | ?symbol&limit=200  latest order-book snapshots     DP-05 |
+| GET | `/api/data/depth/features` | dashboard:read |  | `symbol`, `day` | ?symbol&day |
+| POST | `/api/data/depth/snapshot` | research:run | token |  | {symbols?} |
+| GET | `/api/data/fo/chain` | dashboard:read |  | `symbol`, `expiry`, `ts` | ?symbol&expiry&ts |
+| POST | `/api/data/fo/chain/snapshot` | research:run | token |  | {symbol} |
+| GET | `/api/data/fo/contracts` | dashboard:read |  | `symbol`, `date`, `expiry` | ?symbol&date&expiry                               DP-08 |
+| POST | `/api/data/history/backfill` | research:run | token |  | {symbols?, max?, years?} one budgeted backfill pass |
+| GET | `/api/data/history/coverage` | dashboard:read |  |  | how much of the universe reaches back 7 years |
+| GET | `/api/data/lake` | dashboard:read |  |  | datasets, partitions, rows, bytes, write format   DP-22 |
+| POST | `/api/data/lake/archive` | research:run | token |  | {table, date_col, start?, end?, knowledge_col?} |
+| POST | `/api/data/lake/verify` | research:run | token |  | re-hash every file against the manifest |
+| GET | `/api/data/macro` | dashboard:read |  |  | latest point-in-time snapshot + calendar           DP-14 |
+| POST | `/api/data/macro/calendar` | research:run | token |  | {event_date, event, importance?, series_id?, note?} |
+| POST | `/api/data/macro/refresh` | research:run | token |  |  |
+| GET | `/api/data/macro/{series_id}` | dashboard:read |  | `series_id`, `as_of` | ?as_of |
+| GET | `/api/data/mf` | dashboard:read |  | `q`, `limit`=50 | ?q=&limit=50  latest NAVs, name search |
+| GET | `/api/data/ticks` | dashboard:read |  | `day`, `symbol`, `limit`=2000 | ?day&symbol&limit=2000 |
+| POST | `/api/data/ticks/minute-bars` | research:run | token |  | {day?}  rebuild 1-min bars from ticks |
+| GET | `/api/data/ticks/status` | dashboard:read |  | `days`=10 | ?days=10  tick capture per day                    DP-04 |
+
 ## `/api/data-quality`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -177,9 +239,28 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/execution/algos` | execution:read |  | `status`, `limit`=100 | ?status=&limit=        algo parents            EX-11 |
+| POST | `/api/execution/algos` | execution:trade | token |  | {risk_decision_id, algo, params?}  start one by hand |
+| POST | `/api/execution/algos/tick` | execution:trade | token |  | work every parent now (in session) |
+| GET | `/api/execution/algos/{pid}` | execution:read |  | `pid` | parent, children, execution quality |
+| POST | `/api/execution/algos/{pid}/cancel` | execution:trade | token | `pid` | {reason?} |
+| POST | `/api/execution/algos/{pid}/resume` | execution:trade | token | `pid` | {reason?} |
 | GET | `/api/execution/analytics` | execution:read |  | `days`=30, `start`, `end` | ?days=30 \| start&end                                     EX-10 |
+| GET | `/api/execution/assets` | execution:read |  |  | asset classes and their execution / risk paths |
 | GET | `/api/execution/broker-health` | execution:read |  |  | latest + 24 h history                                    BR-06 |
 | POST | `/api/execution/broker-health/check` | execution:trade | token |  | {network?: true} |
+| GET | `/api/execution/events` | execution:read |  | `topic`, `key`, `limit`=200 | ?topic&key&limit   recent OMS events           EX-16 |
+| POST | `/api/execution/events/dispatch` | execution:trade | token |  | deliver pending events now |
+| GET | `/api/execution/events/stats` | execution:read |  | `hours`=24 | ?hours=24  by topic, dead letters, handlers |
+| GET | `/api/execution/impact` | execution:read |  | `symbol`, `quantity`, `side`=BUY, `price` | ?symbol&quantity&side=BUY&price=             EX-12 |
+| POST | `/api/execution/impact/calibrate` | execution:trade | token |  | refit Y from LIVE fills |
+| GET | `/api/execution/latency` | execution:read |  | `minutes`=1440 | ?minutes=1440  per-stage summary               EX-15 |
+| POST | `/api/execution/latency/flush` | execution:trade | token |  |  |
+| GET | `/api/execution/latency/{stage}` | execution:read |  | `stage`, `minutes`=1440 | ?minutes=1440  per-minute series |
+| GET | `/api/execution/options/book` | execution:read |  |  | positions (marked), cash, premium held, recent trades |
+| POST | `/api/execution/options/check` | execution:trade | token |  | {underlying, expiry, strike, option_type, side, lots} (no fill) |
+| POST | `/api/execution/options/order` | execution:trade | token |  | same body: risk-checked paper fill |
+| POST | `/api/execution/options/settle` | execution:trade | token |  | expiry settlement now |
 | POST | `/api/execution/paper-match` | execution:trade | token |  | fill resting paper orders that have crossed              EX-02 |
 | GET | `/api/execution/reconciliation` | execution:read |  | `limit`=5 | ?limit=5                                                 BR-05 |
 | POST | `/api/execution/reconciliation/run` | execution:trade | token |  |  |
@@ -194,6 +275,12 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/formulas` | strategy:read |  |  | ; GET /api/formulas/{weights_hash} |
 | GET | `/api/formulas/{weights_hash}` | strategy:read |  | `weights_hash` |  |
+
+## `/api/health`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/health/recover` | system:operate | token |  | Re-run every missed / failed job now (pipeline/recover.py) and report what is still open. |
 
 ## `/api/lists`
 
@@ -241,6 +328,8 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | GET | `/api/ml/datasets` | ml:read |  |  | POST (token) {spec..., build?: false} |
 | POST | `/api/ml/datasets` | ml:write | token |  | Body = a DatasetSpec (+ build: true to build and snapshot it in the background). |
 | GET | `/api/ml/datasets/{did}` | ml:read |  | `did` |  |
+| POST | `/api/ml/deep/benefit-check` | ml:write | token |  | {dataset_spec, params?, n_windows?} |
+| GET | `/api/ml/deep/benefit-checks` | ml:read |  | `limit`=50 |  |
 | GET | `/api/ml/explain/{symbol}` | ml:read |  | `symbol`, `as_of`, `q` | ?as_of&q= -- read-only "why" facts |
 | GET | `/api/ml/feature-sets` | ml:read |  |  | POST (token) {name, version, features, description} |
 | POST | `/api/ml/feature-sets` | ml:write | token |  |  |
@@ -263,6 +352,9 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | GET | `/api/ml/predictions` | ml:read |  | `model_id`, `symbol`, `as_of`, `limit`=200 | filters; GET /api/ml/predictions/{id} |
 | GET | `/api/ml/predictions/{pid}` | ml:read |  | `pid` |  |
 | GET | `/api/ml/regime` | ml:read |  | `as_of` | deterministic vs configured provider for a date |
+| GET | `/api/ml/rl/runs` | ml:read |  | `limit`=30 | ; GET /api/ml/rl/runs/{run_id} |
+| POST | `/api/ml/rl/runs` | ml:write | token |  | {symbols, start, end, split, params?} |
+| GET | `/api/ml/rl/runs/{run_id}` | ml:read |  | `run_id` |  |
 | GET | `/api/ml/status` | ml:read |  |  | config, model families available, counts |
 | GET | `/api/ml/training-runs` | ml:read |  | `model_id`, `limit`=100 |  |
 | GET | `/api/ml/validation` | ml:read |  |  | reports ; GET /api/ml/validation/{id} |
@@ -271,14 +363,24 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | GET | `/api/ml/validation/{rid}/selection` | ml:read |  | `rid`, `min_stability`=0.6 |  |
 | POST | `/api/ml/validation/{rid}/selection` | ml:write | token | `rid` |  |
 
+## `/api/mobile`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/mobile/summary` | dashboard:read |  |  |  |
+
 ## `/api/news`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/news` | dashboard:read |  |  |  |
 | GET | `/api/news/ai-usage` | dashboard:read |  | `days`=7 | ?days=7  AI requests, tokens, cost, the daily cap |
+| GET | `/api/news/announcements` | dashboard:read |  | `symbol`, `event_type`, `days`=7, `n`=100 | ?symbol=&event_type=&days=7&n=100 |
+| POST | `/api/news/announcements/run` | research:run | token |  | (token) fetch today's announcements now; body {days?, deep?} |
+| GET | `/api/news/sources` | dashboard:read |  |  | measured source weights + feed status |
 | GET | `/api/news/summary` | dashboard:read |  |  | latest market brief (Claude or rule-based, labelled) |
 | POST | `/api/news/summary` | system:operate | token |  | (token) regenerate now; body {hours?} |
+| GET | `/api/news/symbol-scores` | dashboard:read |  | `date`, `n`=50 | ?date=&n=50  weighted news score per stock (50 = neutral) |
 
 ## `/api/notifications`
 
@@ -329,6 +431,15 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | POST | `/api/ops/webhooks` | system:operate | token |  |  |
 | POST | `/api/ops/webhooks/deliveries/{delivery_id}/requeue` | system:operate | token | `delivery_id` |  |
 
+## `/api/options`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/options/analyse` | research:run | token |  | {symbol?, spot, legs, lot_size?, target_date?} |
+| POST | `/api/options/build` | research:run | token |  | {template, symbol, expiry, spot?, width_steps?, lot_size?, target_date?} |
+| GET | `/api/options/chain/{symbol}` | dashboard:read |  | `symbol` | spot, lot size, expiries and strikes ATIP has stored |
+| GET | `/api/options/templates` | dashboard:read |  |  |  |
+
 ## `/api/orders`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -340,6 +451,12 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | DELETE | `/api/orders/{rule_id}` | orders:manage | token | `rule_id` |  |
 | POST | `/api/orders/{rule_id}/confirm` | orders:manage | token | `rule_id`, `force`=False |  |
 | POST | `/api/orders/{rule_id}/reject` | orders:manage | token | `rule_id` |  |
+
+## `/api/platform`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/platform/postgres` | system:operate |  |  | dialect scan: how far the code is from PostgreSQL |
 
 ## `/api/pnl`
 
@@ -354,12 +471,22 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/portfolio` | portfolio:read |  |  |  |
+| POST | `/api/portfolio/imports/commit` | portfolio:manage | token |  | {filename, content, broker?, as_of?, force?} |
+| POST | `/api/portfolio/imports/from-broker` | portfolio:manage | token |  | {broker} |
+| POST | `/api/portfolio/imports/preview` | portfolio:manage | token |  | {filename, content}   (CSV text) |
+| GET | `/api/portfolio/imports/runs` | portfolio:read |  |  |  |
 
 ## `/api/position-intents`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/position-intents` | execution:read |  | `status`, `as_of`, `strategy_id`, `limit`=200 | intents with authorization status |
+
+## `/api/privacy`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/privacy/policy` | public |  |  |  |
 
 ## `/api/quant`
 
@@ -420,6 +547,12 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/research/equity` | research:read |  | `rating`, `limit`=500 | latest rating per symbol |
+| POST | `/api/research/equity/run` | research:run | token |  | {symbols?} build and store reports for the universe |
+| GET | `/api/research/equity/{symbol}` | research:read |  | `symbol`, `fresh`=0 | today's stored report, else built now (?fresh=1 rebuilds) |
+| GET | `/api/research/equity/{symbol}/history` | research:read |  | `symbol` | rating / target calls and their outcomes |
+| POST | `/api/research/equity/{symbol}/refresh` | research:run | token | `symbol` | build and store today's report |
+| GET | `/api/research/hit-rate` | research:read |  |  | closed calls by rating |
 | GET | `/api/research/studies` | research:read |  | `status` | ?status ; POST (token) {title, hypothesis, method, tags, supersedes} |
 | POST | `/api/research/studies` | research:run | token |  |  |
 | GET | `/api/research/studies/{sid}` | research:read |  | `sid` |  |
@@ -455,6 +588,15 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/scans/intraday` | dashboard:read |  | `session`, `scan` | ?session=&scan=   latest run of the session |
 | POST | `/api/scans/intraday/run` | system:operate | token |  | (token) run the scans now |
+
+## `/api/schemas`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/schemas` | dashboard:read |  |  | ; GET /api/schemas/check-all ; GET /api/schemas/{widget} ; GET /api/schemas/{widget}/check |
+| GET | `/api/schemas/check-all` | dashboard:read |  |  |  |
+| GET | `/api/schemas/{widget}` | dashboard:read |  | `widget` |  |
+| GET | `/api/schemas/{widget}/check` | dashboard:read |  | `widget` |  |
 
 ## `/api/scores`
 
@@ -497,6 +639,15 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | POST | `/api/strategies/{sid}/retire` | strategy:lifecycle | token | `sid` |  |
 | POST | `/api/strategies/{sid}/versions` | strategy:write | token | `sid` |  |
 | GET | `/api/strategies/{sid}/versions/{version}` | strategy:read |  | `sid`, `version` |  |
+
+## `/api/strategy-builder`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/strategy-builder/compile` | research:run | token |  | {spec} -> W3 definition (validated) |
+| GET | `/api/strategy-builder/options` | dashboard:read |  |  | operators + feature catalogue |
+| POST | `/api/strategy-builder/preview` | research:run | token |  | {spec, symbols?} -> today's entry matches (read-only) |
+| POST | `/api/strategy-builder/save` | strategy:write | token |  | {spec} -> DRAFT strategy |
 
 ## `/api/strategy-decisions`
 
@@ -621,11 +772,41 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/app` | dashboard:read |  |  |  |
 
+## `/assistant`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/assistant` | dashboard:read |  |  | chat page |
+
 ## `/backtests`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/backtests` | dashboard:read |  |  |  |
+
+## `/brokers`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/brokers` | dashboard:read |  |  | the page (dashboard/w37_page.py) |
+
+## `/compliance`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/compliance` | dashboard:read |  |  | the page (dashboard/w38_page.py) |
+
+## `/data-platform`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/data-platform` | dashboard:read |  |  | the page (dashboard/w35_page.py) |
+
+## `/execution-lab`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/execution-lab` | dashboard:read |  |  | the page (dashboard/w34_page.py) |
 
 ## `/health`
 
@@ -636,11 +817,29 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 | GET | `/health/ready` | public |  |  |  |
 | GET | `/health/{component}` | dashboard:read |  | `component` |  |
 
+## `/icon.svg`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/icon.svg` | public |  |  |  |
+
 ## `/login`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/login` | public |  |  |  |
+
+## `/m`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/m` | dashboard:read |  |  | /api/mobile/summary                  mobile web app (installable PWA) |
+
+## `/manifest.webmanifest`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/manifest.webmanifest` | public |  |  | /sw.js  /icon.svg PWA shell |
 
 ## `/market`
 
@@ -654,17 +853,47 @@ Generated 2026-10-01 22:03 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/ml` | dashboard:read |  |  | page |
 
+## `/options-builder`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/options-builder` | dashboard:read |  |  | the strategy builder page |
+
+## `/privacy`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/privacy` | public |  |  | /api/privacy/policy            the privacy notice (DRAFT until legally approved) |
+
 ## `/quant`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/quant` | dashboard:read |  |  | page |
 
+## `/research`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/research` | dashboard:read |  |  | the research page (dashboard/w39_page.py) |
+
 ## `/strategies`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/strategies` | dashboard:read |  |  |  |
+
+## `/strategy-builder`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/strategy-builder` | dashboard:read |  |  | builder page |
+
+## `/sw.js`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/sw.js` | public |  |  |  |
 
 ## `/trading`
 

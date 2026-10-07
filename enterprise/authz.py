@@ -108,6 +108,9 @@ ROUTE_RULES = [
     ("POST", r"^/api/ml/models/[^/]+/(activate|pause|lifecycle)$", "ml:lifecycle"),
     ("GET", r"^/api/ml", "ml:read"),
     ("*", r"^/api/ml", "ml:write"),
+    # W39: the options builder only analyses (nothing is ordered); research reports and the history
+    # backfill are covered by the /api/research/ and /api/data/ rules below
+    ("POST", r"^/api/options/(build|analyse)$", "research:run"),
     # W22 research platform
     ("POST", r"^/api/quant/approvals/", "strategy:lifecycle"),
     ("POST", r"^/api/quant/research-report$", "research:run"),

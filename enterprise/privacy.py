@@ -65,7 +65,7 @@ INVENTORY = {
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),
     "oms_order": ("financial", False, "kept (trade audit)"),
     "strategy": ("research", False, "tenant lifetime"),
-    "prices_daily": ("market", False, "600 days (W1 purge)"),
+    "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

@@ -49,6 +49,8 @@ This guide is for the owner running ATIP day to day: what runs when, what each p
 | `/quant` | Factors, composites, pairs, experiments |
 | `/backtests` | Backtest runs and studies |
 | `/wealth` | Investor DNA, goals, allocation, rebalancing, performance |
+| `/research` | **W39** equity research report per stock (DCF with bull / base / bear cases, peer and own-history multiples, 12-month target, rating, thesis / risks / catalysts, peers, ownership, disclosures), latest ratings, hit rate of past calls, 7-year history coverage |
+| `/options-builder` | **W39** multi-leg options strategy builder: 16 templates, payoff at expiry and on a chosen date, breakevens, max profit / loss, probability of profit, net Greeks. Analysis only |
 | `/account`, `/admin` | Users, tenants, roles, plans (with `enterprise.enabled`) |
 
 ## 4. Switches (atip_data/config.json)

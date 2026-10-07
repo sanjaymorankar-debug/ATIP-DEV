@@ -69,6 +69,8 @@ _D += (" investor_profile investor_profile_version perf_ledger perf_ledger_void 
        "wealth_allocation_policy wealth_allocation_run wealth_classification wealth_cycle_run wealth_feedback "
        "wealth_goal wealth_goal_event wealth_goal_projection wealth_holding wealth_liability wealth_preference "
        "wealth_rebalance_plan wealth_snapshot")
+# W39: history backfill progress and research reports (owner research, shared reference data)
+_G += " prices_daily_backfill research_report"
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")
 # child -> (parent table, child column, parent column)

@@ -1476,6 +1476,34 @@ def _schedule_w29_jobs():
     schedule.every().day.at("16:20").do(_w37_options_settle)           # W37 (ENT-15)
     schedule.every().day.at("08:10").do(_w37_vault_expiry)             # W37 (ENT-06)
     schedule.every().day.at("07:50").do(_w38_compliance)              # W38 (SEC-05)
+    _schedule_w39_jobs()
+
+
+def _schedule_w39_jobs():
+    """W39: equity research reports after the evening scoring (research/report.py), and the
+    nightly, budgeted 7-year price-history backfill (data/history_backfill.py)."""
+    schedule.every().day.at("20:40").do(_w39_research_reports)
+    schedule.every().day.at("22:20").do(_w39_history_backfill)
+
+
+def _w39_research_reports():
+    if not is_market_day():
+        return
+    try:
+        from research.report import settings as rsettings, run_reports
+        if rsettings()["reports_enabled"]:
+            run_job("research_reports", run_reports)
+    except Exception as e:
+        log.warning(f"  Research reports: {e}")
+
+
+def _w39_history_backfill():
+    try:
+        from data.history_backfill import settings as hsettings, run_backfill
+        if hsettings()["backfill_enabled"]:
+            run_job("history_backfill", run_backfill)
+    except Exception as e:
+        log.warning(f"  History backfill: {e}")
 
 
 def _w38_compliance():
