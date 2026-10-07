@@ -288,7 +288,10 @@ NEW_ROWS += [
     _row("EX-20", "Execution", "Stock SIP (recurring buys, paper)", "Zerodha / Dhan parity: systematic stock SIP",
          SRC_NOTES, "P2", IMPL, 80, "W39: orders/sip.py -- monthly / weekly plans by amount or quantity, executed "
                                    "in PAPER by the scheduler, skipped on holidays, history kept",
-         "LIVE SIP stays behind the live-trading master switch", "orders/sip.py", "tests/test_w39_retail.py"),
+         "LIVE SIP stays behind the live-trading master switch", "orders/sip.py",
+         "tests/test_w39_retail.py; tests/test_w39_notify_transactions.py",
+         notes="W39 developed 2026-10-07 (PR #5); fix: with two or more plans due, the second order waited on "
+               "the first plan's uncommitted rows and failed -- the loop now commits before each placement"),
     _row("UX-01", "Dashboard", "Investor / Trader mode + progressive disclosure", "Consumer UX gap (owner Gap "
          "Analysis: 50% -> 90%)", "Owner deployment tracker: Gap Analysis", "P1", IMPL, 80,
          "Investor / Trader mode preference (W17 INT-001); W39: Simple / Detailed view on /wealth -- Simple hides "
@@ -384,6 +387,10 @@ UPDATES = {
                "Next Action / Missing Work": "Independent QA. Per-route schemas for the internal dashboard routes "
                "are not planned: /api/v1 is the published contract", "Evidence": "tests/test_w39_api_contract.py"},
     "SE-01": {"Notes+": "W39: KNOWN_DEFECTS W3-L4 resolved -- ADD / REDUCE decisions are simulated in backtests"},
+    "MON-03": {"Notes+": "W39 audit of every notify path: an alert sent while the caller held an uncommitted write "
+               "stalled 60 s and was lost -- fixed in SIP run_due, the wealth investor cycle, the Dhan live-quote "
+               "refresh and portfolio sync; log_job and the Dhan tick / index flushes now close on failure "
+               "(tests/test_w39_notify_transactions.py)"},
     "DP-21": {"Notes+": "W39 check: AMFI mutual-fund NAV ingestion (owner note 'amfi for MF data') is this row -- "
               "mf_nav daily at 23:30; MF remains outside the wealth-track mitigation scope (owner Scope Exclusions)"},
     "ENT-11": {"Notes+": "W39 check: ad-hoc intraday price alerts (Zerodha / Dhan parity) are covered here "
