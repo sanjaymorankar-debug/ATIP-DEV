@@ -9,6 +9,8 @@ db/schema.py.
                                            stamp / gst / dp / other, when the source gives it)
     history_backfill_run      DP-23  every long-history backfill run (data/history_backfill.py)
     history_backfill_symbol   DP-23  the date before which the broker has no bar for a symbol
+    ml_model_version (+ columns)  ML-18  code_version (git commit, +dirty) and lineage_json (dataset /
+                                         feature set / config / backtest links) of every trained version
 """
 
 W39_TABLES = {
@@ -25,4 +27,6 @@ W39_TABLES = {
 
 W39_COLUMNS = {
     "perf_ledger": {"entry_seq": "INTEGER", "order_ref": "TEXT", "signal_ref": "TEXT", "fee_breakdown": "TEXT"},
+    # ML-18 research-to-production lineage: the code a model version was trained with
+    "ml_model_version": {"code_version": "TEXT", "lineage_json": "TEXT"},
 }
