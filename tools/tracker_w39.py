@@ -320,8 +320,22 @@ UPDATES = {
                "(ENT-07); the PWA (/m) works today on a private network"},
     "UAT-001": {"Status": "BLOCKED", "Blocker / Input Required": "Owner: execute the UAT journeys (docs/W19_UAT_PLAN.md, "
                 "W33 section 5) and record acceptance"},
-    "QA-001": {"Next Action / Missing Work": "Independent testing (ChatGPT) per W33 handoff; the development suite "
-               "now runs 600+ tests green (W39)"},
+    "QA-001": {"Completion %": "85", "Current Implementation": "W18: 70-test wealth suite, security review, "
+               "performance. W33: static security review. W39: load / latency tool (tools/load_test.py, in-process "
+               "or against a running dashboard, targets from W18 / W33), Playwright browser smoke tests of every "
+               "page and tab, QA suite for untested modules; measured p95 145-184 ms over HTTP at 4-8 threads, "
+               "0 errors (docs/W39_QA_PERFORMANCE.md)",
+               "Next Action / Missing Work": "Independent testing (ChatGPT) per W33 handoff; the development suite "
+               "now runs 820+ tests green (W39); run tools/load_test.py against the production machine"},
+    "EX-01": {"Next Action / Missing Work": "Independent QA",
+              "Notes+": "W39: tests/test_w39_qa_suite.py -- validation, triggers, OCO / bracket lifecycle, trailing "
+              "stops through the paper broker; fix: bracket legs now anchor on the real fill price"},
+    "OPS-02": {"Next Action / Missing Work": "Independent QA; network download steps are exercised only live",
+               "Notes+": "W39: end-to-end test of run_postmarket on 260 seeded sessions (offline steps run for real) "
+               "in tests/test_w39_qa_suite.py"},
+    "QR-11": {"Notes+": "W39 QA finding (owner methodology call): a neighbouring parameter value with too few trades "
+              "is ignored, so 'stops trading one step away' is not flagged as a knife edge "
+              "(backtest/sensitivity.py)"},
     "TA-05": {"Current Implementation": "52-week 23.6/38.2/50/61.8 levels; W39: swing-anchored Fibonacci (last two "
               "5-bar pivots in 120 sessions, 38.2 / 50 / 61.8 levels, nearest level and distance) in technical_ext, "
               "shown in the stock panel", "Next Action / Missing Work": "Independent QA",
