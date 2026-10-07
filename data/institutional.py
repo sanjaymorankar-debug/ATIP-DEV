@@ -129,7 +129,7 @@ def sync_insider(conn, symbol, nse) -> int:
         else:
             qty, val = _f(r.get("secAcq")), _f(r.get("secVal"))
             low = mode.lower()
-            txn = "SELL" if ("sell" in low or "dispos" in low) else "BUY" if ("buy" in low or "acqui" in low or
+            txn = "SELL" if ("sell" in low or "sale" in low or "dispos" in low) else "BUY" if ("buy" in low or "acqui" in low or
                                                                               "market" in low) else "OTHER"
         did = r.get("did") or r.get("pid") or _id(symbol, r.get("acqName"), r.get("date"), qty)
         n += conn.execute(
