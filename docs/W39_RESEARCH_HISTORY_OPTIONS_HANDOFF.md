@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 118 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 128 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -118,7 +118,7 @@
 - Research model: rating, upside, fair value, moat proxy, quality score.
 - **Magic-formula rank:** Greenblatt's earnings-yield rank + ROCE rank, approximated with E/P; financials excluded.
 
-**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 99 fields in all.
+**Universe:** stocks with fundamentals, plus stocks with a technical snapshot in the last 10 days, so a chart-only screen also covers stocks without fundamentals. 104 fields in all.
 
 **Columns follow the query:** a technical-only query shows technical columns, a mixed one shows both, otherwise the fundamental set.
 
@@ -134,9 +134,9 @@
 - A stock missing a field never matches a condition on it.
 - Bad queries return a 400 that names the problem.
 
-**28 presets, in three groups:**
+**30 presets, in three groups:**
 - **Fundamental (12):** quality compounders, value, GARP, dividend, debt-free, promoters adding, undervalued by ATIP's model, strong near the 52-week high, turnaround, magic formula top 30, oversold quality, pledge risk.
-- **Technical (13):** 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
+- **Technical (15):** 52-week breakout on volume, golden cross, Supertrend buy, MACD bullish above the 200-DMA, RSI oversold reversal, Minervini trend template, squeeze fired, bullish candle at support, technical STRONG BUY, daily and weekly both bullish, breakout with the weekly trend, RS leaders (RS ≥ 80), pocket pivots, breakdowns, buyers queuing with a positive chart.
 - **Combined (3):** quality stock breaking out, value stock turning up, model BUY in an up-trend.
 
 **Saved screens:**
@@ -348,6 +348,36 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Today: a bracket after each scan shows its record in today's market: beat-the-Nifty % · median excess. It is grey under 10 signals, * when the record is across all markets. A tooltip explains it.
 - Track record: a card "Against the Nifty, by market and holding period" with a horizon selector. It holds an all-signals row, "Does confluence add?", and the per-scan table by gate.
 
+## WK-01..WK-02: weekly technical rating (`research/technicals.py`), Phase 2 item 3
+
+**Weekly bars:**
+- `weekly_bars(df, as_of)` resamples daily bars to weeks ending Friday: first open, highest high, lowest low, last close, summed volume.
+- It keeps **completed weeks only**: a week counts once its Friday is on or before `as_of`. So the weekly rating never changes mid-week, and a week cut short by a Friday holiday counts from the next Monday's run.
+
+**Rating:**
+- `weekly_rating` runs the same `indicators` + 11-vote `rating` on those bars. It reports the weekly rating, label, RSI and Supertrend direction.
+- It needs 35 completed weeks (`MIN_WEEKS`). With the 600-day signal lookback (~85 weeks), the 200-week votes are absent, and they stay absent until ~4 years are stored.
+
+**Agreement:**
+- `mtf_alignment`: BULL when daily and weekly are both BUY / STRONG_BUY, BEAR when both are SELL / STRONG_SELL, MIXED otherwise, None without both.
+- `weekly_agrees(direction, weekly_label)`: 1 / 0 / None.
+
+**Stored:**
+- `technical_snapshot` gains `tech_rating_w`, `tech_rating_w_label`, `rsi_14_w`, `supertrend_dir_w` and `mtf_alignment`.
+- `technical_signal` gains `weekly_agrees`.
+- Both are added to existing databases by `ALTER TABLE` (`W39_COLUMNS`).
+- `weekly_agrees` is deliberately **not** part of the confluence count.
+
+**Screener:**
+- Fields: `tech_rating_w`, `tech_rating_w_label`, `mtf_alignment`, `rsi_14_w`, `supertrend_dir_w`.
+- Presets: "Daily and weekly both bullish" and "Breakout with the weekly trend".
+- The technical default columns include the weekly label.
+
+**Signals:**
+- `/signals` Today has a Weekly column: the weekly label, with ✓ when it is on the signal's side.
+- Alerts note "weekly trend agrees".
+- `forward_stats` adds `by_weekly`: agrees / disagrees / no weekly rating × gate. It is shown on the Track record tab as "Does the weekly trend add?".
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -365,7 +395,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` and the forward columns (`ret_*`, `excess_*` at 5/20/60) to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days) and `market_cue` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60) and the weekly snapshot columns to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days) and `market_cue` (research, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
 - Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
@@ -383,6 +413,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_weekly.py` | 10 | weekly bars aggregate and keep only completed weeks; a Friday-holiday week counts from the next Monday; the weekly rating needs 35 weeks and follows the trend; agreement truth tables; snapshot fields; run stores weekly fields and tags signals; forward split by weekly agreement; screener fields and presets; old snapshot table gets the columns; page |
 | `tests/test_w39_track_record.py` | 6 | forward returns signed for direction and measured against the Nifty on the same sessions; filled as sessions pass, never rewritten; stats by scan × gate and by confluence band with n / beat % / median / mean; today's signals carry their scan's record in today's market; gate and status at birth for older signals; API and 400 |
 | `tests/test_w39_regime_gate.py` | 20 | distribution day needs the drop and higher volume; expiry after 25 sessions or a 5 % rally; pressure → correction → rally attempt → follow-through day with the count cleared; no follow-through before day 4 or without volume; a lower close resets the rally; a 10 % slide is a correction; a failed follow-through; 200-DMA and warm-up; replay is point-in-time; alignment truth table; market volume over stocks on both days; storage with Yahoo + market_health; signals tagged and against-market ones never alerted; old signals get their own day's gate; gate-effect only speaks beyond noise; old table gets the new columns; pulse; API, token and 400s; permissions |
 

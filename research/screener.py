@@ -2,13 +2,14 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        99 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        104 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
                   model (rating, upside, fair value, moat proxy, quality), a magic-formula rank
                   (Greenblatt, approximated with E/P and ROCE; financials excluded), the technical
-                  snapshot (research/tech_signals.py: rating, RS rating, RSI, MACD, ADX, Supertrend,
+                  snapshot (research/tech_signals.py: rating, weekly rating and daily / weekly agreement,
+                  RS rating, RSI, MACD, ADX, Supertrend,
                   patterns, signals and one scan_<key> 1/0 field per scan) and order-book pressure
                   (data/order_pressure.py)
     query         a small, safe query language -- no eval:
@@ -97,6 +98,14 @@ FIELDS = dict([
        desc="mean of moving-average and oscillator votes (research/technicals.py)"),
     _f("tech_rating_label", "Technical rating label", "Technical", kind="text",
        desc="STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL"),
+    _f("tech_rating_w", "Weekly technical rating", "Technical", "-1..1", aliases=("weekly_rating",),
+       desc="the same vote on completed weekly bars (35+ weeks of history needed)"),
+    _f("tech_rating_w_label", "Weekly rating label", "Technical", kind="text", aliases=("weekly_label",),
+       desc="STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL on weekly bars"),
+    _f("mtf_alignment", "Daily + weekly agreement", "Technical", kind="text", aliases=("mtf", "timeframes"),
+       desc="BULL: daily and weekly both BUY / STRONG_BUY; BEAR: both SELL / STRONG_SELL; else MIXED"),
+    _f("rsi_14_w", "Weekly RSI (14)", "Technical", "", aliases=("weekly_rsi",)),
+    _f("supertrend_dir_w", "Weekly Supertrend direction", "Technical", "+1/-1", aliases=("weekly_supertrend",)),
     _f("rs_rating", "RS rating (1-99)", "Technical", "", aliases=("rs_rank", "ibd_rs"),
        desc="IBD-style: weighted 3/6/9/12-month return, percentile across the universe; 99 = strongest"),
     _f("rsi_14", "RSI (14)", "Technical", "", aliases=("rsi",)),
@@ -146,7 +155,7 @@ for _k, _m in FIELDS.items():
 
 DEFAULT_COLUMNS = ["symbol", "industry", "price", "market_cap_cr", "pe", "roce_pct", "roe_pct", "debt_equity",
                    "revenue_growth_pct", "eps_growth_pct", "research_rating", "research_upside_pct", "atip_score"]
-TECH_COLUMNS = ["symbol", "industry", "price", "tech_rating_label", "rs_rating", "rsi_14", "adx_14",
+TECH_COLUMNS = ["symbol", "industry", "price", "tech_rating_label", "tech_rating_w_label", "rs_rating", "rsi_14", "adx_14",
                 "pct_from_sma200", "vol_ratio", "return_1m_pct", "signals"]
 COMBINED_COLUMNS = ["symbol", "industry", "price", "pe", "roce_pct", "research_rating", "research_upside_pct",
                     "tech_rating_label", "rs_rating", "rsi_14", "signals"]
@@ -218,6 +227,13 @@ PRESETS = [
     {"key": "t_strong_buy", "name": "Technical rating STRONG BUY", "group": "technical",
      "description": "Most moving-average and oscillator votes positive", "query": 'tech_rating_label = "STRONG_BUY"',
      "sort": "tech_rating"},
+    {"key": "t_mtf_bull", "name": "Daily and weekly both bullish", "group": "technical",
+     "description": "The technical rating is BUY or STRONG BUY on both daily and weekly bars",
+     "query": 'mtf_alignment = "BULL"', "sort": "tech_rating_w"},
+    {"key": "t_breakout_weekly", "name": "Breakout with the weekly trend", "group": "technical",
+     "description": "A 20-day or 52-week breakout while the daily and weekly ratings both point up",
+     "query": '(scan_donchian_20_breakout = 1 OR scan_high_52w_breakout = 1) AND mtf_alignment = "BULL"',
+     "sort": "rs_rating"},
     {"key": "t_rs_leaders", "name": "Relative-strength leaders", "group": "technical",
      "description": "RS rating 80+ (IBD-style) and above SMA 50", "query": "rs_rating >= 80 AND pct_from_sma50 > 0",
      "sort": "rs_rating"},
@@ -564,7 +580,8 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
         ts = tsnap.get(s) or {}
         for k in ("tech_rating", "tech_rating_label", "rs_rating", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
                   "pct_from_sma50", "pct_from_sma200", "bb_width_pct", "vol_ratio", "rs_63_pct", "return_1m_pct",
-                  "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals"):
+                  "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals", "tech_rating_w",
+                  "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment"):
             row[k] = ts.get(k)
         for k in ("rsi_14", "above_200dma"):
             if ts.get(k) is not None:

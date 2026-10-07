@@ -25,7 +25,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
 
 **What ATIP now does (this round):**
-- **Technical screener:** 30 end-of-day scans and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 13 technical and 3 combined presets.
+- **Technical screener:** 30 end-of-day scans and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 15 technical and 3 combined presets (Phase 2 added a weekly rating and the daily / weekly agreement).
 - **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
 - **Market pulse:**
   - a global-cue model fitted on ATIP's own data, with its walk-forward record;
@@ -187,12 +187,13 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 |---|---|---|---|
 | Indicators, 30 scans, 19 candle patterns, technical rating | `research/technicals.py` | — | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (99 fields, `CONTAINS`, 28 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (104 fields, `CONTAINS`, 30 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
 | Your open orders | `portfolio/open_orders.py` | `/market-pulse` | On page load |
 | Market regime gate (Phase 2, item 1) | `research/regime_gate.py` (`market_regime_gate`; `technical_signal.market_gate`, `alignment`) | `/market-pulse` (gate card and chart), `/signals` (banner, filter, "Does the market gate help?") | With the 20:30 signal run |
+| Weekly rating and daily / weekly agreement (Phase 2, item 3) | `research/technicals.py` `weekly_bars`, `weekly_rating`, `mtf_alignment`; `technical_snapshot.*_w`, `technical_signal.weekly_agrees` | `/signals` Weekly column and "Does the weekly trend add?"; screener fields and 2 presets | With the 20:30 signal run |
 | Track record by regime and horizon (Phase 2, item 2) | `research/tech_signals.py` `evaluate_forward`, `forward_stats` (`technical_signal.ret_*` / `excess_*` at 5/20/60, `market_status`) | `/signals`: a record next to each scan; Track record → "Against the Nifty, by market and holding period" | With the 20:30 signal run |
 
 **API:**
@@ -223,7 +224,7 @@ They use synthetic series with known answers. Examples:
 |---|---|---|
 | ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
 | ~~Track record by regime; forward returns at 5/20/60 days vs Nifty~~ | Tickeron, Danelfin | 2: **built** |
-| Weekly (and later 75-minute) technical rating | TradingView any-timeframe | 2 / 3 |
+| Weekly technical rating (**built**, Phase 2); 75-minute rating | TradingView any-timeframe | 3 (75-minute) |
 | Chart patterns: Darvas box, VCP, triangles, double bottom, head and shoulders, channels | Finviz, TrendSpider, StockEdge | 2 |
 | RS-line new high; SCTR-style rank within cap bucket | IBD, StockCharts | 2 |
 | Delivery-% spike scan (NSE `DELIV_PER`) | StockEdge, Chartink | 2 |
@@ -257,7 +258,11 @@ They use synthetic series with known answers. Examples:
    - Split by scan × the market gate it was born under, and by confluence band (0–1, 2–3, 4–6): how often it beat the Nifty, and its median and mean excess. Cells with fewer than 10 signals are marked too few.
    - Each of today's signals shows its scan's record in today's market (20 sessions), or across all markets when today's market has none yet. Alerts quote it once it has 10+ signals.
    - Measured from the signal day's close; a real entry at the next open differs by the opening gap.
-3. **Weekly technical rating** on resampled bars, with a multi-timeframe agreement flag (daily and weekly both BUY).
+3. **Weekly technical rating. Built** (`research/technicals.py`).
+   - The same 11-vote rating on weekly bars (weeks ending Friday), using **completed weeks only**: a week counts once its Friday has passed, so the rating does not change mid-week, and a week cut short by a Friday holiday counts from the next Monday.
+   - It needs 35+ weeks of history. The 200-week votes stay absent until ~4 years are stored.
+   - `mtf_alignment`: BULL when the daily and weekly ratings are both BUY / STRONG_BUY, BEAR when both are SELL / STRONG_SELL, else MIXED. It is a screener field, with presets "Daily and weekly both bullish" and "Breakout with the weekly trend".
+   - Each signal records `weekly_agrees` (the weekly rating on its side or not). This is kept out of the confluence count, so "Does the weekly trend add?" can test whether the agreement improves results.
 4. **Chart patterns** from swing pivots:
    - Darvas box and VCP (the volatility contraction pattern) first, as the easiest to define precisely;
    - then double bottom, ascending triangle, head and shoulders;

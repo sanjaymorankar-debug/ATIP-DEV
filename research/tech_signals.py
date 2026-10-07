@@ -29,7 +29,11 @@ actually work on Indian stocks.
     evaluate_forward     (Phase 2) each signal's return 5, 20 and 60 sessions after its close and that
                          return minus the Nifty's (excess), both signed for its direction, filled in as
                          the sessions pass -- independent of the stop / target outcome
-    forward_stats        per scan x the market gate at birth, and per confluence band: how often the signal
+                         plus WEEKLY_AGREES (Phase 2): 1 when the stock's weekly rating (completed weeks) is
+                         on the signal's side, 0 when not -- kept apart from confluence so the record can
+                         show whether the weekly trend adds anything
+    forward_stats        per scan x the market gate at birth, per confluence band and per weekly agreement:
+                         how often the signal
                          beat the Nifty and its median excess return at each horizon; today's signals carry
                          their scan's record in today's market
 
@@ -59,7 +63,8 @@ STOP_ATR, TARGET_ATR, HORIZON = 2.0, 4.0, 20
 
 SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
              "pct_from_sma50", "pct_from_sma200", "above_200dma", "bb_width_pct", "vol_ratio", "rs_63_pct",
-             "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals"]
+             "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals",
+             "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment"]
 
 DDL = (
     """CREATE TABLE IF NOT EXISTS technical_snapshot (
@@ -67,7 +72,8 @@ DDL = (
         rs_rating INTEGER, rsi_14 REAL, macd_hist REAL, adx_14 REAL, supertrend_dir INTEGER, atr_pct REAL, pct_from_sma50 REAL,
         pct_from_sma200 REAL, above_200dma INTEGER, bb_width_pct REAL, vol_ratio REAL, rs_63_pct REAL,
         return_1m_pct REAL, return_3m_pct REAL, patterns TEXT, signals TEXT, bull_signals INTEGER,
-        bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, PRIMARY KEY (symbol, date))""",
+        bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, tech_rating_w REAL, tech_rating_w_label TEXT,
+        rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, PRIMARY KEY (symbol, date))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_snapshot_date ON technical_snapshot(date)",
     """CREATE TABLE IF NOT EXISTS technical_signal (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
@@ -75,7 +81,7 @@ DDL = (
         confluence INTEGER, evidence_json TEXT, status TEXT NOT NULL DEFAULT 'OPEN', outcome_date DATE,
         outcome_price REAL, return_pct REAL, r_multiple REAL, created_at TIMESTAMP, market_gate TEXT, alignment TEXT,
         market_status TEXT, ret_5d REAL, excess_5d REAL, ret_20d REAL, excess_20d REAL, ret_60d REAL, excess_60d REAL,
-        UNIQUE (symbol, date, scan))""",
+        weekly_agrees INTEGER, UNIQUE (symbol, date, scan))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_signal_date ON technical_signal(date)",
     "CREATE INDEX IF NOT EXISTS idx_technical_signal_status ON technical_signal(status)",
 )
@@ -84,7 +90,10 @@ DDL = (
 HORIZONS = (5, 20, 60)                          # sessions after the signal for the forward record
 FWD_COLS = {f"{k}_{h}d": "REAL" for h in HORIZONS for k in ("ret", "excess")}
 # columns added after TA-06 shipped: the gate at birth (RG-03) and the forward record (Phase 2)
-ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT", "market_status": "TEXT", **FWD_COLS}}
+ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT", "market_status": "TEXT", **FWD_COLS,
+                                      "weekly_agrees": "INTEGER"},
+                 "technical_snapshot": {"tech_rating_w": "REAL", "tech_rating_w_label": "TEXT", "rsi_14_w": "REAL",
+                                        "supertrend_dir_w": "INTEGER", "mtf_alignment": "TEXT"}}   # Phase 2 item 3
 
 
 def ensure_tables(conn):
@@ -266,15 +275,17 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
                 g = (gate or {}).get("gate")
                 conn.execute("""INSERT INTO technical_signal (signal_id, symbol, date, scan, name, direction, reason,
                                     entry, stop, target, atr, horizon, confluence, evidence_json, status, created_at,
-                                    market_gate, alignment, market_status)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?,?,?)
+                                    market_gate, alignment, market_status, weekly_agrees)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?,?,?,?)
                                 ON CONFLICT(symbol, date, scan) DO UPDATE SET entry=excluded.entry,
                                     stop=excluded.stop, target=excluded.target, confluence=excluded.confluence,
                                     evidence_json=excluded.evidence_json, market_gate=excluded.market_gate,
-                                    alignment=excluded.alignment, market_status=excluded.market_status""",
+                                    alignment=excluded.alignment, market_status=excluded.market_status,
+                                    weekly_agrees=excluded.weekly_agrees""",
                              (uuid.uuid4().hex[:16], sym, str(as_of), key, name, direction, reason, snap["_close"],
                               stop, target, snap["_atr"], HORIZON, cnt, json.dumps(ev), now, g,
-                              RG.alignment(direction, g), (gate or {}).get("status")))
+                              RG.alignment(direction, g), (gate or {}).get("status"),
+                              T.weekly_agrees(direction, snap.get("tech_rating_w_label"))))
                 sigs += 1
         conn.commit()
         ev = evaluate_signals(conn)
@@ -399,11 +410,14 @@ def forward_stats(conn, horizon: int = 20, min_confluence: int = 0) -> dict:
         raise ValueError(f"horizon must be one of {', '.join(map(str, HORIZONS))}")
     ensure_tables(conn)
     h = int(horizon)
-    scans, conf, overall = {}, {}, {}
-    for scan, name, direction, gate, cnt, x in conn.execute(
-            f"SELECT scan, name, direction, market_gate, confluence, excess_{h}d FROM technical_signal "
+    scans, conf, overall, weekly = {}, {}, {}, {}
+    for scan, name, direction, gate, cnt, wk, x in conn.execute(
+            f"SELECT scan, name, direction, market_gate, confluence, weekly_agrees, excess_{h}d FROM technical_signal "
             f"WHERE excess_{h}d IS NOT NULL AND confluence>=?", (int(min_confluence),)):
         g = gate or "UNKNOWN"
+        wkey = "AGREES" if wk == 1 else "DISAGREES" if wk == 0 else "NO_WEEKLY"
+        for key in ("ALL", g):
+            weekly.setdefault(wkey, {}).setdefault(key, []).append(x)
         o = scans.setdefault(scan, {"scan": scan, "name": name, "direction": direction, "_": {}})
         for key in ("ALL", g):
             o["_"].setdefault(key, []).append(x)
@@ -419,6 +433,8 @@ def forward_stats(conn, horizon: int = 20, min_confluence: int = 0) -> dict:
     return {"horizon": h, "min_confluence": int(min_confluence), "by_scan": by_scan,
             "by_confluence": [{"band": b, "cells": {k: _cell(v) for k, v in conf.get(b, {}).items()}}
                               for b, _, _ in CONFLUENCE_BANDS],
+            "by_weekly": [{"weekly": k, "cells": {g: _cell(v) for g, v in weekly.get(k, {}).items()}}
+                          for k in ("AGREES", "DISAGREES", "NO_WEEKLY")],
             "overall": {k: _cell(v) for k, v in overall.items()},
             "note": (f"Excess = the signal's return minus the Nifty's over the next {h} sessions, signed for its "
                      "direction, from the signal day's close (a real entry at the next open differs by the "
@@ -562,7 +578,8 @@ def todays_signals(conn, as_of=None, direction=None, min_confluence=0, limit=300
     if not d:
         return []
     sql = ("SELECT s.symbol, s.date, s.scan, s.name, s.direction, s.reason, s.entry, s.stop, s.target, s.confluence, "
-           "s.evidence_json, s.status, s.market_gate, s.alignment, s.market_status, t.tech_rating_label, t.patterns "
+           "s.evidence_json, s.status, s.market_gate, s.alignment, s.market_status, s.weekly_agrees, t.tech_rating_label, "
+           "t.tech_rating_w_label, t.mtf_alignment, t.patterns "
            "FROM technical_signal s "
            "LEFT JOIN technical_snapshot t ON t.symbol=s.symbol AND t.date=s.date WHERE s.date=? AND s.confluence>=?")
     args = [str(d)[:10], int(min_confluence)]
@@ -626,8 +643,10 @@ def alert_top(conn, as_of=None, min_confluence=4, limit=10) -> dict:
         where = "in this market" if s.get("record_scope") == "gate" else "in all markets"
         return (f"; record {where}: beat the Nifty {r['beat_nifty_pct']:.0f}% of {r['n']} times over "
                 f"{s['record_horizon']} sessions, median {r['median_excess_pct']:+.1f}%")
+    wk = lambda s: "; weekly trend agrees" if s.get("weekly_agrees") == 1 else ""
     lines = [f"{'▲' if s['direction'] == 'BULL' else '▼'} {s['symbol']}: {s['name']} (confluence {s['confluence']}/6, "
-             f"entry {s['entry']:.2f}, stop {s['stop']:.2f}, target {s['target']:.2f}{rec(s)})" for s in sig[:limit]]
+             f"entry {s['entry']:.2f}, stop {s['stop']:.2f}, target {s['target']:.2f}{wk(s)}{rec(s)})"
+             for s in sig[:limit]]
     head = "<b>Technical signals</b> (EOD, for the next session; not advice)"
     if gate:
         head += f"\nMarket gate: <b>{gate}</b>" + (" (mixed market: smaller size)" if gate == "CAUTION" else "")

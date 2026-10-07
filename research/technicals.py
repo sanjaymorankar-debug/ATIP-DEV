@@ -15,12 +15,19 @@ columns open, high, low, close, volume (oldest first); no database here.
                                  breakouts on volume, oscillator turns, trend templates, squeezes,
                                  each with a direction (BULL / BEAR) and a one-line reason
     snapshot(df, bench)          one flat dict per stock for the screener: latest indicator values,
-                                 scan hits as 0/1 fields, today's patterns, a technical rating
+                                 scan hits as 0/1 fields, today's patterns, a technical rating, and
+                                 the same rating on weekly bars with the daily / weekly agreement
+    weekly_bars(df, as_of)       weekly OHLCV (weeks ending Friday), completed weeks only: a week
+                                 counts once its Friday is on or before as_of, so the weekly rating
+                                 does not change mid-week (the "completed candles only" rule)
 
 Technical rating (-1..+1, like TradingView's "Technical Ratings"): the mean of moving-average
 votes (price vs SMA 20/50/200, EMA 9 vs 21, SMA 50 vs 200, Supertrend direction) and oscillator
 votes (RSI, MACD, ADX direction, Bollinger position), each +1 / 0 / -1; labelled STRONG_BUY > 0.5,
 BUY > 0.1, NEUTRAL, SELL < -0.1, STRONG_SELL < -0.5. A description of the chart, not advice.
+The weekly rating is the same vote on weekly bars (35+ completed weeks needed; the 200-period votes
+need ~4 years of history and are simply absent until then). mtf_alignment is BULL when the daily
+and weekly ratings are both BUY / STRONG_BUY, BEAR when both are SELL / STRONG_SELL, else MIXED.
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ import numpy as np
 import pandas as pd
 
 MIN_BARS = 60          # below this the long indicators are meaningless; snapshot returns None
+MIN_WEEKS = 35         # completed weekly bars needed for a weekly rating (MACD 26 + 9)
+_UP, _DOWN = ("BUY", "STRONG_BUY"), ("SELL", "STRONG_SELL")
 
 
 # ── indicators ───────────────────────────────────────────────────────────────
@@ -361,6 +370,50 @@ def rating(d: pd.DataFrame) -> tuple:
 
 # ── per-stock snapshot for the screener / signal engine ─────────────────────
 
+def weekly_bars(df: pd.DataFrame, as_of=None) -> pd.DataFrame:
+    """Weekly OHLCV, weeks ending Friday, keeping only weeks complete by as_of (default: the last daily bar)."""
+    if df is None or df.empty:
+        return df
+    w = (df.resample("W-FRI").agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+         .dropna(subset=["close"]))
+    cut = pd.Timestamp(as_of) if as_of is not None else df.index[-1]
+    return w[w.index <= cut]
+
+
+def weekly_rating(df: pd.DataFrame, as_of=None) -> dict:
+    """The technical rating, RSI and Supertrend direction on completed weekly bars."""
+    w = weekly_bars(df, as_of)
+    out = {"tech_rating_w": None, "tech_rating_w_label": None, "rsi_14_w": None, "supertrend_dir_w": None,
+           "week_ending": None}
+    if w is None or len(w) < MIN_WEEKS:
+        return out
+    d = indicators(w)
+    score, label, _ = rating(d)
+    r = _v(d, "rsi14")
+    st = _v(d, "st_dir")
+    out.update({"tech_rating_w": score, "tech_rating_w_label": label, "rsi_14_w": round(r, 2) if r is not None else None,
+                "supertrend_dir_w": int(st) if st is not None else None, "week_ending": str(w.index[-1].date())})
+    return out
+
+
+def mtf_alignment(daily_label, weekly_label) -> str | None:
+    """BULL / BEAR when the daily and weekly ratings agree on a side, MIXED otherwise, None without both."""
+    if not daily_label or not weekly_label:
+        return None
+    if daily_label in _UP and weekly_label in _UP:
+        return "BULL"
+    if daily_label in _DOWN and weekly_label in _DOWN:
+        return "BEAR"
+    return "MIXED"
+
+
+def weekly_agrees(direction, weekly_label) -> int | None:
+    """1 when the weekly rating is on the signal's side, 0 when it is not, None without a weekly rating."""
+    if not weekly_label or direction not in ("BULL", "BEAR"):
+        return None
+    return int(weekly_label in (_UP if direction == "BULL" else _DOWN))
+
+
 def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
     """Flat dict of the last bar: indicators, scan hits (scan_<key> = 1/0), patterns, rating."""
     if df is None or len(df) < MIN_BARS:
@@ -394,6 +447,9 @@ def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
         "_atr": _v(d, "atr14"), "_close": c, "_low20": float(d["low"].iloc[-20:].min()),
         "_high20": float(d["high"].iloc[-20:].max()),
     }
+    wk = weekly_rating(df)
+    out.update({k: wk[k] for k in ("tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w")})
+    out["mtf_alignment"] = mtf_alignment(label, wk["tech_rating_w_label"])
     for key in SCANS:
         out[f"scan_{key}"] = int(any(h[0] == key for h in hits))
     return out
