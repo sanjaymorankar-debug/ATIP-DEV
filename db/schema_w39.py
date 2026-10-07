@@ -11,6 +11,8 @@ db/schema.py.
     history_backfill_symbol   DP-23  the date before which the broker has no bar for a symbol
     order_basket / order_basket_run  EX-18  named multi-leg baskets and every preview / placement
     sip_plan / sip_execution         EX-20  stock SIP plans and one row per due date (idempotent)
+    live_quotes (+ columns)          RK-21  upper_circuit / lower_circuit from the quote (price band)
+    technical_ext (+ columns)        TA-08b / TA-05  sector-relative strength, swing-anchored Fibonacci
     ml_model_version (+ columns)  ML-18  code_version (git commit, +dirty) and lineage_json (dataset /
                                          feature set / config / backtest links) of every trained version
 """
@@ -54,4 +56,11 @@ W39_COLUMNS = {
     "perf_ledger": {"entry_seq": "INTEGER", "order_ref": "TEXT", "signal_ref": "TEXT", "fee_breakdown": "TEXT"},
     # ML-18 research-to-production lineage: the code a model version was trained with
     "ml_model_version": {"code_version": "TEXT", "lineage_json": "TEXT"},
+    # RK-21 the exchange price band (NSE circuit limits) when the quote carries it
+    "live_quotes": {"upper_circuit": "REAL", "lower_circuit": "REAL"},
+    # TA-08b sector-relative strength, TA-05 swing-anchored Fibonacci (stored, not scored)
+    "technical_ext": {"rs_sector_index": "TEXT", "rs_sector_63": "REAL", "rs_sector_126": "REAL",
+                      "rs_sector_pctile": "REAL", "fib_swing_high": "REAL", "fib_swing_low": "REAL",
+                      "fib_swing_dir": "TEXT", "fib_382": "REAL", "fib_500": "REAL", "fib_618": "REAL",
+                      "fib_nearest": "TEXT", "fib_nearest_dist_pct": "REAL"},
 }
