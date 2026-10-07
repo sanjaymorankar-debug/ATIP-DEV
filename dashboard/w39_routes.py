@@ -33,6 +33,9 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
                                                      the gate at birth and by confluence band
     GET  /api/signals/technical/symbol/{symbol}      latest technical snapshot + recent signals for one stock
     POST /api/signals/technical/run                  {symbols?} compute today's snapshot and signals now
+    GET  /api/signals/intraday?date                  intraday scan hits on 15-minute bars (ORB, open = low / high, squeeze)
+    GET  /api/signals/intraday/stats                 their record: return to the close and vs the Nifty, alert status
+    POST /api/signals/intraday/run                   scan today's stored 15-minute bars now
     GET  /api/market-regime                          the market gate today: status, distribution days, 200-DMA, changes
     GET  /api/market-regime/history?days=250         one row per session (Nifty, DMAs, distribution days, gate)
     POST /api/market-regime/run                      recompute the gate now
@@ -362,6 +365,26 @@ def register(app, guard, Req, get_connection, json_safe):
         def f(_conn):
             from research.tech_signals import run_technical
             return run_technical(syms)
+        return await run(f)
+
+    @app.get("/api/signals/intraday")
+    async def api_intraday(date: str = None):
+        def f(conn):
+            from research.intraday_signals import todays
+            from datetime import date as _date
+            return todays(conn, _date.fromisoformat(date) if date else None)
+        return await run(f)
+
+    @app.get("/api/signals/intraday/stats")
+    async def api_intraday_stats():
+        from research.intraday_signals import stats
+        return await run(stats)
+
+    @app.post("/api/signals/intraday/run", dependencies=guard)
+    async def api_intraday_run():
+        def f(conn):
+            from research.intraday_signals import run as intraday_run
+            return intraday_run(conn)
         return await run(f)
 
     # ── market regime gate ──

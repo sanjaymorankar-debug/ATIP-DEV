@@ -95,15 +95,17 @@ def load_live(conn, today: date, now: datetime | None = None) -> dict:
     return out
 
 
-def load_bars(conn, today: date, now: datetime | None = None) -> dict:
-    """Today's bars that had CLOSED by `now`: a bar stamped at its start (ts) is complete
-    at ts + interval_min."""
+def load_bars(conn, today: date, now: datetime | None = None, interval_min: int = 15) -> dict:
+    """Today's `interval_min` bars that had CLOSED by `now`: a bar stamped at its start (ts) is complete
+    at ts + interval_min. One interval only: with tick capture on, 1-minute bars (source 'ticks') sit in
+    the same table and would otherwise be mixed into the 15-minute series."""
     upto = (now or datetime.combine(today, SESSION_CLOSE)).strftime("%Y-%m-%d %H:%M:%S")
     bars = {}
     for sym, ts, h, l, c, v in conn.execute(
             "SELECT symbol, ts, high, low, close, volume FROM intraday_bars WHERE ts>=? AND "
+            "COALESCE(interval_min,15)=? AND "
             "DATETIME(REPLACE(SUBSTR(ts,1,19),'T',' '), '+' || COALESCE(interval_min,15) || ' minutes')<=? "
-            "ORDER BY symbol, ts", (str(today), upto)):
+            "ORDER BY symbol, ts", (str(today), int(interval_min), upto)):
         bars.setdefault(sym, []).append((ts, h, l, c, v or 0))
     return bars
 

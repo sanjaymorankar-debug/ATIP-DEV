@@ -7221,6 +7221,75 @@
     }
    }
   },
+  "/api/signals/intraday": {
+   "get": {
+    "summary": "Api Intraday",
+    "operationId": "api_intraday_api_signals_intraday_get",
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Date"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/intraday/stats": {
+   "get": {
+    "summary": "Api Intraday Stats",
+    "operationId": "api_intraday_stats_api_signals_intraday_stats_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/signals/intraday/run": {
+   "post": {
+    "summary": "Api Intraday Run",
+    "operationId": "api_intraday_run_api_signals_intraday_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/market-regime": {
    "get": {
     "summary": "Api Regime",

@@ -12,6 +12,7 @@ Tables added in W39 (history, research & options tooling), applied by db/schema.
     market_regime_gate      RG-01  the Nifty market gate per session: distribution days, status, OPEN / CAUTION / CLOSED
     fundamental_scorecard   FS-03  each stock's scorecard per day: checks passed of 30, per axis, pass / fail flags
     macro_event             EV-01  FOMC, US CPI, US payrolls and RBI policy dates (seeded; config and API add more)
+    intraday_signal         IN-01  intraday scan hits on 15-minute bars, the price seen, the record at the close
 
 Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE ADD COLUMN):
     technical_signal        RG-03  market_gate, alignment (the gate each signal was born under)
@@ -27,6 +28,7 @@ from data.participant_oi import DDL as _POI
 from research.market_pulse import DDL as _CUE
 from research.market_pulse import ADDED_COLUMNS as _CUE_COLS
 from research.event_calendar import DDL as _EVENTS
+from research.intraday_signals import DDL as _INTRA
 from research.regime_gate import DDL as _GATE
 from research.scorecard import DDL as _SCORE
 from research.tech_signals import ADDED_COLUMNS as _TECH_COLS
@@ -43,6 +45,7 @@ W39_TABLES = {
     "market_regime_gate": _GATE,
     "fundamental_scorecard": _SCORE,
     "macro_event": _EVENTS,
+    "intraday_signal": _INTRA,
 }
 
 W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS}

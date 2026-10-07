@@ -1485,7 +1485,8 @@ def _schedule_w39_jobs():
     participant OI at 20:15 and the Nifty history at 23:20 (research/market_pulse.py); the
     technical snapshot and signals (research/tech_signals.py), equity research reports after the
     evening scoring (research/report.py), the day's fundamental scorecards and the saved
-    screens after them (research/scorecard.py, research/screener.py), and the nightly, budgeted 7-year
+    screens after them (research/scorecard.py, research/screener.py), intraday scans on the stored 15-minute
+    bars every 15 minutes in the session (research/intraday_signals.py), and the nightly, budgeted 7-year
     price-history backfill (data/history_backfill.py)."""
     schedule.every(15).minutes.do(_w39_order_pressure_tick)
     schedule.every().day.at("08:45").do(_w39_gift)
@@ -1497,6 +1498,23 @@ def _schedule_w39_jobs():
     schedule.every().day.at("20:40").do(_w39_research_reports)
     schedule.every().day.at("20:50").do(_w39_saved_screens)
     schedule.every().day.at("22:20").do(_w39_history_backfill)
+    schedule.every(15).minutes.do(_w39_intraday_tick)
+
+
+def _w39_intraday_tick():
+    """Intraday scans on the stored 15-minute bars, 09:45-15:50 on trading days; evaluates at the close
+    (research/intraday_signals.py)."""
+    from datetime import time as dtime
+    if not is_market_day():
+        return
+    now = datetime.now().time()
+    if not (dtime(9, 45) <= now <= dtime(15, 50)):
+        return
+    try:
+        from research.intraday_signals import run_job as intraday_job
+        run_job("intraday_signals", intraday_job)
+    except Exception as e:
+        log.warning(f"  Intraday signals: {e}")
 
 
 def _w39_order_pressure_tick():

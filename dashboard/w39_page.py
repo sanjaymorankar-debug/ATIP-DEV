@@ -274,11 +274,20 @@ SIGNALS = _HEAD + r"""
 <h3 style="margin-top:10px">Does confluence add?</h3><div id="fwconf" class="sx"></div>
 <h3 style="margin-top:10px">Does the weekly trend add?</h3><div id="fwweek" class="sx"></div>
 <h3 style="margin-top:10px">Per scan</h3><div id="fwscan" class="sx"></div><div id="fwnote" class="muted" style="margin-top:4px"></div></div></div>
+<div class="pane" id="p-intra"><div class="card"><h3>Intraday signals <input id="idate" type="date" onchange="intra()"> <button onclick="post('/api/signals/intraday/run').then(intra)">Scan now</button></h3>
+<div class="muted">On the 15-minute bars ATIP stores every 30 minutes (Dhan intraday data): opening-range breakout / breakdown (the first close beyond the 09:15–09:30 range, by 11:30, on 1.5× the slot's usual volume), open = low / open = high (judged on the first hour: no trade more than 0.1 % beyond the open and 0.5 %+ away from it by 10:15), and the TTM squeeze on 15-minute bars (on 1.2× volume). Each is measured from the price when ATIP saw it, to the session's close, and against the Nifty over the same minutes. RVol: the trigger bar's volume over the same slot in the last 5 sessions. A scan alerts only after 30 closed hits with a positive record. Not advice.</div>
+<div id="isig" class="sx" style="margin-top:6px"></div></div>
+<div class="card"><h3>Intraday record per scan</h3><div id="istat" class="sx"></div></div></div>
 </div><div id="tip"></div>
 <script>""" + _JS_COMMON + r"""
-const TABS=[['today','Today'],['rec','Track record']];const loaded={};
+const TABS=[['today','Today'],['rec','Track record'],['intra','Intraday']];const loaded={};
 function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.id===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
- if(!loaded[id]){loaded[id]=1;({today,rec})[id]()}}
+ if(!loaded[id]){loaded[id]=1;({today,rec,intra})[id]()}}
+const cellp=c=>c?`${c.positive_pct}% · ${pct(c.median_pct)} <span class="muted">(${c.n})</span>`:'<span class="muted">—</span>';
+async function intra(){const d=document.getElementById('idate').value;const rows=await j('/api/signals/intraday'+(d?`?date=${d}`:''));
+ document.getElementById('isig').innerHTML=table(['Symbol','','Scan','Bar','Seen at','Seen price','Level','RVol','Why','To the close','vs Nifty','Alerts'],rows.map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${dpill(x.direction)}</td><td>${esc(x.name)}</td><td>${esc(String(x.bar_ts||'').slice(11,16))}</td><td>${esc(String(x.seen_at||'').slice(11,16))}</td><td>${n(x.seen_price,2)}</td><td>${n(x.level,2)}</td><td>${x.rvol_slot==null?'—':n(x.rvol_slot,2)+'×'}</td><td class="muted">${esc(x.reason)}</td><td>${pct(x.ret_close_pct)}</td><td>${pct(x.excess_close_pct)}</td><td>${x.alerts==='on'?'<span class="ok">on</span>':'<span class="muted">held</span>'}</td></tr>`));
+ const st=await j('/api/signals/intraday/stats');
+ document.getElementById('istat').innerHTML=table(['Scan','','Hits','Closed','Made money · median (n)','Beat the Nifty · median excess (n)','Avg best / worst after seen','Alerts'],st.map(s=>`<tr><td>${esc(s.name)}</td><td>${dpill(s.direction)}</td><td>${s.hits}</td><td>${s.closed}${s.enough?'':' <span class="muted">(too few)</span>'}</td><td>${cellp(s.to_close)}</td><td>${cellp(s.vs_nifty)}</td><td>${s.avg_best_pct==null?'—':pct(s.avg_best_pct)+' / '+pct(s.avg_worst_pct)}</td><td>${s.alerts==='on'?'<span class="ok">on</span>':`<span class="muted">held · ${s.closed}/30</span>`}</td></tr>`))}
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const dpill=d=>`<span class="pill ${d==='BULL'?'BUY':d==='BEAR'?'SELL':'NOT_RATED'}">${d==='BULL'?'▲ bull':d==='BEAR'?'▼ bear':esc(d)}</span>`;
 let SIG=[];

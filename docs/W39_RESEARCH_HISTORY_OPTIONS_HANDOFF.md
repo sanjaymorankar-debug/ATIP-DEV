@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 178 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 188 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -501,6 +501,33 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **API:** `GET /api/market-pulse/events?days=30`, `POST /api/market-pulse/events` `{date, kind, title?}`, `POST /api/market-pulse/events/delete` `{date, kind}` (`research:run`, token).
 
+## IN-01..IN-03: intraday scans on 15-minute bars (`research/intraday_signals.py`), Phase 3 item 1
+
+**Bars:** `intraday_bars` already receives 15-minute bars for the tracked universe every 30 minutes from 10:00 (`run_intraday_30min`, Dhan intraday API). `load_bars` reads the last 6 sessions of 15-minute bars that have completed (a bar stamped at its start is done 15 minutes later).
+
+**Scans (IN-01)**, each at most once per stock, day and scan:
+
+| Scan | Rule |
+|---|---|
+| Opening-range breakout / breakdown | the first close beyond the 09:15–09:30 range (`"or_minutes": 30` for 09:15–09:45), only if it comes by 11:30 (`"orb_until"`) on 1.5× (`"orb_min_rvol"`) the same slot's average volume over the last 5 sessions |
+| Open = low / open = high | judged once on the first hour: no trade more than 0.1 % beyond the open, and the 10:15 close 0.5 %+ away from it |
+| Intraday squeeze up / down | `research/technicals.py` Bollinger (20, 2) inside Keltner (20, 1.5 ATR) for 6+ bars, released on a bar with 1.2× slot volume that closes beyond SMA 20 in its direction |
+
+**Calibration:** on random-walk bars with independent volumes (500 stocks), the unfiltered breakout fired on ~78 % of stocks a day per side; with the time and volume filters ~8–10 %, open = low / high ~10 %, the squeeze under 2 %. About 10 seconds for 500 stocks.
+
+**Record (IN-02):**
+- Each hit stores its trigger bar and close, and the price when ATIP saw it: the latest completed bar at the run, since bars arrive every 30 minutes. The record is measured from that seen price.
+- After the session: return to the last close (signed for direction), the same minus the Nifty's move over those minutes (`index_levels`), and the best and worst move after it was seen.
+- `stats()`: per scan, hits, closed, how often it made money and beat the Nifty, median and mean. A scan alerts (Telegram digest) only after 30 closed hits with a positive mean excess; `/signals` shows "held · n/30" until then.
+
+**Job and page (IN-03):**
+- Every 15 minutes, 09:45–15:50 on trading days (`_w39_intraday_tick`); it does nothing without stored bars. Config `"intraday_signals"`.
+- `/signals` → Intraday: today's hits (or any date), and the record per scan.
+- **API:** `GET /api/signals/intraday?date`, `GET /api/signals/intraday/stats`, `POST /api/signals/intraday/run` (`research:run`, token).
+- Table `intraday_signal` (kept: its own record).
+
+**Fixed on the way:** `strategy/intraday_scan.py load_bars` read every interval from `intraday_bars`. With tick capture on, 1-minute bars (source `ticks`) would have been mixed into the 15-minute series of the five existing intraday scans; it now reads one interval.
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -518,10 +545,10 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard` and `macro_event` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`, `intraday_signal`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event` and `intraday_signal` (research, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
-- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
+- Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; intraday scans every 15 minutes 09:45–15:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
 - `docs/API_REFERENCE.md` and `docs/openapi.json` regenerated. They were also stale from W34–W38: 402 → 511 routes.
 - `db/sql/*.sql` are pinned snapshots (master @ 6896bea) and were not regenerated. The new tables are created on first start like any additive migration.
 
@@ -536,6 +563,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_intraday.py` | 10 | opening-range breakout needs 1.5× slot volume and a first close beyond the range by 11:30, 30-minute range, breakdown; open = low / high on the first hour, broken and too-small cases; squeeze after 6 tight bars released up and down, not without history; only completed 15-minute bars load; stored once, seen at the bar's completion, record to the close vs the Nifty with best / worst; a short gains on a fall; alerts held until a positive 30-hit record; the existing scanner no longer mixes 1-minute bars; API and page; permissions |
 | `tests/test_w39_event_calendar.py` | 16 | New York → IST across daylight saving, the Fed after midnight in winter; the session each event hits (next open, holidays skipped; RBI intraday); seeded dates by session and upcoming; config events, bad kinds and dates, add, soft delete that survives re-seeding; band = usual miss, assumed ×1.5, measured ×2.5 once enough mornings, RBI not widened; old mornings looked up; capture stores events and band, pulse explains; old market_cue gets the columns; API, token, 400 / 404, page; permissions and classification |
 | `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
 | `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
@@ -562,7 +590,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 **Options builder:** analysis only. One-click execution would need the live OMS (gap analysis §4, item 8), which needs the owner's explicit go-ahead.
 
 **Technical signals:**
-- End of day only; no intraday scans yet (they need the 15-minute bar job and the Dhan Data API).
+- End of day; the intraday scans are separate (IN-01..03) and have their own record.
 - Track records start on the first run and are measured on ATIP's own prices. Trust a scan only after ~30 closed signals.
 
 **Chart patterns:**
@@ -586,6 +614,11 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Market volume is the volume of the stocks ATIP stores, not exchange-wide volume; days with fewer than 10 common stocks have no comparison.
 - Stalling days and the intraday-low rule for rally attempts are not modelled (closes only).
 
+**Intraday scans:**
+- They need the Dhan Data API (the 15-minute bar job) and 3 sessions of stored bars before the volume filter can work.
+- Bars arrive every 30 minutes, so a hit is seen up to 30 minutes after its bar; the record is measured from the price when it was seen.
+- No intraday stop / target: the record is to the session's close, with the best and worst move along the way.
+
 **Event calendar:**
 - Seeded dates only reach the end of 2026 for US CPI and payrolls, and to February 2027 for the RBI; add the next year's dates each December (config or the page). Unscheduled meetings must be added by hand.
 - Only scheduled releases: no Union Budget, US GDP, PCE or ECB, and no surprise events.
@@ -598,7 +631,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - The early-October 2026 market figures in the plan doc are press reports, not verified.
 
 **Next on the roadmap** (details and order in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8):
-- Intraday scans and 20-level depth imbalance (Dhan Data API)
+- 20-level depth imbalance and synchronised global moves (Dhan Data API)
 - English → screener query and an ATIP MCP server (Anthropic key)
 - MF analytics / SIP, tax P&L, earnings-surprise signal
 - Live execution only with the owner's explicit go-ahead

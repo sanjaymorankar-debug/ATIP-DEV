@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 19:58 by `python -m ops api-docs` from the running application (545 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-07 20:10 by `python -m ops api-docs` from the running application (548 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -654,6 +654,9 @@ Generated 2026-10-07 19:58 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/signals/intraday` | dashboard:read |  | `date` | intraday scan hits on 15-minute bars (ORB, open = low / high, squeeze) |
+| POST | `/api/signals/intraday/run` | research:run | token |  | scan today's stored 15-minute bars now |
+| GET | `/api/signals/intraday/stats` | dashboard:read |  |  | their record: return to the close and vs the Nifty, alert status |
 | GET | `/api/signals/technical` | dashboard:read |  | `date`, `direction`, `min_confluence`=0, `limit`=300, `alignment` | signals with levels, confluence, market gate |
 | GET | `/api/signals/technical/forward` | dashboard:read |  | `horizon`=20, `min_confluence`=0 | vs the Nifty after 5 / 20 / 60 sessions, by scan x |
 | GET | `/api/signals/technical/gate-effect` | dashboard:read |  | `min_confluence`=0 | closed signals WITH / MIXED / AGAINST the market gate |

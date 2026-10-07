@@ -229,7 +229,7 @@ They use synthetic series with known answers. Examples:
 | ~~RS-line new high; rank within cap bucket~~ | IBD, StockCharts | 2: **built** |
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
-| Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze | Chartink, Streak | 3 |
+| ~~Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze~~ | Chartink, Streak | 3: **built** |
 | Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
 | English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
 | ATIP MCP server | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4 |
@@ -301,7 +301,14 @@ They use synthetic series with known answers. Examples:
    - **Market pulse:** an event card (today's events, the next two weeks, the record split) and a line in the reasons on event days.
 
 ### Phase 3: intraday (needs the Dhan Data API, ₹499/month)
-1. Store 15-minute bars for the watchlist, then add the opening-range breakout, open = low/high and intraday squeeze scans. Reuse `research/technicals.py` on the intraday frames.
+1. **Intraday scans. Built** (`research/intraday_signals.py`).
+   - **Bars:** ATIP already stores 15-minute bars for the tracked universe every 30 minutes from 10:00 (`intraday_bars`, `run_intraday_30min`); the scans read them, 15-minute bars only.
+   - **Opening-range breakout / breakdown:** the first close beyond the 09:15–09:30 range (or 09:15–09:45), counted only if it comes by 11:30 on 1.5× the slot's usual volume (the same 15 minutes over the last 5 sessions).
+   - **Open = low / open = high:** judged once on the first hour: no trade more than 0.1 % beyond the open, and 0.5 %+ away from it by 10:15.
+   - **Intraday squeeze:** `research/technicals.py`'s Bollinger / Keltner on 15-minute bars, 6+ bars of squeeze released on 1.2× volume, in the bar's direction.
+   - **Calibration:** on random-walk bars without the filters, the breakout fired on ~78 % of stocks a day per side; with them ~8–10 %, the squeeze under 2 %.
+   - **Record:** each hit is stored once per stock and day, with the price when ATIP saw it (bars arrive every 30 minutes), and measured from that price to the close, against the Nifty over the same minutes, with its best and worst move. A scan alerts only after 30 closed hits with a positive mean excess. `/signals` → Intraday.
+   - Also fixed: the existing intraday scanner (`strategy/intraday_scan.py`) read every interval from `intraday_bars`, so 1-minute bars from tick capture would have been mixed into its 15-minute series.
 2. **20-level depth** WebSocket for up to 50 watchlist stocks: depth-weighted imbalance (levels within 50 bp, weights e^(−0.5(k−1))), flagged when |DWI| > 0.3 for 3 or more snapshots. Validate with logistic regression of the next 1-minute and 5-minute move.
 3. Swap the daily-close global model for one built on synchronised moves (15:30 → 08:45) once intraday global quotes are stored.
 
