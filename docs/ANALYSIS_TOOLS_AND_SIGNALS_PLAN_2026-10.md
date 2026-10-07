@@ -37,7 +37,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 - **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
 
 **The best plan from here** (section 8):
-- **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes and an explainable fundamental composite (all **built**, see §8); an event calendar is next.
+- **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes, an explainable fundamental composite and an event calendar (all **built**, see §8).
 - **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
 - **Phase 4:** natural-language screening and an ATIP MCP server (needs the Anthropic key fixed).
 - **Phase 5:** live execution, only with your explicit go-ahead.
@@ -233,7 +233,7 @@ They use synthetic series with known answers. Examples:
 | Depth-weighted imbalance and OFI from 20-level depth | Institutional microstructure | 3 |
 | English → screener query | TradingView AI Screener, Trendlyne, Screener.in | 4 |
 | ATIP MCP server | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4 |
-| Event calendar (FOMC, US CPI, RBI) widening the gap forecast | Institutional desks | 2 |
+| ~~Event calendar (FOMC, US CPI, RBI) widening the gap forecast~~ | Institutional desks | 2: **built** |
 | Consensus estimates and revisions | Zacks, StarMine | Needs a licensed feed |
 | Live orders from signals | Streak, Trade Ideas | 5, with your go-ahead |
 
@@ -293,7 +293,12 @@ They use synthetic series with known answers. Examples:
    - A check with no data never passes; the debt checks are not scored for banks and NBFCs; a loss-maker fails the earnings checks and a non-payer the dividend axis.
    - Shown on `/research` under the report header, with a five-axis chart. Screener fields `checks_passed` (0–30) and one 0–6 count per axis, with presets "Scorecard all-rounders", "Healthy and growing", "Undervalued with a clean record" and "Dependable dividends".
    - **Its own record:** the 20:50 job stores each day's scorecards; "Does the scorecard pay?" on `/research` shows return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed, one sample per stock per month, 30 samples a band before it counts.
-8. **Event calendar** (FOMC, US CPI and NFP, RBI policy) to widen the gap forecast and mark event days.
+8. **Event calendar. Built** (`research/event_calendar.py`).
+   - **Dates:** Fed decisions (2026, and the Fed's tentative 2027 calendar), US CPI and US jobs-report releases for 2026, RBI decisions for 2026-27, seeded from the official calendars (checked against two sources each on 2026-10-07). More come from `config.json` `"event_calendar": {"events": [...]}` or the add form on `/market-pulse`. The seed needs a yearly refresh, like the NSE holiday list.
+   - **Which session it hits:** US releases come after India's close (CPI and payrolls at 08:30 New York = 18:00 / 19:00 IST; the Fed at 14:00 New York = 23:30 / 00:30 IST, following US daylight saving), so they hit the next NSE session's open, holidays skipped. The RBI decides at 10:00 IST, during the session.
+   - **The gap band:** the morning estimate now carries ± the typical miss of past GIFT estimates. After a US release the band is widened: by the measured ratio of the miss on such mornings to the miss on other mornings once 10 and 30 of them are stored, by an assumed ×1.5 until then (the page says which). An RBI day is marked but not widened, since the decision comes after the open.
+   - **Recorded:** each morning's events and band are stored with the estimate (`market_cue.events`, `band_pct`), and the open-gap record is split into mornings after a US release and the rest.
+   - **Market pulse:** an event card (today's events, the next two weeks, the record split) and a line in the reasons on event days.
 
 ### Phase 3: intraday (needs the Dhan Data API, ₹499/month)
 1. Store 15-minute bars for the watchlist, then add the opening-range breakout, open = low/high and intraday squeeze scans. Reuse `research/technicals.py` on the intraday frames.
@@ -396,6 +401,10 @@ They use synthetic series with known answers. Examples:
 - https://www.businesstoday.in/markets/stocks/story/rs-20000-crore-fpi-outflows-in-2-days-stock-market-headed-for-more-pain-558929-2026-10-01
 - https://www.deccanherald.com/amp/story/business/markets/rupee-crashes-to-record-9580-against-usd-settles-near-all-time-low-at-9566-4001257
 - https://www.cnbc.com/2026/10/06/treasury-yields-fed-fomc-minutes.html
+- https://equalsmoney.com/economic-calendar/events/fomc-meeting, https://fedratecalc.com/fomc-meeting-schedule/, https://www.federalreserve.gov/newsevents/2026-october.htm (FOMC 2026); https://www.mnimarkets.com/articles/mni-federal-reserve-sets-2027-fomc-meeting-schedule-1757093400287 (FOMC 2027, tentative)
+- https://fedratecalc.com/cpi-release-date/, https://cpichart.com/cpi-release-calendar/, https://cpiinflationcalculator.com/cpi-release-schedule/ (US CPI 2026)
+- https://www.bls.gov/schedule/news_release/empSit.htm, https://www.bls.gov/bls/2025-lapse-revised-release-dates.htm (US payrolls 2026)
+- https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=62422 (RBI MPC 2026-27)
 - https://repository.iimb.ac.in/handle/2074/21032 (no max-pain effect in India)
 
 **Order book:**

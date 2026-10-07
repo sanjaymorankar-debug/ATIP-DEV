@@ -41,6 +41,8 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/market-pulse/global | /fii | /positioning   the parts
     POST /api/market-pulse/gift                      capture the GIFT Nifty / global-model gap estimate now
     POST /api/market-pulse/refresh                   fetch NSE participant OI (7 days) and the Nifty history now
+    GET  /api/market-pulse/events?days=30            FOMC / US CPI / payrolls / RBI dates, the session each hits, today's band
+    POST /api/market-pulse/events                    {date, kind, title?} add an event; POST .../events/delete {date, kind}
     GET  /api/orderbook/pressure?side=buy|sell&limit  latest pending buy / sell totals per stock today
     GET  /api/orderbook/pressure/{symbol}            today's polls for one stock
     POST /api/orderbook/snapshot                     poll the whole universe now
@@ -239,6 +241,32 @@ def register(app, guard, Req, get_connection, json_safe):
         def f(conn):
             from research.market_pulse import capture_gift
             return capture_gift(conn)
+        return await run(f)
+
+    @app.get("/api/market-pulse/events")
+    async def api_pulse_events(days: int = 30):
+        def f(conn):
+            from research.event_calendar import KINDS, gap_band, upcoming
+            return {"today": gap_band(conn), "upcoming": upcoming(conn, days=max(1, min(int(days), 400))),
+                    "kinds": {k: v["label"] for k, v in KINDS.items()}}
+        return await run(f)
+
+    @app.post("/api/market-pulse/events", dependencies=guard)
+    async def api_pulse_event_add(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from research.event_calendar import add_event
+            return add_event(conn, b.get("date"), b.get("kind"), b.get("title"))
+        return await run(f)
+
+    @app.post("/api/market-pulse/events/delete", dependencies=guard)
+    async def api_pulse_event_delete(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from research.event_calendar import delete_event
+            return delete_event(conn, b.get("date"), b.get("kind"))
         return await run(f)
 
     @app.post("/api/market-pulse/refresh", dependencies=guard)

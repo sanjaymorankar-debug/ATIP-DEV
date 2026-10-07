@@ -71,7 +71,7 @@ _D += (" investor_profile investor_profile_version perf_ledger perf_ledger_void 
        "wealth_rebalance_plan wealth_snapshot")
 # W39: history backfill progress and research reports (owner research, shared reference data)
 _G += (" prices_daily_backfill research_report technical_snapshot technical_signal order_book_pressure "
-       "fo_participant_oi market_cue market_regime_gate fundamental_scorecard")
+       "fo_participant_oi market_cue market_regime_gate fundamental_scorecard macro_event")
 _O += " research_screen"                       # the owner's saved screens
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")

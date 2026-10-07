@@ -19,6 +19,9 @@ data, and every model reports how well it has done.
    is a future: its premium over the spot close is carry, not news). Expected gap = b x that move,
    b fitted on the stored history once 30 mornings exist (else 1). Stored in market_cue with the
    global model's view; evaluate_gaps() fills the actual open at 09:30 so the hit rate is measured.
+   The macro events that hit the morning (research/event_calendar.py: FOMC, US CPI, payrolls overnight;
+   an RBI decision during the session) are stored with it, and the estimate carries a band: the
+   typical miss of past estimates, widened after a US release (EV-01..03).
 
 3. FII flow pressure (fii_pressure)
    From fii_dii_market: 5-day FII net (F5) as a z-score against 250 days; the flow SURPRISE --
@@ -74,11 +77,19 @@ DDL = (
         model_expected_pct REAL, cue_score REAL, cue_label TEXT, contributions_json TEXT, actual_open REAL,
         actual_gap_pct REAL, evaluated_at TIMESTAMP, PRIMARY KEY (date, captured_at))""",
 )
+# EV-02: the macro events that hit the morning (research/event_calendar.py) and the band given with the estimate
+ADDED_COLUMNS = {"market_cue": {"events": "TEXT", "band_pct": "REAL"}}
 
 
 def ensure_tables(conn):
     for d in DDL:
         conn.execute(d)
+    try:
+        from db.schema import _add_missing_columns
+        for table, cols in ADDED_COLUMNS.items():
+            _add_missing_columns(conn, table, cols)
+    except Exception as e:
+        log.debug(f"market_cue column migration: {e}")
 
 
 def _rows(conn, sql, args=()):
@@ -310,19 +321,27 @@ def capture_gift(conn=None, quotes=None) -> dict:
         beta = gift_beta(conn)
         exp = move * beta if move is not None else None
         model = global_cue_model(conn)
+        try:
+            from research.event_calendar import gap_band
+            band = gap_band(conn, today)
+        except Exception as e:
+            log.warning(f"  event calendar: {e}")
+            band = {"events": [], "band_pct": None}
+        kinds = ",".join(e["kind"] for e in band["events"])
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute("""INSERT OR REPLACE INTO market_cue (date, captured_at, gift_now, gift_ref, gift_ref_source,
                             nifty_prev_close, gift_move_pct, gift_beta, expected_gap_pct, expected_gap_pts,
-                            model_expected_pct, cue_score, cue_label, contributions_json)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            model_expected_pct, cue_score, cue_label, contributions_json, events, band_pct)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      (str(today), now, gift, ref, src, prev_close, round(move, 3) if move is not None else None,
                       round(beta, 3), round(exp, 3) if exp is not None else None,
                       round(prev_close * exp / 100, 1) if (prev_close and exp is not None) else None,
                       model.get("expected_move_pct"), model.get("cue_score"), model.get("cue_label"),
-                      json.dumps(model.get("contributions_pct") or {})))
+                      json.dumps(model.get("contributions_pct") or {}), kinds, band["band_pct"]))
         conn.commit()
         return {"status": "SUCCESS" if gift or model.get("status") == "OK" else "EMPTY", "rows": 1,
-                "gift_move_pct": move, "expected_gap_pct": exp, "model": model.get("status")}
+                "gift_move_pct": move, "expected_gap_pct": exp, "model": model.get("status"),
+                "events": kinds or None, "band_pct": band["band_pct"]}
     finally:
         if own:
             conn.close()
@@ -366,7 +385,18 @@ def gap_record(conn) -> dict:
         return {"mornings": len(pts),
                 "direction_hit_rate_pct": round(100 * sum(1 for p, a in big if p * a > 0) / len(big), 1) if big else None,
                 "mean_abs_error_pct": round(sum(abs(p - a) for p, a in pts) / len(pts), 3)}
-    return {"gift": score("expected_gap_pct"), "global_model": score("model_expected_pct")}
+    out = {"gift": score("expected_gap_pct"), "global_model": score("model_expected_pct")}
+    try:
+        from research.event_calendar import _misses, widen_factor
+        ev_m, no_m = _misses(conn)
+        def mae(xs):
+            return round(sum(xs) / len(xs), 3) if xs else None
+        out["by_events"] = {"after_us_release": {"mornings": len(ev_m), "mean_abs_error_pct": mae(ev_m)},
+                            "other": {"mornings": len(no_m), "mean_abs_error_pct": mae(no_m)},
+                            "widen": widen_factor(conn)}
+    except Exception as e:
+        log.debug(f"gap record by events: {e}")
+    return out
 
 
 # ── FII flows ────────────────────────────────────────────────────────────────
@@ -562,6 +592,20 @@ def pulse(conn) -> dict:
         log.debug(f"order book summary: {e}")
     mh = _rows(conn, "SELECT date, regime, mh_score, vix_level FROM market_health ORDER BY date DESC LIMIT 1")
     reasons, votes = [], []
+    events = {}
+    try:
+        from research.event_calendar import gap_band, upcoming
+        band = gap_band(conn, date.today())
+        events = {"today": band["events"], "band": band, "upcoming": upcoming(conn, days=14)}
+        for e in band["events"]:
+            if e["widens_gap"]:
+                reasons.append(f"{e['label']} came out overnight ({e['time_ist']} IST, {e['event_date']}): the open is "
+                               f"less predictable" + (f", the gap estimate's usual miss is widened ×{band['widen']}"
+                                                      if band["band_pct"] is not None else ""))
+            else:
+                reasons.append(f"{e['label']} at {e['time_ist']} IST today: expect a move during the session")
+    except Exception as e:
+        log.debug(f"event calendar: {e}")
     if gm.get("status") == "OK" and gm.get("cue_score") is not None:
         votes.append(max(-1.0, min(1.0, gm["cue_score"])))
         reasons.append(f"global cues {gm['cue_label'].replace('_', ' ').lower()} "
@@ -598,6 +642,7 @@ def pulse(conn) -> dict:
             "reasons": reasons, "global_model": gm, "gift_today": cue[0] if cue else None,
             "gap_record": gap_record(conn), "fii": fp, "positioning": pos, "oi_walls": walls, "order_book": book,
             "market_health": mh[0] if mh else None, "market_gate": gate if gate and gate.get("gate") else None,
+            "events": events,
             "disclaimer": "Context from ATIP's own models and stored data; not advice."}
 
 

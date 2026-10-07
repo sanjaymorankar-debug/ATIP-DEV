@@ -2,8 +2,8 @@
 W39 pages: /research (equity research reports with the fundamental scorecard, ratings, hit rate and
 the scorecard's record, 7-year history coverage),
 /screener (fundamental + technical stock screener with presets and saved screens), /signals
-(end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, FII
-flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
+(end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, the
+event calendar, FII flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
 strategy builder with a payoff chart). All read the W39 API (dashboard/w39_routes.py); none of them
 places an order.
 
@@ -328,6 +328,10 @@ PULSE = _HEAD + r"""
 <div id="gchart" style="margin-top:6px;position:relative"></div>
 <div class="legend"><span><i style="border-color:#3987e5"></i>Nifty 50</span><span><i style="border-color:#d95926;border-top-style:dashed"></i>200-DMA</span><span style="color:var(--text)">▼</span><span>distribution day</span><span style="color:var(--text)">▲</span><span>follow-through day</span><span><b class="sw" style="background:#0ca30c"></b>gate open</span><span><b class="sw" style="background:#fab219"></b>caution</span><span><b class="sw" style="background:#d03b3b"></b>closed</span></div>
 <details><summary class="muted">Table view (last 30 sessions)</summary><div id="gtable" class="sx"></div></details></div>
+<div class="card"><h3>Event calendar</h3>
+<div class="muted">US Fed decisions, US CPI and the US jobs report come out after India's close, so they hit the next session's open; the RBI decides at 10:00 IST, during the session. On a morning after a US release the gap estimate is given a wider band.</div>
+<div id="evs" class="sx" style="margin-top:6px"></div>
+<details style="margin-top:6px"><summary class="muted">Add an event (an unscheduled meeting, next year's dates)</summary><div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input id="evd" type="date"><select id="evk"></select><input id="evt" placeholder="title (optional)" style="width:220px"><button onclick="addEv()">Add</button><span id="evo" class="muted"></span></div></details></div>
 <div class="two"><div class="card"><h3>Global cues → Nifty</h3><div id="glob" class="sx"></div></div>
 <div class="card"><h3>FII / DII money</h3><div id="fii" class="sx"></div></div></div>
 <div class="two"><div class="card"><h3>Derivatives positioning</h3><div id="pos" class="sx"></div></div>
@@ -339,11 +343,21 @@ const lab=s=>s?`<span class="pill ${/POSITIVE|INFLOW|RISK_ON|COVERING/.test(s)?'
 const kv=rows=>table(['',''],rows.filter(r=>r[1]!==undefined).map(([a,b])=>`<tr><td class="muted">${a}</td><td>${b}</td></tr>`)).replace('<thead><tr><th></th><th></th></tr></thead>','');
 const cr=v=>v==null||isNaN(v)?'—':(v<0?'−':'')+'₹'+n(Math.abs(v),0)+' cr';
 const bar=(v,max)=>{const w=Math.min(100,Math.abs(v)/max*100);return `<div style="display:flex;align-items:center;gap:4px"><div style="width:120px;height:8px;background:#0f172a;border-radius:4px;position:relative"><div style="position:absolute;${v>=0?'left:50%':'right:50%'};width:${w/2}%;height:8px;border-radius:4px;background:${v>=0?'#3987e5':'#d95926'}"></div></div><span>${v>=0?'+':'−'}${n(Math.abs(v),3)}%</span></div>`};
-async function load(){const p=await j('/api/market-pulse');document.getElementById('asof').textContent='· '+p.as_of.replace('T',' ');
+const TIM={before_open:'before the open',intraday:'during the session'};
+const OVN={FOMC:'the Fed decision',US_CPI:'US CPI',US_NFP:'the US jobs report'};
+const ovn=ev=>String(ev||'').split(',').filter(k=>OVN[k]).map(k=>OVN[k]).join(' and ');
+function evCard(p){const ev=p.events||{},b=ev.band||{},gr=(p.gap_record||{}).by_events;let h='';
+ if((ev.today||[]).length)h+=`<div class="note" style="margin-bottom:6px">Today: ${ev.today.map(e=>`${esc(e.label)} (${esc(e.event_date)}, ${esc(e.time_ist)} IST, ${TIM[e.timing]})`).join('; ')}${b.band_pct!=null?`. Gap band ± ${n(b.band_pct,2)}%: the usual miss of ${n(b.typical_miss_pct,2)}% × ${b.widen} (${esc(b.widen_basis)}).`:''}</div>`;
+ h+=table(['Released','Event','Time (IST)','Hits the session of','When'],(ev.upcoming||[]).map(e=>`<tr><td>${esc(e.event_date)}</td><td>${esc(e.label)}</td><td>${esc(e.time_ist)}</td><td>${esc(e.session)}</td><td>${TIM[e.timing]}</td></tr>`));
+ if(gr)h+=`<div class="muted" style="margin-top:6px">Gap-estimate miss after a US release: ${gr.after_us_release.mean_abs_error_pct==null?'—':gr.after_us_release.mean_abs_error_pct+'%'} over ${gr.after_us_release.mornings} mornings, other mornings ${gr.other.mean_abs_error_pct==null?'—':gr.other.mean_abs_error_pct+'%'} over ${gr.other.mornings}. Widening ×${gr.widen.factor} (${esc(gr.widen.basis)}).</div>`;
+ document.getElementById('evs').innerHTML=h}
+async function addEv(){try{const o=await post('/api/market-pulse/events',{date:document.getElementById('evd').value,kind:document.getElementById('evk').value,title:document.getElementById('evt').value||null});document.getElementById('evo').textContent=` added: ${o.label} hits ${o.session}`;load()}catch(e){document.getElementById('evo').textContent=' '+e.message}}
+j('/api/market-pulse/events').then(o=>{document.getElementById('evk').innerHTML=Object.entries(o.kinds).map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}).catch(()=>{});
+async function load(){const p=await j('/api/market-pulse');evCard(p);document.getElementById('asof').textContent='· '+p.as_of.replace('T',' ');
  document.getElementById('ctx').innerHTML=lab(p.context)+(p.context_score!=null?` <span class="muted">score ${p.context_score}</span>`:'');
  document.getElementById('reasons').innerHTML=p.reasons.length?`<ul class="b">${p.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'<span class="muted">Not enough stored data yet.</span>';
  const g=p.global_model,t=p.gift_today,gr=p.gap_record||{};let h='';
- if(t)h+=kv([['GIFT Nifty move since yesterday 15:30',`${pct(t.gift_move_pct)} <span class="muted">(${esc(t.gift_ref_source||'')})</span>`],['Expected open',t.expected_gap_pct==null?'—':`${pct(t.expected_gap_pct)} · ${n(t.expected_gap_pts,0)} pts`],['Captured',esc(String(t.captured_at).slice(11,16))]]);
+ if(t)h+=kv([['GIFT Nifty move since yesterday 15:30',`${pct(t.gift_move_pct)} <span class="muted">(${esc(t.gift_ref_source||'')})</span>`],['Expected open',t.expected_gap_pct==null?'—':`${pct(t.expected_gap_pct)} · ${n(t.expected_gap_pts,0)} pts`+(t.band_pct!=null?` <span class="muted">± ${n(t.band_pct,2)}% (typical miss${ovn(t.events)?', widened after '+ovn(t.events)+' overnight':''})</span>`:'')],['Captured',esc(String(t.captured_at).slice(11,16))]]);
  if(g.status==='OK'){h+=`<div style="margin:6px 0">Last night's global moves imply a Nifty move of <b>${pct(g.expected_move_pct)}</b> ${lab(g.cue_label)} <span class="muted">(daily σ ${g.nifty_sigma_pct}%, R² ${g.r2})</span></div>`;
   const mx=Math.max(0.01,...Object.values(g.contributions_pct).map(Math.abs));
   h+=table(['Factor','Last move','Contribution','Sensitivity','Corr 60d'],Object.entries(g.contributions_pct).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${g.inputs[k]?(g.inputs[k].move>0?'+':'')+n(g.inputs[k].move,2)+' '+g.inputs[k].unit:'—'}</td><td>${bar(v,mx)}</td><td class="muted">${g.sensitivity[k]?n(g.sensitivity[k].value,3)+' '+esc(g.sensitivity[k].unit):''}</td><td>${g.corr_60d[k]!=null?n(g.corr_60d[k],2):'—'}</td></tr>`));

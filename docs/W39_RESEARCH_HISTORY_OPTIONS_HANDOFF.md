@@ -7,7 +7,7 @@
 - `docs/ATIP_GAP_ANALYSIS_2026-10.md`: how ATIP compares with Dhan, Zerodha and institutional research.
 - `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md`: how the leading FA / TA / AI tools work, the evidence on global cues, FII flows and order books, and the phased plan that the technical screener, signals and market pulse below start.
 
-**Status:** developed. 162 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
+**Status:** developed. 178 W39 test cases and the full suite pass. The five pages (/research, /screener, /signals, /market-pulse, /options-builder) were rendered in a headless browser on seeded data; /options-builder and /market-pulse also at a 390 px phone width with no horizontal scroll. Not merged and not deployed. Nothing in this wave places an order; the open-orders view only reads.
 
 ## DP-11: 7 years of daily history
 
@@ -476,6 +476,31 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **API:** `GET /api/research/scorecard/{symbol}` (404 without fundamentals), `GET /api/research/scorecard-record?horizon=60` (400 on another horizon).
 
+## EV-01..EV-03: macro event calendar (`research/event_calendar.py`), Phase 2 item 8
+
+**Events (EV-01):**
+- Table `macro_event` (event date, kind, title, source). Kinds: `FOMC` (14:00 New York), `US_CPI` and `US_NFP` (08:30 New York), `RBI_POLICY` (10:00 IST).
+- Seeded with the Fed's 2026 decisions and its tentative 2027 calendar, the BLS 2026 CPI and jobs-report dates (January payrolls moved to 11 Feb by the 2026 funding lapse), and RBI's 2026-27 MPC decisions (press release 23 Mar 2026). Each date was checked against two sources on 2026-10-07; the BLS and Fed sites themselves were blocked from here. The seed needs a yearly refresh.
+- More dates: `config.json` `"event_calendar": {"events": [{"date", "kind", "title"?}]}`, `POST /api/market-pulse/events`, or the add form on `/market-pulse`. A delete marks the row deleted, so a seeded date does not come back.
+- `python -m research.event_calendar upcoming --days 30` lists them.
+
+**Sessions:**
+- New York times follow US daylight saving (second Sunday of March to first Sunday of November), computed in the module, so nothing depends on the machine's time-zone database.
+- `exposure()`: a US release lands after India's close (18:00 / 19:00 IST, or 23:30 / 00:30 IST for the Fed), so it hits the next NSE session's open, skipping NSE holidays from `utils/trading_calendar.py`. The RBI decides during the session.
+
+**The gap band (EV-02):**
+- `capture_gift` stores each morning's events and band in `market_cue` (`events`, `band_pct`; ALTER TABLE for older databases).
+- Band = the mean absolute miss of past GIFT estimates (10+ evaluated mornings), × a widening factor after a US release overnight.
+- The factor is measured, the ratio of the miss after US releases to the miss on other mornings, clipped 1–3, once 10 and 30 such mornings exist. Until then it is an assumed ×1.5 (`"default_widen"`), and the page says so. Mornings stored before the calendar existed are looked up in it.
+- RBI days are marked but not widened: the decision comes after the open.
+
+**Market pulse (EV-03):**
+- `pulse()` returns `events` (today's, the next 14 days, the band) and adds a reason line on event days.
+- `gap_record()` splits the miss into mornings after a US release and the rest.
+- `/market-pulse`: an "Event calendar" card and "± band (typical miss, widened after US CPI overnight)" next to the expected open.
+
+**API:** `GET /api/market-pulse/events?days=30`, `POST /api/market-pulse/events` `{date, kind, title?}`, `POST /api/market-pulse/events/delete` `{date, kind}` (`research:run`, token).
+
 ## OB-01..OB-03: pending orders, market-wide and yours (`data/order_pressure.py`, `portfolio/open_orders.py`)
 
 **Market-wide pressure:**
@@ -493,7 +518,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60) and the weekly snapshot columns to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate` and `fundamental_scorecard` (research, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard` and `macro_event` (research, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
 - Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
@@ -511,6 +536,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_technicals.py` | 19 | Wilder RSI bounds and value; Supertrend reversal; ATR; golden cross on the crossing day only; 52-week breakout needs volume; RSI oversold turn; engulfing / hammer / doji / inside bar; rating; snapshot flags every scan; levels and confluence with ATIP regime labels; run stores snapshots and signals and skips stale stocks; TARGET / STOPPED / EXPIRED and stats; both-touch = STOPPED; screener integration and CONTAINS; API; permissions and tables; RS rank and pocket pivot |
 | `tests/test_w39_market_pulse.py` | 15 | the global model recovers a planted 0.5 S&P beta and beats "no change" walk-forward; INSUFFICIENT on short history; GIFT gap against yesterday's 15:30 GIFT (not the 23:00 reading or the spot close) and the open check; FII streak, absorption and label; build-up truth table; crowded short is bullish only when covering; OI walls; order-book parse and labels; persistence needs the newest poll; a factor that stops updating is left out, not repeated; participant-OI CSV with title line and tab-polluted headers; open orders keep only open statuses and report Dhan errors; pulse; API, token and 400s; permissions and tables |
 
+| `tests/test_w39_event_calendar.py` | 16 | New York → IST across daylight saving, the Fed after midnight in winter; the session each event hits (next open, holidays skipped; RBI intraday); seeded dates by session and upcoming; config events, bad kinds and dates, add, soft delete that survives re-seeding; band = usual miss, assumed ×1.5, measured ×2.5 once enough mornings, RBI not widened; old mornings looked up; capture stores events and band, pulse explains; old market_cue gets the columns; API, token, 400 / 404, page; permissions and classification |
 | `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
 | `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
 | `tests/test_w39_rs_line.py` | 7 | RS-line new high on the first day only; RS line leads while price is below its high, and not when price is at a high; snapshot flag; AMFI cut-offs and RS within each group; market caps from the latest shares on or before the date; run stores group and rank; screener fields and presets |
@@ -560,6 +586,11 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Market volume is the volume of the stocks ATIP stores, not exchange-wide volume; days with fewer than 10 common stocks have no comparison.
 - Stalling days and the intraday-low rule for rally attempts are not modelled (closes only).
 
+**Event calendar:**
+- Seeded dates only reach the end of 2026 for US CPI and payrolls, and to February 2027 for the RBI; add the next year's dates each December (config or the page). Unscheduled meetings must be added by hand.
+- Only scheduled releases: no Union Budget, US GDP, PCE or ECB, and no surprise events.
+- The ×1.5 widening is an assumption until 10 mornings after a US release are evaluated.
+
 **Market pulse:**
 - The global model uses daily closes (previous session), not synchronised 15:30 → 08:45 moves; it needs the Nifty and global history loaded.
 - GIFT capture needs Dhan index quotes; participant OI needs NSE to answer (Indian connection).
@@ -567,7 +598,6 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - The early-October 2026 market figures in the plan doc are press reports, not verified.
 
 **Next on the roadmap** (details and order in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8):
-- Event calendar (FOMC, US CPI and payrolls, RBI policy) in the gap forecast (Phase 2, item 8)
 - Intraday scans and 20-level depth imbalance (Dhan Data API)
 - English → screener query and an ATIP MCP server (Anthropic key)
 - MF analytics / SIP, tax P&L, earnings-surprise signal

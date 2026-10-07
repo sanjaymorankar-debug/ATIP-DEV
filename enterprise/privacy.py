@@ -70,6 +70,7 @@ INVENTORY = {
     "market_cue": ("research", False, "kept: the record of pre-open gap estimates"),
     "market_regime_gate": ("research", False, "kept: recomputed nightly from prices (W39 regime gate)"),
     "fundamental_scorecard": ("research", False, "kept: the scorecard's own track record (W39)"),
+    "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

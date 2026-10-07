@@ -6742,6 +6742,74 @@
     }
    }
   },
+  "/api/market-pulse/events": {
+   "get": {
+    "summary": "Api Pulse Events",
+    "operationId": "api_pulse_events_api_market_pulse_events_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 30,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Api Pulse Event Add",
+    "operationId": "api_pulse_event_add_api_market_pulse_events_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/market-pulse/events/delete": {
+   "post": {
+    "summary": "Api Pulse Event Delete",
+    "operationId": "api_pulse_event_delete_api_market_pulse_events_delete_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/market-pulse/refresh": {
    "post": {
     "summary": "Api Pulse Refresh",

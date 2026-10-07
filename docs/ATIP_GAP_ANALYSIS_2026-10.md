@@ -73,7 +73,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Market depth / pending buy-sell quantity across stocks | Both (per stock) | 🆕 | W39 order-book pressure: total pending buy vs sell for every tracked stock every 15 minutes, persistent buyers / sellers, screener fields. Needs the Dhan Data API. |
 | Price and indicator alerts | Both | 🟡 | Needs `enterprise.enabled`; Telegram not configured |
 | FII/DII, pre-market dashboard, heatmaps | Both | ✅ | `/market` |
-| Global cues → expected Nifty open; FII flow pressure; FII derivatives positioning | Sensibull FII page, Moneycontrol / ET pre-market | 🆕 | W39 `/market-pulse`: global-cue model fitted on ATIP's data with its walk-forward record, basis-free GIFT gap checked against the actual open, FII flow surprise and pressure, NSE participant OI with a covering-aware crowded-short rule, OI walls |
+| Global cues → expected Nifty open; FII flow pressure; FII derivatives positioning | Sensibull FII page, Moneycontrol / ET pre-market | 🆕 | W39 `/market-pulse`: global-cue model fitted on ATIP's data with its walk-forward record, basis-free GIFT gap checked against the actual open, with a band widened after FOMC / US CPI / payroll releases (event calendar with RBI dates too), FII flow surprise and pressure, NSE participant OI with a covering-aware crowded-short rule, OI walls |
 
 ### 2.4 AI
 
