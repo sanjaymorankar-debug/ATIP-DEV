@@ -327,10 +327,14 @@ UPDATES = {
                "0 errors (docs/W39_QA_PERFORMANCE.md)",
                "Next Action / Missing Work": "Independent testing (ChatGPT) per W33 handoff; the development suite "
                "now runs 820+ tests green (W39); run tools/load_test.py against the production machine"},
-    "EX-01": {"Next Action / Missing Work": "Independent QA",
+    "EX-01": {"Next Action / Missing Work": "Independent QA", "Key Files": "orders/rules.py",
+              "Evidence": "tests/test_w39_qa_suite.py",
               "Notes+": "W39: tests/test_w39_qa_suite.py -- validation, triggers, OCO / bracket lifecycle, trailing "
               "stops through the paper broker; fix: bracket legs now anchor on the real fill price"},
     "OPS-02": {"Next Action / Missing Work": "Independent QA; network download steps are exercised only live",
+               "Key Files": "pipeline/scheduler.py; .github/workflows/tests.yml",
+               "Evidence": "test_postmarket_scores_a_seeded_session_end_to_end; "
+                           "test_postmarket_refuses_a_session_that_is_a_copy_of_the_previous_one",
                "Notes+": "W39: end-to-end test of run_postmarket on 260 seeded sessions (offline steps run for real) "
                "in tests/test_w39_qa_suite.py"},
     "QR-11": {"Notes+": "W39 QA finding (owner methodology call): a neighbouring parameter value with too few trades "
