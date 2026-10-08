@@ -89,7 +89,7 @@ Neither broker ships a factor research platform or model-governance tooling to r
 | Feature | Brokers | ATIP | Gap |
 |---|---|---|---|
 | Stock page: fundamentals, peers, shareholding, events | Both | 🆕 | W39 research report adds peer table, ownership trend, events and 7-year statistics |
-| Direct mutual funds, SIP / step-up SIP, XIRR | Coin, Dhan | 🟡 | AMFI NAVs ingested daily; no MF analytics or SIP tracking (`wealth/assets.py` refuses MUTUAL_FUND) |
+| Direct mutual funds, SIP / step-up SIP, XIRR | Coin, Dhan | 🟡 | AMFI NAVs ingested daily. W39b adds read-only analytics on them (`data/mf_analytics.py`): returns, rolling returns, risk, category rank and a SIP / lump-sum XIRR calculator. No step-up SIP; MF holdings are still not tracked (`wealth/assets.py` refuses MUTUAL_FUND) |
 | Tax P&L (STCG/LTCG), verified P&L | Console, Dhan Journal | ❌ | — |
 | Portfolio performance vs NIFTY | Console | ✅ | `wealth/perf/` |
 | MTF, pledge, stock lending | Both | ❌ | Broker products; low priority for ATIP |
@@ -132,6 +132,7 @@ Ranked by value to this owner (single user, Dhan account, research-led) against 
 2. **Done in W39 (follow-up):** fundamental screener (Screener.in / ScanX style) with presets, saved screens and new-match alerts.
    - **Second follow-up:** technical screener and signal engine with track record, market pulse (global cues, GIFT gap, FII pressure and positioning, OI walls), market-wide order-book pressure and the open-orders view. The next technical and AI steps are ordered in `docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md` §8.
 3. **Mutual fund analytics** (your note in `ATIP-.txt`): returns, rolling returns, XIRR and SIP tracking on the AMFI NAVs already stored; let the wealth ledger hold MFs.
+   - **Analytics done in W39b** (`data/mf_analytics.py`, `/api/data/mf/{scheme}/analytics`, `/sip`, `/compare`; scheme detail on the Data platform page, Multi-asset tab): point-to-point and rolling returns, volatility, drawdown with dates, Sharpe / Sortino, beta / alpha / tracking error against a stored index, AMFI-category rank with stated coverage, and a SIP / lump-sum calculator with XIRR on the real NAV history. Read-only. Letting the wealth ledger hold MFs is still open: it is in your Scope Exclusions sheet and needs your decision.
 4. **Tax P&L** (STCG/LTCG with grandfathering, FIFO lots) from the holdings and trade ledger.
 5. **Charts:** indicator overlays and drawing the detected candle patterns on the stock view; intraday chart once the 15-minute bar job is fixed (W9-J1).
 6. **ATIP MCP server: done in W39** (Phase 4): read-only tools so Claude can work with ATIP the way it works with Kite MCP and Dhan MCP (`tools/atip_mcp.py`).
