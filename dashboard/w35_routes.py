@@ -24,6 +24,10 @@ Authz: GET /api/data -> dashboard:read; POST /api/data -> research:run (enterpri
     GET  /api/data/assets                            catalogue (assets + MF)                           DP-21
     GET  /api/data/assets/{asset_class}/{symbol}     ?start&end
     GET  /api/data/mf                                ?q=&limit=50  latest NAVs, name search
+    GET  /api/data/mf/compare                        ?schemes=a,b,...&as_of | ?category_of=<code>&same_plan=1   W39b
+    GET  /api/data/mf/{scheme}/analytics             ?hurdle&rf&benchmark&risk_years&as_of&peers=1
+    GET  /api/data/mf/{scheme}/sip                   ?amount&day=1&start&end&lump_sum
+                                                     (data/mf_analytics.py; read-only, no MF in the wealth ledger)
     POST /api/data/assets/refresh
     GET  /api/data/alt                               sources, health                                   AD-01/02
     GET  /api/data/alt/{source_id}/{metric}          ?entity&start&end&as_of
@@ -212,6 +216,35 @@ def register(app, guard, Req, get_connection, json_safe):
             return rows(c, "SELECT scheme_code, scheme_name, nav, date, amc, category FROM mf_nav WHERE date=? AND "
                            "scheme_name LIKE ? ORDER BY scheme_name LIMIT ?", d, f"%{q}%", lim)
         return await run(f)
+
+    # W39b: mutual fund analytics on the stored NAVs (read-only; every input validated in the module -> 400)
+    def _flag(v):
+        return str(v).strip().lower() not in ("0", "false", "no", "off")
+
+    @app.get("/api/data/mf/compare")
+    async def mf_compare(schemes: str = "", category_of: str = "", same_plan: str = "1", as_of: str = None):
+        from data import mf_analytics as MA
+
+        def f(c):
+            if bool(schemes.strip()) == bool(category_of.strip()):
+                raise ValueError("give either schemes=<code>,<code>,... or category_of=<code>")
+            if category_of.strip():
+                return MA.category_rank(c, category_of, same_plan=_flag(same_plan), as_of=as_of)
+            return MA.compare(c, [x for x in schemes.split(",") if x.strip()], as_of=as_of)
+        return await run(f)
+
+    @app.get("/api/data/mf/{scheme}/analytics")
+    async def mf_analytics(scheme: str, hurdle: str = None, rf: str = None, benchmark: str = None,
+                           risk_years: str = None, as_of: str = None, peers: str = "1"):
+        from data import mf_analytics as MA
+        return await run(lambda c: MA.analytics(c, scheme, hurdle_pct=hurdle, rf_pct=rf, benchmark=benchmark,
+                                                risk_years=risk_years, as_of=as_of, peers=_flag(peers)))
+
+    @app.get("/api/data/mf/{scheme}/sip")
+    async def mf_sip(scheme: str, amount: str = None, day: str = "1", start: str = None, end: str = None,
+                     lump_sum: str = None):
+        from data import mf_analytics as MA
+        return await run(lambda c: MA.sip(c, scheme, amount, day, start, end, lump_sum))
 
     @app.post("/api/data/assets/refresh", dependencies=guard)
     async def assets_refresh():

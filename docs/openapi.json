@@ -5168,6 +5168,248 @@
     }
    }
   },
+  "/api/data/mf/compare": {
+   "get": {
+    "summary": "Mf Compare",
+    "operationId": "mf_compare_api_data_mf_compare_get",
+    "parameters": [
+     {
+      "name": "schemes",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "Schemes"
+      }
+     },
+     {
+      "name": "category_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "Category Of"
+      }
+     },
+     {
+      "name": "same_plan",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "1",
+       "title": "Same Plan"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "As Of"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/data/mf/{scheme}/analytics": {
+   "get": {
+    "summary": "Mf Analytics",
+    "operationId": "mf_analytics_api_data_mf__scheme__analytics_get",
+    "parameters": [
+     {
+      "name": "scheme",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Scheme"
+      }
+     },
+     {
+      "name": "hurdle",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Hurdle"
+      }
+     },
+     {
+      "name": "rf",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Rf"
+      }
+     },
+     {
+      "name": "benchmark",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Benchmark"
+      }
+     },
+     {
+      "name": "risk_years",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Risk Years"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "As Of"
+      }
+     },
+     {
+      "name": "peers",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "1",
+       "title": "Peers"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/data/mf/{scheme}/sip": {
+   "get": {
+    "summary": "Mf Sip",
+    "operationId": "mf_sip_api_data_mf__scheme__sip_get",
+    "parameters": [
+     {
+      "name": "scheme",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Scheme"
+      }
+     },
+     {
+      "name": "amount",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Amount"
+      }
+     },
+     {
+      "name": "day",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "1",
+       "title": "Day"
+      }
+     },
+     {
+      "name": "start",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Start"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "End"
+      }
+     },
+     {
+      "name": "lump_sum",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Lump Sum"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/data/assets/refresh": {
    "post": {
     "summary": "Assets Refresh",

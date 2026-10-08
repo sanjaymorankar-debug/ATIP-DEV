@@ -341,9 +341,9 @@ NEW_ROWS += [
          owner="Claude (development), PR #4",
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
                "DEPLOYED; independent validation PENDING"),
-    _row('W39-DEPTH20', 'Data Platform', '20-level depth and depth-weighted imbalance (DP-01..03)', 'Dhan 20-level depth WebSocket, DWI, persistent flags, validation', SRC4, "P1", IMPL, 85,
-         'data/depth20.py: depth feed (off by default), DWI, logistic validation vs the next 1 / 5 minutes',
-         'Owner: depth20.enabled and the Dhan Data API; no order-flow imbalance yet', 'data/depth20.py', 'tests/test_w39_depth20.py',
+    _row('W39-DEPTH20', 'Data Platform', '20-level depth, depth-weighted imbalance and order-flow imbalance (DP-01..03, OF-01..03)', 'Dhan 20-level depth WebSocket, DWI, OFI from quote changes (best level and multi-level), persistent flags, validation', SRC4, "P1", IMPL, 85,
+         'data/depth20.py: depth feed (off by default), DWI, OFI summed over every book update, logistic validation vs the next 1 / 5 minutes and OFI vs its own interval',
+         'Owner: depth20.enabled and the Dhan Data API', 'data/depth20.py', 'tests/test_w39_depth20.py; tests/test_w39b_ofi.py',
          owner="Claude (development), PR #4",
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
                "DEPLOYED; independent validation PENDING"),

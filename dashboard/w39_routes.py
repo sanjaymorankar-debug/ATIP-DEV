@@ -55,8 +55,8 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/orderbook/pressure?side=buy|sell&limit  latest pending buy / sell totals per stock today
     GET  /api/orderbook/pressure/{symbol}            today's polls for one stock
     POST /api/orderbook/snapshot                     poll the whole universe now
-    GET  /api/orderbook/depth20                      20-level depth: latest DWI per watchlist stock, persistent flags, feed
-    GET  /api/orderbook/depth20/validation?horizon=1 does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes?
+    GET  /api/orderbook/depth20                      20-level depth: latest DWI and OFI per watchlist stock, persistent flags, feed
+    GET  /api/orderbook/depth20/validation?horizon=1 does DWI / best-level / 20-level imbalance / OFI predict the next 1 / 5 minutes? (+ OFI vs its own interval)
     GET  /api/brokers/open-orders                    your pending orders at Dhan (read-only) + ATIP's resting ones
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates

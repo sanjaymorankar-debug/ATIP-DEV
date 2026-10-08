@@ -168,10 +168,12 @@
 
   "_SECTION_16": "W35 data platform (all off / safe by default)",
   "depth": {"enabled": false, "symbols": [], "max_symbols": 25, "interval_seconds": 60},
-  "depth20": {"enabled": false, "symbols": [], "max_symbols": 50, "sample_seconds": 15, "band_bp": 50, "decay": 0.5},
+  "depth20": {"enabled": false, "symbols": [], "max_symbols": 50, "sample_seconds": 15, "band_bp": 50, "decay": 0.5, "ofi_levels": 20, "ofi_decay": 0},
   "derivatives": {"option_chain_enabled": false, "chain_symbols": ["NIFTY", "BANKNIFTY"], "chain_minutes": 15, "nearest_expiries": 2},
   "altdata": {"enabled": ["news_attention", "announcement_intensity"], "max_entities": 500, "sources": {"wiki_pageviews": {"max_entities": 100, "map": {}}}},
   "multi_asset": {"add": {}},
+  "mf_analytics": {"hurdle_pct": 7.0, "benchmark": null, "risk_years": 3, "max_peers": 300},
+  "_mf_analytics_note": "W39b read-only analytics on the stored AMFI NAVs (/api/data/mf/{scheme}/analytics, /sip, /compare). hurdle_pct: the rolling-return hurdle (FD-like); benchmark: a prices_daily symbol (null = wealth.benchmark); risk-free = wealth.risk_free_pct. Mutual funds stay out of the wealth ledger.",
   "_w35_note": "Tick capture: live_feed.capture_ticks true (needs live_feed.stocks_enabled). Lake files are Parquet when pyarrow is installed, else csv.gz; pip install pyarrow duckdb for Parquet + SQL queries.",
 
   "_SECTION_17": "W36 AI assistant (off by default)",
