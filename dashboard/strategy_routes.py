@@ -194,6 +194,11 @@ def register(app, guard, Req, get_connection, json_safe):
             s["backtests"] = [dict(r) for r in conn.execute(
                 "SELECT run_id, strategy_version, kind, period_label, start_date, end_date, status, metrics_json, "
                 "created_at FROM backtest_run WHERE strategy_id=? ORDER BY created_at DESC LIMIT 25", (sid,))]
+            for b in s["backtests"]:          # W39: decoded beside the text the v1 contract published (additive)
+                try:
+                    b["metrics"] = json.loads(b["metrics_json"]) if b.get("metrics_json") else None
+                except ValueError:
+                    b["metrics"] = None
             return JSONResponse(json_safe(s))
         finally:
             conn.close()

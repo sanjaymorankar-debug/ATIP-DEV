@@ -201,7 +201,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Candle patterns** (`candles`, 19, each BULL / BEAR / NEUTRAL): engulfing, harami, marubozu, hammer and hanging man, inverted hammer and shooting star (trend-qualified), doji, morning and evening star, piercing line, dark cloud cover, three white soldiers, three black crows, inside bar, NR7.
 
-**39 scans** (`SCANS`, completed daily bars only; 27 bullish, 11 bearish, 1 neutral; the 6 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL and the delivery spike under DL below):
+**47 scans** (`SCANS`, completed daily bars only; 31 bullish, 15 bearish, 1 neutral; the 14 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL and the delivery spike under DL below):
 - Crosses, firing on the crossing day only: golden / death cross, EMA 9/21, price across the 200-DMA, MACD signal and zero line, RSI out of oversold / overbought and across 50, Supertrend flips.
 - Breakouts: 52-week high **on volume** (> 1.5 × the 20-day average), 52-week low, Donchian 20 and 55, 20-day breakdown.
 - Others: volume surges, TTM squeeze firing, Bollinger lower-band bounce, ADX crossing 25, Minervini trend template, RS leader, pullback to the 50-DMA in an up-trend, pocket pivot, gap up, NR7 inside bar.
@@ -378,7 +378,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Alerts note "weekly trend agrees".
 - `forward_stats` adds `by_weekly`: agrees / disagrees / no weekly rating × gate. It is shown on the Track record tab as "Does the weekly trend add?".
 
-## CP-01..CP-03: chart patterns (`research/patterns.py`), Phase 2 item 4
+## CP-01..CP-04: chart patterns (`research/patterns.py`), Phase 2 item 4 and the rest of plan §7
 
 **Pivots:**
 - `swings(high, low, k=3)`: a swing high is higher than the 3 bars before and not exceeded by the 3 after, so it is confirmed 3 sessions later. Lows are mirrored.
@@ -390,24 +390,31 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - **Double bottom:** two swing lows within 3 %, 10–60 sessions apart, the second within 30 sessions, after a 10 % decline. The neckline (middle peak) is 6 %+ above them and not closed above since.
 - **Ascending triangle:** 2+ swing highs within 1.5 % of the resistance, spread over 10+ sessions, the last being the latest swing high. Rising swing lows (+1 % each) since the first touch.
 - **Head and shoulders top:** the last three swing highs, the head 3 %+ above both shoulders, the shoulders within 8 % of each other, after an advance. The neckline through the two troughs is extended to today and was not broken before today.
+- **Inverse head and shoulders (CP-04):** the mirror: the last three swing lows, the head 3 %+ below both shoulders, the shoulders within 8 % of each other, after a decline (a close 8 %+ above the left shoulder in the 40 sessions before it). The neckline through the two peaks is extended to today, not closed above since the right shoulder.
+- **Descending triangle (CP-04):** 2+ swing lows within 1.5 % of the support over 10+ sessions, the last being the latest swing low; falling swing highs (−1 % each) since the first touch; no close below the support since.
+- **Channels (CP-04):** least-squares lines through the last 3 swing highs and the last 3 swing lows (`_trendlines`). Each of those pivots within 15 % of the gap of its line; no close beyond a line (by more than that before the last pivot, at all after it). Parallel: the gap at the end 0.75–1.33x the gap at the start. Both lines up 4 %+ (rising) or down 4 %+ (falling) over 20+ sessions; 3–25 % tall.
+- **Wedges (CP-04):** the same lines converging: the gap at the end ≤ 60 % of the start and still positive today (apex ahead), ≤ 25 % tall at the start, 20+ sessions. Rising: both up, the flatter upper line 3 %+. Falling: both down, the flatter lower line 3 %+.
 
 **Scans:**
 - `darvas_breakout`, `darvas_breakdown`, `vcp_breakout` (needs ≥ 1.4x volume), `double_bottom_breakout`, `ascending_triangle_breakout`, `head_shoulders_breakdown`.
+- CP-04: `inverse_head_shoulders_breakout`, `descending_triangle_breakdown`, `rising_channel_breakout` / `_breakdown`, `falling_channel_breakout` / `_breakdown` (each direction its own record), `rising_wedge_breakdown`, `falling_wedge_breakout`. `PATTERN_SCANS` is `patterns.SCAN_PATTERN`'s keys, so a new pattern scan is held back without a second list to edit.
 - Each rule returns its reason text with the pattern's levels; `run_scans` now accepts a string reason.
-- `detect(d)` computes all patterns once per frame. The cache is keyed to the frame's last bar, because pandas copies `attrs` onto slices.
+- `detect(d)` computes all patterns once per frame. The cache is keyed to the frame's last bar, because pandas copies `attrs` onto slices; it is wrapped so that copy hands the same object on instead of deep-copying it on every column access. `swings` is one vectorised window pass (the same pivots as the loop it replaced).
 
 **Alerts:**
 - `T.PATTERN_SCANS` alert only after `PROVE_CLOSED` (30) closed signals with average R > 0 (`proven_scans`).
 - `scan_stats` rows carry `pattern` and `alerts` (`on` / `held`). The Track record shows "held · n/30".
 
 **Snapshot and screener:**
-- `chart_patterns`: patterns in place near their trigger, with levels: the upper half of a Darvas box or double-bottom base, within 3 % of a triangle's resistance, any VCP below its pivot, a head and shoulders above its neckline.
+- `chart_patterns`: patterns in place near their trigger, with levels: the upper half of a Darvas box, double-bottom or inverse head-and-shoulders base, within 3 % of a triangle's resistance or support, any VCP below its pivot, a head and shoulders above its neckline, a price between a channel's or wedge's lines.
 - `vcp_setup` 1/0.
-- Presets: "Chart pattern breakouts" and "VCP setups (not yet broken out)".
+- Presets: "Chart pattern breakouts" (now with the inverse head and shoulders, falling wedge and channel breakouts), "Chart pattern breakdowns" (CP-04) and "VCP setups (not yet broken out)".
+- Stock chart (CP-04): `patterns.active(d)` lists every pattern in place with its lines; `/api/stock/{symbol}/history` returns them with the stored `technical_signal` rows and `technical_snapshot` candle patterns as `chart_marks`, and the panel draws them (Patterns toggle).
 
 **Calibration:**
 - On 4,800 random-walk stock-days, breakouts fired on 0.02 % (VCP) to 1.2 % (Darvas breakdown) of days.
 - Setups were listed on 0.2 % (VCP) to 7 % (Darvas box).
+- CP-04, on 50,000 random-walk stock-days: inverse head and shoulders 0.078 %, descending triangle 0.038 %, rising channel 0.032 % up / 0.092 % down, falling channel 0.098 % up / 0.020 % down, rising wedge 0.046 %, falling wedge 0.084 %; setups 0.15–0.69 %.
 
 ## RL-01..RL-02: RS line and size-group ranks, Phase 2 item 5
 
@@ -545,6 +552,30 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Page and API:** `/market-pulse` → "20-level depth (watchlist)"; `GET /api/orderbook/depth20` (latest per stock, flags, feed status), `GET /api/orderbook/depth20/validation?horizon=1|5`.
 
+## OF-01..OF-03: order-flow imbalance (OFI) from quote changes (`data/depth20.py`), Phase 3 item 2
+
+**Measure (OF-01):** for consecutive books n−1 → n (every bid or ask message the feed receives, not only the 15-second samples), Cont, Kukanov & Stoikov (2014) at the best level:
+
+  e_n = 1{Pᵇₙ ≥ Pᵇₙ₋₁} qᵇₙ − 1{Pᵇₙ ≤ Pᵇₙ₋₁} qᵇₙ₋₁ − 1{Pᵃₙ ≤ Pᵃₙ₋₁} qᵃₙ + 1{Pᵃₙ ≥ Pᵃₙ₋₁} qᵃₙ₋₁
+
+- Bids arriving or the bid raised count as buying; asks arriving or the ask lowered as selling. A side that did not change contributes 0, so separate bid and ask messages add up to the same e as one update of both.
+- The same formula at the m-th best level gives Xu, Gould & Howison's (2019) multi-level OFI. A level a side lacks counts as quantity 0 at a price beyond every other (bids −∞, asks +∞): a level that empties counts as its quantity leaving, one that appears as its quantity arriving.
+- `OFI` keeps each stock's running sums between snapshots. At a snapshot:
+  - `ofi_l1`: Σ e_n at the best level since the previous snapshot (shares).
+  - `ofi_depth`: the average best-level depth over that interval, (qᵇ + qᵃ) / 2. `ofi_l1 / ofi_depth` is the scale-free OFI (CKS: OFI's price impact is inversely proportional to depth), shown on the page and used in the validation.
+  - `ofi_ml`: Σₘ wₘ · OFIₘ / Q, divided by Σ wₘ, over levels 1..`ofi_levels` (20). Q is the average depth per level and side over the interval (Cont, Cucuringu & Zhang's scaling, a missing level as 0), so a stock 400× deeper with the same flow scores the same. wₘ = e^(−`ofi_decay`(m−1)), default 0: equal weights. Cont, Cucuringu & Zhang integrate with the first principal component instead, which needs a fitted history.
+  - `ofi_updates`: the book updates summed.
+- An empty or crossed book is skipped; the next good book is compared with the last good one. A new connection clears the books and the sums: the first snapshot after it has no interval behind it, so its OFI is NULL.
+
+**Storage (OF-02):** `depth20_snapshot` gains `best_bid`, `best_bid_qty`, `best_ask`, `best_ask_qty`, `ofi_l1`, `ofi_ml`, `ofi_depth`, `ofi_updates`. They are in the DDL for new databases and in `ADDED_COLUMNS` (via `W39_COLUMNS` and the module's `ensure_tables`) for tables created before. Old rows keep NULLs.
+
+**Validation (OF-03):** `validate()` now fits each measure on the rows that have it, so snapshots from before OFI still count for DWI.
+- **Next interval:** `ofi_l1` (scale-free) and `ofi_ml` join DWI and the two imbalances against the direction of the mid's next 1 / 5-minute move. Same rule: predictive only with 500+ pairs and z ≥ 2 (|z| ≥ 2, positive slope).
+- **Contemporaneous** (`contemporaneous`): each OFI against the mid's move over its own interval (the stock's previous snapshot, at most 2 minutes earlier, to this one). It uses the same logistic rule ("related"), plus CKS's linear fit of the move in bp on the OFI, stock by stock (30+ pairs, unchanged mids included): the median `bp_per_unit` and median `r2`. This is the sanity check: CKS report R² ≈ 65 % on US stocks. On a simulated one-tick book fed frame by frame through the feed, the best-level R² comes out at ≈ 0.7.
+- **Separation:** when a measure separates ups from downs (every down at or below every up), the logistic slope has no finite estimate and its Wald z collapses towards 0. `ofi_ml` against its own interval can do this because levels are ranks: a quote moving a tick shifts every level. The fit then reports `separated`, slope None, and the score test's z (√n × the correlation). Ordinary fits are unchanged.
+
+**Page:** the 20-level card shows OFI and OFI 20 next to DWI, both in the next-minute line and in a same-interval line with R². Off with the feed (`depth20.enabled`); nothing changes while it is off except the empty columns.
+
 ## GS-01..GS-03: the global-cue model on synchronised moves (`research/global_sync.py`), Phase 3 item 3
 
 **Why:** the daily-close model regresses the Nifty's close-to-close move on the previous session's closes. Markets close at different hours, so part of that is already priced by India's close. This model uses only what moved between India's close and the next morning.
@@ -607,7 +638,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 ## Wiring
 
-- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`, `intraday_signal`, `depth20_snapshot`, `global_snapshot`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns and `market_cue.events` / `band_pct` / `sync_expected_pct` to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event` and `intraday_signal` (research, kept), `depth20_snapshot` (market, 90 days) and `global_snapshot` (market, kept) added; the rest are classified by the existing rules.
+- Tables: `db/schema_w39.py` (`prices_daily_backfill`, `research_report`, `research_screen`, `technical_snapshot`, `technical_signal`, `order_book_pressure`, `fo_participant_oi`, `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event`, `intraday_signal`, `depth20_snapshot`, `global_snapshot`), applied by `db/schema.py`. `W39_COLUMNS` adds `technical_signal.market_gate` / `alignment` / `market_status` / `weekly_agrees`, the forward columns (`ret_*`, `excess_*` at 5/20/60), the weekly snapshot columns, `market_cue.events` / `band_pct` / `sync_expected_pct` and the `depth20_snapshot` best-quote and OFI columns (OF-02) to databases created before them. Scoping: GLOBAL, except `research_screen`, which is OWNER. Privacy inventory: `order_book_pressure` (market, 90 days), `market_cue`, `market_regime_gate`, `fundamental_scorecard`, `macro_event` and `intraday_signal` (research, kept), `depth20_snapshot` (market, 90 days) and `global_snapshot` (market, kept) added; the rest are classified by the existing rules.
 - Retention (`db/purge.py`): `technical_snapshot` in the LONG tier (600 days), `order_book_pressure` in the SHORT tier (90 days). Signals and cues are kept.
 - Routes: `dashboard/w39_routes.py`, registered in `server.py`. Authz rules: `POST /api/options/(build|analyse)` → `research:run`; `POST /api/screener/` → `workspace:write`; `POST /api/signals/` and `POST /api/(market-pulse|orderbook|market-regime)/` → `research:run`. GETs fall under the existing read rules (`/api/brokers/` → `portfolio:read`).
 - Scheduler (`_schedule_w39_jobs`): order-book poll every 15 minutes (market hours only); GIFT capture 08:45 and 09:05; gap evaluation 09:35; participant OI 20:15; technical signals 20:30; research reports 20:40; scorecards and saved screens 20:50; intraday scans every 15 minutes 09:45–15:50; global snapshots 15:31 and 08:42; history backfill 22:20; Nifty history 23:20. Each job is logged in `pipeline_log` through `run_job`.
@@ -628,12 +659,14 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_screener_nl.py` | 11 | five everyday phrasings to exact queries (units, 1,000 crore, between, sorted by, cheapest first, industries, scans); presets only when named outright; unmatched words; Claude path with a fake client: cached catalogue, structured output, usage logged; a rejected query retried once with the parser's error, twice falls back; 401, the cost cap and the off switch fall back with the reason; empty / long text; API, token, page |
 | `tests/test_w39_mcp.py` | 7 | handshake, version negotiation, ping, notifications, unknown methods; 12 tools all annotated read-only; screener tools and their errors; stock tools and missing data as tool errors; market tools on a query-only connection, which rejects an INSERT; stdout carries only protocol messages even when a module prints; a real subprocess session over stdio |
 | `tests/test_w39_depth20.py` | 9 | binary frames with bid and ask messages and a truncated tail; DWI against a hand calculation, the far level excluded; sampling every 15 s, storage, the subscription message; Dhan's 806 parks the feed with its reason; a session subscribes then reads frames; batches of 50; persistent flag; validation recovers a planted slope and calls noise not predictive; API, page, permissions |
+| `tests/test_w39b_ofi.py` | 19 | e_n by hand: bid and ask price up / down / unchanged, quantity changes, both sides vs separate messages, deeper levels and levels that appear or empty; sums between snapshots restart, crossed books skipped; multi-level normalisation (400× deeper stock scores the same, weights, missing levels as 0 depth); the frame path (every message counted, another stock ignored, stored values and best quotes); packing of messages into frames; a reconnect restarts the sums; an old table gets the columns and keeps its rows; off by default; validation recovers a planted contemporaneous and a planted next-minute OFI relation and calls noise not predictive; too few pairs are not called; separated moves get the score z; a simulated book through the feed shows the strong contemporaneous relation (R² ≈ 0.7); API and page |
 | `tests/test_w39_global_sync.py` | 7 | capture and a failed fetch; morning moves from the previous session's close, across a holiday; the gap needs a reading by 09:30; COLLECTING under 40 mornings; a planted sensitivity recovered walk-forward, beating "no change" and a noisier GIFT; capture_gift stores the estimate and the record scores it; API and permissions; the open check ignores a reading after 09:30 |
 | `tests/test_w39_intraday.py` | 10 | opening-range breakout needs 1.5× slot volume and a first close beyond the range by 11:30, 30-minute range, breakdown; open = low / high on the first hour, broken and too-small cases; squeeze after 6 tight bars released up and down, not without history; only completed 15-minute bars load; stored once, seen at the bar's completion, record to the close vs the Nifty with best / worst; a short gains on a fall; alerts held until a positive 30-hit record; the existing scanner no longer mixes 1-minute bars; API and page; permissions |
 | `tests/test_w39_event_calendar.py` | 16 | New York → IST across daylight saving, the Fed after midnight in winter; the session each event hits (next open, holidays skipped; RBI intraday); seeded dates by session and upcoming; config events, bad kinds and dates, add, soft delete that survives re-seeding; band = usual miss, assumed ×1.5, measured ×2.5 once enough mornings, RBI not widened; old mornings looked up; capture stores events and band, pulse explains; old market_cue gets the columns; API, token, 400 / 404, page; permissions and classification |
 | `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
 | `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
 | `tests/test_w39_rs_line.py` | 7 | RS-line new high on the first day only; RS line leads while price is below its high, and not when price is at a high; snapshot flag; AMFI cut-offs and RS within each group; market caps from the latest shares on or before the date; run stores group and rank; screener fields and presets |
+| `tests/test_w39b_patterns_more.py` | 19 | inverse head and shoulders with uneven-shoulder, no-decline and already-broken negatives; descending triangle and rising highs rejected; rising / falling channel breakouts and breakdowns, widening and flat lines rejected; rising wedge breakdown, falling wedge breakout, channel vs wedge kept apart; scans held like the first five; snapshot and presets; `active()` lines; random-walk calibration bounds; the stock route's `chart_marks`, the candle sides, `node --check` and a Playwright check of the drawn marks and the toggle |
 | `tests/test_w39_patterns.py` | 11 | Darvas box and breakout, still-inside and steady-climb negatives, breakdown; VCP contractions, dry-up and volume-confirmed breakout, widening pullbacks and no dry-up rejected; double bottom breakout and uneven lows rejected; ascending triangle; head-and-shoulders breakdown; pattern scans carry their levels; snapshot lists setups; screener fields and presets; pattern alerts held until 30 closed with positive R |
 | `tests/test_w39_weekly.py` | 10 | weekly bars aggregate and keep only completed weeks; a Friday-holiday week counts from the next Monday; the weekly rating needs 35 weeks and follows the trend; agreement truth tables; snapshot fields; run stores weekly fields and tags signals; forward split by weekly agreement; screener fields and presets; old snapshot table gets the columns; page |
 | `tests/test_w39_track_record.py` | 6 | forward returns signed for direction and measured against the Nifty on the same sessions; filled as sessions pass, never rewritten; stats by scan × gate and by confluence band with n / beat % / median / mean; today's signals carry their scan's record in today's market; gate and status at birth for older signals; API and 400 |
@@ -662,7 +695,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 **Chart patterns:**
 - Rule-based approximations of patterns drawn by eye; they will miss some textbook shapes and catch some that a trader would reject.
 - Closes only for breakouts (no intraday trigger).
-- Inverse head and shoulders, descending triangles, channels and wedges are not built yet.
+- Channels and wedges are fitted through the last three pivots on each side only; an older touch does not count, and a line through three pivots can be steeper than one a trader would draw through four.
 
 **Track record by horizon:**
 - Measured from the signal day's close, not the next open.
@@ -689,8 +722,11 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **20-level depth:**
 - Off by default; it needs the Dhan Data API and one connection (Dhan allows a limited number at once).
-- No order-flow imbalance (OFI) from quote changes yet; DWI is a static measure of the book.
-- Snapshots every 15 seconds miss faster changes; the 1-minute validation is the shortest horizon it supports.
+- OFI is built from Dhan's 20-level snapshots (each message is a full side), not from an order-by-order feed. Changes between two messages are netted: an order added and cancelled between them is invisible.
+- `ofi_ml` follows the interval's price move by construction (a quote moving a tick counts at every level), so its same-interval fit is close to perfect. The best-level fit is the meaningful sanity check.
+- The integrated multi-level OFI uses fixed weights (equal by default), not Cont, Cucuringu & Zhang's fitted principal component.
+- The 15-second sample is taken on the first message 15 seconds after the last one, sometimes between a frame's bid and ask messages. The rest of the frame counts toward the next snapshot, so no flow is lost.
+- Snapshots every 15 seconds miss faster changes in the stored measures (OFI itself is summed over every update); the 1-minute validation is the shortest horizon it supports.
 
 **Synchronised global model:**
 - Needs 40 mornings of both snapshots (about two months) before it gives an estimate.

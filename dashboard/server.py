@@ -1446,20 +1446,22 @@ if HAS_FASTAPI:
 
     @app.post("/api/backtests/walkforward", dependencies=_guard)
     async def api_backtest_walkforward(request: _Req):
-        """Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?}."""
+        """Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?,
+        purge?, embargo?} -- purge / embargo (BT-18) are sessions, default 0 (no gap between windows)."""
         import threading
         from backtest.walkforward import run_walk_forward, build_windows, trading_sessions
         b = await request.json()
         try:
             req = b["request"]
+            purge, embargo = int(b.get("purge") or 0), int(b.get("embargo") or 0)
             bt_service.resolve_config(req)
             build_windows(trading_sessions(req["start"], req["end"]), int(b["train"]), int(b["validation"]),
-                          int(b["test"]), int(b["step"]))
+                          int(b["test"]), int(b["step"]), purge, embargo)
         except (ValueError, KeyError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         threading.Thread(target=run_walk_forward, daemon=True,
                          args=(req, int(b["train"]), int(b["validation"]), int(b["test"]), int(b["step"]),
-                               b.get("candidates"), b.get("select_by", "sharpe"))).start()
+                               b.get("candidates"), b.get("select_by", "sharpe"), purge, embargo)).start()
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind walk_forward)"})
 
     # ── W23: optimisation, sensitivity, robustness, research study ─────────
@@ -1514,6 +1516,48 @@ if HAS_FASTAPI:
         _bg(robustness, b["request"], int(b.get("n_subsamples", 3)), int(b.get("seed", 42)))
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind robustness)"})
 
+    @app.post("/api/backtests/costsweep", dependencies=_guard)
+    async def api_backtest_costsweep(request: _Req):
+        """Body: {request, multipliers? (default [0,0.5,1,1.5,2,3,5]), scale? costs|slippage|both} (BT-19)."""
+        from backtest.robustness import cost_sweep, prepare_cost_sweep
+        b = await request.json()
+        try:
+            mults = prepare_cost_sweep(b["request"], b.get("multipliers"), b.get("scale", "costs"))
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(cost_sweep, b["request"], mults, b.get("scale", "costs"))
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind cost_sweep)"})
+
+    @app.post("/api/backtests/cpcv", dependencies=_guard)
+    async def api_backtest_cpcv(request: _Req):
+        """Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?}
+        -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths."""
+        from backtest.cpcv import prepare_cpcv, run_cpcv
+        b = await request.json()
+        try:
+            args = (b["request"], int(b.get("groups", 6)), int(b.get("test_groups", 2)), b.get("candidates"),
+                    b.get("select_by", "sharpe"), int(b.get("purge") or 0), int(b.get("embargo") or 0))
+            prepare_cpcv(*args)
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(run_cpcv, *args)
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind cpcv)"})
+
+    @app.post("/api/backtests/{run_id}/pbo", dependencies=_guard)
+    async def api_backtest_pbo(run_id: str, request: _Req):
+        """Body (optional): {partitions? (16), metric? sharpe|mean|total_return} -- the probability of backtest
+        overfitting (CSCV) of the run's trials (an optimisation), computed now and stored as a run of kind pbo."""
+        from backtest.cpcv import pbo_for_run
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        try:
+            out = pbo_for_run(run_id, int((b or {}).get("partitions", 16)), (b or {}).get("metric", "sharpe"))
+        except (ValueError, TypeError, AttributeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=404 if str(e).startswith("no backtest run") else 400)
+        return JSONResponse(json_safe(out))
+
     @app.post("/api/backtests/study", dependencies=_guard)
     async def api_backtest_study(request: _Req):
         """Body: {strategy_id, start, end, space?, hypothesis?, method?, max_trials?, universe?}."""
@@ -1537,7 +1581,7 @@ if HAS_FASTAPI:
             run = bt_store.get_run(conn, run_id)
             if not run:
                 return JSONResponse({"error": "not found"}, status_code=404)
-            if run["kind"] == "walk_forward":
+            if run["kind"] in ("walk_forward", "cpcv"):
                 run["children"] = bt_store.child_runs(conn, run_id)
             return JSONResponse(json_safe(run))
         finally: conn.close()
@@ -1622,6 +1666,8 @@ if HAS_FASTAPI:
     _register_w38_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w39_routes import register as _register_w39_routes                   # W39
     _register_w39_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w39_retail_routes import register as _register_w39b_routes           # W39b: baskets, SIP
+    _register_w39b_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

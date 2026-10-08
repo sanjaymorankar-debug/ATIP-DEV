@@ -54,6 +54,16 @@ def notify(message, category="alert", severity="info", key=None, parse_mode="HTM
     Before this, an alert existed only as a Telegram message; with no bot
     configured every one of them -- failures, CRI danger, the morning brief --
     went nowhere but a WARNING line in atip.log.
+
+    Never call this while the calling thread holds an uncommitted write on
+    another connection to the same database: commit first, or notify after the
+    commit. The alert is written on a connection of its own, so it would wait
+    out the whole busy timeout (db.schema.BUSY_TIMEOUT_MS) for a lock this
+    thread cannot release until notify returns, and then be lost. Python's
+    sqlite3 opens that transaction implicitly on the first INSERT / UPDATE /
+    DELETE -- even one that failed -- and a connection dropped without close()
+    keeps it until the garbage collector reaches it. Nothing here can see
+    another connection's transaction, so the rule is the caller's to keep.
     """
     out={"recorded":False,"sent":False,"duplicate":False}
     now=datetime.now()

@@ -165,6 +165,12 @@ def enter(symbol: str, quantity: int, cfg: dict = None, cost_pct: float = 0.0) -
     from a price you did not get puts every one of them in the wrong place.
     """
     cfg = cfg or A.config()
+    if not cfg.get("aggressive_enabled"):
+        # W39b (EX-17): the flag gates NEW aggressive entries. Positions already open keep being
+        # managed (run_once / manage_position) whatever the flag says -- switching it off must
+        # never leave a position without its stop, target and trail.
+        return {"opened": False, "reason": "aggressive_enabled is false: no new entries "
+                                           "(open positions are still managed)"}
     from orders.broker import place_buy_order
     symbol = symbol.upper()
     resp = place_buy_order(symbol, quantity, confirm=True, tag=f"ENTRY:{symbol}")
@@ -203,6 +209,18 @@ def manage_position(pos: dict, price: float, cfg: dict = None,
 
     if pos["status"] == A.ST_CLOSED or pos["remaining_qty"] <= 0:
         return {"symbol": sym, "events": []}
+
+    # ── W39b (EX-17): crash-risk exit, before anything else, whatever the stage ──
+    cri_t = cfg.get("cri_exit_threshold")
+    if cri_t is not None:
+        cri = momentum_for(sym).cri
+        if cri is not None and cri >= float(cri_t):
+            r = _act(pos, f"CLOSE:{A.MARKET_RISK_EXIT}", A.MARKET_RISK_EXIT, pos["remaining_qty"], price,
+                     lambda f, q: P.close_position(pid, f, A.MARKET_RISK_EXIT, q, pre_claimed=True))
+            if r.get("acted"):
+                log.info(f"  ✗ {sym}: CRI {cri:.0f} >= {float(cri_t):g} -- exited {pos['remaining_qty']}")
+                events.append({"event": A.MARKET_RISK_EXIT, "price": price, "cri": cri})
+            return {"symbol": sym, "events": events}
 
     gain_pct = (price - entry) / entry * 100 * (1 if long_side else -1)
 
@@ -304,7 +322,8 @@ def run_once(cfg: dict = None, prices: dict = None,
     cfg = cfg or A.config()
     open_pos = P.open_positions()
     if not open_pos:
-        return {"positions": 0, "events": [], "status": "IDLE"}
+        return {"positions": 0, "events": [], "status": "IDLE",
+                "aggressive_enabled": bool(cfg.get("aggressive_enabled"))}
 
     if prices is None:
         from data.dhan import fetch_live_quotes

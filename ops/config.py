@@ -181,7 +181,9 @@ def validate(cfg: dict | None = None) -> list:
     saas = cfg.get("saas") or {}
     email_mode = str(((saas.get("notifications") or {}).get("email") or {}).get("mode") or "sandbox").lower()
     tg_mode = str(((saas.get("notifications") or {}).get("telegram") or {}).get("mode") or "sandbox").lower()
-    pay = str((saas.get("payments") or {}).get("provider") or "sandbox").lower()
+    from enterprise.payments import payment_config
+    pcfg = payment_config(cfg)                     # saas.payments + the W39b alias section "billing"
+    pay = str(pcfg.get("provider") or "sandbox").lower()
     if email_mode not in ("sandbox", "smtp"):
         add("error", "saas.notifications.email.mode", "must be sandbox or smtp")
     elif email_mode == "smtp" and env != "production":
@@ -192,9 +194,11 @@ def validate(cfg: dict | None = None) -> list:
         add("error", "saas.notifications.telegram.mode", f"live per-user Telegram in {env}; only production may send")
     if pay not in ("sandbox", "noop", "razorpay", "stripe"):
         add("error", "saas.payments.provider", "must be sandbox, noop, razorpay or stripe")
-    elif pay not in ("sandbox", "noop"):
+    elif pay == "stripe":
         add("error" if env != "production" else "warning", "saas.payments.provider",
-            f"{pay} is not enabled in W9 (the adapter refuses); real charges need an owner decision")
+            f"{pay} is not enabled (the adapter refuses); real charges need an owner decision")
+    elif pay == "razorpay":                        # W39b (ENT-04): test keys anywhere, live keys only in production
+        _validate_razorpay(cfg, pcfg, env, add)
     import importlib.util as _ilu
     if str(o.get("shared_state_url") or "memory").startswith("redis://") and not _ilu.find_spec("redis"):
         add("error", "ops.shared_state_url", "redis:// configured but the redis package is not installed")
@@ -214,6 +218,36 @@ def validate(cfg: dict | None = None) -> list:
     if not cfg.get("dhan_client_id") and not _secret_status("DHAN_CLIENT_ID")["present"]:
         add("warning", "dhan_client_id", "Dhan client id missing: market data jobs will fail")
     return out
+
+
+def _validate_razorpay(cfg, pcfg, env, add):
+    """W39b: Razorpay findings. Missing credentials are a warning (payments are REFUSED, nothing breaks);
+    a live key outside production, or allow_live outside production, is an error."""
+    key = "billing.razorpay"
+    rz = pcfg.get("razorpay") if isinstance(pcfg.get("razorpay"), dict) else {}
+    leaked = sorted(k for k, v in rz.items() if is_secret_key(k) and v not in (None, "", False))
+    if leaked:
+        add("error", key, f"credentials do not belong in config.json ({', '.join(leaked)}): store them with "
+                          "python -m ops vault-set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / WEBHOOK_SECRET_RAZORPAY")
+    from enterprise.razorpay import RazorpayProvider
+    st = RazorpayProvider(cfg=cfg, environment=env).status()
+    if rz.get("allow_live") is True and env != "production":
+        add("error", f"{key}.allow_live", f"live Razorpay payments in {env}; only production may take real money")
+    if st["state"] == "UNCONFIGURED":
+        add("warning", "RAZORPAY_KEY_ID", f"razorpay selected but unconfigured: every collection is REFUSED "
+                                          f"({st['reason']})")
+    elif st["state"] == "INVALID_KEY":
+        add("error", "RAZORPAY_KEY_ID", st["reason"])
+    elif st["mode"] == "live" and env != "production":
+        add("error", "RAZORPAY_KEY_ID", f"a live Razorpay key (rzp_live_) in {env}; use a rzp_test_ key outside "
+                                        "production")
+    elif st["state"] == "LIVE_REFUSED":
+        add("warning", f"{key}.allow_live", f"live key present but refused: {st['reason']}")
+    elif st["state"] == "TEST" and env == "production":
+        add("warning", "RAZORPAY_KEY_ID", "Razorpay TEST mode in production: no real money is collected")
+    if st["state"] in ("TEST", "LIVE") and not st["webhook_configured"]:
+        add("warning", "WEBHOOK_SECRET_RAZORPAY", "no Razorpay webhook secret: payments settle only through the "
+                                                  "daily reconcile (POST /api/admin/payments/reconcile to run it now)")
 
 
 def fingerprint(cfg: dict | None = None) -> str:

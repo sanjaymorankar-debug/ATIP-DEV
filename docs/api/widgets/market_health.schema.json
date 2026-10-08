@@ -32,6 +32,130 @@
         "number",
         "null"
       ]
+    },
+    "id": {
+      "type": "integer"
+    },
+    "nifty_trend": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "banknifty": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "vix_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "fii_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "dii_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "global_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sector_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "adv_decline": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "vix_level": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "advances": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "declines": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "pct_advancing": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "new_highs": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "new_lows": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "breadth_universe": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "mh_coverage": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "mh_inputs": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "backfilled": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "portfolio_health": {
+      "type": [
+        "number",
+        "null"
+      ]
     }
-  }
+  },
+  "description": "The scored session's market_health row; {} when there is none."
 }

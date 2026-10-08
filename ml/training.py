@@ -90,7 +90,7 @@ def train(conn, model_id: str, dataset_spec: dict, params: dict | None = None, v
             raise ValueError("training labels have a single class")
         if lab.task == "regression" and not np.all(np.isfinite(np.asarray(y[tr], dtype=float))):
             raise ValueError("non-finite regression targets")
-        version = REG.start_version(conn, model_id, dsrow, fs, tcfg, actor)
+        version = REG.start_version(conn, model_id, dsrow, fs, tcfg, actor, links={"training_run_id": run_id})
         _run(conn, run_id, version=version)
         model = make_model(m["model_type"], lab.task, params, cols, lab.classes)
         model.fit(ds.X[tr][:, keep], list(y[tr]))

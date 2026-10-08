@@ -41,6 +41,11 @@ CATALOG = {
     "KITE_API_SECRET": {"legacy": "kite_api_secret", "rotation_days": 365, "desc": "Zerodha Kite secret"},
     "ATIP_ENCRYPTION_KEY": {"legacy": None, "rotation_days": 365, "desc": "AES-256 data key (base64, 32 bytes)"},
     "WEBHOOK_SECRET_DEFAULT": {"legacy": None, "rotation_days": 180, "desc": "inbound webhook HMAC secret"},
+    # W39b (ENT-04): the Razorpay gateway -- never read from config.json (no legacy location)
+    "RAZORPAY_KEY_ID": {"legacy": None, "rotation_days": 365, "desc": "Razorpay key id (rzp_test_ / rzp_live_)"},
+    "RAZORPAY_KEY_SECRET": {"legacy": None, "rotation_days": 365, "desc": "Razorpay key secret"},
+    "WEBHOOK_SECRET_RAZORPAY": {"legacy": None, "rotation_days": 180,
+                                "desc": "Razorpay webhook secret (X-Razorpay-Signature)"},
 }
 SECRETS_DIR = Path("atip_data") / "secrets"
 _ENV_LOADED = {"done": False}

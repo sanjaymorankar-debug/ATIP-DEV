@@ -404,9 +404,11 @@ def _tech_weights():
     _TECH_WEIGHTS_CACHE=dict(_TECH_WEIGHTS_FALLBACK)
     return _TECH_WEIGHTS_CACHE
 
-def _ext_row(conn, sym, df, bench, trade_date):
-    """W21: extended technicals (data/technical_ext.py) for one symbol -> technical_ext."""
-    from data.technical_ext import COLUMNS, compute
+def _ext_row(conn, sym, df, bench, trade_date, sector_ctx=None):
+    """W21: extended technicals (data/technical_ext.py) for one symbol -> technical_ext.
+    W39: sector_ctx (technical_ext.load_sector_context) adds TA-08b sector-relative strength;
+    the TA-05 swing Fibonacci needs only the bars. Both are stored, never scored."""
+    from data.technical_ext import COLUMNS, compute, sector_input
     bars=None
     try:
         b=pd.read_sql("SELECT ts, open, high, low, close, volume FROM intraday_bars WHERE symbol=? AND ts<=? AND "
@@ -415,7 +417,7 @@ def _ext_row(conn, sym, df, bench, trade_date):
             b["datetime"]=pd.to_datetime(b["ts"]); bars=b
     except Exception:
         bars=None
-    ext=compute(df, bench, bars)
+    ext=compute(df, bench, bars, sector=sector_input(sector_ctx, sym))
     if not ext: return {}
     cols=list(COLUMNS)
     conn.execute(f"INSERT INTO technical_ext (symbol,date,{','.join(cols)},created_at) VALUES "
@@ -431,6 +433,11 @@ def run_technical_pipeline(trade_date=None, symbol=None, symbols=None):
     try:
         bench=pd.read_sql("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50' AND date<=? ORDER BY date",
                           conn,params=(str(trade_date),))
+        try:                                          # W39 TA-08b: industry map + sector index series, once per run
+            from data.technical_ext import load_sector_context
+            sector_ctx=load_sector_context(conn,trade_date)
+        except Exception as e:
+            sector_ctx=None; log.debug(f"  sector context unavailable: {e}")
         if symbol: symbols=[symbol]
         elif symbols: symbols=list(symbols)
         else:
@@ -449,7 +456,7 @@ def run_technical_pipeline(trade_date=None, symbol=None, symbols=None):
                 ind=compute_indicators(sym,df)
                 if not ind: continue
                 try:
-                    ext=_ext_row(conn,sym,full,bench,trade_date)      # W21: needs the longer window
+                    ext=_ext_row(conn,sym,full,bench,trade_date,sector_ctx)      # W21: needs the longer window
                     if ext.get("vwap_dev_pct") is not None: ind["vwap_dev_pct"]=ext["vwap_dev_pct"]
                 except Exception as e:
                     _FAILED_INDICATORS["technical_ext"]=_FAILED_INDICATORS.get("technical_ext",0)+1
@@ -471,6 +478,12 @@ def run_technical_pipeline(trade_date=None, symbol=None, symbols=None):
                              f"ON CONFLICT(symbol,date) DO UPDATE SET {updates}",vals)
                 count+=1
             except Exception as e: log.warning(f"  {sym}: {e}")
+        if sector_ctx is not None:
+            try:                                      # W39 TA-08b: needs the whole session's rows
+                from data.technical_ext import store_sector_percentiles
+                store_sector_percentiles(conn,trade_date,sector_ctx.get("industries"))
+            except Exception as e:
+                log.debug(f"  sector RS percentiles: {e}")
         conn.commit(); result["rows"]=count
         log.info(f"  ✓ Technical done: {count} stocks")
         # Which indicators failed, and how often. Previously a library call that

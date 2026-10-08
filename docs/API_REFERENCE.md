@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running application (553 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running application (582 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -81,6 +81,8 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/admin/isolation` | admin:tenants |  |  |  |
 | GET | `/api/admin/onboarding` | admin:users |  |  | GET /api/admin/payments |
 | GET | `/api/admin/payments` | admin:billing |  |  |  |
+| GET | `/api/admin/payments/provider` | admin:billing |  |  | POST /api/admin/payments/reconcile  (W39b; platform admin) |
+| POST | `/api/admin/payments/reconcile` | admin:billing |  |  |  |
 | GET | `/api/admin/permissions` | admin:roles |  |  |  |
 | GET | `/api/admin/plans` | admin:billing |  |  | PUT /api/admin/plans/{id}   GET/PUT /api/admin/subscriptions/{tenant} |
 | PUT | `/api/admin/plans/{pid}` | admin:billing |  | `pid` |  |
@@ -150,19 +152,22 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/backtests` | research:read |  | `limit`=50, `strategy_id` |  |
 | POST | `/api/backtests` | research:run | token |  | Body: a backtest request (backtest/service.py). Returns run_id; runs in the background. |
+| POST | `/api/backtests/costsweep` | research:run | token |  | Body: {request, multipliers? (default [0,0.5,1,1.5,2,3,5]), scale? costs\|slippage\|both} (BT-19). |
+| POST | `/api/backtests/cpcv` | research:run | token |  | Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?} -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths. |
 | POST | `/api/backtests/event-driven` | research:run | token |  | a backtest request + {"event_driven": {...}}    BT-17 |
 | POST | `/api/backtests/optimize` | research:run | token |  | Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}. |
 | POST | `/api/backtests/robustness` | research:run | token |  | Body: {request (start/end), n_subsamples?, seed?}. |
 | POST | `/api/backtests/sensitivity` | research:run | token |  | Body: {request, space, select_by?, steps?, pairwise?}. |
 | GET | `/api/backtests/strategies` | research:read |  |  |  |
 | POST | `/api/backtests/study` | research:run | token |  | Body: {strategy_id, start, end, space?, hypothesis?, method?, max_trials?, universe?}. |
-| POST | `/api/backtests/walkforward` | research:run | token |  | Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?}. |
+| POST | `/api/backtests/walkforward` | research:run | token |  | Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?, purge?, embargo?} -- purge / embargo (BT-18) are sessions, default 0 (no gap between windows). |
 | GET | `/api/backtests/{run_id}` | research:read |  | `run_id` |  |
 | GET | `/api/backtests/{run_id}/drawdowns` | research:read |  | `run_id` |  |
 | GET | `/api/backtests/{run_id}/equity` | research:read |  | `run_id` |  |
 | GET | `/api/backtests/{run_id}/metrics` | research:read |  | `run_id` |  |
 | GET | `/api/backtests/{run_id}/montecarlo` | research:read |  | `run_id` |  |
 | POST | `/api/backtests/{run_id}/montecarlo` | research:run | token | `run_id` | Body: {method: trade_shuffle\|return_bootstrap, n_sims, seed, block_size}. |
+| POST | `/api/backtests/{run_id}/pbo` | research:run | token | `run_id` | Body (optional): {partitions? (16), metric? sharpe\|mean\|total_return} -- the probability of backtest overfitting (CSCV) of the run's trials (an optimisation), computed now and stored as a run of kind pbo. |
 | GET | `/api/backtests/{run_id}/trades` | research:read |  | `run_id` |  |
 
 ## `/api/billing`
@@ -170,7 +175,9 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/billing` | admin:billing |  |  | POST /api/billing/plan {plan_id} |
-| POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` |  |
+| POST | `/api/billing/autopay` | admin:billing |  |  | {plan_id?}         POST /api/billing/autopay/cancel {at_cycle_end} |
+| POST | `/api/billing/autopay/cancel` | admin:billing |  |  |  |
+| POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` | (W39b: Razorpay answers with pay_url) |
 | POST | `/api/billing/plan` | admin:billing |  |  |  |
 
 ## `/api/brokers`
@@ -210,6 +217,7 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/data/fo/chain` | dashboard:read |  | `symbol`, `expiry`, `ts` | ?symbol&expiry&ts |
 | POST | `/api/data/fo/chain/snapshot` | research:run | token |  | {symbol} |
 | GET | `/api/data/fo/contracts` | dashboard:read |  | `symbol`, `date`, `expiry` | ?symbol&date&expiry                               DP-08 |
+| GET | `/api/data/fo/surface` | dashboard:read |  | `symbol`, `date` | ?symbol&date  W39 (AF-10): IV surface, term structure, skew, |
 | POST | `/api/data/history/backfill` | research:run | token |  | {symbols?, max?, years?} one budgeted backfill pass |
 | GET | `/api/data/history/coverage` | dashboard:read |  |  | how much of the universe reaches back 7 years |
 | GET | `/api/data/lake` | dashboard:read |  |  | datasets, partitions, rows, bytes, write format   DP-22 |
@@ -220,6 +228,9 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/data/macro/refresh` | research:run | token |  |  |
 | GET | `/api/data/macro/{series_id}` | dashboard:read |  | `series_id`, `as_of` | ?as_of |
 | GET | `/api/data/mf` | dashboard:read |  | `q`, `limit`=50 | ?q=&limit=50  latest NAVs, name search |
+| GET | `/api/data/mf/compare` | dashboard:read |  | `schemes`, `category_of`, `same_plan`=1, `as_of` | ?schemes=a,b,...&as_of \| ?category_of=<code>&same_plan=1   W39b |
+| GET | `/api/data/mf/{scheme}/analytics` | dashboard:read |  | `scheme`, `hurdle`, `rf`, `benchmark`, `risk_years`, `as_of`, `peers`=1 | ?hurdle&rf&benchmark&risk_years&as_of&peers=1 |
+| GET | `/api/data/mf/{scheme}/sip` | dashboard:read |  | `scheme`, `amount`, `day`=1, `start`, `end`, `lump_sum` | ?amount&day=1&start&end&lump_sum |
 | GET | `/api/data/ticks` | dashboard:read |  | `day`, `symbol`, `limit`=2000 | ?day&symbol&limit=2000 |
 | POST | `/api/data/ticks/minute-bars` | research:run | token |  | {day?}  rebuild 1-min bars from ticks |
 | GET | `/api/data/ticks/status` | dashboard:read |  | `days`=10 | ?days=10  tick capture per day                    DP-04 |
@@ -368,6 +379,7 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | GET | `/api/ml/models/{mid}` | ml:read |  | `mid` |  |
 | POST | `/api/ml/models/{mid}/activate` | ml:lifecycle | token | `mid` |  |
 | POST | `/api/ml/models/{mid}/lifecycle` | ml:lifecycle | token | `mid` |  |
+| GET | `/api/ml/models/{mid}/lineage` | ml:read |  | `mid`, `version` | W39 (ML-18): one version's manifest (default: the ACTIVE version, else the latest). |
 | POST | `/api/ml/models/{mid}/pause` | ml:lifecycle | token | `mid` |  |
 | POST | `/api/ml/models/{mid}/train` | ml:write | token | `mid` | {dataset: DatasetSpec, params?, validation_fraction?, embargo?} -- runs in the background; follow it in /api/ml/training-runs. |
 | GET | `/api/ml/monitoring` | ml:read |  | `model_id`, `limit`=60 | ?model_id |
@@ -469,8 +481,8 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI per watchlist stock, persistent flags, feed |
-| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes? |
+| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI and OFI per watchlist stock, persistent flags, feed |
+| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance / OFI predict the next 1 / 5 minutes? (+ OFI vs its own interval) |
 | GET | `/api/orderbook/pressure` | dashboard:read |  | `side`, `limit`=100 | latest pending buy / sell totals per stock today |
 | GET | `/api/orderbook/pressure/{symbol}` | dashboard:read |  | `symbol` | today's polls for one stock |
 | POST | `/api/orderbook/snapshot` | research:run | token |  | poll the whole universe now |
@@ -481,8 +493,20 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/orders` | execution:read |  | `symbol`, `status` |  |
 | POST | `/api/orders` | orders:manage | token |  |  |
+| GET | `/api/orders/baskets` | execution:read |  |  | saved baskets |
+| POST | `/api/orders/baskets` | orders:manage | token |  | {name, note?, legs: [...]}  create |
+| GET | `/api/orders/baskets/{basket_id}` | execution:read |  | `basket_id` | one basket + its last runs |
+| POST | `/api/orders/baskets/{basket_id}` | orders:manage | token | `basket_id` | update (same body) |
+| POST | `/api/orders/baskets/{basket_id}/archive` | orders:manage | token | `basket_id` |  |
+| POST | `/api/orders/baskets/{basket_id}/execute` | orders:manage | token | `basket_id` | {confirm: true} places it (all-or-nothing gate) |
+| POST | `/api/orders/baskets/{basket_id}/preview` | orders:manage | token | `basket_id` | every leg as a dry run + the basket's funds check |
 | GET | `/api/orders/broker-status` | execution:read |  |  |  |
 | GET | `/api/orders/pending` | execution:read |  |  |  |
+| GET | `/api/orders/sip` | execution:read |  |  | SIP plans |
+| POST | `/api/orders/sip` | orders:manage | token |  | {symbol, amount \| quantity, frequency, day, start_date?, end_date?} |
+| POST | `/api/orders/sip/run` | orders:manage | token |  | execute what is due now (PAPER only) |
+| GET | `/api/orders/sip/{plan_id}` | execution:read |  | `plan_id` | one plan + its executions |
+| POST | `/api/orders/sip/{plan_id}/status` | orders:manage | token | `plan_id` | {status: ACTIVE \| PAUSED \| ENDED} |
 | DELETE | `/api/orders/{rule_id}` | orders:manage | token | `rule_id` |  |
 | POST | `/api/orders/{rule_id}/confirm` | orders:manage | token | `rule_id`, `force`=False |  |
 | POST | `/api/orders/{rule_id}/reject` | orders:manage | token | `rule_id` |  |
@@ -582,6 +606,8 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/research/dvm/{symbol}` | research:read |  | `symbol` | durability / valuation / momentum 0-100, the zone, every input |
+| GET | `/api/research/earnings-surprise/{symbol}` | research:read |  | `symbol`, `as_of` | SUE / revenue SUE / EPS-trend proxy (point in time), its quarters, |
 | GET | `/api/research/equity` | research:read |  | `rating`, `limit`=500 | latest rating per symbol |
 | POST | `/api/research/equity/run` | research:run | token |  | {symbols?} build and store reports for the universe |
 | GET | `/api/research/equity/{symbol}` | research:read |  | `symbol`, `fresh`=0 | today's stored report, else built now (?fresh=1 rebuilds) |
@@ -799,9 +825,11 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | POST | `/api/wealth/performance/ledger/{txn_id}/void` | wealth:write | token | `txn_id` | (token) {reason} |
 | GET | `/api/wealth/performance/portfolios` | wealth:read |  |  | ledger portfolios (PAPER / OMS / LIVE / MANUAL) |
 | POST | `/api/wealth/performance/report` | wealth:write | token |  | (token) {portfolio, start, end, benchmark, options, store} |
+| POST | `/api/wealth/performance/report/export` | wealth:write | token |  | W39 (PERF-001-13): download a preview (not stored) in csv \| json \| html. |
 | GET | `/api/wealth/performance/reports` | wealth:read |  | `limit`=50 | ; GET .../reports/{id} |
 | GET | `/api/wealth/performance/reports/{rid}` | wealth:read |  | `rid` |  |
 | GET | `/api/wealth/performance/reports/{rid}/export` | wealth:read |  | `rid`, `format`=csv |  |
+| GET | `/api/wealth/performance/reports/{rid}/verify` | wealth:read |  | `rid` | W39 (PERF-001-12): rebuild a stored report from today's data and diff it. |
 | POST | `/api/wealth/performance/sync` | wealth:write | token |  | (token) import new ledger rows from the sources |
 | GET | `/api/wealth/positions` | wealth:read |  |  | normalized positions (broker + manual + paper) |
 | GET | `/api/wealth/rebalance/check` | wealth:read |  |  | drift vs target, triggers, verdict |
@@ -848,6 +876,12 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/backtests` | dashboard:read |  |  |  |
 
+## `/baskets`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/baskets` | dashboard:read |  |  | the page (dashboard/w39_retail_page.py) |
+
 ## `/brokers`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -879,7 +913,7 @@ Generated 2026-10-07 20:28 by `python -m ops api-docs` from the running applicat
 | GET | `/health` | public |  |  | /health/live  /health/ready  /health/{database\|broker\|data\|scheduler\|ml\|storage\|market_data\|wealth} |
 | GET | `/health/live` | public |  |  |  |
 | GET | `/health/ready` | public |  |  |  |
-| GET | `/health/{component}` | dashboard:read |  | `component` |  |
+| GET | `/health/{component}` | public for billing, broker, data, database, live, market_data, ml, notifications, ready, scheduler, storage, wealth; otherwise dashboard:read |  | `component` |  |
 
 ## `/icon.svg`
 

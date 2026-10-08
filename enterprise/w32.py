@@ -22,10 +22,12 @@ API-04  webhook CONSUMERS act on verified inbound events (ops/webhooks.verify_in
                        -> the PENDING payment settles, the invoice is PAID or dunning starts
             broker     order.update {broker_order_id} -> that OMS order is refreshed through
                        its adapter (PAPER today; the Dhan adapter still refuses)
+            razorpay   W39b: Razorpay's own events (payment.captured / failed, invoice.paid,
+                       subscription.*, refund.processed) -> enterprise/razorpay.consume
 
         SaaS scheduled jobs (enterprise.enabled only): saas_tick (queued deliveries, every
-        5 min), saas_daily (billing cycle, dunning, report schedules, privacy retention,
-        06:30), saas_digest (digest deliveries, 19:00), alerts_intraday (every 15 min in session).
+        5 min), saas_daily (billing cycle, dunning, payment-provider reconcile, report
+        schedules, privacy retention, 06:30), saas_digest (digest deliveries, 19:00), alerts_intraday (every 15 min in session).
 """
 
 from __future__ import annotations
@@ -208,7 +210,12 @@ def _broker(conn, p) -> str:
     return "PROCESSED"
 
 
-CONSUMERS = {"payments": _payments, "broker": _broker}
+def _razorpay(conn, p) -> str:
+    from enterprise.razorpay import consume as rzp
+    return rzp(conn, p)
+
+
+CONSUMERS = {"payments": _payments, "broker": _broker, "razorpay": _razorpay}
 
 
 def consume(conn, source, event_id, payload) -> str:
@@ -258,10 +265,14 @@ def saas_digest() -> dict:
 def saas_daily() -> dict:
     def f(c):
         from enterprise import payments, privacy, reports
-        out = {"billing_cycle": payments.run_cycle(c), "dunning": payments.run_dunning(c),
+        try:                                                                    # W39b: settle what no
+            rec = payments.reconcile(c)                                         # webhook reported
+        except Exception as e:
+            rec = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+        out = {"payments_reconcile": rec, "billing_cycle": payments.run_cycle(c), "dunning": payments.run_dunning(c),
                "reports": reports.run_due(c), "retention": privacy.purge_expired(c),
                "dsr_reminders": privacy.sla_reminders(c)}                      # W38 (ENT-17)
-        return {"rows": 5, **out}
+        return {"rows": 6, **out}
     return _run(f)
 
 

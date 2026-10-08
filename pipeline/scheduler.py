@@ -1483,7 +1483,8 @@ def _schedule_w39_jobs():
     """W39: order-book pressure every 15 minutes in the session (data/order_pressure.py); the pre-open
     GIFT / global-cue estimate at 08:45 and 09:05 and its check against the open at 09:35, NSE
     participant OI at 20:15 and the Nifty history at 23:20 (research/market_pulse.py); the
-    technical snapshot and signals (research/tech_signals.py), equity research reports after the
+    technical snapshot and signals (research/tech_signals.py), the earnings surprise and post-earnings-drift
+    scan at 20:35 (research/earnings_surprise.py), equity research reports after the
     evening scoring (research/report.py), the day's fundamental scorecards and the saved
     screens after them (research/scorecard.py, research/screener.py), intraday scans on the stored 15-minute
     bars every 15 minutes in the session (research/intraday_signals.py), global snapshots at 15:31 and
@@ -1496,6 +1497,7 @@ def _schedule_w39_jobs():
     schedule.every().day.at("20:15").do(_w39_participant_oi)
     schedule.every().day.at("23:20").do(_w39_nifty_history)
     schedule.every().day.at("20:30").do(_w39_technical_signals)
+    schedule.every().day.at("20:35").do(_w39_earnings_surprise)
     schedule.every().day.at("20:40").do(_w39_research_reports)
     schedule.every().day.at("20:50").do(_w39_saved_screens)
     schedule.every().day.at("22:20").do(_w39_history_backfill)
@@ -1588,7 +1590,9 @@ def _w39_nifty_history():
 
 
 def _w39_technical_signals():
-    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert."""
+    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert.
+    The snapshot's 75-minute rating is built here from the day's stored 15-minute bars: after the close all
+    five 75-minute bars are complete and the agreement compares it with the same session's daily rating."""
     if not is_market_day():
         return
     try:
@@ -1598,9 +1602,21 @@ def _w39_technical_signals():
         log.warning(f"  Technical signals: {e}")
 
 
+def _w39_earnings_surprise():
+    """SUE, revenue surprise and the EPS-trend proxy for every stored quarter, then the post-earnings-drift
+    scan into the signal engine and its (held until proven) alert (research/earnings_surprise.py)."""
+    if not is_market_day():
+        return
+    try:
+        from research.earnings_surprise import run_job as earnings_job
+        run_job("earnings_surprise", earnings_job)
+    except Exception as e:
+        log.warning(f"  Earnings surprise: {e}")
+
+
 def _w39_saved_screens():
-    """Store the day's fundamental scorecards, then re-run the saved screens after the research reports;
-    alert on new matches."""
+    """Store the day's fundamental scorecards (with the DVM scores and zone), then re-run the saved screens
+    after the research reports; alert on new matches."""
     if not is_market_day():
         return
     try:
@@ -1951,6 +1967,14 @@ def start_scheduler():
 
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
+
+    # ── W39b: stock SIP (paper) ───
+    try:
+        from pipeline import w39_jobs
+        for line in w39_jobs.schedule_jobs(schedule, run_job):
+            log.info(f"  W39b job: {line}")
+    except Exception as e:
+        log.warning(f"  W39b jobs not scheduled: {e}")
 
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):

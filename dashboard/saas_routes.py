@@ -15,10 +15,13 @@ GET /api/tenant/book, which then shows the owner's paper book.
                POST /api/reports/{report_id}/run {format}   PUT /api/reports/{report_id}/schedule
                GET  /api/reports/{report_id}/outputs        GET /api/reports/{report_id}/outputs/{output_id}
                GET  /api/billing                            POST /api/billing/plan {plan_id}
-               POST /api/billing/invoices/{invoice_id}/pay
+               POST /api/billing/invoices/{invoice_id}/pay  (W39b: Razorpay answers with pay_url)
+               POST /api/billing/autopay {plan_id?}         POST /api/billing/autopay/cancel {at_cycle_end}
+                                                            (W39b: Razorpay subscription; short_url to authorise)
   admin        GET  /api/admin/console                      GET /api/admin/isolation (platform admin)
                GET  /api/admin/privacy                      POST /api/admin/privacy/{request_id}/decision
                GET  /api/admin/onboarding                   GET /api/admin/payments
+               GET  /api/admin/payments/provider            POST /api/admin/payments/reconcile  (W39b; platform admin)
                POST /api/admin/dunning/run                  POST /api/admin/billing-cycle/run   (platform admin)
                PUT  /api/admin/api-keys/{key_id}/limits
   pages        GET /app (tenant workspace)                  GET /admin/console
@@ -287,7 +290,8 @@ def register(app, guard, Req, get_connection, json_safe):
                     "limits": tenants.effective_limits(c, tid), "usage": tenants.usage(c, tid),
                     "invoices": [dict(r) for r in c.execute("SELECT * FROM enterprise_invoice WHERE tenant_id=? ORDER "
                                                             "BY created_at DESC LIMIT 50", (tid,))],
-                    "payments": payments.payments(c, tid, 50), "provider": payments.settings()["provider"]}
+                    "payments": payments.payments(c, tid, 50), "provider": payments.settings()["provider"],
+                    "provider_state": payments.provider_status().get("state"), "autopay": _autopay(c, tid)}
         return await run(f)(request)
 
     @app.post("/api/billing/plan")
@@ -310,6 +314,37 @@ def register(app, guard, Req, get_connection, json_safe):
             if inv[0] == "PAID":
                 return {"status": "PAID"}
             return payments.collect(c, invoice_id, p.get("username"))
+        return await run(f)(request)
+
+    # W39b: Razorpay autopay (a subscription the customer authorises at short_url)
+    def _autopay(c, tid):
+        if payments.settings()["provider"] != "razorpay":
+            return None
+        from enterprise.razorpay import autopay_status
+        return autopay_status(c, tid)
+
+    def _gateway(fn):
+        try:
+            return fn()
+        except (payments.ProviderNotEnabled, payments.ProviderError) as e:
+            raise ValueError(str(e)) from None
+
+    @app.post("/api/billing/autopay")
+    async def bill_autopay(request: Req):
+        async def f(req, c):
+            from enterprise import razorpay
+            p, b = me(req), await body(req)
+            return _gateway(lambda: razorpay.start_subscription(c, p["tenant_id"], b.get("plan_id"),
+                                                                actor=p.get("username") or "user"))
+        return await run(f)(request)
+
+    @app.post("/api/billing/autopay/cancel")
+    async def bill_autopay_cancel(request: Req):
+        async def f(req, c):
+            from enterprise import razorpay
+            p, b = me(req), await body(req)
+            return _gateway(lambda: razorpay.cancel_subscription(c, p["tenant_id"], b.get("at_cycle_end") is not False,
+                                                                 actor=p.get("username") or "user"))
         return await run(f)(request)
 
     # -- admin -------------------------------------------------------------------------
@@ -344,6 +379,7 @@ def register(app, guard, Req, get_connection, json_safe):
                                  "status='PENDING'", (tid,)).fetchone()[0]})
             return {"tenants": rows, "health": overall() if p.get("platform_admin") else None,
                     "payments_provider": payments.settings()["provider"],
+                    "payments_status": payments.provider_status(),                     # W39b: never a credential
                     "notification_modes": {"email": channels.settings()["email_mode"],
                                            "telegram": channels.settings()["telegram_mode"]}}
         return await run(f)(request)
@@ -385,6 +421,19 @@ def register(app, guard, Req, get_connection, json_safe):
     async def adm_payments(request: Req):
         async def f(req, c):
             return payments.payments(c, _scope(me(req)), 200)
+        return await run(f)(request)
+
+    @app.get("/api/admin/payments/provider")
+    async def adm_payments_provider(request: Req):
+        async def f(req, c):
+            return payments.provider_status()                 # state only, never a credential
+        return await run(f)(request)
+
+    @app.post("/api/admin/payments/reconcile")
+    async def adm_payments_reconcile(request: Req):
+        async def f(req, c):
+            platform_only(me(req))
+            return _gateway(lambda: payments.reconcile(c))
         return await run(f)(request)
 
     @app.post("/api/admin/dunning/run")

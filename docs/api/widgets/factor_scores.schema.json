@@ -25,6 +25,54 @@
           "number",
           "null"
         ]
+      },
+      "as_of": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "raw": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "norm": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "pct": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "sector": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "sector_rank": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "universe_size": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "created_at": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     }
   }

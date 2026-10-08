@@ -18,3 +18,10 @@ htmlcov/
 venv/
 docs/*.xlsx
 deploy/backups/
+# W39b: local tooling state (agent worktrees, editor settings, caches) -- never in the image
+.claude/
+.idea/
+.vscode/
+node_modules/
+.mypy_cache/
+.ruff_cache/

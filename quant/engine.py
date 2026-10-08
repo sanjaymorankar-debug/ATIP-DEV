@@ -9,7 +9,9 @@ compute(conn, as_of, factor_ids=None, universe=None, store=True)
        NIFTY50 closes, NSE industries (cached Nifty 500 list, no network)
     2. raw factor values per symbol; cross-sectional factors (sector_mom_60)
        from the same date's cross-section
-    3. each factor's own normalization spec (normalize.apply), then
+    3. each factor's own normalization spec (normalize.apply; W39: a "neutralize" list of
+       factor ids, e.g. ["beta_250", "size_log", "sector"], residualizes on those factors'
+       raw values of the same date -- computed here if not in the run), then
          pct    percentile of the RAW value (0..100, higher raw = higher pct)
          score  direction-adjusted percentile (higher = better for the factor:
                 pct, or 100 - pct when direction = -1)  <- what strategies read
@@ -116,6 +118,16 @@ def compute(conn, as_of=None, factor_ids=None, universe="tracked_current", store
     raw = raw_factors(conn, as_of, factor_ids, symbols)
     sec = sectors()
     rows, summary = [], {}
+
+    def exposures(spec):
+        """{name: {symbol: raw}} for a spec's numeric neutralize names (factor ids), same date."""
+        names = [x for x in ((spec or {}).get("neutralize") or []) if isinstance(x, str) and x != "sector"]
+        missing = [x for x in names if x not in raw]
+        for x in missing:
+            FX.get(x)                                   # unknown name -> ValueError
+        if missing:
+            raw.update(raw_factors(conn, as_of, missing, symbols))
+        return {x: raw[x] for x in names}
     for f in factor_ids:
         fd = FX.get(f)
         vals = raw.get(f, {})
@@ -124,7 +136,12 @@ def compute(conn, as_of=None, factor_ids=None, universe="tracked_current", store
                       ("NO_DATA" if present == 0 else "OK")}
         if present == 0:
             continue
-        norm = NZ.apply(vals, fd.normalization, sec)
+        try:
+            norm = NZ.apply(vals, fd.normalization, sec, exposures(fd.normalization))
+        except ValueError as e:                         # a bad neutralize spec: reported, never silently skipped
+            log.warning(f"  factor {f}: normalization failed: {e}")
+            summary[f] = {**summary[f], "status": "NORMALIZATION_ERROR", "error": str(e)}
+            continue
         pct = NZ.percentile(vals)
         score = {s: (p if fd.direction > 0 else 100 - p) if p is not None else None for s, p in pct.items()}
         rk = NZ.rank(score)

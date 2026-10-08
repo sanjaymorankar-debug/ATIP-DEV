@@ -72,9 +72,49 @@
               "number",
               "null"
             ]
+          },
+          "cost": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         }
       }
+    },
+    "env": {
+      "type": "string"
+    },
+    "as_of": {
+      "type": "string"
+    },
+    "n_positions": {
+      "type": "integer"
+    },
+    "unvalued": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cost": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "unrealised": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "starting_cash": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "a tenant's own book only (absent on the owner's book)"
     }
   }
 }

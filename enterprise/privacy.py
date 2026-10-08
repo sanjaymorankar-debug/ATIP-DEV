@@ -60,6 +60,7 @@ INVENTORY = {
     "enterprise_usage": ("operational", False, "billing evidence; kept"),
     "enterprise_invoice": ("financial", False, "kept (accounting)"),
     "enterprise_payment": ("financial", False, "kept (accounting); no card data is ever stored"),
+    "enterprise_billing_ref": ("financial", False, "kept (accounting); payment-gateway ids only, no card / UPI data"),
     "tenant_paper_account": ("financial", False, "tenant lifetime"),
     "tenant_paper_position": ("financial", False, "tenant lifetime"),
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),
@@ -74,6 +75,7 @@ INVENTORY = {
     "fundamental_scorecard": ("research", False, "kept: the scorecard's own track record (W39)"),
     "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
     "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
+    "earnings_surprise": ("research", False, "kept: recomputed nightly from the stored quarters (W39b)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables
@@ -306,7 +308,8 @@ RULES = [
     (r"^assistant_", "personal", True, "conversation history: account lifetime; removed on a delete request"),
     (r"^(investor_profile|wealth_|perf_)", "financial", True, "owner's financial records: kept (audit, tax)"),
     (r"^(portfolio_|broker_import_run|live_pnl_snapshot)", "financial", True, "holdings / imports: kept"),
-    (r"^(paper_|tenant_paper|tenant_pnl|pnl_daily|order_log|order_rules|oms_|exec_algo|execution_|reconciliation_|"
+    (r"^(paper_|tenant_paper|tenant_pnl|pnl_daily|order_log|order_rules|order_basket|sip_|oms_|exec_algo|execution_|"
+     r"reconciliation_|"
      r"risk_)", "financial", False, "paper / order records: kept (trade audit)"),
     (r"^(prices_daily|intraday_bars|index_levels|live_quotes|live_ticks|global_|fo_|option_chain|options_|"
      r"derivatives_|bulk_deals|corporate_|fii_dii|institutional_data|insider_trade|sast_disclosure|shareholding_|"

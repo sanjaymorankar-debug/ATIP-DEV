@@ -119,6 +119,9 @@ def backup(kind="manual") -> dict:
         dst = sqlite3.connect(str(dest))
         try:
             src.backup(dst, pages=4096, sleep=0.05)
+            # the copy inherits the live DB's WAL mode, and every later read-only open (verify, drill)
+            # then leaves -wal / -shm files that prune / the drill never delete: make it one file
+            dst.execute("PRAGMA journal_mode=DELETE")
         finally:
             dst.close()
             src.close()
@@ -386,7 +389,8 @@ def restore_drill(notify: bool = True) -> dict:
                key=f"restore-drill-{started:%Y%m%d}")
         except Exception:
             pass
-    return {"status": "SUCCESS" if res["status"] == "PASSED" else "FAILED", "rows": 1, **res}
+    # the job status last: res["status"] is the drill's PASSED / FAILED and must not override it
+    return {**res, "status": "SUCCESS" if res["status"] == "PASSED" else "FAILED", "rows": 1}
 
 
 def restore(source: str, target: str | None = None) -> dict:

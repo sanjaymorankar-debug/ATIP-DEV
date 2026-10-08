@@ -100,12 +100,19 @@ class Prices:
         return ds[-1] if ds else None
 
 
+FALLBACK_KEY = "__basis_fallback__"
+
+
 def basis_factor(conn, symbol: str, on: date, cache: dict) -> float:
+    """corporate_actions.entry_factor; 1.0 when it fails -- W39: and the failure is listed
+    under cache[FALLBACK_KEY], which the engine reports as data quality (BASIS_FALLBACK)
+    instead of silently treating the trade as already on today's basis."""
     k = (symbol, on)
     if k not in cache:
         try:
             from data.corporate_actions import entry_factor
             cache[k] = entry_factor(conn, symbol, on) or 1.0
-        except Exception:
+        except Exception as e:
             cache[k] = 1.0
+            cache.setdefault(FALLBACK_KEY, []).append(f"{symbol}@{on}: {type(e).__name__}")
     return cache[k]

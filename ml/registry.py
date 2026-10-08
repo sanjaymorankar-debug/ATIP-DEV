@@ -7,7 +7,12 @@ ml_model           model_id, name, description, model_type, task, label kind,
 ml_model_version   (model_id, version): feature_set name@version + content hash,
                    dataset_id + spec hash + snapshot hash, training config +
                    its hash, training period, artifact path + sha256, metrics,
-                   status, trained_at, activated_at
+                   status, trained_at, activated_at; W39 (ML-18): code_version
+                   (git commit, "+dirty" with uncommitted changes -- the same
+                   helper backtest runs record, backtest.store.code_version) and
+                   lineage_json (model -> dataset snapshot -> feature set ->
+                   training config hash -> code version -> training run ->
+                   artifact), written at training
 
 Version states and allowed moves (TRANSITIONS):
 
@@ -23,6 +28,13 @@ versions keep their artifact (predictions still reference it).
 
 Version ids are "v1", "v2", ... assigned in order; a version's identity is
 (model_id, version) + the artifact hash.
+
+lineage(conn, model_id, version=None) is the research-to-production manifest of
+one version: what it was built from (as recorded) checked against what is
+stored now, and what references it now -- the config role (ml.default_model /
+ml.regime_model), the strategies that read it (ml_* features / the regime) and
+their completed backtests, walk-forward validation reports and deep-learning
+benefit checks on its dataset, its predictions and its lifecycle events.
 """
 
 from __future__ import annotations
@@ -31,6 +43,8 @@ import hashlib
 import json
 import re
 from datetime import datetime
+
+from backtest.store import code_version
 
 STATES = ("DRAFT", "TRAINING", "TRAINED", "FAILED", "VALIDATION", "APPROVED", "ACTIVE", "PAUSED", "RETIRED",
           "ARCHIVED")
@@ -93,19 +107,28 @@ def config_hash(cfg: dict) -> str:
     return hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def start_version(conn, model_id, dataset: dict, feature_set: dict, training_config: dict, actor="owner") -> str:
+def start_version(conn, model_id, dataset: dict, feature_set: dict, training_config: dict, actor="owner",
+                  links: dict | None = None) -> str:
+    """A TRAINING version. `links`: extra lineage to record (training passes its run_id)."""
     m = get_model(conn, model_id)
     if not m:
         raise ModelRegistryError(f"no model {model_id}")
     v = next_version(conn, model_id)
     now = datetime.now()
+    fs_id, cfg_hash = f"{feature_set['name']}@{feature_set['version']}", config_hash(training_config)
+    code = code_version()
+    lin = {"model": {"model_id": model_id, "version": v, "model_type": m["model_type"], "purpose": m.get("purpose"),
+                     "label_kind": m["label_kind"]},
+           "dataset": {k: dataset.get(k) for k in ("dataset_id", "spec_hash", "snapshot_hash", "snapshot_path",
+                                                    "start_date", "end_date")},
+           "feature_set": {"id": fs_id, "content_hash": feature_set["content_hash"]},
+           "training_config_hash": cfg_hash, "code_version": code, **(links or {})}
     conn.execute("INSERT INTO ml_model_version (model_id,version,status,feature_set,feature_set_hash,dataset_id,"
-                 "dataset_spec_hash,dataset_snapshot_hash,training_config_json,training_config_hash,created_at) "
-                 "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                 (model_id, v, "TRAINING", f"{feature_set['name']}@{feature_set['version']}",
-                  feature_set["content_hash"], dataset["dataset_id"], dataset["spec_hash"],
-                  dataset.get("snapshot_hash"), json.dumps(training_config, default=str),
-                  config_hash(training_config), now))
+                 "dataset_spec_hash,dataset_snapshot_hash,training_config_json,training_config_hash,created_at,"
+                 "code_version,lineage_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                 (model_id, v, "TRAINING", fs_id, feature_set["content_hash"], dataset["dataset_id"],
+                  dataset["spec_hash"], dataset.get("snapshot_hash"), json.dumps(training_config, default=str),
+                  cfg_hash, now, code, json.dumps(lin, sort_keys=True, default=str)))
     _event(conn, model_id, v, "LIFECYCLE", "DRAFT", "TRAINING", "training started", actor=actor)
     conn.commit()
     return v
@@ -118,6 +141,13 @@ def finish_version(conn, model_id, version, ok: bool, artifact=None, metrics=Non
                  (to, artifact[0] if artifact else None, artifact[1] if artifact else None,
                   json.dumps(metrics, default=str) if metrics else None, (period or {}).get("start"),
                   (period or {}).get("end"), datetime.now(), error, model_id, version))
+    r = conn.execute("SELECT lineage_json FROM ml_model_version WHERE model_id=? AND version=?",
+                     (model_id, version)).fetchone()
+    if r and r[0] and artifact:                              # W39: the artifact closes the recorded chain
+        lin = {**json.loads(r[0]), "artifact": {"path": artifact[0], "sha256": artifact[1]},
+               "training_period": period or {}}
+        conn.execute("UPDATE ml_model_version SET lineage_json=? WHERE model_id=? AND version=?",
+                     (json.dumps(lin, sort_keys=True, default=str), model_id, version))
     _event(conn, model_id, version, "LIFECYCLE", "TRAINING", to, error or "training finished")
     conn.commit()
 
@@ -182,6 +212,7 @@ def get_version(conn, model_id, version=None) -> dict | None:
     d = dict(r)
     d["training_config"] = json.loads(d.pop("training_config_json") or "{}")
     d["metrics"] = json.loads(d.pop("metrics_json") or "null")
+    d["lineage"] = json.loads(d.pop("lineage_json", None) or "null")
     return d
 
 
@@ -197,3 +228,84 @@ def active_version(conn, model_id) -> dict | None:
 def events(conn, model_id, limit=100) -> list:
     return [dict(r) for r in conn.execute("SELECT * FROM ml_model_event WHERE model_id=? ORDER BY id DESC LIMIT ?",
                                           (model_id, int(limit)))]
+
+
+def lineage(conn, model_id, version=None) -> dict:
+    """W39 (ML-18): the manifest of one version (default: the ACTIVE one, else the latest)."""
+    m = get_model(conn, model_id)
+    if not m:
+        raise ModelRegistryError(f"no model {model_id}")
+    v = get_version(conn, model_id, version) if version else (
+        active_version(conn, model_id) or (list_versions(conn, model_id) or [None])[-1])
+    if not v:
+        raise ModelRegistryError(f"no version {version or '(none trained)'} of model {model_id}")
+    ver, did = v["version"], v.get("dataset_id")
+
+    def rows(q, args):
+        return [dict(r) for r in conn.execute(q, args)]
+    ds = conn.execute("SELECT name, version, start_date, end_date, status, snapshot_path, snapshot_hash, built_at "
+                      "FROM ml_dataset WHERE dataset_id=?", (did,)).fetchone()
+    ds = dict(ds) if ds else None
+    fs_name, _, fs_ver = (v.get("feature_set") or "").partition("@")
+    fs = conn.execute("SELECT content_hash, features_json FROM ml_feature_set WHERE name=? AND version=?",
+                      (fs_name, fs_ver)).fetchone()
+    ds_end = str((ds or {}).get("end_date") or "")[:10] or None
+
+    from ml.config import settings
+    s = settings()
+    roles = [k for k in ("default_model", "regime_model") if s.get(k) == model_id]
+    strategies = []
+    if "default_model" in roles:                             # strategies read ml_* features, not a model id
+        from ml.ai_strategy import ml_strategies
+        strategies += [{**st, "via": "ml_* features of ml.default_model"} for st in ml_strategies(conn)]
+    if "regime_model" in roles:
+        strategies += [{**r, "via": "regime (ml.regime_model)"} for r in rows(
+            "SELECT DISTINCT f.strategy_id, f.version, s.status FROM strategy_feature f JOIN strategy s ON "
+            "s.strategy_id=f.strategy_id AND s.current_version=f.version WHERE f.feature IN ('regime','market_trend') "
+            "ORDER BY f.strategy_id", ())]
+    backtests = []
+    for st in strategies:
+        for b in rows("SELECT run_id, strategy_id, strategy_version, start_date, end_date, code_version, finished_at "
+                      "FROM backtest_run WHERE strategy_id=? AND strategy_version=? AND status='COMPLETED' "
+                      "ORDER BY finished_at DESC LIMIT 5", (st["strategy_id"], st["version"])):
+            b["after_training_end"] = bool(ds_end and b["end_date"] and str(b["end_date"])[:10] > ds_end)
+            backtests.append(b)
+    validations = rows("SELECT report_id, model_type, dataset_id, verdict, created_at FROM ml_validation_report "
+                       "WHERE dataset_id=? OR model_type=? ORDER BY created_at DESC LIMIT 10", (did, m["model_type"]))
+    for r in validations:
+        r["same_dataset"] = r["dataset_id"] == did
+    pred = conn.execute("SELECT COUNT(*), COUNT(DISTINCT symbol), MIN(as_of), MAX(as_of) FROM ml_prediction WHERE "
+                        "model_id=? AND model_version=?", (model_id, ver)).fetchone()
+    code, rec = v.get("code_version"), v.get("lineage") or {}
+    return {
+        "model_id": model_id, "version": ver, "status": v["status"],
+        "model": {k: m.get(k) for k in ("name", "model_type", "task", "label_kind", "purpose", "owner")},
+        "code_version": code,
+        "dataset": {"dataset_id": did, "spec_hash": v.get("dataset_spec_hash"),
+                    "snapshot_hash": v.get("dataset_snapshot_hash"), "stored": ds,
+                    "snapshot_matches": bool(ds) and ds["snapshot_hash"] == v.get("dataset_snapshot_hash")},
+        "feature_set": {"id": v.get("feature_set"), "content_hash": v.get("feature_set_hash"),
+                        "features": json.loads(fs[1]) if fs else None,
+                        "matches": bool(fs) and fs[0] == v.get("feature_set_hash")},
+        "training": {"config_hash": v.get("training_config_hash"), "config": v.get("training_config"),
+                     "period": {"start": v.get("train_start"), "end": v.get("train_end")},
+                     "runs": rows("SELECT run_id, status, `rows`, actor, started_at, finished_at FROM ml_training_run "
+                                  "WHERE model_id=? AND version=? ORDER BY started_at", (model_id, ver))},
+        "artifact": {"path": v.get("artifact_path"), "sha256": v.get("artifact_hash")},
+        "recorded": rec,
+        "lifecycle": rows("SELECT event_type, from_state, to_state, message, actor, at FROM ml_model_event WHERE "
+                          "model_id=? AND version=? ORDER BY id", (model_id, ver)),
+        "references": {
+            "note": "found now (config, strategies, backtests, validations), not recorded at training",
+            "config_roles": roles, "strategies": strategies, "backtests": backtests,
+            "validation_reports": validations,
+            "dl_benefit_checks": rows("SELECT check_id, verdict, reason, created_at FROM ml_dl_benefit WHERE "
+                                      "dataset_id=? ORDER BY created_at DESC LIMIT 5", (did,)),
+            "predictions": {"rows": pred[0], "symbols": pred[1], "first": pred[2], "last": pred[3]}},
+        "chain": [f"model {model_id}@{ver}",
+                  f"dataset {did} (snapshot {(v.get('dataset_snapshot_hash') or 'none')[:12]})",
+                  f"feature set {v.get('feature_set')} ({(v.get('feature_set_hash') or '')[:12]})",
+                  f"training config {(v.get('training_config_hash') or '')[:12]}",
+                  f"code {code or 'unrecorded (trained before W39)'}"]
+                 + [f"backtest {b['run_id']} ({b['strategy_id']} {b['strategy_version']})" for b in backtests],
+    }

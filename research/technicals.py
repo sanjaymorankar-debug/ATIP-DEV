@@ -13,17 +13,22 @@ columns open, high, low, close, volume (oldest first); no database here.
     candles(df)                  candlestick patterns on the last bar (engulfing, hammer, shooting
                                  star, doji, harami, piercing / dark cloud, morning / evening star,
                                  three soldiers / crows, marubozu, inside bar, NR7)
-    SCANS / run_scans(df)        39 named scans (Chartink / Finviz / StockCharts style): crossovers,
+    SCANS / run_scans(df)        47 named scans (Chartink / Finviz / StockCharts style): crossovers,
                                  breakouts on volume, oscillator turns, trend templates, squeezes and
-                                 chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
-                                 bottom, ascending triangle, head and shoulders), each with a direction
-                                 (BULL / BEAR) and a one-line reason
-    snapshot(df, bench)          one flat dict per stock for the screener: latest indicator values,
+                                 14 chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
+                                 bottom, ascending and descending triangles, head and shoulders and its
+                                 inverse, rising / falling channels both ways, rising and falling
+                                 wedges), each with a direction (BULL / BEAR) and a one-line reason
+    snapshot(df, bench, bars15)  one flat dict per stock for the screener: latest indicator values,
                                  scan hits as 0/1 fields, today's patterns, a technical rating, and
-                                 the same rating on weekly bars with the daily / weekly agreement
+                                 the same rating on weekly bars with the daily / weekly agreement, and on
+                                 75-minute bars (from bars15) with the daily / 75-minute agreement
     weekly_bars(df, as_of)       weekly OHLCV (weeks ending Friday), completed weeks only: a week
                                  counts once its Friday is on or before as_of, so the weekly rating
                                  does not change mid-week (the "completed candles only" rule)
+    bars_75(df15, now)           75-minute OHLCV from the stored 15-minute bars: the NSE session 09:15-15:30
+                                 in five (09:15-10:30, 10:30-11:45, 11:45-13:00, 13:00-14:15, 14:15-15:30),
+                                 completed bars only (see below)
 
 Technical rating (-1..+1, like TradingView's "Technical Ratings"): the mean of moving-average
 votes (price vs SMA 20/50/200, EMA 9 vs 21, SMA 50 vs 200, Supertrend direction) and oscillator
@@ -32,6 +37,19 @@ BUY > 0.1, NEUTRAL, SELL < -0.1, STRONG_SELL < -0.5. A description of the chart,
 The weekly rating is the same vote on weekly bars (35+ completed weeks needed; the 200-period votes
 need ~4 years of history and are simply absent until then). mtf_alignment is BULL when the daily
 and weekly ratings are both BUY / STRONG_BUY, BEAR when both are SELL / STRONG_SELL, else MIXED.
+
+The 75-minute rating (TradingView's any-timeframe rating on the bar Indian traders use) is the same vote on
+75-minute bars built from the 15-minute bars (intraday_bars, interval 15 only). Only 15-minute bars inside
+the regular session and done by `now` (start + 15 minutes) count. A 75-minute bar is COMPLETE once its end
+has passed and either its closing 15-minute bar (the one starting 15 minutes before its end) is stored or
+the day's session is over (now at or after 15:30 that day): a bar still waiting for its last 15 minutes
+never counts, while a bar cut short by an early close (a half day, a Muhurat session) or missing a
+15-minute bar the feed never delivered counts once the session is over, built from the bars it has
+(`bars` says how many of its five). It needs 35+ completed 75-minute bars (7 full sessions; MACD 26 + 9);
+the SMA 200 votes need 200 bars (40 sessions) and are absent until then. A rating is only given when the
+last completed 75-minute bar falls on the daily bar's own session, so a missed 15-minute fetch never
+passes off an older session's chart as today's. mtf_alignment_75 is the same agreement test between the
+daily and 75-minute ratings.
 """
 
 from __future__ import annotations
@@ -45,6 +63,8 @@ from research import patterns as P
 
 MIN_BARS = 60          # below this the long indicators are meaningless; snapshot returns None
 MIN_WEEKS = 35         # completed weekly bars needed for a weekly rating (MACD 26 + 9)
+MIN_BARS_75 = 35       # completed 75-minute bars needed for a 75-minute rating (7 full sessions)
+SESSION_OPEN_MIN, SESSION_CLOSE_MIN, BAR_75 = 9 * 60 + 15, 15 * 60 + 30, 75     # NSE 09:15-15:30, five 75-minute bars
 _UP, _DOWN = ("BUY", "STRONG_BUY"), ("SELL", "STRONG_SELL")
 
 
@@ -145,6 +165,16 @@ def indicators(df: pd.DataFrame, bench: pd.Series | None = None) -> pd.DataFrame
 
 
 # ── candlestick patterns (on the last bar) ───────────────────────────────────
+
+# each name candles() can return and its side; technical_snapshot.patterns stores only the names, so the
+# stock chart (dashboard/stock_view.py) reads their side from here
+CANDLE_SIDES = {"Doji": "NEUTRAL", "Hammer": "BULL", "Hanging man": "BEAR", "Shooting star": "BEAR",
+                "Inverted hammer": "BULL", "Bullish engulfing": "BULL", "Bearish engulfing": "BEAR",
+                "Bullish harami": "BULL", "Bearish harami": "BEAR", "Piercing line": "BULL",
+                "Dark cloud cover": "BEAR", "Morning star": "BULL", "Evening star": "BEAR",
+                "Three white soldiers": "BULL", "Three black crows": "BEAR", "Bullish marubozu": "BULL",
+                "Bearish marubozu": "BEAR", "Inside bar": "NEUTRAL", "NR7": "NEUTRAL"}
+
 
 def candles(d: pd.DataFrame) -> list:
     """[(name, BULL|BEAR|NEUTRAL)] for the last bar. Needs indicators() columns for trend context."""
@@ -361,6 +391,27 @@ SCANS = {
     "head_shoulders_breakdown": ("Head and shoulders breakdown", "BEAR",
                                  lambda d: P.breakout(d, "head_shoulders_breakdown"),
                                  "closed below a head-and-shoulders neckline"),
+    "inverse_head_shoulders_breakout": ("Inverse head and shoulders breakout", "BULL",
+                                        lambda d: P.breakout(d, "inverse_head_shoulders_breakout"),
+                                        "closed above an inverse head-and-shoulders neckline"),
+    "descending_triangle_breakdown": ("Descending triangle breakdown", "BEAR",
+                                      lambda d: P.breakout(d, "descending_triangle_breakdown"),
+                                      "closed below a descending triangle's flat support"),
+    "rising_channel_breakout": ("Rising channel breakout", "BULL", lambda d: P.breakout(d, "rising_channel_breakout"),
+                                "closed above a rising channel's upper line"),
+    "rising_channel_breakdown": ("Rising channel breakdown", "BEAR",
+                                 lambda d: P.breakout(d, "rising_channel_breakdown"),
+                                 "closed below a rising channel's lower line"),
+    "falling_channel_breakout": ("Falling channel breakout", "BULL",
+                                 lambda d: P.breakout(d, "falling_channel_breakout"),
+                                 "closed above a falling channel's upper line"),
+    "falling_channel_breakdown": ("Falling channel breakdown", "BEAR",
+                                  lambda d: P.breakout(d, "falling_channel_breakdown"),
+                                  "closed below a falling channel's lower line"),
+    "rising_wedge_breakdown": ("Rising wedge breakdown", "BEAR", lambda d: P.breakout(d, "rising_wedge_breakdown"),
+                               "closed below a rising wedge's lower line"),
+    "falling_wedge_breakout": ("Falling wedge breakout", "BULL", lambda d: P.breakout(d, "falling_wedge_breakout"),
+                               "closed above a falling wedge's upper line"),
     "nr7_inside": ("NR7 inside bar", "NEUTRAL",
                    lambda d: d["range"].iloc[-1] == d["range"].iloc[-7:].min()
                    and d["high"].iloc[-1] < d["high"].iloc[-2] and d["low"].iloc[-1] > d["low"].iloc[-2],
@@ -368,8 +419,7 @@ SCANS = {
 }
 
 
-PATTERN_SCANS = frozenset(("darvas_breakout", "darvas_breakdown", "vcp_breakout", "double_bottom_breakout",
-                           "ascending_triangle_breakout", "head_shoulders_breakdown"))
+PATTERN_SCANS = frozenset(P.SCAN_PATTERN)      # the chart-pattern breakouts: alerts held until proven
 
 
 def run_scans(d: pd.DataFrame) -> list:
@@ -467,8 +517,58 @@ def weekly_agrees(direction, weekly_label) -> int | None:
     return int(weekly_label in (_UP if direction == "BULL" else _DOWN))
 
 
-def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
-    """Flat dict of the last bar: indicators, scan hits (scan_<key> = 1/0), patterns, rating."""
+_BAR_COLS = ["open", "high", "low", "close", "volume"]
+
+
+def bars_75(df15: pd.DataFrame | None, now=None) -> pd.DataFrame:
+    """75-minute OHLCV (index = the bar's start: 09:15, 10:30, 11:45, 13:00 or 14:15; `bars` = how many
+    15-minute bars it holds) from 15-minute bars indexed by their start, completed bars only. now defaults
+    to the end of the last 15-minute bar, so a bar still waiting for its closing 15 minutes is left out."""
+    empty = pd.DataFrame(columns=_BAR_COLS + ["bars"], index=pd.DatetimeIndex([]))
+    if df15 is None or df15.empty:
+        return empty
+    d = df15[_BAR_COLS].sort_index()
+    step = pd.Timedelta(minutes=15)
+    now = pd.Timestamp(now) if now is not None else d.index[-1] + step
+    mins = d.index.hour * 60 + d.index.minute
+    d = d[(mins >= SESSION_OPEN_MIN) & (mins < SESSION_CLOSE_MIN) & (d.index + step <= now)]   # regular session, done
+    if d.empty:
+        return empty
+    mins = d.index.hour * 60 + d.index.minute
+    start = d.index.normalize() + pd.to_timedelta(SESSION_OPEN_MIN + (mins - SESSION_OPEN_MIN) // BAR_75 * BAR_75,
+                                                  unit="min")
+    g = d.assign(_last=d.index).groupby(start)
+    out = g.agg(open=("open", "first"), high=("high", "max"), low=("low", "min"), close=("close", "last"),
+                volume=("volume", "sum"), _last=("_last", "max"))
+    out["bars"] = g.size()
+    end = out.index + pd.Timedelta(minutes=BAR_75)
+    closed = out.index.normalize() + pd.Timedelta(minutes=SESSION_CLOSE_MIN) <= now     # the day's session is over
+    done = (end <= now) & ((out["_last"] == end - step) | closed)
+    return out.loc[done, _BAR_COLS + ["bars"]]
+
+
+def rating_75(df15: pd.DataFrame | None, now=None, day=None) -> dict:
+    """The technical rating, RSI and Supertrend direction on completed 75-minute bars. With `day`, only when
+    the last completed 75-minute bar is on that session (else every field is None: stale)."""
+    out = {"tech_rating_75": None, "tech_rating_75_label": None, "rsi_14_75": None, "supertrend_dir_75": None,
+           "bar_75_end": None, "bars_75": 0}
+    b = bars_75(df15, now)
+    out["bars_75"] = len(b)
+    if len(b) < MIN_BARS_75 or (day is not None and b.index[-1].date() != pd.Timestamp(day).date()):
+        return out
+    d = indicators(b[_BAR_COLS])
+    score, label, _ = rating(d)
+    r, st = _v(d, "rsi14"), _v(d, "st_dir")
+    out.update({"tech_rating_75": score, "tech_rating_75_label": label,
+                "rsi_14_75": round(r, 2) if r is not None else None,
+                "supertrend_dir_75": int(st) if st is not None else None,
+                "bar_75_end": (b.index[-1] + pd.Timedelta(minutes=BAR_75)).strftime("%Y-%m-%d %H:%M")})
+    return out
+
+
+def snapshot(df: pd.DataFrame, bench: pd.Series | None = None, bars15: pd.DataFrame | None = None) -> dict | None:
+    """Flat dict of the last bar: indicators, scan hits (scan_<key> = 1/0), patterns, rating; the weekly rating;
+    and, given the stock's 15-minute bars, the 75-minute rating as of that day's close."""
     if df is None or len(df) < MIN_BARS:
         return None
     d = indicators(df, bench)
@@ -511,6 +611,11 @@ def snapshot(df: pd.DataFrame, bench: pd.Series | None = None) -> dict | None:
     wk = weekly_rating(df)
     out.update({k: wk[k] for k in ("tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w")})
     out["mtf_alignment"] = mtf_alignment(label, wk["tech_rating_w_label"])
+    day = df.index[-1].normalize()
+    r75 = rating_75(bars15, now=day + pd.Timedelta(minutes=SESSION_CLOSE_MIN), day=day)
+    out.update({k: r75[k] for k in ("tech_rating_75", "tech_rating_75_label", "rsi_14_75", "supertrend_dir_75",
+                                    "bar_75_end")})
+    out["mtf_alignment_75"] = mtf_alignment(label, r75["tech_rating_75_label"])
     for key in SCANS:
         out[f"scan_{key}"] = int(any(h[0] == key for h in hits))
     return out

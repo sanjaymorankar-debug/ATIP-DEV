@@ -47,8 +47,13 @@ REQ_REFRESH_POINTS = 5.0
 MODES = ("INVESTOR", "TRADER")
 
 
-def _alert(title, body, key, severity="warning"):
+def _alert(conn, title, body, key, severity="warning"):
     try:
+        # notify records the alert on its own connection. A step that failed mid-write leaves this
+        # cycle's transaction open (a failed step is isolated, not rolled back), and the alert would
+        # wait out the busy timeout behind it and be lost. Every step commits its own work, so this
+        # only commits early what the next step's commit or the cycle's final one would.
+        conn.commit()
         from alerts.telegram import notify
         return notify(f"<b>{title}</b>\n{body}", category="wealth", severity=severity, key=key)
     except Exception as e:
@@ -116,8 +121,8 @@ def investor_cycle(conn, owner, trade_date: date | None = None, alerts: bool = T
             if r["status"] == "OFF_TRACK" and prev.get(g["goal_id"]) not in (None, "OFF_TRACK"):
                 worse.append(g["name"])
         if alerts and worse:
-            out["alerts"].append(_alert("ATIP wealth: goal off track", "Now off track: " + ", ".join(worse),
-                                        f"wealth:goal_off:{tag}"))
+            out["alerts"].append(_alert(conn, "ATIP wealth: goal off track", "Now off track: " + ", ".join(worse),
+                                              f"wealth:goal_off:{tag}"))
         return {"projections": done, "newly_off_track": worse}
     _step(out, "goals", goals_step)
 
@@ -126,9 +131,9 @@ def investor_cycle(conn, owner, trade_date: date | None = None, alerts: bool = T
             return {"detail": "skipped: no Investor DNA"}
         chk = RB.check_public(conn, owner)
         if alerts and chk["verdict"] == "REBALANCE":
-            out["alerts"].append(_alert("ATIP wealth: rebalance suggested",
-                                        "; ".join(f"{t['trigger']}: {t['detail']}" for t in chk["triggers"]),
-                                        f"wealth:rebalance:{tag}"))
+            out["alerts"].append(_alert(conn, "ATIP wealth: rebalance suggested",
+                                              "; ".join(f"{t['trigger']}: {t['detail']}" for t in chk["triggers"]),
+                                              f"wealth:rebalance:{tag}"))
         return {"verdict": chk["verdict"], "triggers": [t["trigger"] for t in chk["triggers"]]}
     _step(out, "rebalance", rbl_step)
 
@@ -152,20 +157,20 @@ def investor_cycle(conn, owner, trade_date: date | None = None, alerts: bool = T
         n = 0
         cur = dna.current(conn, owner)
         if alerts and cur and cur["status"] == "STALE":
-            out["alerts"].append(_alert("ATIP wealth: Investor DNA out of date",
-                                        f"Your profile is {cur['age_days']} days old; retake the questionnaire.",
-                                        f"wealth:dna_stale:{tag}", "info"))
+            out["alerts"].append(_alert(conn, "ATIP wealth: Investor DNA out of date",
+                                              f"Your profile is {cur['age_days']} days old; retake the questionnaire.",
+                                              f"wealth:dna_stale:{tag}", "info"))
             n += 1
         s = H.summary(conn, owner)
         if alerts and s["holdings_at_risk"]:
-            out["alerts"].append(_alert("ATIP wealth: holdings flagged",
-                                        ", ".join(f"{h['symbol']} (CRI {h['cri']}, {h['signal']})"
-                                                  for h in s["holdings_at_risk"]), f"wealth:at_risk:{tag}"))
+            out["alerts"].append(_alert(conn, "ATIP wealth: holdings flagged",
+                                              ", ".join(f"{h['symbol']} (CRI {h['cri']}, {h['signal']})"
+                                                        for h in s["holdings_at_risk"]), f"wealth:at_risk:{tag}"))
             n += 1
         if alerts and s["data_quality"]:
-            out["alerts"].append(_alert("ATIP wealth: stale prices",
-                                        f"{len(s['data_quality'])} holding(s) have stale or missing prices.",
-                                        f"wealth:stale:{tag}", "info"))
+            out["alerts"].append(_alert(conn, "ATIP wealth: stale prices",
+                                              f"{len(s['data_quality'])} holding(s) have stale or missing prices.",
+                                              f"wealth:stale:{tag}", "info"))
             n += 1
         return {"checks": n}
     _step(out, "alerts", alert_step)

@@ -5,7 +5,8 @@ W32 pages for the W9 SaaS routes (parked without pages until now):
                      e-mail verification (also completes ?verify=<token> links), notification
                      preferences + delivery log, devices / sessions (ENT-18: revoke one or all
                      others), broker credentials in the vault (ENT-06), consents, privacy requests
-                     (export / delete), billing (plan, invoices, pay -- SANDBOX), reports (run,
+                     (export / delete), billing (plan, invoices, pay -- SANDBOX unless the owner
+                     configured Razorpay: then a pay link, and autopay start / cancel), reports (run,
                      outputs, schedule)
     /admin/console   platform view: tenants with plan / subscription / dunning / usage /
                      onboarding / admin MFA, isolation check, privacy decisions, onboarding,
@@ -56,7 +57,8 @@ async function load(){
  if(!vb.options.length){vb.innerHTML=Object.keys(BROKERS).map(b=>`<option>${b}</option>`).join('');vb.onchange=fields;fields()}
  try{const Bl=await j('/api/billing');const s=Bl.subscription||{};
    bl.innerHTML=`plan <b>${esc(s.plan_id)}</b> · ${esc(s.status)}${s.dunning_state?' · dunning '+esc(s.dunning_state):''} · period ends ${esc(String(s.current_period_end||'').slice(0,10))}`+
-   table(['Invoice','Period','Amount','Status','Due',''],(Bl.invoices||[]).map(i=>`<tr><td>${esc(i.invoice_id)}</td><td>${esc(i.period_start||'')}–${esc(i.period_end||'')}</td><td>${esc(i.amount)} ${esc(i.currency||'')}</td><td>${esc(i.status)}</td><td>${esc(i.due_date||'')}</td><td>${i.status==='OPEN'?`<button onclick="pay('${i.invoice_id}')">Pay (sandbox)</button>`:''}</td></tr>`))+
+   (Bl.provider==='razorpay'?`<div class="muted">Razorpay ${esc(Bl.provider_state||'')}${Bl.autopay?` · autopay ${esc(Bl.autopay.status)}${Bl.autopay.short_url?` · <a href="${esc(Bl.autopay.short_url)}" target="_blank" rel="noopener">authorise the mandate</a>`:''}`:''} <button onclick="autopay()">Start autopay</button><button onclick="autopayCancel()">Cancel autopay</button></div>`:'')+
+   table(['Invoice','Period','Amount','Status','Due',''],(Bl.invoices||[]).map(i=>`<tr><td>${esc(i.invoice_id)}</td><td>${esc(i.period_start||'')}–${esc(i.period_end||'')}</td><td>${esc(i.amount)} ${esc(i.currency||'')}</td><td>${esc(i.status)}</td><td>${esc(i.due_date||'')}</td><td>${i.status==='OPEN'?`<button onclick="pay('${i.invoice_id}')">Pay (${esc(Bl.provider||'')})</button>`:''}</td></tr>`))+
    ((Bl.plans||[]).length?`<div>Change plan <select id="np2">${Bl.plans.map(p=>`<option value="${esc(p.plan_id)}">${esc(p.plan_id)} – ${esc(p.name||'')}</option>`).join('')}</select><button onclick="plan()">Change</button></div>`:'')}catch(e){bl.textContent=e.message}
  try{const R=await j('/api/account/reports');rp.innerHTML=table(['Report','Kind','Schedule','Last run',''],R.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.kind)}</td><td>${esc(r.schedule||'—')}</td><td>${esc(String(r.last_run_at||'—').slice(0,16))}</td><td><button onclick="runRep('${r.report_id}','html')">HTML</button><button onclick="runRep('${r.report_id}','csv')">CSV</button></td></tr>`))}catch(e){rp.textContent=e.message}
  const Pv=await j('/api/account/privacy');const pq=Array.isArray(Pv)?Pv:(Pv.requests||[]);pv.innerHTML=table(['Request','Kind','Status','When'],pq.map(q=>`<tr><td>${esc(q.request_id)}</td><td>${esc(q.kind)}</td><td>${esc(q.status)}</td><td>${esc(String(q.requested_at).slice(0,16))}</td></tr>`));
@@ -71,7 +73,9 @@ async function savePref(){const ch=['in_app'];if(ch_email.checked)ch.push('email
   try{await send('PUT','/api/account/notification-preferences',{category:pc.value,channels:ch,mode:pm.value,quiet_start:qs.value||null,quiet_end:qe.value||null});load()}catch(e){alert(e.message)}}
 async function revoke(id){await j('/api/account/sessions/'+id,{method:'DELETE'});load()}
 async function revokeOthers(){const S=await j('/api/account/sessions');for(const s of S){if(!s.current)await j('/api/account/sessions/'+s.session_id,{method:'DELETE'})}load()}
-async function pay(id){try{const r=await send('POST',`/api/billing/invoices/${id}/pay`,{});alert(r.status||'done');load()}catch(e){alert(e.message)}}
+async function pay(id){try{const r=await send('POST',`/api/billing/invoices/${id}/pay`,{});if(r.pay_url)window.open(r.pay_url,'_blank','noopener');alert(r.status||'done');load()}catch(e){alert(e.message)}}
+async function autopay(){try{const r=await send('POST','/api/billing/autopay',{});if(r.short_url)window.open(r.short_url,'_blank','noopener');load()}catch(e){alert(e.message)}}
+async function autopayCancel(){if(!confirm('Cancel autopay at the end of the current billing cycle?'))return;try{await send('POST','/api/billing/autopay/cancel',{at_cycle_end:true});load()}catch(e){alert(e.message)}}
 async function plan(){try{await send('POST','/api/billing/plan',{plan_id:np2.value});load()}catch(e){alert(e.message)}}
 async function runRep(id,f){try{const r=await send('POST',`/api/reports/${id}/run`,{format:f});window.open(`/api/reports/${id}/outputs/${r.output_id}`,'_blank')}catch(e){alert(e.message)}}
 async function priv(k){const reason=prompt(`Reason for the ${k} request (recorded):`);if(reason===null)return;if(k==='delete'&&!confirm('Deletion anonymises your account once an administrator approves it. Continue?'))return;try{await send('POST','/api/account/privacy',{kind:k,reason});load()}catch(e){alert(e.message)}}
@@ -85,11 +89,12 @@ def render_console():
 <div><button onclick="runJob('/api/admin/dunning/run')">Run dunning now</button><button onclick="runJob('/api/admin/billing-cycle/run')">Run billing cycle now</button> <span id="jm" class="muted"></span></div>
 <h2>Privacy requests</h2><div id="pq"></div>
 <h2>Onboarding</h2><div id="on"></div>
-<h2>Payments (SANDBOX unless the owner enabled a provider)</h2><div id="py" class="scroll"></div>
+<h2>Payments (SANDBOX unless the owner enabled a provider)</h2><div id="ps" class="muted"></div><div><button onclick="runJob('/api/admin/payments/reconcile')">Reconcile with the provider now</button></div><div id="py" class="scroll"></div>
 <h2>Tenant isolation</h2><div id="is"></div>
 """ + r"""<script>
 async function load(){
  const C=await j('/api/admin/console');
+ const PS=C.payments_status||{};ps.textContent=`provider ${PS.provider||C.payments_provider||''}: ${PS.state||''}${PS.reason?' — '+PS.reason:''}${PS.provider==='razorpay'?(PS.webhook_configured?' · webhook secret set':' · no webhook secret (settles by reconcile)'):''}`;
  tn.innerHTML=table(['Tenant','Status','Plan','Subscription','Dunning','Usage','Onboarded','Admins (MFA)'],(C.tenants||[]).map(t=>`<tr><td><b>${esc(t.tenant_id)}</b><br><span class="muted">${esc(t.name||'')}</span></td><td>${esc(t.status)}</td><td>${esc(t.plan||'')}</td><td>${esc(t.subscription||'')}</td><td>${esc(t.dunning||'')}</td><td class="muted">${esc(Object.entries(t.usage||{}).map(([k,v])=>k+' '+v).join(' · '))}</td><td>${t.onboarding_complete?'✓':'—'}</td><td>${t.admins??''} (${t.admins_with_mfa??0})</td></tr>`));
  try{const P=await j('/api/admin/privacy');pq.innerHTML=table(['Request','Tenant','User','Kind','Reason','Status',''],(P.requests||[]).map(r=>`<tr><td>${esc(r.request_id)}</td><td>${esc(r.tenant_id)}</td><td>${esc(r.user_id)}</td><td>${esc(r.kind)}</td><td>${esc(r.reason||'')}</td><td>${esc(r.status)}</td><td>${r.status==='PENDING'?`<button onclick="decide('${r.request_id}',true)">Approve</button><button style="background:#7f1d1d" onclick="decide('${r.request_id}',false)">Reject</button>`:''}</td></tr>`))}catch(e){pq.textContent=e.message}
  try{const O=await j('/api/admin/onboarding');const oo=Array.isArray(O)?O:(O.tenants||O.onboarding||[]);on.innerHTML=table(['Tenant','Complete','Steps'],oo.map(o=>`<tr><td>${esc(o.tenant_id)}</td><td>${o.complete?'✓':'—'}</td><td class="muted">${esc(Object.entries(o.steps||{}).filter(([k,v])=>!v).map(([k])=>k).join(', ')||'all done')}</td></tr>`))}catch(e){on.textContent=e.message}

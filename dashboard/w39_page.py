@@ -1,6 +1,6 @@
 """
-W39 pages: /research (equity research reports with the fundamental scorecard, ratings, hit rate and
-the scorecard's record, 7-year history coverage),
+W39 pages: /research (equity research reports with the fundamental scorecard, the DVM view and the
+earnings surprise card, ratings, hit rate and the scorecard's record, 7-year history coverage),
 /screener (fundamental + technical stock screener with presets and saved screens), /signals
 (end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, the
 event calendar, FII flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
@@ -10,6 +10,8 @@ places an order.
 Payoff chart colours: categorical slots 1 and 2 of the dataviz reference palette, dark steps
 (#3987e5 expiry, #d95926 target date), validated on the panel surface #1e293b (contrast and
 CVD separation pass); the target-date line is also dashed, so identity never rests on colour.
+DVM meters (/research): one series, slot 1 #3987e5 on a track of the same ramp's darker step (#184f95), the
+low / high thresholds marked in muted ink, and the score always printed beside the bar.
 """
 
 import json
@@ -34,6 +36,9 @@ ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-co
 .ax.fl{display:flex;align-items:center;justify-content:center}
 .ck{margin-top:5px;font-size:12px;line-height:1.35}.ck .d{color:var(--muted);font-size:11.5px;margin-left:16px}
 .ck i{font-style:normal;display:inline-block;width:14px;font-weight:700}
+.dvm .v{font-size:20px;font-weight:600}.meter{position:relative;height:8px;background:#184f95;border-radius:4px;margin:6px 0 4px}
+.meter>span{display:block;height:100%;background:#3987e5;border-radius:4px}
+.meter>i{position:absolute;top:-3px;width:2px;height:14px;background:var(--muted)}.ck .s{display:inline-block;min-width:28px;font-weight:600}
 #tip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
  font-size:12px;display:none;z-index:9}
 """
@@ -81,9 +86,36 @@ function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggl
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const li=xs=>xs&&xs.length?`<ul class="b">${xs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<span class="muted">none found</span>';
 async function load(rebuild){const s=document.getElementById('sym').value.trim().toUpperCase();if(!s)return;const el=document.getElementById('rep');el.innerHTML='<div class="card muted">Loading…</div>';
- try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+ try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s);esurp(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 async function scard(s){const el=document.getElementById('scd');if(!el)return;
- try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}}
+ try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}
+ const dv=document.getElementById('dvd');if(!dv)return;
+ try{dv.innerHTML=dvmcard(await j(`/api/research/dvm/${encodeURIComponent(s)}`))}catch(e){dv.innerHTML=`<div class="card muted">No DVM view: ${esc(e.message)}</div>`}}
+const ZCLS={STRONG_PERFORMER:'BUY',VALUE_UNDER_RADAR:'ADD',EXPENSIVE_PERFORMER:'ADD',MID_RANGE:'NOT_RATED',WEAK:'REDUCE',VALUE_TRAP:'SELL',MOMENTUM_TRAP:'SELL'};
+function dvmcard(d){const lv=d.levels||{high:55,low:35};
+ const ax=a=>`<div class="ax dvm"><b>${esc(a.label)}</b> <span class="v">${a.score==null?'—':n(a.score,0)}</span><span class="muted"> / 100${a.level?' · '+stl(a.level):''}</span>
+ <div class="meter" role="img" aria-label="${esc(a.label)} ${a.score==null?'unknown':n(a.score,0)+' of 100'}" title="${esc(a.label)}: ${a.score==null?'unknown':n(a.score,0)} (low below ${lv.low}, high ${lv.high}+)"><span style="width:${a.score==null?0:Math.max(0,Math.min(100,a.score))}%"></span><i style="left:${lv.low}%"></i><i style="left:${lv.high}%"></i></div>
+ <div class="muted" style="font-size:11.5px">${esc(a.basis)}</div>
+ ${a.components.map(c=>`<div class="ck"><span class="s">${c.score==null?'·':n(c.score,0)}</span>${esc(c.label)} <span class="muted">${c.score==null?'(no data)':'× '+n(c.weight*100,0)+'%'}</span><div class="d">${esc(c.detail)}</div></div>`).join('')}</div>`;
+ const z=d.zone;
+ return `<div class="card"><h3>DVM view: ${z?`<span class="pill ${ZCLS[z.key]||'NOT_RATED'}">${esc(z.label)}</span> <span class="muted">${esc(z.reading)}</span>`:`<span class="muted">${esc(d.note||'no zone')}</span>`}</h3>
+ <div class="muted">Durability, valuation and momentum, 0–100 each (Trendlyne-style): durability from the scorecard's financial-health and past-performance checks, valuation from the research model's fair value and the P/E against the industry (P/B for financials; high = cheap), momentum from the daily technical rating and the RS rating. High is ${lv.high}+, low below ${lv.low} (the two marks on each bar).${z?` Zone rule: ${esc(z.rule)}.`:''} A description, not advice: the zones have no track record yet.</div>
+ <div class="axes">${d.axes.map(ax).join('')}</div></div>`}
+async function esurp(s){const el=document.getElementById('esd');if(!el)return;
+ try{el.innerHTML=ecard(await j(`/api/research/earnings-surprise/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">Earnings surprise: ${esc(e.message)}</div>`}}
+function ecard(o){const x=o.latest||{},sg=v=>v==null?'—':(v>0?'+':'')+n(v,2);
+ const why=(v,r)=>v==null&&r?`<div class="muted" style="font-size:11.5px;margin-top:3px">${esc(r)}</div>`:'';
+ const tr=x.eps_trend?`${esc(stl(x.eps_trend))} <span class="muted" style="font-size:12px">${x.eps_trend_pts>0?'+':''}${n(x.eps_trend_pts,1)} pts</span>`:'—';
+ const sig=(o.signals||[]).slice(0,5).map(s=>`<tr><td>${esc(String(s.date).slice(0,10))}</td><td>${s.direction==='BULL'?'▲ positive':'▼ negative'}</td><td>${rs(s.entry)}</td><td>${rs(s.stop)}</td><td>${rs(s.target)}</td><td>${s.confluence}/6</td><td>${esc(s.status)}</td><td>${pct(s.excess_60d)}</td></tr>`);
+ const rec=(o.record||[]).map(r=>`${esc(r.name)}: ${r.closed} closed, avg R ${r.avg_r==null?'—':n(r.avg_r,2)}, alerts ${r.alerts==='on'?'on':`held (${Math.min(r.closed,30)}/30)`}`).join(' · ');
+ return `<div class="card"><h3>Earnings surprise <span class="muted">${esc(x.quarter||'')} · filed ${esc(String(x.available_from||x.known_on||'').slice(0,16))}${x.exact_date?'':' (estimated)'} · ${x.days_since_result} days ago</span></h3>
+ <div class="muted">${esc(o.method)}</div>
+ <div class="grid" style="margin-top:8px"><div class="stat"><div class="k">EPS surprise (SUE)</div><div class="v">${sg(x.sue)}</div>${why(x.sue,x.sue_reason)}</div>
+ <div class="stat"><div class="k">Revenue surprise (SUE)</div><div class="v">${sg(x.sue_revenue)}</div>${why(x.sue_revenue,x.sue_revenue_reason)}</div>
+ <div class="stat"><div class="k">EPS trend (revisions proxy)</div><div class="v">${tr}</div>${why(x.eps_trend,x.eps_trend_reason)}</div>
+ <div class="stat"><div class="k">EPS vs a year earlier</div><div class="v">${n(x.eps_q)} <span class="muted" style="font-size:12px">vs ${n(x.eps_year_ago)}</span></div></div></div>
+ ${sig.length?`<div style="margin-top:8px">${table(['Drift signal','Surprise','Entry','Stop','Target','Confluence','Status','vs Nifty 60d'],sig)}</div>`:`<div class="muted" style="margin-top:6px">No post-earnings-drift signal (it needs |SUE| of ${n(o.trigger,0)}+ on the first session after a filing).</div>`}
+ ${rec?`<div class="muted" style="margin-top:6px">${rec}</div>`:''}</div>`}
 const AXN={value:'Value',growth:'Growth',past:'Past',health:'Health',dividend:'Dividend'};
 function flake(axes){const cx=160,cy=118,R=80,ang=i=>(-90+72*i)*Math.PI/180,pt=(i,r)=>[cx+r*Math.cos(ang(i)),cy+r*Math.sin(ang(i))];
  const ring=k=>axes.map((_,i)=>pt(i,R*k/6).map(v=>v.toFixed(1)).join(',')).join(' ');
@@ -109,7 +141,8 @@ function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.
  <div class="grid"><div class="stat"><div class="k">Price</div><div class="v">${rs(r.price)}</div></div><div class="stat"><div class="k">12-month target</div><div class="v">${rs(r.target_price)}</div></div>
  <div class="stat"><div class="k">Upside</div><div class="v">${pct(r.upside_pct)}</div></div><div class="stat"><div class="k">Fair value</div><div class="v">${rs(r.fair_value)}</div></div>
  <div class="stat"><div class="k">Uncertainty</div><div class="v">${esc((r.uncertainty||'—').replace('_',' '))}</div></div><div class="stat"><div class="k">Moat proxy / quality</div><div class="v">${esc(q.moat_proxy||'—')} / ${n(q.quality_score,0)}</div></div></div></div>
- <div id="scd"><div class="card muted">Loading the scorecard…</div></div>
+ <div id="scd"><div class="card muted">Loading the scorecard…</div></div><div id="dvd"></div>
+ <div id="esd"></div>
  <div class="two"><div class="card"><h3>Investment thesis</h3>${li(r.thesis)}</div><div class="card"><h3>Risks</h3>${li(r.risks)}</div></div>
  <div class="card"><h3>Catalysts</h3>${li(r.catalysts)}</div>
  <div class="two"><div class="card"><h3>Valuation methods (cost of equity ${v.cost_of_equity_pct}%)</h3>${table(['Method','Value','Weight','Basis'],meth)}</div>
@@ -268,7 +301,7 @@ SIGNALS = _HEAD + r"""
 <button onclick="runNow()">Recompute now</button><span id="ro" class="muted"></span></div></div>
 <div class="card"><div id="sig" style="overflow-x:auto"></div></div></div>
 <div class="pane" id="p-rec"><div class="card"><h3>Track record per scan</h3>
-<div class="muted">Every signal is followed until it reaches its target (win), its stop, or 20 sessions (expired at the close). Average R: +2 is a target, −1 a stop. Expectancy above 0 means the scan has paid on ATIP's own stocks; a few dozen closed signals are needed before trusting it. Chart-pattern scans (Darvas box, VCP, double bottom, ascending triangle, head and shoulders) are tracked from day one but only alert once 30 of their signals have closed with a positive average R.</div>
+<div class="muted">Every signal is followed until it reaches its target (win), its stop, or 20 sessions (expired at the close). Average R: +2 is a target, −1 a stop. Expectancy above 0 means the scan has paid on ATIP's own stocks; a few dozen closed signals are needed before trusting it. Chart-pattern scans (Darvas box, VCP, double bottom, ascending and descending triangles, head and shoulders and its inverse, rising and falling channels and wedges) are tracked from day one but only alert once 30 of their signals have closed with a positive average R.</div>
 <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted">only signals with confluence ≥</span> <select id="rc" onchange="rec()"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
 <select id="ra" onchange="rec()"><option value="">born in any market</option><option value="WITH">born with the market</option><option value="MIXED">born in a mixed market</option><option value="AGAINST">born against the market</option></select></div>
 <h3 style="margin-top:10px">Does the market gate help?</h3><div id="geff" class="sx"></div>
@@ -326,7 +359,7 @@ async function fwd(){const h=document.getElementById('rh').value,mc=document.get
 async function rec(){fwd();const mc=document.getElementById('rc').value,al=document.getElementById('ra').value;
  const [r,ge]=await Promise.all([j('/api/signals/technical/stats?min_confluence='+mc+(al?'&alignment='+al:'')),j('/api/signals/technical/gate-effect?min_confluence='+mc)]);
  document.getElementById('geff').innerHTML=table(['Signals born','Open','Closed','Win rate','Avg R','Avg return'],ge.groups.map(o=>`<tr><td>${o.alignment==='UNKNOWN'?'<span class="muted">before the gate</span>':apill(o.alignment)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))+`<div class="muted" style="margin-top:4px">${esc(ge.verdict||ge.note)}</div>`;
- document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return','Alerts'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td><td>${o.alerts==='held'?`<span class="muted" style="white-space:nowrap" title="a chart-pattern scan alerts once 30 of its signals have closed with a positive average R">held · ${Math.min(o.closed,30)}/30</span>`:'on'}</td></tr>`))}
+ document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return','Alerts'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td><td>${o.alerts==='held'?`<span class="muted" style="white-space:nowrap" title="a chart-pattern or post-earnings-drift scan alerts once 30 of its signals have closed with a positive average R">held · ${Math.min(o.closed,30)}/30</span>`:'on'}</td></tr>`))}
 async function runNow(){document.getElementById('ro').textContent=' computing…';try{const o=await post('/api/signals/technical/run');document.getElementById('ro').textContent=` ${o.rows} stocks, ${o.signals} signals (${o.as_of})`;gate();today()}catch(e){document.getElementById('ro').textContent=' '+e.message}}
 gate();show('today');
 </script></body></html>"""
@@ -353,7 +386,7 @@ PULSE = _HEAD + r"""
 <div class="two"><div class="card"><h3>Derivatives positioning</h3><div id="pos" class="sx"></div></div>
 <div class="card"><h3>Pending orders across the market</h3><div id="book" class="sx"></div></div></div>
 <div class="card"><h3>20-level depth (watchlist)</h3>
-<div class="muted">Dhan's 20-level order book for up to 50 watchlist stocks, sampled every 15 seconds. DWI weighs the levels within 0.5 % of the mid, nearest first (e<sup>−0.5(k−1)</sup>): +1 all bids, −1 all asks. A stock is flagged when |DWI| &gt; 0.3 in its last 3 snapshots. Research on NSE stocks finds order-book imbalance predictive for minutes at most; the check below says whether it is on ATIP's own data. Context, not a signal.</div>
+<div class="muted">Dhan's 20-level order book for up to 50 watchlist stocks, sampled every 15 seconds. DWI weighs the levels within 0.5 % of the mid, nearest first (e<sup>−0.5(k−1)</sup>): +1 all bids, −1 all asks. A stock is flagged when |DWI| &gt; 0.3 in its last 3 snapshots. OFI (order-flow imbalance, Cont, Kukanov &amp; Stoikov) adds up every quote change at the best bid and ask since the stock's previous snapshot, from every update the feed receives: bids added or the bid raised count as buying, asks added or the ask lowered as selling, in units of the average best-level depth. OFI 20 does the same at each of the 20 levels (Xu, Gould &amp; Howison), divided by the book's average depth per level, so stocks compare. Research on NSE stocks finds order-book imbalance predictive for minutes at most; the check below says whether it is on ATIP's own data. Context, not a signal.</div>
 <div id="d20" class="sx" style="margin-top:6px"></div></div>
 <div class="card"><h3>Your pending orders</h3><div id="mine" style="overflow-x:auto"></div></div>
 </div><div id="tip"></div>
@@ -411,9 +444,10 @@ async function load(){const p=await j('/api/market-pulse');evCard(p);document.ge
  mine();depth20().catch(()=>{})}
 async function depth20(){const o=await j('/api/orderbook/depth20');let h='';
  if(!o.rows.length)h=`<span class="muted">No depth snapshots today. Feed: ${esc(o.feed.detail||o.feed.mode||'')}</span>`;
- else{h=table(['Symbol','Mid','Spread','DWI','Best level','All 20','Persistent'],o.rows.slice(0,30).map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${n(x.mid,2)}</td><td>${n(x.spread_bp,1)} bp</td><td>${n(x.dwi,2)}</td><td>${n(x.imb_l1,2)}</td><td>${n(x.imb_20,2)}</td><td>${x.persistent?`<span class="${x.persistent==='BUYERS'?'ok':'bad'}">${esc(x.persistent.toLowerCase())}</span>`:''}</td></tr>`));
-  const v=await j('/api/orderbook/depth20/validation?horizon=1'),N={dwi:'DWI',imb_l1:'best level',imb_20:'all 20 levels'};
-  h+=`<div class="muted" style="margin-top:6px">Does it predict the next minute? ${Object.entries(v.measures).map(([k,m])=>`${N[k]}: ${m.z==null?'too few':`z ${m.z}, sign right ${m.sign_right_pct??'—'}%`}${m.predictive?' <b>(predictive)</b>':''}`).join(' · ')} <span>(${v.n} snapshot pairs a minute apart; ${v.min_n} and |z| ≥ 2 needed)</span></div>`}
+ else{h=table(['Symbol','Mid','Spread','DWI','OFI','OFI 20','Best level','All 20','Persistent'],o.rows.slice(0,30).map(x=>`<tr><td><a href="/research?symbol=${encodeURIComponent(x.symbol)}" style="color:var(--accent)">${esc(x.symbol)}</a></td><td>${n(x.mid,2)}</td><td>${n(x.spread_bp,1)} bp</td><td>${n(x.dwi,2)}</td><td>${n(x.ofi_l1_norm,2)}</td><td>${n(x.ofi_ml,2)}</td><td>${n(x.imb_l1,2)}</td><td>${n(x.imb_20,2)}</td><td>${x.persistent?`<span class="${x.persistent==='BUYERS'?'ok':'bad'}">${esc(x.persistent.toLowerCase())}</span>`:''}</td></tr>`));
+  const v=await j('/api/orderbook/depth20/validation?horizon=1'),N={dwi:'DWI',imb_l1:'best level',imb_20:'all 20 levels',ofi_l1:'OFI',ofi_ml:'OFI 20 levels'};
+  h+=`<div class="muted" style="margin-top:6px">Does it predict the next minute? ${Object.entries(v.measures).map(([k,m])=>`${N[k]}: ${m.z==null?'too few':`z ${m.z}, sign right ${m.sign_right_pct??'—'}%`}${m.n<v.n?` (n ${m.n})`:''}${m.predictive?' <b>(predictive)</b>':''}`).join(' · ')} <span>(${v.n} snapshot pairs a minute apart; ${v.min_n} and |z| ≥ 2 needed)</span></div>`;
+  const c=v.contemporaneous;if(c)h+=`<div class="muted" style="margin-top:4px">OFI against the mid's move over the same interval (a sanity check: Cont, Kukanov &amp; Stoikov find a strong relation): ${Object.entries(c.measures).map(([k,m])=>`${N[k]}: ${m.z==null?'too few':`z ${m.z}, R² ${m.r2==null?'—':n(m.r2*100,0)+'%'}`}${m.related?' <b>(related)</b>':''}`).join(' · ')} <span>(${c.pairs} pairs of consecutive snapshots; R² is the median of each stock's line. OFI 20 counts a quote that moves a tick at every level, so it follows the move closely by construction)</span></div>`}
  document.getElementById('d20').innerHTML=h}
 async function mine(){const w=await j('/api/brokers/open-orders');const br=w.broker;let h=`<div class="muted">Dhan: ${esc(br.status)}${br.reason?' · '+esc(br.reason):''}${(br.errors||[]).length?' · '+esc(br.errors.join('; ')):''}</div>`;
  h+=table(['Kind','Symbol','Side','Type','Product','Qty','Filled','Price','Trigger','Status','Created'],br.orders.map(o=>`<tr><td>${esc(o.kind)}</td><td>${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.order_type)}</td><td>${esc(o.product)}</td><td>${n(o.quantity,0)}</td><td>${n(o.filled,0)}</td><td>${n(o.price,2)}</td><td>${n(o.trigger_price,2)}</td><td>${esc(o.status)}</td><td class="muted">${esc(o.created||'')}</td></tr>`));
