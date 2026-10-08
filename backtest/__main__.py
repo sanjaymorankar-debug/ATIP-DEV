@@ -121,7 +121,7 @@ def main(argv=None):
         from backtest.sensitivity import sensitivity
         req = request(); req.update({"start": a.start, "end": a.end})
         out = sensitivity(req, a.space, a.select_by, a.steps, pairwise=a.pairwise.split(",") if a.pairwise else None)
-        print(json.dumps({k: out.get(k) for k in ("run_id", "robust_share", "knife_edges", "parameters")}, indent=2,
+        print(json.dumps({k: out.get(k) for k in ("run_id", "robust_share", "knife_edges", "thin_edges", "parameters")}, indent=2,
                          default=str))
     elif a.cmd == "robustness":
         from backtest.robustness import robustness

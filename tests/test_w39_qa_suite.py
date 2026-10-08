@@ -613,6 +613,25 @@ def test_pairwise_heatmap_and_sign_flips(waves, stub_trials, monkeypatch):
         A.update({3.0: 1.0, 2.0: 0.9, 4.0: 0.8})
 
 
+def test_a_neighbour_that_stops_trading_is_a_thin_edge_not_a_knife_edge(waves, monkeypatch):
+    """W39b QR-11 decision: stop_pct=4.0 trades only 3 times (< min_trades 10), so it has no metric.
+    It used to vanish silently; now it is listed in thin_neighbours / thin_edges, while the knife-edge
+    test and robust_share still look only at neighbours that have a metric."""
+    import backtest.sensitivity as SEN
+
+    def trial(base, params, kind, parent, idx):
+        trades = 3 if params["stop_pct"] == 4.0 else 50
+        return f"T{idx}", {"status": "COMPLETED",
+                           "metrics": {"sharpe": A[params["stop_pct"]] * B[params["target_pct"]], "trades": trades}}
+    monkeypatch.setattr(SEN, "_trial", trial)
+    out = SEN.sensitivity(_dip(), SPACE, steps=1, min_trades=10)
+    s, t = out["parameters"]["stop_pct"], out["parameters"]["target_pct"]
+    assert [pt["sharpe"] for pt in s["curve"]] == [pytest.approx(0.9), 1.0, None]
+    assert (s["stability"], s["knife_edge"], s["thin_neighbours"]) == (0.9, False, [4.0])
+    assert t["thin_neighbours"] == []
+    assert (out["thin_edges"], out["knife_edges"], out["robust_share"]) == (["stop_pct"], ["target_pct"], 0.5)
+
+
 def test_sensitivity_refuses_bad_requests_and_marks_a_crashed_run_failed(waves, stub_trials, monkeypatch):
     import backtest.sensitivity as SEN
     from db.schema import get_connection
