@@ -212,3 +212,14 @@ def test_init_db_creates_the_whole_schema_on_postgres_and_is_idempotent(live_db)
 
     cur = live_db.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
     assert cur.fetchone()[0] > 200
+
+
+def test_backticked_identifiers_become_double_quotes():
+    """ATIP's shared SQL backticks the columns MySQL 8 reserves (signal, key,
+    rank, rows, change, trigger). SQLite accepts backticks for MySQL
+    compatibility; PostgreSQL does not, so they become the standard quote."""
+    from db.postgres import translate
+    assert translate("SELECT `signal`, a FROM t WHERE `key`=?") == \
+        'SELECT "signal", a FROM t WHERE "key"=%s'
+    # a backtick inside a string literal is data, not a quote
+    assert translate("SELECT a FROM t WHERE b='a`b'") == "SELECT a FROM t WHERE b='a`b'"

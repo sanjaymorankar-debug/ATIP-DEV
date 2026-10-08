@@ -208,17 +208,23 @@ def flag_duplicates(conn) -> int:
     queryable; they simply stop counting.
     """
     try:
-        n = conn.execute("""
-            UPDATE signal_log SET duplicate_of = (
-                SELECT c.id FROM signal_log c
-                WHERE c.signal_date=signal_log.signal_date AND c.symbol=signal_log.symbol
-                  AND c.signal=signal_log.signal
-                ORDER BY c.logged_at, c.id LIMIT 1)
-            WHERE duplicate_of IS NULL AND id <> (
-                SELECT c.id FROM signal_log c
-                WHERE c.signal_date=signal_log.signal_date AND c.symbol=signal_log.symbol
-                  AND c.signal=signal_log.signal
-                ORDER BY c.logged_at, c.id LIMIT 1)
+        # The keeper is computed in an UNCORRELATED derived table and joined back on
+        # id. The obvious correlated form -- a subquery selecting from signal_log
+        # while signal_log is the UPDATE target -- is errno 1093 on MySQL ("you
+        # can't specify target table ... in FROM clause"), and MySQL has no
+        # UPDATE ... FROM while SQLite has no UPDATE ... JOIN, so neither dialect's
+        # own idiom is portable. This form runs unchanged on both; `signal` is
+        # backticked because it is a reserved word in MySQL 8.
+        keeper = """
+            SELECT k.keeper FROM (
+                SELECT id, FIRST_VALUE(id) OVER (
+                         PARTITION BY signal_date, symbol, `signal`
+                         ORDER BY logged_at, id) AS keeper
+                FROM signal_log) k
+            WHERE k.id = signal_log.id"""
+        n = conn.execute(f"""
+            UPDATE signal_log SET duplicate_of = ({keeper})
+            WHERE duplicate_of IS NULL AND id <> ({keeper})
         """).rowcount
         conn.commit()
         if n:

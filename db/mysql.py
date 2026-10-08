@@ -316,6 +316,118 @@ def _greatest(sql):
 
 # ── DML translation ───────────────────────────────────────────────────────
 
+# SQLite CAST target types -> MySQL's. MySQL accepts none of SQLite's five storage
+# classes as a CAST target except REAL: INTEGER, TEXT, BLOB and NUMERIC are all
+# errno 1064. Verified against 8.0.46 rather than assumed.
+_CAST_TYPES = {"integer": "SIGNED", "int": "SIGNED", "bigint": "SIGNED", "smallint": "SIGNED",
+               "text": "CHAR", "varchar": "CHAR", "blob": "BINARY",
+               "real": "REAL", "float": "FLOAT", "double": "DOUBLE"}
+
+# The integer cast needs more than a rename: see _cast().
+_CAST_TRUNCATES = frozenset(("integer", "int", "bigint", "smallint"))
+
+# NUMERIC has no faithful MySQL target. SQLite keeps CAST(1.7 AS NUMERIC) as 1.7;
+# MySQL's DECIMAL defaults to (10,0) and rounds it to 2, and DECIMAL(65,30) -- the
+# only target that keeps the value -- returns it zero-padded, so the Python value
+# still differs. ATIP has no such cast; raising keeps it that way rather than
+# picking a mapping that is quietly wrong.
+_CAST_UNSUPPORTED = frozenset(("numeric", "boolean", "bool"))
+
+
+def _alias_derived(text: str) -> str:
+    """Name the derived tables SQLite lets go unnamed (errno 1248).
+
+    SQLite accepts FROM (SELECT ...) with no alias; MySQL answers "Every derived
+    table must have its own alias". data/bhavcopy.py's 5-day-average UPDATE has two
+    of them. The generated names are positional, so the same statement always
+    translates to the same SQL.
+
+    The whole FROM list is walked, not just the element after the keyword: a
+    derived table can be any comma-separated sibling. Only a FROM / JOIN list is
+    touched -- a (SELECT ...) anywhere else is a scalar subquery or an IN list,
+    where an alias would itself be a syntax error.
+    """
+    # What may follow a derived table and still be its alias. A clause or operator
+    # keyword is not an alias, so the table is unnamed and needs one.
+    not_alias = ("ON|USING|WHERE|GROUP|ORDER|HAVING|LIMIT|OFFSET|UNION|JOIN|LEFT|RIGHT|"
+                 "INNER|OUTER|CROSS|STRAIGHT_JOIN|SET|AND|OR|IS|IN|NOT|LIKE")
+    aliased = re.compile(rf"\s*(?:AS\s+)?(?!(?:{not_alias})\b)[`A-Za-z_]\w*", re.I)
+
+    out, i, n = [], 0, 0
+    for m in re.finditer(r"\b(?:FROM|JOIN)\b", text, re.I):
+        if m.start() < i:
+            continue
+        pos = m.end()
+        while True:                                         # each element of this FROM list
+            while pos < len(text) and text[pos].isspace():
+                pos += 1
+            if pos < len(text) and text[pos] == "(" and re.match(r"\s*SELECT\b", text[pos + 1:], re.I):
+                j, depth = pos + 1, 1
+                while j < len(text) and depth:
+                    depth += {"(": 1, ")": -1}.get(text[j], 0)
+                    j += 1
+                if not aliased.match(text[j:]):
+                    n += 1
+                    out.append(text[i:j])
+                    out.append(f" AS _d{n}")
+                    i = j
+                pos = j
+            else:                                           # a named table, with or without an alias
+                ref = re.match(rf"\s*[`\w.]+(?:\s+(?:AS\s+)?(?!(?:{not_alias})\b)[`\w]+)?",
+                               text[pos:], re.I)
+                if not ref:
+                    break
+                pos += ref.end()
+            sep = re.match(r"\s*,", text[pos:])             # a sibling in the same list?
+            if not sep:
+                break
+            pos += sep.end()
+    out.append(text[i:])
+    return "".join(out)
+
+
+def _cast(text: str) -> str:
+    """Rewrite CAST target types, parenthesis-aware (ATIP casts a ROUND()).
+
+    The integer cast is not a rename. SQLite truncates toward zero; MySQL's
+    CAST(x AS SIGNED) ROUNDS, so the one-word substitution disagrees on every
+    fractional value -- 1.7 -> 2 where SQLite says 1, -1.7 -> -2 where SQLite
+    says -1, 0.5 -> 1 where SQLite says 0. TRUNCATE(x, 0) reproduces SQLite
+    exactly, NULL and non-numeric text included, so the expression is wrapped
+    rather than the type renamed.
+
+    ATIP's three call sites all CAST a ROUND(), where truncating and rounding
+    agree -- so the plain rename would have passed today and silently skewed
+    volume and delivery_qty the first time a caller dropped the ROUND(). The
+    sites are data/bhavcopy.py and data/corporate_actions.py (x2).
+    """
+    out, i = [], 0
+    for m in re.finditer(r"\bCAST\s*\(", text, re.I):
+        if m.start() < i:
+            continue                                        # nested in a CAST already rewritten
+        j, depth = m.end(), 1
+        while j < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[j], 0)
+            j += 1
+        inner = text[m.end():j - 1]
+        tm = re.search(r"\bAS\s+(\w+)\s*$", inner, re.I)
+        if not tm:
+            continue
+        kind = tm.group(1).lower()
+        if kind in _CAST_UNSUPPORTED:
+            raise UnsupportedSQL(f"CAST AS {tm.group(1)} has no faithful MySQL target: {text.strip()[:120]}")
+        if kind not in _CAST_TYPES:
+            continue                                        # DATE, CHAR, SIGNED, DECIMAL(p,s): MySQL's own
+        expr = _cast(inner[:tm.start()].strip())
+        if kind in _CAST_TRUNCATES:
+            expr = f"TRUNCATE({expr}, 0)"
+        out.append(text[i:m.start()])
+        out.append(f"CAST({expr} AS {_CAST_TYPES[kind]})")
+        i = j
+    out.append(text[i:])
+    return "".join(out)
+
+
 def translate(sql: str, pk_of=None) -> str:
     """SQLite SQL -> MySQL.
 
@@ -365,6 +477,8 @@ def translate(sql: str, pk_of=None) -> str:
     text = re.sub(r"\bexcluded\.(\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
 
     text = _greatest(text)
+    text = _cast(text)
+    text = _alias_derived(text)
 
     # rejoin with the string literals back in place, then the date() modifiers (they contain literals)
     chunks = text.split("\x00")

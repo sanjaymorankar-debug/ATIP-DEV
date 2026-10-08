@@ -882,3 +882,147 @@ def test_a_reserved_column_is_usable_when_backticked(live_db):
         assert c.execute("SELECT `signal` FROM ai_scores").fetchone()[0] == "HOLD"
     finally:
         c.close()
+
+
+# ── CAST target types ─────────────────────────────────────────────────────
+#
+# MySQL accepts none of SQLite's five storage classes as a CAST target except
+# REAL. The three ATIP sites (data/bhavcopy.py, data/corporate_actions.py x2)
+# all failed with errno 1064 until db.mysql._cast() existed.
+
+def test_sqlite_cast_targets_become_ones_mysql_accepts():
+    assert my.translate("SELECT CAST(x AS TEXT) FROM t") == "SELECT CAST(x AS CHAR) FROM t"
+    assert my.translate("SELECT CAST(x AS BLOB) FROM t") == "SELECT CAST(x AS BINARY) FROM t"
+    assert my.translate("SELECT CAST(x AS REAL) FROM t") == "SELECT CAST(x AS REAL) FROM t"
+    # MySQL's own spellings are left exactly as written
+    for t in ("CHAR", "DATE", "SIGNED", "UNSIGNED", "DECIMAL(20,6)"):
+        assert my.translate(f"SELECT CAST(x AS {t}) FROM t") == f"SELECT CAST(x AS {t}) FROM t"
+
+
+def test_the_integer_cast_truncates_rather_than_rounding():
+    """CAST(x AS SIGNED) is the obvious rewrite and it is WRONG: MySQL rounds
+    where SQLite truncates toward zero. The expression is wrapped, not renamed."""
+    assert my.translate("SELECT CAST(x AS INTEGER) FROM t") == \
+        "SELECT CAST(TRUNCATE(x, 0) AS SIGNED) FROM t"
+    # ATIP's real shape: the cast target sits behind a nested ')'
+    assert my.translate("UPDATE prices_daily SET volume=CAST(ROUND(volume/?) AS INTEGER) WHERE symbol=?") == \
+        "UPDATE prices_daily SET volume=CAST(TRUNCATE(ROUND(volume/%s), 0) AS SIGNED) WHERE symbol=%s"
+    # nested casts translate from the inside out
+    assert my.translate("SELECT CAST(CAST(x AS INTEGER) AS TEXT) FROM t") == \
+        "SELECT CAST(CAST(TRUNCATE(x, 0) AS SIGNED) AS CHAR) FROM t"
+    # a type name inside a literal is not a type
+    assert my.translate("SELECT CAST('AS INTEGER' AS TEXT) FROM t") == \
+        "SELECT CAST('AS INTEGER' AS CHAR) FROM t"
+
+
+def test_a_cast_with_no_faithful_target_is_refused_not_guessed():
+    """SQLite keeps CAST(1.7 AS NUMERIC) as 1.7. MySQL's DECIMAL defaults to
+    (10,0) and rounds it to 2; DECIMAL(65,30) keeps the value but returns it
+    zero-padded, so the Python value still differs. Refusing beats guessing."""
+    with pytest.raises(UnsupportedSQL, match="CAST AS NUMERIC"):
+        my.translate("SELECT CAST(x AS NUMERIC) FROM t")
+
+
+@live_only
+def test_the_integer_cast_agrees_with_sqlite_value_for_value(live_db):
+    """The regression guard, measured rather than argued.
+
+    Both paths matter, and they do not round alike: MySQL parses a 2.5 written
+    into the SQL as DECIMAL and rounds half away from zero (3), but receives a
+    2.5 bound as a parameter as DOUBLE and rounds half to even (2). So the naive
+    CAST(x AS SIGNED) is wrong on different values depending on how the value
+    arrives -- +-1.7 either way, and the .5 cases only as literals. TRUNCATE is
+    right on all of them, both ways.
+    """
+    conn, cur = live_db
+    sq = sqlite3.connect(":memory:")
+    values = (1.7, 1.2, 2.5, -1.7, -1.2, -2.5, 0.5, 0.0, None)
+    naive_wrong = set()
+    for v in values:
+        want = sq.execute("SELECT CAST(? AS INTEGER)", (v,)).fetchone()[0]
+
+        cur.execute(my.translate("SELECT CAST(? AS INTEGER)"), (v,))
+        assert cur.fetchone()[0] == want, f"bound {v}: MySQL disagrees with SQLite"
+        cur.execute("SELECT CAST(%s AS SIGNED)", (v,))
+        if cur.fetchone()[0] != want:
+            naive_wrong.add(("bound", v))
+
+        if v is None:
+            continue
+        lit = sq.execute(f"SELECT CAST({v} AS INTEGER)").fetchone()[0]
+        cur.execute(my.translate(f"SELECT CAST({v} AS INTEGER)"))
+        assert cur.fetchone()[0] == lit, f"literal {v}: MySQL disagrees with SQLite"
+        cur.execute(f"SELECT CAST({v} AS SIGNED)")
+        if cur.fetchone()[0] != lit:
+            naive_wrong.add(("literal", v))
+
+    # the fix is load-bearing, not defensive: name the cases it carries
+    assert ("bound", 1.7) in naive_wrong and ("literal", 0.5) in naive_wrong, naive_wrong
+
+
+# ── derived tables and self-referencing UPDATEs ───────────────────────────
+
+def test_unaliased_derived_tables_are_named():
+    """SQLite allows FROM (SELECT ...) unnamed; MySQL answers errno 1248. The
+    shape is data/bhavcopy.py's 5-day-average UPDATE."""
+    assert my.translate("UPDATE t SET a=(SELECT AVG(x) FROM (SELECT x FROM t ORDER BY d DESC LIMIT 5)) WHERE d=?") == \
+        "UPDATE t SET a=(SELECT AVG(x) FROM (SELECT x FROM t ORDER BY d DESC LIMIT 5) AS _d1) WHERE d=%s"
+    # every sibling of a FROM list, not just the one after the keyword
+    assert my.translate("SELECT * FROM (SELECT a FROM t), (SELECT b FROM u)") == \
+        "SELECT * FROM (SELECT a FROM t) AS _d1, (SELECT b FROM u) AS _d2"
+    assert my.translate("SELECT * FROM t, (SELECT b FROM u)") == \
+        "SELECT * FROM t, (SELECT b FROM u) AS _d1"
+    assert my.translate("SELECT * FROM t JOIN (SELECT a FROM u) ON t.a=u.a") == \
+        "SELECT * FROM t JOIN (SELECT a FROM u) AS _d1 ON t.a=u.a"
+
+
+def test_an_existing_alias_is_left_alone_and_scalar_subqueries_are_not_touched():
+    """An alias on a (SELECT ...) that is NOT a FROM-list element is a syntax
+    error, so the walk has to tell the two apart."""
+    for sql in ("SELECT * FROM (SELECT a FROM t) AS d, (SELECT b FROM u) e",
+                "SELECT a, (SELECT b FROM u) FROM t",
+                "INSERT INTO t VALUES (1, (SELECT a FROM u))",
+                "SELECT * FROM t WHERE a IN (SELECT a FROM u)"):
+        assert my.translate(sql) == sql.replace("?", "%s"), sql
+
+
+def test_backticked_reserved_words_survive_translation():
+    """ATIP's shared SQL backticks the columns MySQL 8 reserves. They pass through
+    here untouched; db.postgres.translate turns them into double quotes."""
+    assert my.translate("SELECT `signal`, `key` FROM t WHERE `rows`=?") == \
+        "SELECT `signal`, `key` FROM t WHERE `rows`=%s"
+
+
+@live_only
+def test_the_signal_log_dedupe_runs_on_mysql_and_is_idempotent(live_db):
+    """scores/signal_log.flag_duplicates' statement. The correlated form it
+    replaced was errno 1093 -- MySQL will not read the UPDATE target in a
+    subquery -- and neither dialect's own idiom (UPDATE..FROM, UPDATE..JOIN) is
+    portable, so the keeper is computed in an uncorrelated derived table."""
+    import inspect
+    import scores.signal_log as sl
+    conn, cur = live_db
+    cur.execute(my.ddl("CREATE TABLE signal_log (id INTEGER PRIMARY KEY, signal_date TEXT, "
+                       "symbol TEXT, signal TEXT, logged_at TEXT, duplicate_of INTEGER)",
+                       keyed={"signal_date", "symbol", "signal"}))
+    # id order deliberately disagrees with logged_at order: id 3 was logged first
+    rows = [(1, "2026-01-02", "ACME", "BUY", "2026-01-02 10:00"),
+            (2, "2026-01-02", "ACME", "BUY", "2026-01-02 11:00"),
+            (3, "2026-01-02", "ACME", "BUY", "2026-01-02 09:00"),
+            (4, "2026-01-02", "ZZZ", "SELL", "2026-01-02 10:00")]
+    cur.executemany(my.translate("INSERT INTO signal_log (id,signal_date,symbol,`signal`,logged_at) "
+                                 "VALUES (?,?,?,?,?)"), rows)
+
+    # the statement the module builds, translated for MySQL
+    body = inspect.getsource(sl.flag_duplicates)
+    keeper = body[body.index('keeper = """') + 12:body.index("WHERE k.id = signal_log.id") + 26]
+    sql = f"UPDATE signal_log SET duplicate_of = ({keeper})\nWHERE duplicate_of IS NULL AND id <> ({keeper})"
+
+    cur.execute(my.translate(sql))
+    assert cur.rowcount == 2, "the two later copies are the duplicates"
+    cur.execute("SELECT id, duplicate_of FROM signal_log ORDER BY id")
+    assert cur.fetchall() == ((1, 3), (2, 3), (3, None), (4, None)), \
+        "the keeper is the earliest logged_at, not the lowest id"
+
+    cur.execute(my.translate(sql))
+    assert cur.rowcount == 0, "flagging duplicates must be idempotent"

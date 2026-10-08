@@ -208,6 +208,14 @@ def translate(sql: str, pk_of=None) -> str:
     for rx, name in _UNSUPPORTED:
         if rx.search("".join(p for s, p in _split_strings(sql) if not s)):
             raise UnsupportedSQL(f"{name} has no automatic PostgreSQL translation: {sql.strip()[:120]}")
+    # Backtick-quoted identifiers. ATIP's shared SQL quotes the columns that are
+    # reserved words in MySQL 8 (signal, key, rank, rows, change, trigger); SQLite
+    # accepts backticks for MySQL compatibility, PostgreSQL does not, so they become
+    # the standard double quote here. Double quoting also makes the name
+    # case-sensitive in PostgreSQL -- harmless, as ATIP declares every column in
+    # lower case, which is what an unquoted name folds to.
+    sql = "".join(p if s else p.replace("`", '"') for s, p in _split_strings(sql))
+
     parts = _split_strings(sql)
     text = "\x00".join(p for s, p in parts if not s)                    # code only, joined by markers
     strings = [p for s, p in parts if s]
