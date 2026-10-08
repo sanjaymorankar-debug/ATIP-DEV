@@ -71,6 +71,9 @@ DEFAULTS = {
     "momentum_strong_score":     60.0,   # composite >= this  -> let it run
     "momentum_weak_score":       40.0,   # composite <  this  -> exit the runner
     "execution_mode":            "PAPER",  # PAPER | LIVE — LIVE needs explicit opt-in
+    # W39b (EX-17): exit everything still held when the stock's crash-risk index (CRI, 0-100,
+    # high = bad) reaches this. None = off, the default: it changes live exits only once set.
+    "cri_exit_threshold":        None,
 }
 
 _CONFIG_PATH = Path("atip_data") / "config.json"
@@ -121,6 +124,9 @@ def validate_config(cfg: dict) -> dict:
                           f"momentum_strong_score ({strong})")
     if str(cfg["execution_mode"]).upper() not in ("PAPER", "LIVE"):
         raise ConfigError(f"execution_mode must be PAPER or LIVE, got {cfg['execution_mode']}")
+    cri = cfg.get("cri_exit_threshold")
+    if cri is not None and (isinstance(cri, bool) or not isinstance(cri, (int, float)) or not 0 < cri <= 100):
+        raise ConfigError(f"cri_exit_threshold must be null or within (0, 100], got {cri!r}")
     return cfg
 
 
@@ -143,7 +149,7 @@ TARGET_1_PARTIAL_EXIT  = "TARGET_1_PARTIAL_EXIT"
 TRAILING_STOP          = "TRAILING_STOP"
 TARGET_2_MOMENTUM_EXIT = "TARGET_2_MOMENTUM_EXIT"
 MOMENTUM_REVERSAL      = "MOMENTUM_REVERSAL"
-MARKET_RISK_EXIT       = "MARKET_RISK_EXIT"
+MARKET_RISK_EXIT       = "MARKET_RISK_EXIT"     # W39b: CRI spike (cri_exit_threshold)
 MANUAL_EXIT            = "MANUAL_EXIT"
 END_OF_DAY_EXIT        = "END_OF_DAY_EXIT"
 
