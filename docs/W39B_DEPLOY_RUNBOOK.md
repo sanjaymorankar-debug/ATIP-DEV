@@ -66,6 +66,15 @@ Then open http://127.0.0.1:8000:
 | `/wealth` | Unchanged figures; the Simple / Detailed toggle. |
 | `/market-pulse` | The 20-level card shows OFI only when `depth20.enabled` is on and the Dhan Data API is subscribed. |
 
+**One-time, after this deploy: rotate the dashboard write token.** An earlier hosted snapshot carried it. The fix is in this release, but the old token must be replaced:
+
+```bash
+rm atip_data/dashboard_token.txt
+launchctl kickstart -k gui/$UID/com.atip.platform    # restart; ATIP writes a new token
+```
+
+Update any bookmark or script that sends the old token.
+
 ## 4. If something is wrong: roll back
 
 ```bash

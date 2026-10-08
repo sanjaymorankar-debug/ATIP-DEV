@@ -240,6 +240,7 @@ An audit found none of the 14 requirements missing outright, but most were only 
 | ENT-16 HA | Switch the runtime to PostgreSQL and choose a host. The DBS-05 / OPS-04 groundwork is done. |
 | SE-05 AI strategies | Not an owner decision: evidence. No model has passed validation yet (NO_EDGE); retrain after the DP-23 backfill. |
 | UAT-001 | The owner runs the UAT journeys and records acceptance. |
+| Dashboard write token | Rotate it once: delete `atip_data/dashboard_token.txt` and restart. An earlier hosted snapshot carried it; the snapshot no longer does. |
 | Deploy on the Mac | Run `docs/W39B_DEPLOY_RUNBOOK.md` (tag, dry run, `deploy/deploy_release.sh ATIP-W39B --authorize`). The code is merged; only the owner's machine runs production. |
 | Dhan Data API | The Data API subscription. Without it, the 20-level depth and OFI, the 15-minute bars behind the 75-minute rating, and order-book pressure get no data (Dhan error DH-902 / 806). |
 | Consensus estimates | A licensed estimates feed, for a consensus-based surprise and analyst revisions. PEAD and the research reports use ATIP's own history meanwhile. |
