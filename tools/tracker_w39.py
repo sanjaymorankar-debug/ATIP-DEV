@@ -747,7 +747,8 @@ def reconcile(rows: list, fields: list, cov: dict) -> tuple[list, list]:
     seq = max(int(r["Seq"]) for r in rows)
     for n in NEW_ROWS:
         if n["ID"] in by_id:
-            by_id[n["ID"]].update({k: v for k, v in n.items() if v})
+            # the row's own blocker is authoritative even when empty: a decided item (EX-17) must lose its old one
+            by_id[n["ID"]].update({k: v for k, v in n.items() if v or k == "Blocker / Input Required"})
             continue
         seq += 1
         row = {f: "" for f in fields}
