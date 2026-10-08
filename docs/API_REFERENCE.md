@@ -472,8 +472,8 @@ Generated 2026-10-08 10:33 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI per watchlist stock, persistent flags, feed |
-| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes? |
+| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI and OFI per watchlist stock, persistent flags, feed |
+| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance / OFI predict the next 1 / 5 minutes? (+ OFI vs its own interval) |
 | GET | `/api/orderbook/pressure` | dashboard:read |  | `side`, `limit`=100 | latest pending buy / sell totals per stock today |
 | GET | `/api/orderbook/pressure/{symbol}` | dashboard:read |  | `symbol` | today's polls for one stock |
 | POST | `/api/orderbook/snapshot` | research:run | token |  | poll the whole universe now |

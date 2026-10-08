@@ -25,6 +25,8 @@ Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE
     market_cue              EV-02  events, band_pct (the macro events behind a morning and the band given);
                             GS-03  sync_expected_pct (the synchronised model's estimate)
     fundamental_scorecard   FS-03  dvm_d, dvm_v, dvm_m, dvm_zone (the day's DVM view, research/dvm.py)
+    depth20_snapshot        OF-02  best_bid, best_bid_qty, best_ask, best_ask_qty, ofi_l1, ofi_ml, ofi_depth,
+                                   ofi_updates (the best quotes and the order-flow imbalance since the last snapshot)
 """
 
 from data.history_backfill import DDL as _BACKFILL
@@ -38,6 +40,7 @@ from research.market_pulse import ADDED_COLUMNS as _CUE_COLS
 from research.event_calendar import DDL as _EVENTS
 from research.intraday_signals import DDL as _INTRA
 from data.depth20 import DDL as _DEPTH20
+from data.depth20 import ADDED_COLUMNS as _DEPTH20_COLS
 from research.global_sync import DDL as _GSYNC
 from research.regime_gate import DDL as _GATE
 from research.scorecard import DDL as _SCORE
@@ -63,4 +66,4 @@ W39_TABLES = {
     "earnings_surprise": _EARN,
 }
 
-W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS, **_SCORE_COLS}
+W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS, **_SCORE_COLS, **_DEPTH20_COLS}

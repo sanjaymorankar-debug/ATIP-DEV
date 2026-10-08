@@ -232,7 +232,7 @@ They use synthetic series with known answers. Examples:
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
 | ~~Explainable fundamental composite (Snowflake-style 5 × 6 checks); a DVM-style three-axis view~~ | Simply Wall St, Trendlyne | 2: **built** |
 | ~~Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze~~ | Chartink, Streak | 3: **built** |
-| Depth-weighted imbalance from 20-level depth (**built**, Phase 3); order-flow imbalance (OFI) from quote changes | Institutional microstructure | 3 (OFI: later) |
+| ~~Depth-weighted imbalance from 20-level depth; order-flow imbalance (OFI) from quote changes~~ | Institutional microstructure | 3: **built** |
 | ~~English → screener query~~ | TradingView AI Screener, Trendlyne, Screener.in | 4: **built** |
 | ~~ATIP MCP server~~ | Kite MCP, Dhan MCP, TradingView MCP, Trendlyne MCP | 4: **built** (read-only) |
 | ~~Event calendar (FOMC, US CPI, RBI) widening the gap forecast~~ | Institutional desks | 2: **built** |
@@ -320,8 +320,9 @@ They use synthetic series with known answers. Examples:
 2. **20-level depth. Built** (`data/depth20.py`).
    - Dhan's 20-level WebSocket (`wss://depth-api-feed.dhan.co/twentydepth`, up to 50 stocks per connection), frames parsed with the layout of dhanhq's `fulldepth.py` (12-byte header, 20 × price / quantity / orders; bids and asks as separate messages).
    - **DWI:** the levels within 50 bp of the mid, level k weighted e^(−0.5(k−1)), stored every 15 seconds per stock beside the best-level and plain 20-level imbalances. Flagged when |DWI| > 0.3 in 3 snapshots running.
-   - **Validation:** logistic regression of the direction of the mid's next 1- and 5-minute move on each measure; "predictive" only with 500+ snapshots and |z| ≥ 2. A planted effect is recovered in the tests and noise is not.
-   - Off by default (`depth20.enabled`), started with the other feeds by `main.py`, trading hours only, parks on Dhan's refusals (e.g. 806: no Data API subscription) with the reason. `/market-pulse` → "20-level depth".
+   - **OFI** (Cont, Kukanov & Stoikov): e_n = 1{Pᵇₙ ≥ Pᵇₙ₋₁} qᵇₙ − 1{Pᵇₙ ≤ Pᵇₙ₋₁} qᵇₙ₋₁ − 1{Pᵃₙ ≤ Pᵃₙ₋₁} qᵃₙ + 1{Pᵃₙ ≥ Pᵃₙ₋₁} qᵃₙ₋₁, summed over every book update the feed receives between two snapshots. Stored per snapshot with the best bid / ask and their quantities: `ofi_l1` (shares) with the interval's average best-level depth, so `ofi_l1 / ofi_depth` compares across stocks. Also `ofi_ml`: the same at each of the 20 levels (Xu, Gould & Howison), divided by the average depth per level, equal weights by default.
+   - **Validation:** logistic regression of the direction of the mid's next 1- and 5-minute move on each measure, OFI included; "predictive" only with 500+ snapshots and |z| ≥ 2. OFI is also fitted against the mid's move over its own interval, the strong contemporaneous relation CKS report (R² ≈ 65 %), as a sanity check. A planted effect is recovered in the tests and noise is not; on a simulated book fed frame by frame the best-level R² is ≈ 0.7.
+   - Off by default (`depth20.enabled`), started with the other feeds by `main.py`, trading hours only, parks on Dhan's refusals (e.g. 806: no Data API subscription) with the reason. `/market-pulse` → "20-level depth" (DWI, OFI, OFI 20).
 3. **Synchronised global moves. Built** (`research/global_sync.py`).
    - Global snapshots at 15:31 and 08:42 IST on trading days: S&P 500 and Nasdaq 100 futures, the Nikkei and Hang Seng (trading by 08:45 IST), Brent and gold futures, the dollar index and USD/INR, from Yahoo.
    - Each morning: the log moves from India's close to 08:45 against the Nifty's opening gap (first reading 09:15–09:30). Ridge regression once 40 mornings exist, walk-forward against "no change" and against the GIFT estimate on the same mornings.
