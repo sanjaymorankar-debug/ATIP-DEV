@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-08 10:45 by `python -m ops api-docs` from the running application (578 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running application (582 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -81,6 +81,8 @@ Generated 2026-10-08 10:45 by `python -m ops api-docs` from the running applicat
 | GET | `/api/admin/isolation` | admin:tenants |  |  |  |
 | GET | `/api/admin/onboarding` | admin:users |  |  | GET /api/admin/payments |
 | GET | `/api/admin/payments` | admin:billing |  |  |  |
+| GET | `/api/admin/payments/provider` | admin:billing |  |  | POST /api/admin/payments/reconcile  (W39b; platform admin) |
+| POST | `/api/admin/payments/reconcile` | admin:billing |  |  |  |
 | GET | `/api/admin/permissions` | admin:roles |  |  |  |
 | GET | `/api/admin/plans` | admin:billing |  |  | PUT /api/admin/plans/{id}   GET/PUT /api/admin/subscriptions/{tenant} |
 | PUT | `/api/admin/plans/{pid}` | admin:billing |  | `pid` |  |
@@ -173,7 +175,9 @@ Generated 2026-10-08 10:45 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/billing` | admin:billing |  |  | POST /api/billing/plan {plan_id} |
-| POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` |  |
+| POST | `/api/billing/autopay` | admin:billing |  |  | {plan_id?}         POST /api/billing/autopay/cancel {at_cycle_end} |
+| POST | `/api/billing/autopay/cancel` | admin:billing |  |  |  |
+| POST | `/api/billing/invoices/{invoice_id}/pay` | admin:billing |  | `invoice_id` | (W39b: Razorpay answers with pay_url) |
 | POST | `/api/billing/plan` | admin:billing |  |  |  |
 
 ## `/api/brokers`

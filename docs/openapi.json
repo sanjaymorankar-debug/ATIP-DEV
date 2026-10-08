@@ -15116,6 +15116,38 @@
     }
    }
   },
+  "/api/billing/autopay": {
+   "post": {
+    "summary": "Bill Autopay",
+    "operationId": "bill_autopay_api_billing_autopay_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/billing/autopay/cancel": {
+   "post": {
+    "summary": "Bill Autopay Cancel",
+    "operationId": "bill_autopay_cancel_api_billing_autopay_cancel_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/admin/console": {
    "get": {
     "summary": "Adm Console",
@@ -15221,6 +15253,38 @@
    "get": {
     "summary": "Adm Payments",
     "operationId": "adm_payments_api_admin_payments_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/payments/provider": {
+   "get": {
+    "summary": "Adm Payments Provider",
+    "operationId": "adm_payments_provider_api_admin_payments_provider_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/payments/reconcile": {
+   "post": {
+    "summary": "Adm Payments Reconcile",
+    "operationId": "adm_payments_reconcile_api_admin_payments_reconcile_post",
     "responses": {
      "200": {
       "description": "Successful Response",
