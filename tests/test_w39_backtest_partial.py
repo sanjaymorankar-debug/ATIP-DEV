@@ -859,7 +859,11 @@ ED_LEGACY_RUNS = {
     "dip_short_hold_open_end": ({"strategy_id": "dip", "universe": list(WAVES), "close_out_at_end": False,
                                  "params": {"max_hold_sessions": 2, "target_pct": 2, "stop_pct": 1.5}},
                                 {"slices": 2, "participation_cap": 0.0003, "ttl_bars": 2, "impact": "none"},
-                                117, "2a4a2a2b48c4a38becd60592e93955974d77b5f9929d1c048c76b68a479e5b8a"),
+                                # re-pinned for the W39b SELL fix (was 2a4a2a2b...): its slow max-hold exits were
+                                # queued again each session and over-charged. CCC 2025-01-31 now pays 45.04 instead
+                                # of 59.26, so 14.22 more cash lets AAA buy 521 shares instead of 520; nothing else
+                                # changed (same 117 trades, same events). The other three pins are untouched.
+                                117, "41ab6884b4a0651e0b7363b37131d8d6a905850da74381e16bcd344f3a219ea1"),
     "buy_and_hold": ({"strategy_id": "buy_and_hold", "universe": ["UPP", "DWN", "RUN"], "cost_model": "flat"},
                      {"impact": "none"}, 3, "3d04451056c6ca555c9e6943d0d1142936a180a47d3b2bde22143e5bf908ae25"),
 }
@@ -879,6 +883,45 @@ def test_event_driven_buy_sell_only_runs_are_unchanged(db, name):
     assert all(list(t) in (ED_ROW_KEYS, ROW_KEYS) for t in res["trades"])
     assert {"trade_rows", "partial_exits", "adds"}.isdisjoint(res["metrics"])
     assert (res["metrics"]["trades"], _digest(res)) == (trades, digest)
+
+
+def _paid_matches_the_rows(res):
+    """costs_paid and turnover are exactly what the trade rows paid: entry costs (in entry_price, the
+    event engine's cost per share incl. costs) plus exit costs, and entry plus exit values."""
+    rows = res["trades"]
+    entry_costs = sum(t["qty"] * (t["entry_price"] - t["entry_ref_price"]) for t in rows)
+    m = res["metrics"]
+    assert m["costs_paid"] == pytest.approx(entry_costs + sum(t["costs"] for t in rows), abs=0.02)
+    assert m["turnover"] == pytest.approx(sum(t["qty"] * (t["entry_ref_price"] + t["exit_price"]) for t in rows),
+                                          abs=0.02)
+
+
+def test_event_driven_a_max_hold_exit_after_the_stop_fired_charges_nothing(db, monkeypatch):
+    """W39b fix. Max hold queues its exit at session 3's first bar; on that bar the stop fires first and
+    closes the position. The queued SELL then had nothing to sell but was still charged: costs, turnover
+    and a fill (costs_paid 29.50 instead of 19.50). BUY 100 at 100 (cost 10.00), stop 100 at 95 (9.50)."""
+    _seed(_flat(100, 100, 100) + [(100, 100, 90, 92)] + _flat(92))
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0, max_hold_sessions=2, reason="in")]})
+    res = _run_ed()
+    (t,) = res["trades"]
+    assert (t["qty"], t["exit_reason"], t["exit_price"], t["costs"]) == (100, "STOP", 95.0, 9.5)
+    m = res["metrics"]
+    assert (m["fills"], m["costs_paid"], m["turnover"]) == (2, 19.5, 19_500.0)
+    assert res["equity"][-1]["cash"] == pytest.approx(100_000 - 10_010 + 9_490.5)
+    _paid_matches_the_rows(res)
+
+
+def test_event_driven_a_slow_max_hold_exit_is_queued_once(db, monkeypatch):
+    """W39b fix. PAR trades 30,000 shares a bar and an order fills at most 0.2 % of that (60 shares), so
+    the 100-share max-hold exit takes two sessions. It used to be queued again at the second session, and
+    the second SELL was charged on its full size for shares the first had already sold."""
+    _seed(_flat(100, 100, 100, 100, 100, 100), volume=30_000)
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0, max_hold_sessions=2, reason="in")]})
+    res = _run_ed(ed={"participation_cap": 0.002})
+    assert sum(t["qty"] for t in res["trades"]) == 100
+    assert {t["exit_reason"] for t in res["trades"]} == {"MAX_HOLD"}
+    assert res["metrics"]["fills"] == 4                      # BUY 60 + 40, SELL 60 + 40
+    _paid_matches_the_rows(res)
 
 
 def test_code_strategy_add_and_reduce_become_partial_decisions_live(db):

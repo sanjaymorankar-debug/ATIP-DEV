@@ -259,6 +259,12 @@ def run(request: dict, conn) -> dict:
     def fill(o: _Order, bar, i, d):
         nonlocal cash, costs_paid, slip_paid, turnover, realized, fills_n, partial_n, partial_rows, adds_n
         side = "SELL" if o.side in ("SELL", "REDUCE") else "BUY"     # ADD buys, REDUCE sells
+        if o.side == "SELL":                    # W39b fix: sell what is held, and nothing once it is gone --
+            p0 = positions.get(o.symbol)        # a max-hold exit queued on the bar a stop fired used to be
+            if not p0 or p0.qty <= 0:           # charged costs, turnover and a fill for no shares
+                o.done = True
+                return
+            o.qty = min(o.qty, o.filled + p0.qty)
         # reference price for this order type on this bar
         if o.otype == "MARKET":
             ref = bar.open
@@ -359,8 +365,7 @@ def run(request: dict, conn) -> dict:
             p.qty -= qty
             if p.qty == 0:
                 del positions[o.symbol]
-                if o.side == "REDUCE":
-                    o.done = True               # the position is gone: nothing left to reduce
+                o.done = True                   # the position is gone: nothing left to sell or reduce
 
     while q:
         ev = heapq.heappop(q)
@@ -371,7 +376,9 @@ def run(request: dict, conn) -> dict:
             if i == 0 or days[i - 1] != d:
                 session_idx += 1
                 for s, p in list(positions.items()):           # max hold: out at the session's first bar
-                    if p.max_hold and session_idx - p.entry_session >= p.max_hold:
+                    if p.max_hold and session_idx - p.entry_session >= p.max_hold and not any(
+                            w.symbol == s and w.side == "SELL" and not w.done and w.filled < w.qty
+                            for w in working):                 # W39b fix: once, not again every session
                         cancel_changes(s, d)
                         working.append(_Order(next(oid), s, "SELL", p.qty, eligible_idx=i, reason="MAX_HOLD"))
             # protective exits first (they rest at the broker), then working orders
