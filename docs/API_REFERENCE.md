@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-08 10:39 by `python -m ops api-docs` from the running application (576 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 10:45 by `python -m ops api-docs` from the running application (578 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -151,6 +151,7 @@ Generated 2026-10-08 10:39 by `python -m ops api-docs` from the running applicat
 | GET | `/api/backtests` | research:read |  | `limit`=50, `strategy_id` |  |
 | POST | `/api/backtests` | research:run | token |  | Body: a backtest request (backtest/service.py). Returns run_id; runs in the background. |
 | POST | `/api/backtests/costsweep` | research:run | token |  | Body: {request, multipliers? (default [0,0.5,1,1.5,2,3,5]), scale? costs\|slippage\|both} (BT-19). |
+| POST | `/api/backtests/cpcv` | research:run | token |  | Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?} -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths. |
 | POST | `/api/backtests/event-driven` | research:run | token |  | a backtest request + {"event_driven": {...}}    BT-17 |
 | POST | `/api/backtests/optimize` | research:run | token |  | Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}. |
 | POST | `/api/backtests/robustness` | research:run | token |  | Body: {request (start/end), n_subsamples?, seed?}. |
@@ -164,6 +165,7 @@ Generated 2026-10-08 10:39 by `python -m ops api-docs` from the running applicat
 | GET | `/api/backtests/{run_id}/metrics` | research:read |  | `run_id` |  |
 | GET | `/api/backtests/{run_id}/montecarlo` | research:read |  | `run_id` |  |
 | POST | `/api/backtests/{run_id}/montecarlo` | research:run | token | `run_id` | Body: {method: trade_shuffle\|return_bootstrap, n_sims, seed, block_size}. |
+| POST | `/api/backtests/{run_id}/pbo` | research:run | token | `run_id` | Body (optional): {partitions? (16), metric? sharpe\|mean\|total_return} -- the probability of backtest overfitting (CSCV) of the run's trials (an optimisation), computed now and stored as a run of kind pbo. |
 | GET | `/api/backtests/{run_id}/trades` | research:read |  | `run_id` |  |
 
 ## `/api/billing`
