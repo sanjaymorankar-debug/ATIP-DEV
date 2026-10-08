@@ -25,7 +25,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
 
 **What ATIP now does (this round):**
-- **Technical screener:** 39 end-of-day scans (6 chart-pattern breakouts, 2 RS-line scans and a delivery spike added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 17 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
+- **Technical screener:** 47 end-of-day scans (14 chart-pattern breakouts, 2 RS-line scans and a delivery spike added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 21 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
 - **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
 - **Market pulse:**
   - a global-cue model fitted on ATIP's own data, with its walk-forward record;
@@ -185,9 +185,9 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 
 | Feature | Code | Where you see it | Schedule |
 |---|---|---|---|
-| Indicators, 39 scans (incl. 6 chart-pattern breakouts, 2 RS-line scans and a delivery spike), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | — | — |
+| Indicators, 47 scans (incl. 14 chart-pattern breakouts, 2 RS-line scans and a delivery spike), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | Stock panel chart (`dashboard/stock_view.py`): signal, pattern-breakout and candle markers, the lines of the patterns in place | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (120 fields, `CONTAINS`, 35 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (134 fields, `CONTAINS`, 40 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
@@ -225,7 +225,7 @@ They use synthetic series with known answers. Examples:
 | ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
 | ~~Track record by regime; forward returns at 5/20/60 days vs Nifty~~ | Tickeron, Danelfin | 2: **built** |
 | Weekly technical rating (**built**, Phase 2); 75-minute rating | TradingView any-timeframe | 3 (75-minute) |
-| Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders (**built**, Phase 2); channels, wedges, inverse head and shoulders, descending triangle | Finviz, TrendSpider, StockEdge | 2 (rest: later) |
+| ~~Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders; channels, wedges, inverse head and shoulders, descending triangle~~ | Finviz, TrendSpider, StockEdge | 2: **built** |
 | ~~RS-line new high; rank within cap bucket~~ | IBD, StockCharts | 2: **built** |
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
 | Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
@@ -270,10 +270,15 @@ They use synthetic series with known answers. Examples:
    - **Double bottom:** two lows within 3 %, 10–60 sessions apart (the second within 30), after a 10 % decline. Breakout above a neckline 6 %+ above them.
    - **Ascending triangle:** 2+ flat highs (within 1.5 %) over 10+ sessions with rising lows. Breakout above the resistance.
    - **Head and shoulders:** a head 3 %+ above two shoulders within 8 % of each other, after an advance. Breakdown below the neckline extended to today.
+   - **Inverse head and shoulders** (the mirror): a head 3 %+ below two shoulders within 8 % of each other, after a decline of 8 %+ into the left shoulder. Breakout above the neckline joining the two peaks, extended to today.
+   - **Descending triangle:** 2+ flat lows (within 1.5 %) over 10+ sessions under falling highs (each 1 %+ lower). Breakdown below the support.
+   - **Channels:** least-squares lines through the last 3 swing highs and the last 3 swing lows, each pivot within 15 % of the channel's height of its line, no close outside them; parallel (the height at the end 0.75–1.33x the start), both lines up (rising) or down (falling) 4 %+ over 20+ sessions, 3–25 % tall. A breakout above the upper line and a breakdown below the lower one are separate scans for each, so each has its own record.
+   - **Wedges:** the same lines converging (the height at the end at most 60 % of the start, the apex still ahead), at most 25 % tall. Rising wedge: both up, the flatter upper line by 3 %+; breakdown below the lower line. Falling wedge: both down, the flatter lower line by 3 %+; breakout above the upper line.
    - **Signals:** each breakout is a scan, so it gets levels, confluence, the market gate, the forward record and a screener field like the rest. Its reason names the pattern's own levels.
    - **Alerts:** a pattern scan only alerts once 30 of its signals have closed with a positive average R. The Track record shows "held · n/30" until then.
-   - **Screener:** `chart_patterns` lists patterns in place near their trigger (upper half of the box / base, within 3 % of a triangle's resistance) with their levels. `vcp_setup` flags a VCP below its pivot. Presets: "Chart pattern breakouts" and "VCP setups".
-   - **Calibration:** on random-walk prices, each breakout fires on 0.02–1.2 % of stock-days, and setups are listed on 0.2–7 %. Patterns are rare, as intended.
+   - **Screener:** `chart_patterns` lists patterns in place near their trigger (upper half of the box / base, within 3 % of a triangle's resistance or support, between a channel's or wedge's lines) with their levels. `vcp_setup` flags a VCP below its pivot. Presets: "Chart pattern breakouts", "Chart pattern breakdowns" and "VCP setups".
+   - **Calibration:** on random-walk prices, each breakout fires on 0.02–1.2 % of stock-days, and setups are listed on 0.2–7 %. Patterns are rare, as intended. The later eight, on 50,000 random-walk stock-days: inverse head and shoulders 0.078 %, descending triangle 0.038 %, rising channel 0.032 % up / 0.092 % down, falling channel 0.098 % up / 0.020 % down, rising wedge 0.046 %, falling wedge 0.084 %; their setups 0.15–0.69 % (`tests/test_w39b_patterns_more.py`). Breaks against a channel's slope are the commoner ones on a random walk, since a fitted trend does not persist there.
+   - **On the chart:** the stock panel (`openStock`, `dashboard/stock_view.py`) marks each stored technical signal (a diamond for a chart-pattern breakout, a dot for any other scan; below the bar for BULL, above for BEAR) and each bullish / bearish candle pattern from `technical_snapshot`, and draws the lines of the patterns in place on the last bar (box top / bottom, neckline, resistance / support, channel and wedge lines). A Patterns button hides them. Read-only, plain SVG.
 5. **RS-line new high and size-group ranks. Built.**
    - **RS line:** the close divided by the Nifty. The scan "RS line new high" fires on the first day it tops its prior 52-week high. "RS line new high before price" fires when it does so while the price is still below its own 52-week high (IBD's early-leadership tell). `rs_line_at_high` marks stocks currently at an RS high.
    - **Size groups (AMFI's rank rule over ATIP's universe):** large = top 100 by market cap (close × the latest shares outstanding on or before the day), mid = 101–250, small = the rest. `rs_rating_cap` is the RS rating ranked only within the stock's own group, so a mid-cap leader is not hidden behind large-cap moves.

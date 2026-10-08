@@ -13,11 +13,12 @@ columns open, high, low, close, volume (oldest first); no database here.
     candles(df)                  candlestick patterns on the last bar (engulfing, hammer, shooting
                                  star, doji, harami, piercing / dark cloud, morning / evening star,
                                  three soldiers / crows, marubozu, inside bar, NR7)
-    SCANS / run_scans(df)        39 named scans (Chartink / Finviz / StockCharts style): crossovers,
+    SCANS / run_scans(df)        47 named scans (Chartink / Finviz / StockCharts style): crossovers,
                                  breakouts on volume, oscillator turns, trend templates, squeezes and
-                                 chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
-                                 bottom, ascending triangle, head and shoulders), each with a direction
-                                 (BULL / BEAR) and a one-line reason
+                                 14 chart-pattern breakouts (research/patterns.py: Darvas box, VCP, double
+                                 bottom, ascending and descending triangles, head and shoulders and its
+                                 inverse, rising / falling channels both ways, rising and falling
+                                 wedges), each with a direction (BULL / BEAR) and a one-line reason
     snapshot(df, bench)          one flat dict per stock for the screener: latest indicator values,
                                  scan hits as 0/1 fields, today's patterns, a technical rating, and
                                  the same rating on weekly bars with the daily / weekly agreement
@@ -145,6 +146,16 @@ def indicators(df: pd.DataFrame, bench: pd.Series | None = None) -> pd.DataFrame
 
 
 # ── candlestick patterns (on the last bar) ───────────────────────────────────
+
+# each name candles() can return and its side; technical_snapshot.patterns stores only the names, so the
+# stock chart (dashboard/stock_view.py) reads their side from here
+CANDLE_SIDES = {"Doji": "NEUTRAL", "Hammer": "BULL", "Hanging man": "BEAR", "Shooting star": "BEAR",
+                "Inverted hammer": "BULL", "Bullish engulfing": "BULL", "Bearish engulfing": "BEAR",
+                "Bullish harami": "BULL", "Bearish harami": "BEAR", "Piercing line": "BULL",
+                "Dark cloud cover": "BEAR", "Morning star": "BULL", "Evening star": "BEAR",
+                "Three white soldiers": "BULL", "Three black crows": "BEAR", "Bullish marubozu": "BULL",
+                "Bearish marubozu": "BEAR", "Inside bar": "NEUTRAL", "NR7": "NEUTRAL"}
+
 
 def candles(d: pd.DataFrame) -> list:
     """[(name, BULL|BEAR|NEUTRAL)] for the last bar. Needs indicators() columns for trend context."""
@@ -361,6 +372,27 @@ SCANS = {
     "head_shoulders_breakdown": ("Head and shoulders breakdown", "BEAR",
                                  lambda d: P.breakout(d, "head_shoulders_breakdown"),
                                  "closed below a head-and-shoulders neckline"),
+    "inverse_head_shoulders_breakout": ("Inverse head and shoulders breakout", "BULL",
+                                        lambda d: P.breakout(d, "inverse_head_shoulders_breakout"),
+                                        "closed above an inverse head-and-shoulders neckline"),
+    "descending_triangle_breakdown": ("Descending triangle breakdown", "BEAR",
+                                      lambda d: P.breakout(d, "descending_triangle_breakdown"),
+                                      "closed below a descending triangle's flat support"),
+    "rising_channel_breakout": ("Rising channel breakout", "BULL", lambda d: P.breakout(d, "rising_channel_breakout"),
+                                "closed above a rising channel's upper line"),
+    "rising_channel_breakdown": ("Rising channel breakdown", "BEAR",
+                                 lambda d: P.breakout(d, "rising_channel_breakdown"),
+                                 "closed below a rising channel's lower line"),
+    "falling_channel_breakout": ("Falling channel breakout", "BULL",
+                                 lambda d: P.breakout(d, "falling_channel_breakout"),
+                                 "closed above a falling channel's upper line"),
+    "falling_channel_breakdown": ("Falling channel breakdown", "BEAR",
+                                  lambda d: P.breakout(d, "falling_channel_breakdown"),
+                                  "closed below a falling channel's lower line"),
+    "rising_wedge_breakdown": ("Rising wedge breakdown", "BEAR", lambda d: P.breakout(d, "rising_wedge_breakdown"),
+                               "closed below a rising wedge's lower line"),
+    "falling_wedge_breakout": ("Falling wedge breakout", "BULL", lambda d: P.breakout(d, "falling_wedge_breakout"),
+                               "closed above a falling wedge's upper line"),
     "nr7_inside": ("NR7 inside bar", "NEUTRAL",
                    lambda d: d["range"].iloc[-1] == d["range"].iloc[-7:].min()
                    and d["high"].iloc[-1] < d["high"].iloc[-2] and d["low"].iloc[-1] > d["low"].iloc[-2],
@@ -368,8 +400,7 @@ SCANS = {
 }
 
 
-PATTERN_SCANS = frozenset(("darvas_breakout", "darvas_breakdown", "vcp_breakout", "double_bottom_breakout",
-                           "ascending_triangle_breakout", "head_shoulders_breakdown"))
+PATTERN_SCANS = frozenset(P.SCAN_PATTERN)      # the chart-pattern breakouts: alerts held until proven
 
 
 def run_scans(d: pd.DataFrame) -> list:

@@ -2,7 +2,7 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        126 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+    FIELDS        134 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
                   (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
@@ -121,8 +121,9 @@ FIELDS = dict([
     _f("rs_rating_cap", "RS rating in size group (1-99)", "Technical", "", aliases=("rs_cap", "rs_in_group"),
        desc="the RS rating ranked only against stocks of the same size group"),
     _f("chart_patterns", "Chart patterns in place", "Technical", kind="text", aliases=("chart_pattern",),
-       desc="Darvas box / VCP setup / double bottom / ascending triangle / head and shoulders formed and not yet "
-            "triggered, with their levels (research/patterns.py)"),
+       desc="Darvas box / VCP setup / double bottom / ascending or descending triangle / head and shoulders or "
+            "its inverse / rising or falling channel or wedge formed and not yet triggered, with their levels "
+            "(research/patterns.py)"),
     _f("vcp_setup", "VCP setup", "Technical", "1/0", aliases=("vcp",),
        desc="a volatility contraction pattern below its pivot, volume drying up, in an up-trend"),
     _f("supertrend_dir_w", "Weekly Supertrend direction", "Technical", "+1/-1", aliases=("weekly_supertrend",)),
@@ -283,9 +284,19 @@ PRESETS = [
      "query": '(scan_donchian_20_breakout = 1 OR scan_high_52w_breakout = 1) AND mtf_alignment = "BULL"',
      "sort": "rs_rating"},
     {"key": "t_pattern_breakouts", "name": "Chart pattern breakouts", "group": "technical",
-     "description": "Closed above a Darvas box, VCP pivot, double-bottom neckline or ascending triangle today",
+     "description": ("Closed above a Darvas box, VCP pivot, double-bottom or inverse head-and-shoulders neckline, "
+                     "ascending triangle, falling wedge or a channel's upper line today"),
      "query": ("scan_darvas_breakout = 1 OR scan_vcp_breakout = 1 OR scan_double_bottom_breakout = 1 OR "
-               "scan_ascending_triangle_breakout = 1"), "sort": "rs_rating"},
+               "scan_ascending_triangle_breakout = 1 OR scan_inverse_head_shoulders_breakout = 1 OR "
+               "scan_falling_wedge_breakout = 1 OR scan_rising_channel_breakout = 1 OR "
+               "scan_falling_channel_breakout = 1"), "sort": "rs_rating"},
+    {"key": "t_pattern_breakdowns", "name": "Chart pattern breakdowns", "group": "technical",
+     "description": ("Closed below a Darvas box, head-and-shoulders neckline, descending triangle, rising wedge or "
+                     "a channel's lower line today"),
+     "query": ("scan_darvas_breakdown = 1 OR scan_head_shoulders_breakdown = 1 OR "
+               "scan_descending_triangle_breakdown = 1 OR scan_rising_wedge_breakdown = 1 OR "
+               "scan_rising_channel_breakdown = 1 OR scan_falling_channel_breakdown = 1"), "sort": "rs_rating",
+     "desc": False},
     {"key": "t_vcp_setups", "name": "VCP setups (not yet broken out)", "group": "technical",
      "description": "Volatility contraction below its pivot with volume drying up, strongest relative strength first",
      "query": "vcp_setup = 1", "sort": "rs_rating"},

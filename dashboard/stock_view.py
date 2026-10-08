@@ -4,7 +4,10 @@ Stock detail view + table filtering for the main dashboard (W26).
     GET /api/stock/{symbol}/history?sessions=400
         prices (OHLCV), ATIP score history, signal log with outcomes, latest
         technicals (W21 ext included), key stats (52-week range, returns, average
-        volume), the LIVE holding and ATIP's orders / order rules for the symbol.
+        volume), the LIVE holding and ATIP's orders / order rules for the symbol,
+        and chart_marks (chart_marks() below): the stored technical signals and
+        candle patterns (technical_signal / technical_snapshot, research/tech_signals.py)
+        and the chart patterns in place now with their lines (research/patterns.py).
         Read-only; authz falls under the default dashboard:read rule.
 
     ASSETS (CSS + HTML + JS, injected before </body> by dashboard/server.py)
@@ -14,6 +17,13 @@ Stock detail view + table filtering for the main dashboard (W26).
           signals, technicals, position & orders; Buy / Sell open the existing
           order modal. Esc or the backdrop closes it; the page auto-refresh is
           held while it is open.
+        * the Patterns toggle (on by default, remembered for the session) draws on
+          the price chart: a diamond on the day of a chart-pattern breakout, a dot
+          on the day of any other technical signal (below the bar for BULL, above for
+          BEAR), a small dot at the bar for a bullish / bearish candle pattern, and
+          the lines of each pattern in place (box top / bottom, neckline,
+          resistance / support, channel or wedge lines) dashed from where the pattern
+          starts to the last bar. The crosshair line names them. Plain SVG, as before.
         * ATIP Scores table: search matches symbol / company only, the signal
           filter matches the signal value exactly (the old filter matched the
           row text, so every row matched "sell" / "buy" through its order
@@ -112,7 +122,69 @@ def stock_history(conn, symbol: str, sessions: int = 400) -> dict:
         pass
     return {"symbol": sym, "name": name, "stats": stats, "prices": px, "scores": scores, "signals": sigs,
             "technicals": tech, "technical_ext": ext, "holding": holding, "paper_position": paper,
-            "order_rules": rules, "orders": orders, "oms_orders": oms}
+            "order_rules": rules, "orders": orders, "oms_orders": oms, "chart_marks": chart_marks(conn, sym, px)}
+
+
+MARK_LIMIT = 2000           # technical signals sent to the chart (newest first), enough for years of one stock
+PATTERN_BARS = 400          # bars the live pattern read uses (the 20:30 job reads ~600 calendar days)
+
+
+def chart_marks(conn, sym: str, px: list) -> dict:
+    """What the price chart draws from research/tech_signals.py's tables and research/patterns.py, read-only:
+
+        signals    technical_signal rows in the chart's date range: date, scan, name, direction, whether
+                   the scan is a chart-pattern breakout (research/technicals.py PATTERN_SCANS), its status
+                   and, for a pattern, the reason (which names the pattern's levels)
+        candles    candle patterns from technical_snapshot.patterns, one per name per date, with their side
+                   (technicals.CANDLE_SIDES); in_place: technical_snapshot.chart_patterns, the chart
+                   patterns the 20:30 run listed that day
+        patterns   the patterns in place on the stored bars right now (patterns.active on the last
+                   PATTERN_BARS bars, the same rules the 20:30 run applies), each with its lines (box top /
+                   bottom, neckline, resistance or support, channel or wedge lines) from where it starts
+                   to the last bar, and the scan the last bar fired, if any
+    """
+    out = {"signals": [], "candles": [], "in_place": [], "patterns": []}
+    if not px:
+        return out
+    first = px[0]["date"]
+    try:
+        from research.technicals import CANDLE_SIDES, PATTERN_SCANS
+    except Exception:                                   # no pandas / numpy: the chart simply has no marks
+        return out
+    rows = _rows(conn, "SELECT date, scan, name, direction, reason, status, r_multiple FROM technical_signal "
+                       "WHERE symbol=? AND date>=? ORDER BY date DESC LIMIT ?", (sym, first, MARK_LIMIT))
+    for r in rows[::-1]:
+        pat = r["scan"] in PATTERN_SCANS
+        out["signals"].append({"date": str(r["date"])[:10], "scan": r["scan"], "name": r["name"] or r["scan"],
+                               "direction": r["direction"], "pattern": pat, "status": r["status"],
+                               "r_multiple": r["r_multiple"], "reason": r["reason"] if pat else None})
+    for r in _rows(conn, "SELECT date, patterns, chart_patterns FROM technical_snapshot WHERE symbol=? AND date>=? "
+                         "AND (patterns IS NOT NULL OR chart_patterns IS NOT NULL) ORDER BY date", (sym, first)):
+        d = str(r["date"])[:10]
+        for nm in dict.fromkeys(x.strip() for x in str(r["patterns"] or "").split(",") if x.strip()):
+            out["candles"].append({"date": d, "name": nm, "side": CANDLE_SIDES.get(nm, "NEUTRAL")})
+        if r["chart_patterns"]:
+            out["in_place"].append({"date": d, "text": r["chart_patterns"]})
+    out["patterns"] = _active_patterns(px[-PATTERN_BARS:])
+    return out
+
+
+def _active_patterns(px: list) -> list:
+    if len(px) < 60:
+        return []
+    try:
+        import pandas as pd
+        from research import patterns as P
+        from research import technicals as T
+        df = pd.DataFrame(px, columns=["date", "open", "high", "low", "close", "volume"])
+        df.index = pd.to_datetime(df.pop("date"))
+        df = df.apply(pd.to_numeric, errors="coerce")
+        for c in ("open", "high", "low"):
+            df[c] = df[c].fillna(df["close"])
+        df["volume"] = df["volume"].fillna(0)
+        return P.active(T.indicators(df))
+    except Exception:
+        return []
 
 
 def register(app, get_connection, json_safe):
@@ -166,7 +238,7 @@ tr[data-sym]{cursor:pointer}.tod-card[data-sym]{cursor:pointer}
 <div id="sv-back" onclick="if(event.target===this)svClose()"><div id="sv" role="dialog" aria-modal="true"></div></div>
 <script>
 (function(){
-var S={data:null,range:'1Y',kind:'line',sym:null};
+var S={data:null,range:'1Y',kind:'line',sym:null,pat:st().svpat!==false};
 function st(){try{return JSON.parse(sessionStorage.getItem('atip.dash')||'{}')}catch(e){return {}}}
 function save(k,v){try{var o=st();o[k]=v;sessionStorage.setItem('atip.dash',JSON.stringify(o))}catch(e){}}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -268,8 +340,9 @@ function render(){
   h+='<div class="kv">'+[['52W high',n(s.high_52w)],['52W low',n(s.low_52w)],['1W',pc(s.ret_1w)],['1M',pc(s.ret_1m)],['3M',pc(s.ret_3m)],['6M',pc(s.ret_6m)],['1Y',pc(s.ret_1y)],['Avg vol 20D',n(s.avg_volume_20d,0)]]
     .map(function(x){return '<div><span>'+x[0]+'</span><b>'+x[1]+'</b></div>'}).join('')+'</div>';
   h+='<div class="bar">'+['1M','3M','6M','1Y','All'].map(function(r){return '<button class="'+(S.range===r?'on':'')+'" onclick="svRange(\''+r+'\')">'+r+'</button>'}).join('')+
-     '<span class="sp"></span><button class="'+(S.kind==='line'?'on':'')+'" onclick="svKind(\'line\')">Line</button><button class="'+(S.kind==='candle'?'on':'')+'" onclick="svKind(\'candle\')">Candles</button></div>';
-  h+='<div id="svc"></div><div class="tip" id="svtip">Hover the chart for prices. ▲ BUY / ▼ SELL signals from the signal log.</div>';
+     '<span class="sp"></span><button class="'+(S.kind==='line'?'on':'')+'" onclick="svKind(\'line\')">Line</button><button class="'+(S.kind==='candle'?'on':'')+'" onclick="svKind(\'candle\')">Candles</button>'+
+     '<button id="svpatbtn" class="'+(S.pat?'on':'')+'" onclick="svPat()" title="Chart patterns, technical signals and candle patterns">Patterns</button></div>';
+  h+='<div id="svc"></div><div class="tip" id="svtip">Hover the chart for prices. ▲ BUY / ▼ SELL signals from the signal log.</div><div class="tip" id="svpl"></div>';
   var tabs=[['sc','Score history ('+d.scores.length+')'],['sg','Signals ('+d.signals.length+')'],['te','Technicals'],['po','Position & orders']];
   h+='<div class="tabs2">'+tabs.map(function(t,i){return '<div class="'+(i===0?'on':'')+'" onclick="svTab(\''+t[0]+'\',this)">'+t[1]+'</div>'}).join('')+'</div>';
   h+='<div class="pane on" id="sv-sc">'+scoresTable(d)+'</div><div class="pane" id="sv-sg">'+signalsTable(d)+'</div><div class="pane" id="sv-te">'+techTable(d)+'</div><div class="pane" id="sv-po">'+posTable(d)+'</div>';
@@ -277,6 +350,7 @@ function render(){
 }
 window.svRange=function(r){S.range=r;render()};
 window.svKind=function(k){S.kind=k;render()};
+window.svPat=function(){S.pat=!S.pat;save('svpat',S.pat);render()};
 window.svTab=function(id,el){document.querySelectorAll('#sv .pane').forEach(function(x){x.classList.remove('on')});document.querySelectorAll('#sv .tabs2 div').forEach(function(x){x.classList.remove('on')});document.getElementById('sv-'+id).classList.add('on');el.classList.add('on')};
 window.svOrder=function(side){var d=S.data;if(typeof openOrderModal!=='function'){alert('Order entry is not available on this page');return}
   var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;svClose();openOrderModal(d.symbol,(live&&live>0)?live:d.stats.last_close,side)};
@@ -285,6 +359,12 @@ function chart(){
   var d=S.data,P=cut(d.prices),W=1000,H=300,HV=60,HS=110,L=8,R=62,T=10,G=18;
   if(!P.length){document.getElementById('svc').innerHTML='';return}
   var hi=-1e18,lo=1e18,vmax=0;P.forEach(function(p){hi=Math.max(hi,+p.high||+p.close);lo=Math.min(lo,+p.low||+p.close);vmax=Math.max(vmax,+p.volume||0)});
+  /* the lines of the patterns in place, cut to the visible range (they always run to the last bar) */
+  var M=d.chart_marks||{},off=d.prices.length-P.length,gi={},segs=[],col={BULL:'#22c55e',BEAR:'#ef4444',BOTH:'#f59e0b'};
+  if(S.pat){d.prices.forEach(function(p,i){gi[p.date]=i});
+    (M.patterns||[]).forEach(function(pt){(pt.lines||[]).forEach(function(ln){var g0=gi[ln.from],g1=gi[ln.to];if(g0==null||g1==null||g1<off)return;
+      var at=function(g){return g1>g0?ln.from_value+(ln.to_value-ln.from_value)*(g-g0)/(g1-g0):ln.to_value},s0=Math.max(g0,off);
+      segs.push({pt:pt,ln:ln,i0:s0-off,v0:at(s0),i1:g1-off,v1:ln.to_value});hi=Math.max(hi,at(s0),ln.to_value);lo=Math.min(lo,at(s0),ln.to_value)})})}
   var pad=(hi-lo)*0.06||1;hi+=pad;lo-=pad;
   var cw=(W-L-R)/P.length,x=function(i){return L+cw*(i+0.5)},y=function(v){return T+(hi-v)/(hi-lo)*(H-T-HV-6)};
   var o='<svg viewBox="0 0 '+W+' '+(H+G+HS)+'" id="svsvg">';
@@ -300,6 +380,23 @@ function chart(){
   d.signals.forEach(function(sg){var i=idx[sg.signal_date];if(i==null)return;var p=P[i],buy=sg.signal==='BUY';
     var yy=buy?y(+p.low||+p.close)+14:y(+p.high||+p.close)-6;
     o+='<text x="'+x(i)+'" y="'+yy+'" text-anchor="middle" font-size="13" fill="'+(buy?'#22c55e':'#ef4444')+'">'+(buy?'▲':'▼')+'</text>'});
+  /* technical signals (◆ chart-pattern breakout, ● any other scan), candle patterns (•) and pattern lines */
+  var sigBy={},cdlBy={},inBy={};
+  (M.signals||[]).forEach(function(z){(sigBy[z.date]=sigBy[z.date]||[]).push(z)});
+  (M.candles||[]).forEach(function(z){(cdlBy[z.date]=cdlBy[z.date]||[]).push(z)});
+  (M.in_place||[]).forEach(function(z){inBy[z.date]=z.text});
+  if(S.pat){var cl=function(v){return Math.max(T+4,Math.min(H-HV-4,v))};o+='<g id="svmarks">';
+    segs.forEach(function(g){var c=col[g.pt.side]||col.BOTH,y0=y(g.v0),y1=y(g.v1),t=g.pt.name+': '+g.ln.label.toLowerCase()+' '+n(g.v1);
+      o+='<line class="svm-line" x1="'+x(g.i0)+'" y1="'+y0+'" x2="'+x(g.i1)+'" y2="'+y1+'" stroke="'+c+'" stroke-width="1.4" stroke-dasharray="6 4"><title>'+esc(t)+'</title></line>'+
+         '<text x="'+(x(g.i1)-4)+'" y="'+(y1-4)+'" text-anchor="end" font-size="10.5" fill="'+c+'">'+esc(g.ln.label+' '+n(g.v1))+'</text>'});
+    P.forEach(function(p,i){var hy=y(+p.high||+p.close),ly=y(+p.low||+p.close);
+      (cdlBy[p.date]||[]).forEach(function(z){if(z.side!=='BULL'&&z.side!=='BEAR')return;
+        o+='<circle class="svm-cdl" cx="'+x(i)+'" cy="'+cl(z.side==='BULL'?ly+5:hy-5)+'" r="2.2" fill="'+col[z.side]+'"/>'});
+      var ss=sigBy[p.date];if(!ss)return;
+      ['BULL','BEAR'].forEach(function(dir){var g=ss.filter(function(z){return z.direction===dir});if(!g.length)return;var b=dir==='BULL';
+        if(g.some(function(z){return z.pattern}))o+='<text class="svm-pat" x="'+x(i)+'" y="'+cl(b?ly+27:hy-18)+'" text-anchor="middle" font-size="13" fill="'+col[dir]+'">◆</text>';
+        else o+='<circle class="svm-sig" cx="'+x(i)+'" cy="'+cl(b?ly+22:hy-22)+'" r="3" fill="'+col[dir]+'" fill-opacity=".85"/>'})});
+    o+='</g>'}
   var sm={};d.scores.forEach(function(s){sm[s.date]=s});
   var sy=function(v){return H+G+(100-v)/100*(HS-8)+4};
   o+='<text x="'+L+'" y="'+(H+G-4)+'" fill="#64748b" font-size="11">ATIP score</text>';
@@ -313,10 +410,21 @@ function chart(){
   var svg=document.getElementById('svsvg'),hit=document.getElementById('svhit'),vx=document.getElementById('svx'),tip=document.getElementById('svtip');
   hit.addEventListener('mousemove',function(ev){var r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width*W,i=Math.max(0,Math.min(P.length-1,Math.floor((px-L)/cw)));
     var p=P[i],s=sm[p.date],sg=d.signals.filter(function(z){return z.signal_date===p.date})[0];
+    var ts=S.pat?(sigBy[p.date]||[]):[],cd=S.pat?(cdlBy[p.date]||[]):[],ip=S.pat?inBy[p.date]:null;
     vx.setAttribute('x1',x(i));vx.setAttribute('x2',x(i));vx.setAttribute('visibility','visible');
     tip.innerHTML='<b>'+esc(p.date)+'</b> &nbsp;O '+n(p.open)+' H '+n(p.high)+' L '+n(p.low)+' C <b>'+n(p.close)+'</b> &nbsp;Vol '+n(p.volume,0)+
-      (s?' &nbsp;| ATIP <b>'+n(s.atip_score,0)+'</b> '+esc(s.signal||''):'')+(sg?' &nbsp;| <b style="color:'+(sg.signal==='BUY'?'#22c55e':'#ef4444')+'">'+esc(sg.signal)+' signal</b> @ '+n(sg.entry_price):'')});
+      (s?' &nbsp;| ATIP <b>'+n(s.atip_score,0)+'</b> '+esc(s.signal||''):'')+(sg?' &nbsp;| <b style="color:'+(sg.signal==='BUY'?'#22c55e':'#ef4444')+'">'+esc(sg.signal)+' signal</b> @ '+n(sg.entry_price):'')+
+      (ts.length?' &nbsp;| '+ts.map(function(z){return '<b style="color:'+(col[z.direction]||col.BOTH)+'">'+(z.pattern?'◆ ':'')+esc(z.name)+'</b>'+(z.reason?' <span class="mut">'+esc(z.reason)+'</span>':'')}).join(', '):'')+
+      (cd.length?' &nbsp;| candles: '+cd.map(function(z){return '<span style="color:'+(col[z.side]||'#94a3b8')+'">'+esc(z.name)+'</span>'}).join(', '):'')+
+      (ip?' &nbsp;| in place: <span class="mut">'+esc(ip)+'</span>':'')});
   hit.addEventListener('mouseleave',function(){vx.setAttribute('visibility','hidden')});
+  var pl=document.getElementById('svpl'),pts=M.patterns||[];
+  if(pl)pl.innerHTML=!S.pat?'<span class="mut">Chart patterns, technical signals and candle patterns hidden (Patterns).</span>':
+    (pts.length?'In place on the last bar: '+pts.map(function(pt){return '<b style="color:'+(col[pt.side]||col.BOTH)+'">'+esc(pt.name)+'</b> '+
+      (pt.lines||[]).map(function(l){return esc(l.label.toLowerCase())+' '+n(l.to_value)}).join(' / ')+
+      (pt.triggered?' <b>· '+(/breakdown$/.test(pt.triggered)?'broke down':'broke out')+' today</b>':'')}).join(' &nbsp;·&nbsp; ')
+      :'<span class="mut">No chart pattern in place on the last bar.</span>')+
+    ' <span class="mut">&nbsp;◆ chart-pattern breakout · ● other technical signal · • candle pattern (the 20:30 signal run)</span>';
 }
 function tbl(h,rows,empty){return '<table><thead><tr>'+h.map(function(x){return '<th>'+x+'</th>'}).join('')+'</tr></thead><tbody>'+(rows.join('')||'<tr><td colspan="'+h.length+'" class="mut" style="text-align:center;padding:14px">'+empty+'</td></tr>')+'</tbody></table>'}
 function scoresTable(d){return tbl(['Date','ATIP','Rank','VPI','MRI','RRI','ZPI','CRI','ACS','Signal','Regime','Top factor'],d.scores.slice().reverse().map(function(s){
