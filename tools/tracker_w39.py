@@ -182,24 +182,24 @@ SRC_NOTES = "Owner notes (ATIP-.txt / FEatures-.txt)"
 NEW_ROWS += [
     _row("OPS-12", "Deployment/Ops", "Dhan token auto-renewal (TOTP)", "dhan_totp_secret: the 24-hour token "
          "renewed without manual login", SRC_NOTES, "P0", IMPL, 90,
-         "tools/dhan_token_refresh.py (RenewToken, else TOTP + PIN generateAccessToken, writes config or vault); "
-         "W39: scheduler job daily at dhan_token_refresh_time (06:45) + start-up renewal when the token is dead "
-         "(it ran only from a Windows task, so on macOS the token expired daily); config template keys",
-         "Owner: add dhan_pin + dhan_totp_secret (or vault them) once", "pipeline/w39_jobs.py; "
-                                                                        "tools/dhan_token_refresh.py",
-         "test_token_renewal_is_scheduled_and_runs_at_start_only_when_needed; "
-         "test_refresher_only_if_invalid_keeps_a_working_token",
-         blocker="Owner input (not a code blocker): dhan_pin + base32 dhan_totp_secret from web.dhan.co"),
+         "tools/dhan_token_refresh.py (RenewToken with the documented dhanClientId header, else TOTP + PIN "
+         "generateAccessToken; writes config or vault), run daily at 06:30 and at login by the macOS LaunchAgent "
+         "com.atip.dhan-token-refresh (W39, PR #4) and at 08:00 by the Windows task. W39b's own scheduler job was "
+         "dropped on merging #4 (two renewals a day)",
+         "Owner: add dhan_pin + dhan_totp_secret (or vault them) once; run deploy/launchd/install.sh token",
+         "tools/dhan_token_refresh.py; deploy/launchd/com.atip.dhan-token-refresh.plist",
+         "tests/test_dhan_token_refresh.py", notes="Delivered by W39 (PR #4, merged to master 2026-10-08); "
+                                                   "independent validation PENDING"),
     _row("DP-23", "Data Platform", "Long price history (7 years)", "Last 7 years of daily data pulled and stored",
-         SRC_NOTES, "P1", IMPL, 85,
-         "W39: data/history_backfill.py year-window backfill of the tracked universe + indices (resumable, "
-         "remembers listing dates, retries refused windows); weekly purge now keeps prices_daily for history_years "
-         "(it deleted everything older than 600 days); main.py --backfill-history; weekly Sunday top-up; "
-         "/api/data/history/status", "Owner: run python main.py --backfill-history once (Dhan API, ~30-40 min "
-                                      "for 500 symbols)", "data/history_backfill.py; db/purge.py",
-         "test_plan_asks_only_for_the_missing_years_in_shared_windows; "
-         "test_backfill_stores_through_the_fetcher_and_remembers_listing_dates; "
-         "test_the_purge_keeps_price_history_for_history_years"),
+         SRC_NOTES, "P1", IMPL, 90,
+         "W39 (PR #4, its DP-11): data/history_backfill.py walks each tracked symbol back to 7 years in 365-day "
+         "windows, resumable (prices_daily_backfill), listing-aware, nightly 22:20 (40 symbols); db/purge.py "
+         "HISTORY tier keeps prices_daily / ai_scores / predictions 7 years. W39b fix on merge: old windows are "
+         "stored with today's corporate-action basis. W39b's own backfill was dropped",
+         "Owner: Dhan Data API subscription; the Nifty 500 completes in ~2 weeks of nightly runs",
+         "data/history_backfill.py; db/purge.py; data/dhan.py",
+         "tests/test_w39_history.py; tests/test_w39b_merge.py",
+         notes="Delivered by W39 (PR #4, merged to master 2026-10-08); independent validation PENDING"),
     _row("DB-20", "Dashboard", "Stock history like a trading platform", "History of a stock shown like any "
          "trading software", SRC_NOTES, "P1", IMPL, 90,
          "W26 stock panel + W39: 3Y / 5Y / All, daily / weekly / monthly bars, SMA 20/50/200, EMA 21, Bollinger, "
@@ -252,6 +252,125 @@ NEW_ROWS += [
          "taxes; multiplier sweep + break-even", SRC_MAP, "P1", IMPL, 85,
          "W39: cost_sweep over cost / slippage multipliers with interpolated break-even multiplier",
          "Independent QA", "backtest/robustness.py", "tests/test_w39_backtest.py"),
+]
+
+# ── W39 (PR #4, merged to master 2026-10-08): research, screener, signals, market pulse, options, depth ──
+SRC4 = "W39 (PR #4): docs/W39_RESEARCH_HISTORY_OPTIONS_HANDOFF.md"
+NEW_ROWS += [
+    _row('W39-RS', 'Research', 'Equity research reports (RS-01..10)', 'Institutional-style valuation, targets, ratings, reports with disclosures and tracked calls', SRC4, "P1", IMPL, 85,
+         'research/valuation.py (DCF + scenarios + sensitivity, justified P/B, peer / own-history multiples); research/report.py (12-month targets, ratings, SEBI-style disclosures, calls and hit rate); nightly 20:40',
+         'No consensus estimates feed; XBRL key lines only (no 3-statement model); hit rates start from the first report and need PaRRVA review before being shown to others', 'research/valuation.py; research/report.py', 'tests/test_w39_research.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-SCREENER', 'Research', 'Stock screener: fundamental + technical (SC-20)', 'Query screener with presets, saved screens and alerts', SRC4, "P1", IMPL, 85,
+         'research/screener.py: query language (precedence, NOT, IN, aliases), presets, saved screens with new-match alerts, CSV; /screener',
+         'Independent QA', 'research/screener.py', 'tests/test_w39_screener.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-OPTIONS', 'Derivatives', 'Options strategy builder (OP-01..05)', 'Payoff, breakevens, POP and Greeks for multi-leg strategies', SRC4, "P1", IMPL, 85,
+         'quant/options_strategy.py: templates, payoff and breakevens, POP, Greeks, implied IV, chain pricing; POST /api/options/(build|analyse)',
+         "Analysis only: one-click execution needs the live OMS and the owner's explicit go-ahead", 'quant/options_strategy.py', 'tests/test_w39_options.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-TECH', 'Technical Analysis', 'Technical scans, ratings and signals (TA-01..04)', '30 scans, 19 candle patterns, technical / RS ratings, signals with ATR levels and confluence', SRC4, "P1", IMPL, 85,
+         'research/technicals.py + research/tech_signals.py: scans, patterns, ratings, signals with entry / stop / target, confluence, outcomes (TARGET / STOPPED / EXPIRED); nightly 20:30',
+         'Trust a scan only after ~30 closed signals (records start on the first run)', 'research/technicals.py; research/tech_signals.py', 'tests/test_w39_technicals.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-PULSE', 'Market Intelligence', 'Market pulse (MP-01..05)', 'Global-cue model, GIFT gap, FII flow pressure, participant OI, OI walls', SRC4, "P1", IMPL, 85,
+         'research/market_pulse.py + data/participant_oi.py: global-cue model, basis-free GIFT gap, FII streak / absorption, NSE participant OI positioning, OI walls; /market-pulse',
+         'Needs Nifty + global history loaded, Dhan index quotes for GIFT, NSE reachable for participant OI', 'research/market_pulse.py; data/participant_oi.py', 'tests/test_w39_market_pulse.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-REGIME', 'Market Intelligence', 'Market regime gate (RG-01..04)', 'Distribution / follow-through days, 200-DMA, signals tagged with or against the market', SRC4, "P1", IMPL, 85,
+         "research/regime_gate.py: OPEN / CAUTION / CLOSED gate, signals tagged and never alerted against it, 'does the gate help' record",
+         "Thresholds are ATIP's choices (IBD tradition); evidence needs 30+ closed signals per side", 'research/regime_gate.py', 'tests/test_w39_regime_gate.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-TRACK', 'Research', 'Signal track record by regime and horizon (TR-01..03)', '5/20/60-session returns vs the Nifty per signal, by scan x gate and confluence', SRC4, "P1", IMPL, 85,
+         "research/tech_signals.py forward returns and stats, shown next to today's signals",
+         'Useful after a few months of signals', 'research/tech_signals.py', 'tests/test_w39_track_record.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-WEEKLY', 'Technical Analysis', 'Weekly technical rating (WK-01..02)', 'Weekly rating on completed weeks; daily / weekly agreement', SRC4, "P1", IMPL, 85,
+         'research/technicals.py weekly bars, rating, agreement as screener field and signal attribute',
+         'Independent QA', 'research/technicals.py', 'tests/test_w39_weekly.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-PATTERNS', 'Technical Analysis', 'Chart patterns from swing pivots (CP-01..03)', 'Darvas box, VCP, double bottom, ascending triangle, head and shoulders', SRC4, "P1", IMPL, 85,
+         'research/patterns.py: patterns as scans with levels, screener setups, alerts held until a positive 30-signal record',
+         'Rule-based approximations; no inverse H&S, descending triangles, channels or wedges yet', 'research/patterns.py', 'tests/test_w39_patterns.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-RSLINE', 'Technical Analysis', 'RS-line new highs and size-group RS ranks (RL-01..02)', 'RS line new highs (also before price); RS ranks within AMFI size groups', SRC4, "P1", IMPL, 85,
+         'research/technicals.py RS line; AMFI size groups from shares x price',
+         'Independent QA', 'research/technicals.py', 'tests/test_w39_rs_line.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-DELIVERY', 'Technical Analysis', 'Delivery-% spike scan (DL-01)', 'NSE delivery percentage spike as a scan and screener field', SRC4, "P1", IMPL, 85,
+         'research/technicals.py delivery spike scan, snapshot fields, preset',
+         'Independent QA', 'research/technicals.py', 'tests/test_w39_delivery.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-SCORECARD', 'Research', 'Explainable fundamental scorecard (FS-01..03)', '5 axes x 6 pass / fail checks with their numbers, stored nightly with a record vs the Nifty', SRC4, "P1", IMPL, 85,
+         'research/scorecard.py: value, earnings, growth, dividend, balance-sheet checks; screener fields and presets; nightly 20:50',
+         'Reported (not forecast) growth; banks / NBFCs miss six checks by design; record needs months', 'research/scorecard.py', 'tests/test_w39_scorecard.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-EVENTS', 'Market Intelligence', 'Macro event calendar (EV-01..03)', 'FOMC, US CPI, payrolls, RBI dates; the NSE session each hits; gap band widening', SRC4, "P1", IMPL, 85,
+         'research/event_calendar.py: seeded dates, config / API additions, band widened after US releases',
+         "Seeded dates reach end-2026 (RBI Feb-2027): add next year's dates each December", 'research/event_calendar.py', 'tests/test_w39_event_calendar.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-INTRADAY', 'Technical Analysis', 'Intraday scans on 15-minute bars (IN-01..03)', 'Opening-range breakout, open = low / high, intraday squeeze with a record to the close', SRC4, "P1", IMPL, 85,
+         'research/intraday_signals.py; every 15 minutes 09:45-15:50',
+         'Needs the Dhan Data API (15-minute bars) and 3 sessions of stored bars', 'research/intraday_signals.py', 'tests/test_w39_intraday.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-DEPTH20', 'Data Platform', '20-level depth and depth-weighted imbalance (DP-01..03)', 'Dhan 20-level depth WebSocket, DWI, persistent flags, validation', SRC4, "P1", IMPL, 85,
+         'data/depth20.py: depth feed (off by default), DWI, logistic validation vs the next 1 / 5 minutes',
+         'Owner: depth20.enabled and the Dhan Data API; no order-flow imbalance yet', 'data/depth20.py', 'tests/test_w39_depth20.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-GLOBALSYNC', 'Market Intelligence', 'Synchronised global-cue model (GS-01..03)', '15:30 / 08:45 snapshots of global futures, Asia and FX; the opening gap modelled on them', SRC4, "P1", IMPL, 85,
+         'research/global_sync.py: snapshots, walk-forward record vs GIFT',
+         'Needs 40 mornings of snapshots (~2 months)', 'research/global_sync.py', 'tests/test_w39_global_sync.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-NLSCREEN', 'Research', 'English to screener query (NL-01..03)', 'Plain-English screener queries, validated and never run unseen', SRC4, "P1", IMPL, 85,
+         'research/screener_nl.py: Claude path when enabled, rule translator otherwise; POST /api/screener/ask',
+         'Claude path needs a working Anthropic key (KD-001)', 'research/screener_nl.py', 'tests/test_w39_screener_nl.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-MCP', 'APIs', 'Read-only ATIP MCP server (MC-01..03)', '12 read-only tools over stdio on a query-only database connection', SRC4, "P1", IMPL, 85,
+         'tools/atip_mcp.py',
+         'Local stdio only (no hosted transport)', 'tools/atip_mcp.py', 'tests/test_w39_mcp.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
+    _row('W39-ORDERBOOK', 'Market Intelligence', 'Order-book pressure and open orders (OB-01..03)', 'Market-wide pending buy / sell pressure; a read-only view of your open orders', SRC4, "P1", IMPL, 85,
+         'data/order_pressure.py (every 15 minutes, market hours); portfolio/open_orders.py',
+         'Needs the Dhan Data API; context, not a signal', 'data/order_pressure.py; portfolio/open_orders.py', 'tests/test_w39_market_pulse.py',
+         owner="Claude (development), PR #4",
+         notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
+               "DEPLOYED; independent validation PENDING"),
 ]
 
 # rows still in development when the files are generated: shown IN PROGRESS until merged
@@ -400,6 +519,7 @@ UPDATES = {
 
 # Deployment-tracker wave of every module (owner waves 1-9 are module groups; 11-20 = repo W11-W20)
 WAVE_BY_PREFIX = [
+    (r"^W39-", "W39 (PR #4)"),
     (r"^(INV|WLT|GOL|AAL|RBL|PERF|AIA|INT|QA|UAT|REL)-", None),     # by ID below
     (r"^(DBS|OPS|MON|SEC|API-0[12])", "1"), (r"^(DP|NS-01|AD)", "2"), (r"^TA", "3"),
     (r"^(SC|AF|ML|NS)", "4"), (r"^(SG|SE)", "5"), (r"^(BT|QR)", "6"), (r"^(EX|RK|BR)", "7"),
