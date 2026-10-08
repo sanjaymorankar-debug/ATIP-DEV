@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-08 10:18 by `python -m ops api-docs` from the running application (572 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 10:33 by `python -m ops api-docs` from the running application (573 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -598,6 +598,7 @@ Generated 2026-10-08 10:18 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/research/dvm/{symbol}` | research:read |  | `symbol` | durability / valuation / momentum 0-100, the zone, every input |
+| GET | `/api/research/earnings-surprise/{symbol}` | research:read |  | `symbol`, `as_of` | SUE / revenue SUE / EPS-trend proxy (point in time), its quarters, |
 | GET | `/api/research/equity` | research:read |  | `rating`, `limit`=500 | latest rating per symbol |
 | POST | `/api/research/equity/run` | research:run | token |  | {symbols?} build and store reports for the universe |
 | GET | `/api/research/equity/{symbol}` | research:read |  | `symbol`, `fresh`=0 | today's stored report, else built now (?fresh=1 rebuilds) |
