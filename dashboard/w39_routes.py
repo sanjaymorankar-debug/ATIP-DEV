@@ -17,6 +17,8 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/research/scorecard/{symbol}            the fundamental scorecard: 5 axes x 6 checks, each with its numbers
     GET  /api/research/scorecard-record?horizon=60   return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed
     GET  /api/research/dvm/{symbol}                  durability / valuation / momentum 0-100, the zone, every input
+    GET  /api/research/earnings-surprise/{symbol}?as_of   SUE / revenue SUE / EPS-trend proxy (point in time), its quarters,
+                                                     post-earnings-drift signals and the PEAD scans' record
     GET  /api/data/history/coverage                  how much of the universe reaches back 7 years
     POST /api/data/history/backfill                  {symbols?, max?, years?} one budgeted backfill pass
     GET  /screener                                   the stock screener page (fundamental + technical)
@@ -160,6 +162,13 @@ def register(app, guard, Req, get_connection, json_safe):
             if x is None:
                 raise LookupError(f"{s} is not in the screener snapshot (no price, fundamentals or technical snapshot)")
             return x
+        return await run(f)
+
+    @app.get("/api/research/earnings-surprise/{symbol}")
+    async def api_earnings_surprise(symbol: str, as_of: str = None):
+        def f(conn):
+            from research.earnings_surprise import for_symbol
+            return for_symbol(conn, _sym(symbol), as_of)
         return await run(f)
 
     @app.post("/api/research/equity/run", dependencies=guard)

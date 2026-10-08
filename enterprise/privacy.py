@@ -74,6 +74,7 @@ INVENTORY = {
     "fundamental_scorecard": ("research", False, "kept: the scorecard's own track record (W39)"),
     "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
     "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
+    "earnings_surprise": ("research", False, "kept: recomputed nightly from the stored quarters (W39b)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

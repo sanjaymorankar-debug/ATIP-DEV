@@ -42,6 +42,10 @@ actually work on Indian stocks.
                          how often the signal
                          beat the Nifty and its median excess return at each horizon; today's signals carry
                          their scan's record in today's market
+    EVENT_SCANS          (W39b) scans fed by events, not bars: post-earnings drift (pead_bull / pead_bear,
+                         research/earnings_surprise.py) is written into technical_signal with the same levels,
+                         confluence and gate, a 60-session horizon, and is evaluated and recorded here; it is
+                         held like the chart patterns (HELD_SCANS) and alerted by its own module
 
 Benchmark for relative strength: the Nifty 50 daily close from market_health, else index_levels,
 else NIFTYBEES from prices_daily, else none.
@@ -66,6 +70,16 @@ log = logging.getLogger(__name__)
 
 LOOKBACK_DAYS = 600            # calendar days of bars read per symbol (~400 sessions: enough for SMA 200 + 52w)
 STOP_ATR, TARGET_ATR, HORIZON = 2.0, 4.0, 20
+
+# Scans fed by events instead of bars (W39b): their own module writes them into technical_signal with these
+# levels, confluence and gate, and from there this engine evaluates and records them like every other scan.
+# key: (name, direction, horizon in sessions)
+EVENT_SCANS = {
+    "pead_bull": ("Post-earnings drift: positive surprise", "BULL", 60),     # research/earnings_surprise.py
+    "pead_bear": ("Post-earnings drift: negative surprise", "BEAR", 60),
+}
+# Scans that alert only once their own record has PROVE_CLOSED closed signals with a positive average R
+HELD_SCANS = T.PATTERN_SCANS | frozenset(EVENT_SCANS)
 
 SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hist", "adx_14", "supertrend_dir", "atr_pct",
              "pct_from_sma50", "pct_from_sma200", "above_200dma", "bb_width_pct", "vol_ratio", "rs_63_pct",
@@ -600,12 +614,13 @@ def scan_stats(conn, min_confluence: int = 0, alignment: str | None = None) -> l
         o["avg_r"] = round(sum(rs) / len(rs), 2) if rs else None
         o["avg_return_pct"] = round(sum(rets) / len(rets), 2) if rets else None
         o["pattern"] = o["scan"] in T.PATTERN_SCANS
-        o["alerts"] = "on" if not o["pattern"] or _proven(o) else "held"
+        o["event"] = o["scan"] in EVENT_SCANS
+        o["alerts"] = "on" if o["scan"] not in HELD_SCANS or _proven(o) else "held"
         rows.append(o)
     return sorted(rows, key=lambda o: (-(o["avg_r"] if o["avg_r"] is not None else -99), -o["closed"]))
 
 
-PROVE_CLOSED = 30           # a chart-pattern scan alerts only after this many closed signals with avg R > 0
+PROVE_CLOSED = 30           # a held scan (HELD_SCANS) alerts only after this many closed signals with avg R > 0
 
 
 def _proven(o) -> bool:
@@ -613,8 +628,8 @@ def _proven(o) -> bool:
 
 
 def proven_scans(conn) -> set:
-    """Chart-pattern scans whose own record (all signals) has earned alerts."""
-    return {o["scan"] for o in scan_stats(conn) if o["pattern"] and _proven(o)}
+    """Held scans (chart patterns, event scans) whose own record (all signals) has earned alerts."""
+    return {o["scan"] for o in scan_stats(conn) if o["scan"] in HELD_SCANS and _proven(o)}
 
 
 def gate_effect(conn, min_confluence: int = 0) -> dict:
@@ -727,10 +742,12 @@ def latest_snapshot(conn, symbols=None, as_of=None) -> dict:
 
 def alert_top(conn, as_of=None, min_confluence=4, limit=10) -> dict:
     """Alert the day's strongest signals. Signals AGAINST the market gate are never alerted, and a chart-pattern
-    scan is held back until its own record has PROVE_CLOSED closed signals with a positive average R."""
+    scan is held back until its own record has PROVE_CLOSED closed signals with a positive average R. Event scans
+    are alerted by their own module (research/earnings_surprise.py), under the same hold."""
     proven = proven_scans(conn)
     sig = [s for s in todays_signals(conn, as_of, min_confluence=min_confluence, alignment="not_against")
-           if s["direction"] in ("BULL", "BEAR") and (s["scan"] not in T.PATTERN_SCANS or s["scan"] in proven)]
+           if s["direction"] in ("BULL", "BEAR") and s["scan"] not in EVENT_SCANS
+           and (s["scan"] not in HELD_SCANS or s["scan"] in proven)]
     if not sig:
         return {"alerted": 0}
     from alerts.telegram import notify

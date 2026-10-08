@@ -234,6 +234,7 @@ def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
     assert fake.jobs == [(None, S._w39_order_pressure_tick), ("08:45", S._w39_gift), ("09:05", S._w39_gift),
                          ("09:35", S._w39_gap_eval), ("20:15", S._w39_participant_oi),
                          ("23:20", S._w39_nifty_history), ("20:30", S._w39_technical_signals),
+                         ("20:35", S._w39_earnings_surprise),
                          ("20:40", S._w39_research_reports), ("20:50", S._w39_saved_screens),
                          ("22:20", S._w39_history_backfill), (None, S._w39_intraday_tick),
                          ("15:31", S._w39_global_sync), ("08:42", S._w39_global_sync)]

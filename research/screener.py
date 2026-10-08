@@ -2,8 +2,10 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        135 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
-                  (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
+    FIELDS        139 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+                  (ROE, ROCE, margins), growth (YoY, QoQ), earnings surprise (research/earnings_surprise.py:
+                  SUE and revenue SUE against the same quarter a year earlier -- ATIP's own history, not
+                  consensus -- the EPS-trend revisions proxy, days since the result), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
                   model (rating, upside, fair value, moat proxy, quality), a magic-formula rank
@@ -81,6 +83,16 @@ FIELDS = dict([
     _f("eps_growth_pct", "EPS growth YoY", "Growth", "%", aliases=("eps_growth",)),
     _f("qoq_revenue_pct", "Revenue growth QoQ", "Growth", "%", aliases=("qoq_sales",)),
     _f("qoq_profit_pct", "Profit growth QoQ", "Growth", "%", aliases=("qoq_profit",)),
+    _f("sue", "Earnings surprise (SUE)", "Earnings", "sd", aliases=("eps_surprise", "earnings_surprise"),
+       desc="(EPS - EPS of the same quarter a year earlier) / the standard deviation of that change over the 8 "
+            "quarters before; a surprise against ATIP's own history, not analyst consensus (research/earnings_surprise.py)"),
+    _f("sue_revenue", "Revenue surprise (SUE)", "Earnings", "sd", aliases=("revenue_surprise", "sales_surprise"),
+       desc="the same on quarterly revenue"),
+    _f("eps_trend", "EPS growth trend", "Earnings", kind="text", aliases=("revisions_proxy", "earnings_trend"),
+       desc="ACCELERATING / DECELERATING: trailing-4-quarter EPS growth against the filing before -- a proxy for "
+            "estimate revisions, not analyst revisions"),
+    _f("days_since_result", "Days since the latest result", "Earnings", "days",
+       aliases=("days_since_results", "result_age"), desc="calendar days since the latest quarter's filing was broadcast"),
     _f("revenue_cr", "Revenue (quarter)", "Size", "₹ cr", aliases=("sales", "revenue")),
     _f("profit_cr", "Net profit (quarter)", "Size", "₹ cr", aliases=("profit", "net_profit")),
     _f("eps_ttm", "EPS (TTM)", "Size", "₹", aliases=("eps",)),
@@ -255,6 +267,10 @@ PRESETS = [
      "query": "from_52w_high_pct > -5 AND above_200dma = 1 AND roe_pct > 15", "sort": "from_52w_high_pct"},
     {"key": "turnaround", "name": "Turnaround", "description": "Profit jumped this quarter and is up on last year",
      "query": "qoq_profit_pct > 50 AND profit_growth_pct > 0 AND profit_cr > 0", "sort": "qoq_profit_pct"},
+    {"key": "earnings_surprise", "name": "Positive earnings surprise",
+     "description": "SUE of +2 or more on a result filed in the last 60 days: EPS beat the same quarter a year "
+                    "earlier by 2+ standard deviations of its usual change (ATIP's own history; no consensus estimates)",
+     "query": "sue >= 2 AND days_since_result <= 60", "sort": "sue"},
     {"key": "magic_formula", "name": "Magic formula (top 30)",
      "description": "Greenblatt's ranking (approximated with E/P and ROCE), market cap over ₹1,000 cr",
      "query": "magic_rank <= 30 AND market_cap_cr > 1000", "sort": "magic_rank", "desc": False},
@@ -698,6 +714,14 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
             row[f"scan_{key}"] = ts.get(f"scan_{key}", 0) if ts else None
         rows.append(row)
     _magic_rank(rows)
+    try:
+        from research import earnings_surprise
+        earnings_surprise.apply(conn, rows, as_of)
+    except Exception as e:                      # like the scorecard: never takes the screener down
+        log.warning(f"  Earnings surprise unavailable: {e}")
+        for r in rows:
+            for k in ("sue", "sue_revenue", "eps_trend", "days_since_result"):
+                r.setdefault(k, None)
     from research import scorecard
     try:
         scorecard.apply(conn, rows, as_of, uni.fund)
