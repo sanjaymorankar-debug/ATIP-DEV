@@ -770,3 +770,115 @@ def test_the_describe_target_test_left_no_dsn_cached():
         for url in cache:
             assert url is None or "db.example.com" not in url, \
                 f"a test DSN is still cached and will redirect the rest of the suite: {url}"
+
+
+# ── the runtime switch: constructs the whole code base depends on ─────────
+
+def test_a_check_pinned_integer_key_is_not_auto_increment():
+    """MySQL refuses a CHECK that refers to an AUTO_INCREMENT column (errno 3818),
+    and `id INTEGER PRIMARY KEY CHECK (id = 1)` -- SQLite's single-row-table idiom,
+    used by orders/paper.py -- is exactly that pairing once INTEGER PRIMARY KEY
+    becomes a sequence. A pinned key is not a sequence, so it loses AUTO_INCREMENT
+    and the CHECK keeps doing its job."""
+    out = my.ddl("CREATE TABLE IF NOT EXISTS paper_account ("
+                 "id INTEGER PRIMARY KEY CHECK (id = 1), balance REAL NOT NULL, opened_at TEXT)")
+    assert "AUTO_INCREMENT" not in out, out
+    assert "PRIMARY KEY" in out and "CHECK (id = 1)" in out
+
+    # an ordinary integer key must still auto-number, or every table loses its ids
+    assert "AUTO_INCREMENT" in my.ddl("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, a TEXT)")
+
+
+def test_entry_order_tables_get_a_column_to_order_by():
+    """SQLite orders by its implicit rowid; MySQL has no per-row identifier, so the
+    tables whose row ORDER means something get an AUTO_INCREMENT column instead."""
+    out = my.ddl("CREATE TABLE IF NOT EXISTS perf_ledger (txn_id TEXT PRIMARY KEY, trade_date DATE)")
+    assert f"`{my.ENTRY_ORDER_COLUMN}` BIGINT NOT NULL AUTO_INCREMENT UNIQUE" in out, out
+    # and nothing else gains a column it never asked for
+    assert my.ENTRY_ORDER_COLUMN not in my.ddl("CREATE TABLE other (a TEXT PRIMARY KEY)")
+
+
+def test_entry_order_column_follows_the_live_backend(tmp_path, monkeypatch, runtime_url_cache):
+    """The queries that need entry order ask for the column name rather than writing
+    `rowid`, which keeps one query correct on either backend."""
+    import json
+    from db.backend import entry_order_column
+    schema = runtime_url_cache
+    cfg = tmp_path / "atip_data"
+    cfg.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    def column(url, database_cfg, table="perf_ledger"):
+        (cfg / "config.json").write_text(json.dumps({"database": database_cfg}))
+        if url is None:
+            monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+        else:
+            monkeypatch.setenv("ATIP_DATABASE_URL", url)
+        schema._PG_URL.clear()
+        schema._MYSQL_URL.clear()
+        return entry_order_column(table, url)
+
+    gated = {"allow_experimental": True}
+    assert column(None, {}) == "rowid"
+    assert column("mysql://u@h/d", {"backend": "mysql", **gated}) == my.ENTRY_ORDER_COLUMN
+
+    # a table with no such column must raise rather than name one that is not there
+    with pytest.raises(ValueError):
+        column("mysql://u@h/d", {"backend": "mysql", **gated}, table="order_log")
+
+
+@live_only
+def test_a_same_day_sell_never_sorts_before_its_buy(live_db):
+    """The reason perf_ledger needs entry order at all, and the one failure mode this
+    is here to prevent. wealth/perf/engine.py records it: ordering by the random
+    txn_id put a same-day SELL before its BUY about half the time, which capped the
+    sell as EXCESS_SELL and lost the round trip. Both rows share a trade_date and
+    have no ts, so only the entry-order column decides."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE perf_ledger (txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, "
+                  "owner_id TEXT NOT NULL, portfolio TEXT NOT NULL, trade_date DATE NOT NULL, "
+                  "ts TEXT, kind TEXT NOT NULL, quantity REAL)")
+        c.commit()
+        # 'zzz' inserted first and 'aaa' second: ordering by txn_id would invert them
+        c.execute("INSERT INTO perf_ledger (txn_id, tenant_id, owner_id, portfolio, trade_date, kind, quantity) "
+                  "VALUES (?,?,?,?,?,?,?)", ("zzz", "t1", "o1", "main", "2026-10-01", "BUY", 10))
+        c.execute("INSERT INTO perf_ledger (txn_id, tenant_id, owner_id, portfolio, trade_date, kind, quantity) "
+                  "VALUES (?,?,?,?,?,?,?)", ("aaa", "t1", "o1", "main", "2026-10-01", "SELL", 10))
+        c.commit()
+
+        order = my.ENTRY_ORDER_COLUMN
+        kinds = [r[0] for r in c.execute(
+            f"SELECT kind FROM perf_ledger ORDER BY trade_date, ts, {order}").fetchall()]
+        assert kinds == ["BUY", "SELL"], f"entry order lost: {kinds}"
+
+        # and the column really is engine-assigned, not something a writer supplied
+        seqs = [r[0] for r in c.execute(f"SELECT {order} FROM perf_ledger ORDER BY {order}").fetchall()]
+        assert seqs == [1, 2], seqs
+    finally:
+        c.close()
+
+
+@live_only
+def test_a_reserved_column_is_usable_when_backticked(live_db):
+    """`signal` is reserved in MySQL 8, so `INSERT INTO ai_scores (..., signal)` is
+    errno 1064 -- the failure that the runtime switch turns up most often. Backticks
+    fix it and are portable: SQLite accepts them too, so one query serves both."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE ai_scores (symbol TEXT, date DATE, score REAL, signal TEXT)")
+        c.commit()
+        with pytest.raises(sqlite3.OperationalError) as e:
+            c.execute("INSERT INTO ai_scores (symbol, date, score, signal) VALUES (?,?,?,?)",
+                      ("ACME", "2026-10-01", 60, "HOLD"))
+        assert e.value.args[0] == 1064
+        c.rollback()
+
+        c.execute("INSERT INTO ai_scores (symbol, date, score, `signal`) VALUES (?,?,?,?)",
+                  ("ACME", "2026-10-01", 60, "HOLD"))
+        c.commit()
+        assert c.execute("SELECT `signal` FROM ai_scores").fetchone()[0] == "HOLD"
+    finally:
+        c.close()

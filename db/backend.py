@@ -49,6 +49,38 @@ def backend(url: str | None = None) -> str:
     raise ValueError("unsupported database URL scheme (sqlite:///, postgresql:// or mysql://)")
 
 
+def entry_order_column(table: str, url: str | None = None) -> str:
+    """The column a query should ORDER BY to get rows back in the order they were written.
+
+    SQLite answers with its implicit `rowid`; MySQL has no per-row physical identifier
+    at all, so db.mysql.ddl() gives the tables that need one an AUTO_INCREMENT column
+    and this returns its name. A caller interpolates the result rather than writing
+    `rowid`, which keeps the same query correct on either backend and keeps it away
+    from db.mysql's rowid guard.
+
+    Only tables in db.mysql.ENTRY_ORDER_TABLES have such a column: asking for any
+    other is a mistake worth hearing about, since the answer would otherwise be a
+    column name that does not exist.
+
+    PostgreSQL raises. Its `ctid` moves when a row is updated, so it is not an entry
+    order, and the identity column this needs has not been added there -- the two
+    queries that depend on this were already unsupported on that backend.
+    """
+    be = backend(url)
+    if be == "sqlite":
+        return "rowid"
+    from db import mysql
+    if table not in mysql.ENTRY_ORDER_TABLES:
+        raise ValueError(
+            f"{table} has no entry-order column; add it to db.mysql.ENTRY_ORDER_TABLES "
+            f"(and migrate the table) before ordering by one")
+    if be == "mysql":
+        return mysql.ENTRY_ORDER_COLUMN
+    raise mysql.UnsupportedSQL(
+        f"entry order for {table} is not available on {be}: PostgreSQL has no stable "
+        f"per-row identifier and no identity column has been added for it")
+
+
 def masked_url(url: str | None = None) -> str:
     return re.sub(r"//([^:/@]+):([^@]+)@", r"//\1:***@", url or database_url())
 

@@ -88,8 +88,11 @@ class UnsupportedSQL(ValueError):
 
 # Constructs with no safe automatic MySQL translation. Kept deliberately strict --
 # the Postgres path learned that silently mangling these is worse than refusing.
-# rowid: MySQL has no stable per-row physical identifier (no rowid, no ctid), so an
-# `ORDER BY rowid` entry-order tie-breaker cannot be reproduced at all.
+# rowid stays here: MySQL has no stable per-row physical identifier (no rowid, no
+# ctid), so `ORDER BY rowid` cannot be rewritten. Two tables genuinely need that
+# entry order, and they get a real column for it instead -- see ENTRY_ORDER_TABLES
+# and db.backend.entry_order_column(); their queries ask for the column by name and
+# so never reach this guard.
 _UNSUPPORTED = [
     (re.compile(r"\bsqlite_master\b", re.I), "sqlite_master"),   # handled below; left for the DML guard
     (re.compile(r"\browid\b", re.I), "rowid"),
@@ -172,6 +175,19 @@ def reserved_columns(stmts) -> dict:
 
 # Length used for a TEXT column that MySQL will not accept as TEXT (see the module
 # docstring): 191 keeps a four-column composite key inside InnoDB's 3072-byte limit.
+# Tables whose row ORDER carries meaning, not just their contents. SQLite gets that
+# order from its implicit rowid; MySQL has no equivalent, so ddl() gives these tables
+# an AUTO_INCREMENT column and db.backend.entry_order_column() tells a query which
+# name to order by on the backend it is actually running against.
+#
+# perf_ledger is here for a measured reason, recorded in wealth/perf/engine.py: its
+# own txn_id is a random id, and ordering by it put a same-day SELL before its BUY
+# about half the time, which capped the sell as EXCESS_SELL and lost the round trip.
+# This is P&L correctness, not tidiness. ml_dl_benefit wants the latest row when two
+# benefit checks share a created_at.
+ENTRY_ORDER_TABLES = frozenset(("perf_ledger", "ml_dl_benefit"))
+ENTRY_ORDER_COLUMN = "seq"
+
 KEYED_TEXT_LEN = 191
 # A TEXT column that only needs VARCHAR because it carries a DEFAULT is not in any
 # index, so it can be longer.
@@ -444,7 +460,32 @@ _TYPE_RULES = [
 ]
 
 
-def _column_def(part: str, keyed: set) -> str:
+def _checked_columns(body: str) -> set:
+    """Columns any CHECK constraint in this CREATE TABLE refers to.
+
+    MySQL refuses a CHECK that refers to an AUTO_INCREMENT column (errno 3818,
+    "cannot refer to an auto-increment column"), and SQLite's
+    `id INTEGER PRIMARY KEY CHECK (id = 1)` -- its idiom for a single-row table --
+    is exactly that combination once INTEGER PRIMARY KEY becomes AUTO_INCREMENT.
+    A constrained key is not a sequence, so _column_def() leaves AUTO_INCREMENT off
+    for these and the CHECK does the work it was written to do.
+    """
+    cols = set()
+    for m in re.finditer(r"\bCHECK\s*\(", body, re.I):
+        depth, i = 0, m.end() - 1
+        while i < len(body):                       # the matching close paren
+            if body[i] == "(":
+                depth += 1
+            elif body[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        cols.update(re.findall(r"[A-Za-z_]\w*", body[m.end():i]))
+    return cols
+
+
+def _column_def(part: str, keyed: set, checked: set = frozenset()) -> str:
     """One column definition -> MySQL. Handles the TEXT restrictions and quoting."""
     p = part.strip()
     m = re.match(r"([A-Za-z_]\w*)\s+(.*)$", p, re.S)
@@ -452,10 +493,13 @@ def _column_def(part: str, keyed: set) -> str:
         return p
     name, rest = m.group(1), m.group(2)
 
-    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered either way.
+    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered either way --
+    # unless a CHECK pins it, which SQLite uses to mean "one row only" and MySQL
+    # will not allow over an AUTO_INCREMENT column. See _checked_columns().
     if re.match(r"INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", rest, re.I):
         tail = re.sub(r"^INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", "", rest, flags=re.I)
-        return f"{quote(name)} BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY{tail}"
+        auto = "" if name in checked else " AUTO_INCREMENT"
+        return f"{quote(name)} BIGINT NOT NULL{auto} PRIMARY KEY{tail}"
 
     rest = re.sub(r"\bAUTOINCREMENT\b", "", rest, flags=re.I)
     rest = re.sub(r"\s+COLLATE\s+NOCASE\b", "", rest, flags=re.I)
@@ -495,6 +539,7 @@ def ddl(stmt: str, keyed=None) -> str:
     m = re.match(r"(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)([A-Za-z_]\w*)\s*\((.*)\)\s*$", s, re.I | re.S)
     if m:
         head, table, body = m.group(1), m.group(2), m.group(3)
+        checked = _checked_columns(body)
         out = []
         for part in _split_top_level(body):
             p = part.strip()
@@ -508,7 +553,17 @@ def ddl(stmt: str, keyed=None) -> str:
                 p = re.sub(r"\b(PRIMARY\s+KEY\s*|UNIQUE\s*)\(([^)]*)\)", _q, p, flags=re.I)
                 out.append(p)
             else:
-                out.append(_column_def(p, keyed))
+                out.append(_column_def(p, keyed, checked))
+        # Only when the table has no auto column of its own: MySQL allows exactly one
+        # (errno 1075), and a table that already has one already has its entry order
+        # from it, so a second would be both illegal and redundant.
+        if table in ENTRY_ORDER_TABLES and not any(
+                re.match(rf"\s*`?{ENTRY_ORDER_COLUMN}`?\s", c) or "AUTO_INCREMENT" in c.upper()
+                for c in out):
+            # AUTO_INCREMENT needs a key of its own; UNIQUE is the cheapest that
+            # satisfies MySQL without claiming to be the table's identity, which
+            # belongs to the TEXT primary key these tables already have.
+            out.append(f"{quote(ENTRY_ORDER_COLUMN)} BIGINT NOT NULL AUTO_INCREMENT UNIQUE")
         return f"{head}{quote(table)} (\n  " + ",\n  ".join(out) + "\n)" + TABLE_SUFFIX
 
     m = re.match(r"(CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)([`\"]?[\w{}.]+[`\"]?)\s+ON\s+"

@@ -41,12 +41,17 @@ from wealth.perf import metrics as M
 
 
 def _txns(conn, owner, portfolio, end):
-    # Same-day order: the trade time when the source gives one, else the order of entry
-    # (rowid). txn_id is a random id: as the tie-breaker it put a same-day SELL before its
-    # BUY about half the time -- the sell was capped (EXCESS_SELL) and the round trip lost.
+    # Same-day order: the trade time when the source gives one, else the order of entry.
+    # txn_id is a random id: as the tie-breaker it put a same-day SELL before its BUY
+    # about half the time -- the sell was capped (EXCESS_SELL) and the round trip lost.
+    #
+    # The entry-order column is named per backend (rowid on SQLite, an AUTO_INCREMENT
+    # column on MySQL, which has no rowid), so it is asked for rather than hardcoded.
+    from db.backend import entry_order_column
+    order = entry_order_column("perf_ledger")
     return [dict(r) for r in conn.execute(
-        "SELECT * FROM perf_ledger l WHERE tenant_id=? AND owner_id=? AND portfolio=? AND trade_date<=? AND NOT EXISTS "
-        "(SELECT 1 FROM perf_ledger_void v WHERE v.txn_id=l.txn_id) ORDER BY trade_date, ts, l.rowid",
+        f"SELECT * FROM perf_ledger l WHERE tenant_id=? AND owner_id=? AND portfolio=? AND trade_date<=? AND NOT EXISTS "
+        f"(SELECT 1 FROM perf_ledger_void v WHERE v.txn_id=l.txn_id) ORDER BY trade_date, ts, l.{order}",
         (owner["tenant_id"], owner["owner_id"], portfolio, str(end)))]
 
 
