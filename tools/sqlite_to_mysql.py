@@ -260,6 +260,7 @@ def _convert(value, kind: str, counts: dict):
 
 
 def execute(source: Path, target: str, p: dict, allow_lossy: bool = False) -> dict:
+    from db import mysql
     from db.backend import MySQLConnection
     my = MySQLConnection(target)
     src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
@@ -285,7 +286,25 @@ def execute(source: Path, target: str, p: dict, allow_lossy: bool = False) -> di
             ph = ",".join("?" * len(cols))
             counts: dict = {}
 
-            cur = src.execute(f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"')
+            # perf_ledger and ml_dl_benefit get a MySQL-only AUTO_INCREMENT `seq`
+            # (db.mysql.ENTRY_ORDER_TABLES) standing in for SQLite's rowid, and it is
+            # assigned in the order rows are inserted here -- so the copy has to arrive
+            # in the source's entry order or the migrated table orders differently from
+            # a freshly built one, bringing back the bug the column exists to prevent:
+            # a same-day SELL sorting before its BUY, capped as EXCESS_SELL, losing the
+            # round trip (see wealth/perf/engine.py).
+            #
+            # The unordered SELECT below already returns rowid order in practice -- it
+            # names every column, so SQLite cannot serve it from a covering index and
+            # does a plain table scan. That is an implementation detail, not a promise:
+            # SQLite guarantees no order without ORDER BY, and a bare `SELECT a, b` on
+            # the same table IS served from an index and comes back in index order. The
+            # clause makes the ordering these two tables depend on explicit rather than
+            # inherited from the planner's current choice; on a table scan it costs
+            # nothing, since rowid order is the scan order.
+            order = " ORDER BY rowid" if name in mysql.ENTRY_ORDER_TABLES else ""
+            cur = src.execute(
+                f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"{order}')
             while True:
                 batch = cur.fetchmany(BATCH)
                 if not batch:

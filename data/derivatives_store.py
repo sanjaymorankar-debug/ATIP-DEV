@@ -135,7 +135,7 @@ def snapshot_option_chain(symbol: str, conn=None, nse=None) -> dict:
                        _f(o.get("askPrice")), _f(o.get("bidQty")), _f(o.get("askQty")), _f(o.get("underlyingValue")))
                 if row[3] is None:
                     continue
-                conn.execute("INSERT OR REPLACE INTO option_chain_snapshot (ts,symbol,expiry,strike,option_type,ltp,change,"
+                conn.execute("INSERT OR REPLACE INTO option_chain_snapshot (ts,symbol,expiry,strike,option_type,ltp,`change`,"
                              "iv,oi,oi_chg,volume,bid,ask,bid_qty,ask_qty,underlying) VALUES "
                              "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
                 rows.append(row)

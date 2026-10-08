@@ -269,8 +269,13 @@ def benefit_check(conn, dataset_spec: dict, params: dict | None = None, baseline
 
 def allowed_to_activate(conn, dataset_id: str) -> tuple:
     """(ok, why) for a neural_network version trained on dataset_id."""
-    r = conn.execute("SELECT verdict, reason FROM ml_dl_benefit WHERE dataset_id=? ORDER BY created_at DESC, rowid DESC "
-                     "LIMIT 1", (dataset_id,)).fetchone()
+    # rowid on SQLite, an AUTO_INCREMENT column on MySQL: the tie-breaker that picks the
+    # LATEST check when two share a created_at, which TIMESTAMP's one-second resolution
+    # makes likely for checks queued together.
+    from db.backend import entry_order_column
+    order = entry_order_column("ml_dl_benefit")
+    r = conn.execute(f"SELECT verdict, reason FROM ml_dl_benefit WHERE dataset_id=? "
+                     f"ORDER BY created_at DESC, {order} DESC LIMIT 1", (dataset_id,)).fetchone()
     if not r:
         return False, f"no deep-learning benefit check for dataset {dataset_id} (POST /api/ml/deep/benefit-check)"
     return r[0] == "ADOPTABLE", f"latest benefit check: {r[0]} -- {r[1]}"

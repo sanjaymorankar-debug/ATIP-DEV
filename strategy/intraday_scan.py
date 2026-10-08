@@ -65,7 +65,7 @@ def load_context(conn, today: date) -> dict:
     if not prev:
         return {}
     ctx = {}
-    for r in conn.execute("SELECT s.symbol, s.atip_score, s.zpi, s.cri, s.mri, s.signal, t.pivot, t.s1, t.r1, "
+    for r in conn.execute("SELECT s.symbol, s.atip_score, s.zpi, s.cri, s.mri, s.`signal`, t.pivot, t.s1, t.r1, "
                           "t.atr_14, t.volume_sma20 FROM ai_scores s LEFT JOIN technical_indicators t ON "
                           "t.symbol=s.symbol AND t.date=s.date WHERE s.date=?", (prev,)):
         ctx[r[0]] = dict(zip(("symbol", "atip", "zpi", "cri", "mri", "signal", "pivot", "s1", "r1", "atr",

@@ -32,7 +32,7 @@ def crash_risk(conn, td=None, n=25) -> dict:
                                        "portfolio_holdings)")}
     rows = []
     for sym, cri, atip, sig, beta in conn.execute(
-            "SELECT symbol, cri, atip_score, signal, beta_1y FROM ai_scores WHERE date=? AND cri IS NOT NULL "
+            "SELECT symbol, cri, atip_score, `signal`, beta_1y FROM ai_scores WHERE date=? AND cri IS NOT NULL "
             "ORDER BY cri DESC LIMIT ?", (td, int(n))):
         comps = {c: (v, w) for c, v, w in conn.execute(
             "SELECT component, value, weight FROM score_components WHERE symbol=? AND date=? AND index_name='CRI'",
@@ -50,7 +50,7 @@ def crash_risk(conn, td=None, n=25) -> dict:
 def top_spi(conn, td=None, n=25) -> dict:
     td = _session(conn, td)
     rows = [dict(zip(("symbol", "spi", "atip", "signal"), r)) for r in conn.execute(
-        "SELECT symbol, spi, atip_score, signal FROM ai_scores WHERE date=? AND spi IS NOT NULL ORDER BY spi DESC "
+        "SELECT symbol, spi, atip_score, `signal` FROM ai_scores WHERE date=? AND spi IS NOT NULL ORDER BY spi DESC "
         "LIMIT ?", (td, int(n)))] if td else []
     if rows:
         return {"session": td, "source": "ai_scores (fundamentals.score_enabled)", "rows": rows}

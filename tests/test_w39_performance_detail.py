@@ -39,7 +39,7 @@ def _txn(conn, d, kind, qty=None, price=None, fees=0, sym="ACME", **kw):
 
 
 def _signal(conn, sid, d, sym="ACME", signal="BUY", price=None):
-    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,signal,entry_price) VALUES "
+    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,`signal`,entry_price) VALUES "
                  "(?,?,?,?,?,?,?)", (sid, "r", str(d), str(d), sym, signal, price or _close(conn, sym, d)))
     conn.commit()
 

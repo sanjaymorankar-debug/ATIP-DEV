@@ -88,8 +88,11 @@ class UnsupportedSQL(ValueError):
 
 # Constructs with no safe automatic MySQL translation. Kept deliberately strict --
 # the Postgres path learned that silently mangling these is worse than refusing.
-# rowid: MySQL has no stable per-row physical identifier (no rowid, no ctid), so an
-# `ORDER BY rowid` entry-order tie-breaker cannot be reproduced at all.
+# rowid stays here: MySQL has no stable per-row physical identifier (no rowid, no
+# ctid), so `ORDER BY rowid` cannot be rewritten. Two tables genuinely need that
+# entry order, and they get a real column for it instead -- see ENTRY_ORDER_TABLES
+# and db.backend.entry_order_column(); their queries ask for the column by name and
+# so never reach this guard.
 _UNSUPPORTED = [
     (re.compile(r"\bsqlite_master\b", re.I), "sqlite_master"),   # handled below; left for the DML guard
     (re.compile(r"\browid\b", re.I), "rowid"),
@@ -172,6 +175,19 @@ def reserved_columns(stmts) -> dict:
 
 # Length used for a TEXT column that MySQL will not accept as TEXT (see the module
 # docstring): 191 keeps a four-column composite key inside InnoDB's 3072-byte limit.
+# Tables whose row ORDER carries meaning, not just their contents. SQLite gets that
+# order from its implicit rowid; MySQL has no equivalent, so ddl() gives these tables
+# an AUTO_INCREMENT column and db.backend.entry_order_column() tells a query which
+# name to order by on the backend it is actually running against.
+#
+# perf_ledger is here for a measured reason, recorded in wealth/perf/engine.py: its
+# own txn_id is a random id, and ordering by it put a same-day SELL before its BUY
+# about half the time, which capped the sell as EXCESS_SELL and lost the round trip.
+# This is P&L correctness, not tidiness. ml_dl_benefit wants the latest row when two
+# benefit checks share a created_at.
+ENTRY_ORDER_TABLES = frozenset(("perf_ledger", "ml_dl_benefit"))
+ENTRY_ORDER_COLUMN = "seq"
+
 KEYED_TEXT_LEN = 191
 # A TEXT column that only needs VARCHAR because it carries a DEFAULT is not in any
 # index, so it can be longer.
@@ -300,6 +316,118 @@ def _greatest(sql):
 
 # ── DML translation ───────────────────────────────────────────────────────
 
+# SQLite CAST target types -> MySQL's. MySQL accepts none of SQLite's five storage
+# classes as a CAST target except REAL: INTEGER, TEXT, BLOB and NUMERIC are all
+# errno 1064. Verified against 8.0.46 rather than assumed.
+_CAST_TYPES = {"integer": "SIGNED", "int": "SIGNED", "bigint": "SIGNED", "smallint": "SIGNED",
+               "text": "CHAR", "varchar": "CHAR", "blob": "BINARY",
+               "real": "REAL", "float": "FLOAT", "double": "DOUBLE"}
+
+# The integer cast needs more than a rename: see _cast().
+_CAST_TRUNCATES = frozenset(("integer", "int", "bigint", "smallint"))
+
+# NUMERIC has no faithful MySQL target. SQLite keeps CAST(1.7 AS NUMERIC) as 1.7;
+# MySQL's DECIMAL defaults to (10,0) and rounds it to 2, and DECIMAL(65,30) -- the
+# only target that keeps the value -- returns it zero-padded, so the Python value
+# still differs. ATIP has no such cast; raising keeps it that way rather than
+# picking a mapping that is quietly wrong.
+_CAST_UNSUPPORTED = frozenset(("numeric", "boolean", "bool"))
+
+
+def _alias_derived(text: str) -> str:
+    """Name the derived tables SQLite lets go unnamed (errno 1248).
+
+    SQLite accepts FROM (SELECT ...) with no alias; MySQL answers "Every derived
+    table must have its own alias". data/bhavcopy.py's 5-day-average UPDATE has two
+    of them. The generated names are positional, so the same statement always
+    translates to the same SQL.
+
+    The whole FROM list is walked, not just the element after the keyword: a
+    derived table can be any comma-separated sibling. Only a FROM / JOIN list is
+    touched -- a (SELECT ...) anywhere else is a scalar subquery or an IN list,
+    where an alias would itself be a syntax error.
+    """
+    # What may follow a derived table and still be its alias. A clause or operator
+    # keyword is not an alias, so the table is unnamed and needs one.
+    not_alias = ("ON|USING|WHERE|GROUP|ORDER|HAVING|LIMIT|OFFSET|UNION|JOIN|LEFT|RIGHT|"
+                 "INNER|OUTER|CROSS|STRAIGHT_JOIN|SET|AND|OR|IS|IN|NOT|LIKE")
+    aliased = re.compile(rf"\s*(?:AS\s+)?(?!(?:{not_alias})\b)[`A-Za-z_]\w*", re.I)
+
+    out, i, n = [], 0, 0
+    for m in re.finditer(r"\b(?:FROM|JOIN)\b", text, re.I):
+        if m.start() < i:
+            continue
+        pos = m.end()
+        while True:                                         # each element of this FROM list
+            while pos < len(text) and text[pos].isspace():
+                pos += 1
+            if pos < len(text) and text[pos] == "(" and re.match(r"\s*SELECT\b", text[pos + 1:], re.I):
+                j, depth = pos + 1, 1
+                while j < len(text) and depth:
+                    depth += {"(": 1, ")": -1}.get(text[j], 0)
+                    j += 1
+                if not aliased.match(text[j:]):
+                    n += 1
+                    out.append(text[i:j])
+                    out.append(f" AS _d{n}")
+                    i = j
+                pos = j
+            else:                                           # a named table, with or without an alias
+                ref = re.match(rf"\s*[`\w.]+(?:\s+(?:AS\s+)?(?!(?:{not_alias})\b)[`\w]+)?",
+                               text[pos:], re.I)
+                if not ref:
+                    break
+                pos += ref.end()
+            sep = re.match(r"\s*,", text[pos:])             # a sibling in the same list?
+            if not sep:
+                break
+            pos += sep.end()
+    out.append(text[i:])
+    return "".join(out)
+
+
+def _cast(text: str) -> str:
+    """Rewrite CAST target types, parenthesis-aware (ATIP casts a ROUND()).
+
+    The integer cast is not a rename. SQLite truncates toward zero; MySQL's
+    CAST(x AS SIGNED) ROUNDS, so the one-word substitution disagrees on every
+    fractional value -- 1.7 -> 2 where SQLite says 1, -1.7 -> -2 where SQLite
+    says -1, 0.5 -> 1 where SQLite says 0. TRUNCATE(x, 0) reproduces SQLite
+    exactly, NULL and non-numeric text included, so the expression is wrapped
+    rather than the type renamed.
+
+    ATIP's three call sites all CAST a ROUND(), where truncating and rounding
+    agree -- so the plain rename would have passed today and silently skewed
+    volume and delivery_qty the first time a caller dropped the ROUND(). The
+    sites are data/bhavcopy.py and data/corporate_actions.py (x2).
+    """
+    out, i = [], 0
+    for m in re.finditer(r"\bCAST\s*\(", text, re.I):
+        if m.start() < i:
+            continue                                        # nested in a CAST already rewritten
+        j, depth = m.end(), 1
+        while j < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[j], 0)
+            j += 1
+        inner = text[m.end():j - 1]
+        tm = re.search(r"\bAS\s+(\w+)\s*$", inner, re.I)
+        if not tm:
+            continue
+        kind = tm.group(1).lower()
+        if kind in _CAST_UNSUPPORTED:
+            raise UnsupportedSQL(f"CAST AS {tm.group(1)} has no faithful MySQL target: {text.strip()[:120]}")
+        if kind not in _CAST_TYPES:
+            continue                                        # DATE, CHAR, SIGNED, DECIMAL(p,s): MySQL's own
+        expr = _cast(inner[:tm.start()].strip())
+        if kind in _CAST_TRUNCATES:
+            expr = f"TRUNCATE({expr}, 0)"
+        out.append(text[i:m.start()])
+        out.append(f"CAST({expr} AS {_CAST_TYPES[kind]})")
+        i = j
+    out.append(text[i:])
+    return "".join(out)
+
+
 def translate(sql: str, pk_of=None) -> str:
     """SQLite SQL -> MySQL.
 
@@ -346,9 +474,15 @@ def translate(sql: str, pk_of=None) -> str:
     mcon = re.search(r"\bON\s+CONFLICT\s*(\([^)]*\))?\s*DO\s+UPDATE\s+SET\b", text, re.I)
     if mcon:
         text = text[:mcon.start()] + " ON DUPLICATE KEY UPDATE " + text[mcon.end():]
-    text = re.sub(r"\bexcluded\.(\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
+    # The column may be backticked -- ATIP quotes the names MySQL 8 reserves, and
+    # `signal`=excluded.`signal` is a real upsert in scores/engine.py. A backtick is
+    # not a word character, so \w+ alone left `excluded.` in place and MySQL then
+    # failed on a table it has no name for.
+    text = re.sub(r"\bexcluded\.(`[^`]+`|\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
 
     text = _greatest(text)
+    text = _cast(text)
+    text = _alias_derived(text)
 
     # rejoin with the string literals back in place, then the date() modifiers (they contain literals)
     chunks = text.split("\x00")
@@ -444,7 +578,32 @@ _TYPE_RULES = [
 ]
 
 
-def _column_def(part: str, keyed: set) -> str:
+def _checked_columns(body: str) -> set:
+    """Columns any CHECK constraint in this CREATE TABLE refers to.
+
+    MySQL refuses a CHECK that refers to an AUTO_INCREMENT column (errno 3818,
+    "cannot refer to an auto-increment column"), and SQLite's
+    `id INTEGER PRIMARY KEY CHECK (id = 1)` -- its idiom for a single-row table --
+    is exactly that combination once INTEGER PRIMARY KEY becomes AUTO_INCREMENT.
+    A constrained key is not a sequence, so _column_def() leaves AUTO_INCREMENT off
+    for these and the CHECK does the work it was written to do.
+    """
+    cols = set()
+    for m in re.finditer(r"\bCHECK\s*\(", body, re.I):
+        depth, i = 0, m.end() - 1
+        while i < len(body):                       # the matching close paren
+            if body[i] == "(":
+                depth += 1
+            elif body[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        cols.update(re.findall(r"[A-Za-z_]\w*", body[m.end():i]))
+    return cols
+
+
+def _column_def(part: str, keyed: set, checked: set = frozenset()) -> str:
     """One column definition -> MySQL. Handles the TEXT restrictions and quoting."""
     p = part.strip()
     m = re.match(r"([A-Za-z_]\w*)\s+(.*)$", p, re.S)
@@ -452,10 +611,13 @@ def _column_def(part: str, keyed: set) -> str:
         return p
     name, rest = m.group(1), m.group(2)
 
-    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered either way.
+    # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered either way --
+    # unless a CHECK pins it, which SQLite uses to mean "one row only" and MySQL
+    # will not allow over an AUTO_INCREMENT column. See _checked_columns().
     if re.match(r"INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", rest, re.I):
         tail = re.sub(r"^INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", "", rest, flags=re.I)
-        return f"{quote(name)} BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY{tail}"
+        auto = "" if name in checked else " AUTO_INCREMENT"
+        return f"{quote(name)} BIGINT NOT NULL{auto} PRIMARY KEY{tail}"
 
     rest = re.sub(r"\bAUTOINCREMENT\b", "", rest, flags=re.I)
     rest = re.sub(r"\s+COLLATE\s+NOCASE\b", "", rest, flags=re.I)
@@ -464,12 +626,26 @@ def _column_def(part: str, keyed: set) -> str:
     rest = re.sub(r"DEFAULT\s*\(?\s*date\s*\(\s*'now'\s*\)\s*\)?", "DEFAULT (CURRENT_DATE)", rest, flags=re.I)
 
     # TEXT -> VARCHAR where MySQL will not take TEXT: in a key, or with a DEFAULT.
+    #
+    # A column that is BOTH takes the LARGER length, which is what keeps the two
+    # paths into this module agreeing. research/tech_signals.py's
+    # technical_signal.status is the first such column: TEXT NOT NULL DEFAULT
+    # 'OPEN' with its own CREATE INDEX. Given the whole statement list up front
+    # (the migration tool) the key is known and the keyed length applied; reached
+    # one statement at a time (the runtime) only the DEFAULT is visible when the
+    # CREATE TABLE runs, and the later CREATE INDEX does not narrow a column it
+    # can already index -- so the same table came out VARCHAR(191) one way and
+    # VARCHAR(255) the other. Taking the max satisfies both rules: 255 utf8mb4
+    # characters is 1020 bytes, well inside InnoDB's 3072-byte index key limit.
     if re.search(r"\bTEXT\b", rest, re.I):
         has_default = bool(re.search(r"\bDEFAULT\b", rest, re.I))
+        width = None
         if name in keyed:
-            rest = re.sub(r"\bTEXT\b", f"VARCHAR({KEYED_TEXT_LEN})", rest, count=1, flags=re.I)
+            width = max(KEYED_TEXT_LEN, DEFAULTED_TEXT_LEN) if has_default else KEYED_TEXT_LEN
         elif has_default:
-            rest = re.sub(r"\bTEXT\b", f"VARCHAR({DEFAULTED_TEXT_LEN})", rest, count=1, flags=re.I)
+            width = DEFAULTED_TEXT_LEN
+        if width is not None:
+            rest = re.sub(r"\bTEXT\b", f"VARCHAR({width})", rest, count=1, flags=re.I)
 
     for rx, repl in _TYPE_RULES:
         rest = re.sub(rx, repl, rest, flags=re.I)
@@ -495,6 +671,7 @@ def ddl(stmt: str, keyed=None) -> str:
     m = re.match(r"(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)([A-Za-z_]\w*)\s*\((.*)\)\s*$", s, re.I | re.S)
     if m:
         head, table, body = m.group(1), m.group(2), m.group(3)
+        checked = _checked_columns(body)
         out = []
         for part in _split_top_level(body):
             p = part.strip()
@@ -508,7 +685,17 @@ def ddl(stmt: str, keyed=None) -> str:
                 p = re.sub(r"\b(PRIMARY\s+KEY\s*|UNIQUE\s*)\(([^)]*)\)", _q, p, flags=re.I)
                 out.append(p)
             else:
-                out.append(_column_def(p, keyed))
+                out.append(_column_def(p, keyed, checked))
+        # Only when the table has no auto column of its own: MySQL allows exactly one
+        # (errno 1075), and a table that already has one already has its entry order
+        # from it, so a second would be both illegal and redundant.
+        if table in ENTRY_ORDER_TABLES and not any(
+                re.match(rf"\s*`?{ENTRY_ORDER_COLUMN}`?\s", c) or "AUTO_INCREMENT" in c.upper()
+                for c in out):
+            # AUTO_INCREMENT needs a key of its own; UNIQUE is the cheapest that
+            # satisfies MySQL without claiming to be the table's identity, which
+            # belongs to the TEXT primary key these tables already have.
+            out.append(f"{quote(ENTRY_ORDER_COLUMN)} BIGINT NOT NULL AUTO_INCREMENT UNIQUE")
         return f"{head}{quote(table)} (\n  " + ",\n  ".join(out) + "\n)" + TABLE_SUFFIX
 
     m = re.match(r"(CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)([`\"]?[\w{}.]+[`\"]?)\s+ON\s+"
@@ -714,6 +901,22 @@ class MySQLConnection:
             autocommit=False,
             # keep DATE/DATETIME as returned types; ATIP's SQLite path uses
             # PARSE_DECLTYPES and compares against date/datetime objects.
+            #
+            # Pin the session time zone. MySQL converts a TIMESTAMP to UTC on the
+            # way in and back on the way out using THIS setting, and the schema has
+            # 306 TIMESTAMP columns against 1 DATETIME -- so left at the default
+            # (SYSTEM) every stored time would mean whatever the host's OS time zone
+            # happened to be, and a value written on one host would read back
+            # shifted on another. Measured on 8.0.46: 09:30 written at +05:30 reads
+            # back as 04:00 at +00:00, while the lone DATETIME is untouched.
+            #
+            # UTC is the value that matches SQLite rather than merely being stable:
+            # ATIP's DEFAULT CURRENT_TIMESTAMP columns are SQLite's
+            # CURRENT_TIMESTAMP, which is UTC (see tools/repair_news_timezone.py,
+            # written after the last time these two disagreed). Explicitly written
+            # IST values round-trip unchanged either way, since the same offset
+            # applies in both directions.
+            init_command="SET time_zone = '+00:00'",
         )
         self.row_factory = None                       # accepted for sqlite3 compatibility
         self._keys: dict = {}

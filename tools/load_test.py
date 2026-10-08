@@ -348,7 +348,7 @@ def seed(workdir, extra_symbols=50) -> dict:
                            25.0 + (k * 11) % 60, sig, "BULL", k + 2))
         conn.executemany("INSERT OR REPLACE INTO prices_daily (symbol,date,open,high,low,close,volume) "
                          "VALUES (?,?,?,?,?,?,?)", rows)
-        conn.executemany("INSERT INTO ai_scores (symbol,date,atip_score,vpi,cri,zpi,signal,regime,atip_rank) "
+        conn.executemany("INSERT INTO ai_scores (symbol,date,atip_score,vpi,cri,zpi,`signal`,regime,atip_rank) "
                          "VALUES (?,?,?,?,?,?,?,?,?)", scores)
         conn.commit()
     finally:

@@ -289,7 +289,7 @@ def lineage(conn, model_id, version=None) -> dict:
                         "matches": bool(fs) and fs[0] == v.get("feature_set_hash")},
         "training": {"config_hash": v.get("training_config_hash"), "config": v.get("training_config"),
                      "period": {"start": v.get("train_start"), "end": v.get("train_end")},
-                     "runs": rows("SELECT run_id, status, rows, actor, started_at, finished_at FROM ml_training_run "
+                     "runs": rows("SELECT run_id, status, `rows`, actor, started_at, finished_at FROM ml_training_run "
                                   "WHERE model_id=? AND version=? ORDER BY started_at", (model_id, ver))},
         "artifact": {"path": v.get("artifact_path"), "sha256": v.get("artifact_hash")},
         "recorded": rec,

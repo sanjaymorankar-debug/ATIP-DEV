@@ -161,7 +161,7 @@ def test_rule_creation_resolves_triggers_and_stops_and_refuses_bad_rules(paper):
     assert len(OR.list_rules()) == 3, "a refused rule is never stored"
 
 
-@pytest.mark.parametrize("side,direction,role,trigger,price,fires", [
+@pytest.mark.parametrize("side,direction,role,trigger_price,price,fires", [
     ("BUY", None, None, 100.0, 100.0, "ENTRY"),          # side-implied BELOW: at the trigger fires
     ("BUY", None, None, 100.0, 100.01, None),
     ("SELL", None, None, 110.0, 110.0, "ENTRY"),         # side-implied ABOVE
@@ -170,9 +170,9 @@ def test_rule_creation_resolves_triggers_and_stops_and_refuses_bad_rules(paper):
     ("SELL", "BELOW", "STOP", 95.0, 96.0, None),
     ("BUY", "ABOVE", "STOP", 105.0, 106.0, "STOP"),      # a short's stop: BUY back when it RISES
 ])
-def test_condition_follows_the_rules_own_direction(side, direction, role, trigger, price, fires):
+def test_condition_follows_the_rules_own_direction(side, direction, role, trigger_price, price, fires):
     from orders.rules import _condition_met
-    rule = {"side": side, "trigger_direction": direction, "role": role, "resolved_trigger_price": trigger}
+    rule = {"side": side, "trigger_direction": direction, "role": role, "resolved_trigger_price": trigger_price}
     assert _condition_met(rule, price) == fires
 
 
@@ -430,7 +430,7 @@ def test_postmarket_scores_a_seeded_session_end_to_end(market, monkeypatch):
     c = get_connection()
     try:
         scores = {r["symbol"]: dict(r) for r in c.execute(
-            "SELECT symbol, atip_score, vpi, mri, rri, cri, zpi, acs, tod_score, signal, atip_rank, regime "
+            "SELECT symbol, atip_score, vpi, mri, rri, cri, zpi, acs, tod_score, `signal`, atip_rank, regime "
             "FROM ai_scores WHERE date=?", (str(TD),))}
         assert set(scores) == {"AAA", "BBB", "CCC"}, "the tracked universe, not NIFTY50"
         for sym, r in scores.items():

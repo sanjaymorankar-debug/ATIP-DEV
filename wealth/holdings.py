@@ -445,7 +445,7 @@ def _risk_overlay(conn, syms) -> dict:
     d = str(r[0])
     out = {}
     ph = ",".join("?" * len(syms))
-    for x in conn.execute(f"SELECT symbol, atip_score, vpi, cri, zpi, signal, regime FROM ai_scores WHERE date=? AND "
+    for x in conn.execute(f"SELECT symbol, atip_score, vpi, cri, zpi, `signal`, regime FROM ai_scores WHERE date=? AND "
                           f"symbol IN ({ph})", (d, *syms)):
         out[x["symbol"]] = {**dict(x), "date": d}
     return out

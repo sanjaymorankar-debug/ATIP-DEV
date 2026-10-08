@@ -174,7 +174,7 @@ def risk_limits(conn=None) -> dict:
                 log.warning(f"  config w4_risk_limits: {e} — default kept")
     if conn is not None:
         try:
-            for key, vj in conn.execute("SELECT key, value_json FROM risk_limit"):
+            for key, vj in conn.execute("SELECT `key`, value_json FROM risk_limit"):
                 if key in out:
                     out[key].update(value=json.loads(vj), source="override")
         except Exception as e:
@@ -199,13 +199,13 @@ def set_risk_limits(conn, changes: dict, actor: str = "owner", note: str = "") -
     for k, v in staged.items():
         old = current[k]["value"]
         if v == "default":
-            conn.execute("DELETE FROM risk_limit WHERE key=?", (k,))
+            conn.execute("DELETE FROM risk_limit WHERE `key`=?", (k,))
         else:
-            conn.execute("INSERT INTO risk_limit (key,value_json,note,updated_by,updated_at) VALUES (?,?,?,?,?) "
-                         "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,note=excluded.note,"
+            conn.execute("INSERT INTO risk_limit (`key`,value_json,note,updated_by,updated_at) VALUES (?,?,?,?,?) "
+                         "ON CONFLICT(`key`) DO UPDATE SET value_json=excluded.value_json,note=excluded.note,"
                          "updated_by=excluded.updated_by,updated_at=excluded.updated_at",
                          (k, json.dumps(v), note, actor, now))
-        conn.execute("INSERT INTO risk_limit_history (key,old_json,new_json,actor,at) VALUES (?,?,?,?,?)",
+        conn.execute("INSERT INTO risk_limit_history (`key`,old_json,new_json,actor,at) VALUES (?,?,?,?,?)",
                      (k, json.dumps(old), json.dumps(v), actor, now))
     conn.commit()
     return risk_limits(conn)

@@ -166,7 +166,13 @@ def _greatest(sql):
 
 def _qualify_upsert(sql, table, cols):
     """In ON CONFLICT ... DO UPDATE SET a=a+excluded.a, a bare `a` on the right is ambiguous in
-    PostgreSQL (target row or excluded row?); SQLite means the target row -> `table.a`."""
+    PostgreSQL (target row or excluded row?); SQLite means the target row -> `table.a`.
+
+    `cols` arrives after backticks have become double quotes, so a reserved column
+    reads as "rows" here. The name is matched with a non-word lookahead rather than
+    \b, which cannot match after a closing quote -- it left "rows" unqualified and
+    PostgreSQL answered: column reference "rows" is ambiguous.
+    """
     m = re.search(r"\bDO\s+UPDATE\s+SET\b", sql, re.I)
     if not m or not cols:
         return sql
@@ -183,7 +189,7 @@ def _qualify_upsert(sql, table, cols):
     for p in parts:
         if "=" in p:
             lhs, rhs = p.split("=", 1)
-            rhs = re.sub(rf"(?<![\w.])({names})\b(?!\s*\()", rf"{table}.\1", rhs)
+            rhs = re.sub(rf"(?<![\w.])({names})(?!\w)(?!\s*\()", rf"{table}.\1", rhs)
             p = lhs + "=" + rhs
         out.append(p)
     return head + ",".join(out)
@@ -208,6 +214,14 @@ def translate(sql: str, pk_of=None) -> str:
     for rx, name in _UNSUPPORTED:
         if rx.search("".join(p for s, p in _split_strings(sql) if not s)):
             raise UnsupportedSQL(f"{name} has no automatic PostgreSQL translation: {sql.strip()[:120]}")
+    # Backtick-quoted identifiers. ATIP's shared SQL quotes the columns that are
+    # reserved words in MySQL 8 (signal, key, rank, rows, change, trigger); SQLite
+    # accepts backticks for MySQL compatibility, PostgreSQL does not, so they become
+    # the standard double quote here. Double quoting also makes the name
+    # case-sensitive in PostgreSQL -- harmless, as ATIP declares every column in
+    # lower case, which is what an unquoted name folds to.
+    sql = "".join(p if s else p.replace("`", '"') for s, p in _split_strings(sql))
+
     parts = _split_strings(sql)
     text = "\x00".join(p for s, p in parts if not s)                    # code only, joined by markers
     strings = [p for s, p in parts if s]

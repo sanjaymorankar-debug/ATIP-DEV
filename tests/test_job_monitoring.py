@@ -199,7 +199,7 @@ def test_the_morning_brief_counts_as_delivered_on_the_dashboard(temp_db):
     from alerts.telegram import send_morning_digest
     init_db()
     conn = get_connection()
-    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,signal) VALUES ('ACME','2026-09-23',60,'HOLD')")
+    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,`signal`) VALUES ('ACME','2026-09-23',60,'HOLD')")
     conn.commit(); conn.close()
     assert send_morning_digest() is True
     conn = get_connection()

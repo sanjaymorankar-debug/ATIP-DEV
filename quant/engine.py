@@ -167,14 +167,14 @@ def _store(conn, as_of, rows, keys):
     conn.execute(f"DELETE FROM quant_factor_score WHERE as_of=? AND factor_key IN ({','.join('?' * len(keys))})",
                  [str(as_of)] + keys)
     now = datetime.now()
-    conn.executemany("INSERT INTO quant_factor_score (as_of,symbol,factor_key,kind,raw,norm,pct,score,rank,sector,"
+    conn.executemany("INSERT INTO quant_factor_score (as_of,symbol,factor_key,kind,raw,norm,pct,score,`rank`,sector,"
                      "sector_rank,universe_size,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                      [r + (now,) for r in rows])
     conn.commit()
 
 
 def rankings(conn, as_of, key, top=None, bottom=None, sector=None) -> list:
-    q = "SELECT symbol, raw, score, rank, sector, sector_rank FROM quant_factor_score WHERE as_of=? AND factor_key=?"
+    q = "SELECT symbol, raw, score, `rank`, sector, sector_rank FROM quant_factor_score WHERE as_of=? AND factor_key=?"
     args = [str(as_of), key]
     if sector:
         q += " AND sector=?"; args.append(sector)

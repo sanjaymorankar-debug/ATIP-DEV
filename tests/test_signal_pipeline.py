@@ -51,7 +51,7 @@ def db(temp_db):
 
 def _score(conn, d, symbols):
     for s in symbols:
-        conn.execute("INSERT INTO ai_scores (symbol, date, atip_score, signal) VALUES (?,?,?,?)",
+        conn.execute("INSERT INTO ai_scores (symbol, date, atip_score, `signal`) VALUES (?,?,?,?)",
                      (s, str(d), 60.0, "HOLD"))
     conn.commit()
 
@@ -258,7 +258,7 @@ def _log_signal(conn, d, sym, price):
     import uuid
     from scores.signal_log import ensure_tables
     ensure_tables(conn)
-    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal, "
+    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, `signal`, "
                  "entry_price) VALUES (?,?,?,?,?,?,?)",
                  (str(uuid.uuid4()), "r", "2026-09-18T16:09:48", d, sym, "BUY", price))
     conn.commit()
@@ -455,7 +455,7 @@ def _one_signal(conn, sym, d="2026-09-10"):
     import uuid
     ensure_tables(conn)
     sid = str(uuid.uuid4())
-    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal, "
+    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, `signal`, "
                  "entry_price) VALUES (?,?,?,?,?,?,?)",
                  (sid, "r", f"{d}T16:45:00", d, sym, "BUY", 100.0))
     conn.commit()

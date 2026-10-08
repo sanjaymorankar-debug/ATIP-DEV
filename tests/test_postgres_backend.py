@@ -212,3 +212,32 @@ def test_init_db_creates_the_whole_schema_on_postgres_and_is_idempotent(live_db)
 
     cur = live_db.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
     assert cur.fetchone()[0] > 200
+
+
+def test_backticked_identifiers_become_double_quotes():
+    """ATIP's shared SQL backticks the columns MySQL 8 reserves (signal, key,
+    rank, rows, change, trigger). SQLite accepts backticks for MySQL
+    compatibility; PostgreSQL does not, so they become the standard quote."""
+    from db.postgres import translate
+    assert translate("SELECT `signal`, a FROM t WHERE `key`=?") == \
+        'SELECT "signal", a FROM t WHERE "key"=%s'
+    # a backtick inside a string literal is data, not a quote
+    assert translate("SELECT a FROM t WHERE b='a`b'") == "SELECT a FROM t WHERE b='a`b'"
+
+
+def test_a_backticked_column_is_still_qualified_on_the_right_of_an_upsert():
+    """The mirror of the MySQL excluded bug, from the same quoting change.
+
+    PostgreSQL needs the target-row reference qualified -- a bare one is
+    "column reference is ambiguous" -- and the name is matched with a non-word
+    lookahead rather than \\b, which cannot match after a closing double quote.
+    Without it "rows"="rows"+excluded."rows" reached the server and was rejected.
+    """
+    from db.postgres import translate
+    out = translate("INSERT INTO s (day,`rows`) VALUES (?,?) ON CONFLICT(day) "
+                    "DO UPDATE SET `rows`=`rows`+excluded.`rows`", lambda t: [["day"]])
+    assert 's."rows"+excluded."rows"' in out, out
+    # the unquoted form still qualifies exactly as before
+    assert "ticks=s.ticks+excluded.ticks" in translate(
+        "INSERT INTO s (day, ticks) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET ticks=ticks+excluded.ticks",
+        lambda t: [["day"]])

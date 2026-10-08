@@ -239,7 +239,7 @@ def test_a_bonus_after_a_signal_is_not_a_loss(temp_db, monkeypatch):
                          ("2026-09-18", 100, 103.5, 99.5, 103, 2000)])
     conn.execute("INSERT INTO corporate_actions (symbol, ex_date, subject, kind, factor, status, "
                  "price_factor) VALUES ('ACME','2026-09-18','Bonus 1:1','BONUS',0.5,'adjusted',0.5)")
-    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal, "
+    conn.execute("INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, `signal`, "
                  "entry_price) VALUES ('s1','r','2026-09-17T16:45','2026-09-17','ACME','BUY',200.0)")
     conn.commit(); conn.close()
     monkeypatch.setattr(signal_log, "momentum_thresholds", lambda: [3.0])

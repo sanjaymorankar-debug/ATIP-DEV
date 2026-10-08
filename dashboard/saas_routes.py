@@ -266,7 +266,7 @@ def register(app, guard, Req, get_connection, json_safe):
     async def rep_outputs(report_id: str, request: Req):
         async def f(req, c):
             _own_report(c, me(req), report_id)
-            return [dict(r) for r in c.execute("SELECT output_id, format, rows, created_at FROM enterprise_report_output "
+            return [dict(r) for r in c.execute("SELECT output_id, format, `rows`, created_at FROM enterprise_report_output "
                                                "WHERE report_id=? ORDER BY created_at DESC LIMIT 50", (report_id,))]
         return await run(f)(request)
 

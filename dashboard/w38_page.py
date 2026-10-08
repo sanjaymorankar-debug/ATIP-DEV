@@ -127,9 +127,9 @@ def mobile_summary(conn) -> dict:
                           "ORDER BY date DESC, time DESC LIMIT 1"),
            "global": one("SELECT date, global_score, global_sentiment, sp500_chg FROM global_markets "
                          "ORDER BY date DESC LIMIT 1"),
-           "buys": many("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND signal='BUY' "
+           "buys": many("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND `signal`='BUY' "
                         "ORDER BY atip_score DESC LIMIT 5", str(d)) if d else [],
-           "sells": many("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND signal='SELL' "
+           "sells": many("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND `signal`='SELL' "
                          "ORDER BY cri DESC LIMIT 5", str(d)) if d else [],
            "tod": one("SELECT symbol, acs FROM ai_scores WHERE date=? AND is_tod=1 LIMIT 1", str(d)) if d else None,
            "pnl": many("SELECT date, env, equity, day_pnl, drawdown_pct FROM pnl_daily ORDER BY date DESC, env LIMIT 2"),

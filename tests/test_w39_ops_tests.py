@@ -642,7 +642,7 @@ def test_audit_export_writes_a_verified_segment_and_an_offbox_copy(ops_env):
         copy = box / "enterprise_audit" / seg.name
         assert out["offbox_path"] == str(copy) and copy.read_bytes() == seg.read_bytes()
         assert AX.verify_segment(copy)["ok"] is True
-        assert tuple(c.execute("SELECT source, first_id, last_id, rows, chain_ok, offbox_path FROM audit_export"
+        assert tuple(c.execute("SELECT source, first_id, last_id, `rows`, chain_ok, offbox_path FROM audit_export"
                                ).fetchone()) == ("enterprise_audit", 1, 3, 3, 1, str(copy))
 
         assert AX.export(c) == {"source": "enterprise_audit", "rows": 0, "note": "nothing new to export"}

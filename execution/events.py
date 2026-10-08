@@ -62,7 +62,7 @@ def publish(conn, topic: str, key: str | None, payload: dict) -> str:
     """Insert the event; the CALLER commits (same transaction as the change it describes)."""
     eid = "EV" + uuid.uuid4().hex[:18].upper()
     try:
-        conn.execute("INSERT INTO oms_event_outbox (event_id,topic,key,payload_json,created_at) VALUES (?,?,?,?,?)",
+        conn.execute("INSERT INTO oms_event_outbox (event_id,topic,`key`,payload_json,created_at) VALUES (?,?,?,?,?)",
                      (eid, topic, key, json.dumps(payload, default=str), datetime.now()))
     except Exception as e:                    # the outbox must never break an order state change
         log.warning(f"  event {topic} {key} not recorded: {e}")
@@ -83,7 +83,7 @@ def dispatch(conn=None, limit: int = 500) -> dict:
     delivered = failed = events = 0
     try:
         with timed("events.dispatch"):
-            rows = conn.execute("SELECT seq, event_id, topic, key, payload_json, attempts FROM oms_event_outbox WHERE "
+            rows = conn.execute("SELECT seq, event_id, topic, `key`, payload_json, attempts FROM oms_event_outbox WHERE "
                                 "dispatched_at IS NULL AND attempts<? ORDER BY seq LIMIT ?",
                                 (MAX_ATTEMPTS, int(limit))).fetchall()
             for seq, eid, topic, key, pj, attempts in rows:
@@ -120,7 +120,7 @@ def dispatch(conn=None, limit: int = 500) -> dict:
 def replay(conn, handler_name: str, topic: str | None = None, since=None, limit: int = 5000) -> dict:
     """Deliver past events to one handler that has not seen them (no OK delivery row)."""
     _load_handlers()
-    sql = "SELECT event_id, topic, key, payload_json FROM oms_event_outbox WHERE 1=1"
+    sql = "SELECT event_id, topic, `key`, payload_json FROM oms_event_outbox WHERE 1=1"
     args = []
     if topic:
         sql += " AND topic=?"
@@ -150,7 +150,7 @@ def stats(conn, hours: int = 24) -> dict:
         "SELECT topic, COUNT(*), SUM(dispatched_at IS NULL), SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) "
         "FROM oms_event_outbox WHERE created_at>=? GROUP BY topic", (since,))]
     stuck = [dict(zip(("event_id", "topic", "key", "attempts", "last_error"), r)) for r in conn.execute(
-        "SELECT event_id, topic, key, attempts, last_error FROM oms_event_outbox WHERE dispatched_at IS NULL AND "
+        "SELECT event_id, topic, `key`, attempts, last_error FROM oms_event_outbox WHERE dispatched_at IS NULL AND "
         "attempts>=? ORDER BY seq DESC LIMIT 50", (MAX_ATTEMPTS,))]
     _load_handlers()
     return {"hours": hours, "by_topic": by_topic, "dead_letters": stuck,
@@ -158,7 +158,7 @@ def stats(conn, hours: int = 24) -> dict:
 
 
 def recent(conn, topic=None, key=None, limit=200) -> list:
-    sql = "SELECT seq, event_id, topic, key, payload_json, created_at, dispatched_at, attempts, last_error FROM oms_event_outbox WHERE 1=1"
+    sql = "SELECT seq, event_id, topic, `key`, payload_json, created_at, dispatched_at, attempts, last_error FROM oms_event_outbox WHERE 1=1"
     args = []
     if topic:
         sql += " AND topic=?"

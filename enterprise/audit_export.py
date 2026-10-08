@@ -90,7 +90,7 @@ def export(conn, source: str = "enterprise_audit", max_rows: int = 200_000) -> d
             raise IOError(f"off-box copy of {path.name} does not match its hash")
         off = str(od / path.name)
     eid = "AEX" + uuid.uuid4().hex[:12].upper()
-    conn.execute("INSERT INTO audit_export (export_id,source,first_id,last_id,rows,path,offbox_path,sha256,chain_ok,"
+    conn.execute("INSERT INTO audit_export (export_id,source,first_id,last_id,`rows`,path,offbox_path,sha256,chain_ok,"
                  "created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                  (eid, source, first, lastid, len(rows), str(path), off, sha,
                   None if chain is None else (1 if chain.get("ok") else 0), datetime.now()))
@@ -122,7 +122,7 @@ def status(conn) -> dict:
     out = {"export_dir": s["export_dir"], "offbox_dir": s["offbox_dir"],
            "retention_policy_days": s["retention_policy_days"], "sources": {}}
     for src in SOURCES:
-        last = conn.execute("SELECT export_id, last_id, rows, offbox_path, chain_ok, created_at FROM audit_export "
+        last = conn.execute("SELECT export_id, last_id, `rows`, offbox_path, chain_ok, created_at FROM audit_export "
                             "WHERE source=? ORDER BY last_id DESC LIMIT 1", (src,)).fetchone()
         maxid = conn.execute(f"SELECT MAX(id) FROM {src}").fetchone()[0] or 0
         out["sources"][src] = {"last_export": dict(zip(("export_id", "last_id", "rows", "offbox_path", "chain_ok",

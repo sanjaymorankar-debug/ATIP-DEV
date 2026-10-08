@@ -211,7 +211,7 @@ def _signals_digest(conn, ids) -> str | None:
     for i in range(0, len(ids), 500):
         part = ids[i:i + 500]
         out += [list(r) for r in conn.execute(
-            f"SELECT id, signal_date, symbol, signal, entry_price FROM signal_log WHERE id IN "
+            f"SELECT id, signal_date, symbol, `signal`, entry_price FROM signal_log WHERE id IN "
             f"({','.join('?' * len(part))})", part)]
     return C.digest(sorted(out, key=lambda r: str(r[0])))
 

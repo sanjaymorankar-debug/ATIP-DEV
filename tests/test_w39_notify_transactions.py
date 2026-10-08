@@ -108,7 +108,7 @@ def test_investor_cycle_alerts_are_recorded_after_a_step_failed_mid_write(short_
                                     "quantity": 600000})
         H.add_holding(conn, OWNER, {"asset_class": "EQUITY", "instrument": "STOCK", "name": "Acme",
                                     "symbol": "ACME", "quantity": 1000, "avg_cost": 90})
-        conn.execute("UPDATE ai_scores SET cri=85, signal='SELL' WHERE symbol='ACME' AND date=?", (str(ds[-1]),))
+        conn.execute("UPDATE ai_scores SET cri=85, `signal`='SELL' WHERE symbol='ACME' AND date=?", (str(ds[-1]),))
         conn.execute("CREATE TRIGGER allocation_write_fails BEFORE INSERT ON wealth_allocation_run "
                      "BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END")
         conn.commit()

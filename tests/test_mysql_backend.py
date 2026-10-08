@@ -771,3 +771,358 @@ def test_the_describe_target_test_left_no_dsn_cached():
         for url in cache:
             assert url is None or "db.example.com" not in url, \
                 f"a test DSN is still cached and will redirect the rest of the suite: {url}"
+
+
+# ── the runtime switch: constructs the whole code base depends on ─────────
+
+def test_a_check_pinned_integer_key_is_not_auto_increment():
+    """MySQL refuses a CHECK that refers to an AUTO_INCREMENT column (errno 3818),
+    and `id INTEGER PRIMARY KEY CHECK (id = 1)` -- SQLite's single-row-table idiom,
+    used by orders/paper.py -- is exactly that pairing once INTEGER PRIMARY KEY
+    becomes a sequence. A pinned key is not a sequence, so it loses AUTO_INCREMENT
+    and the CHECK keeps doing its job."""
+    out = my.ddl("CREATE TABLE IF NOT EXISTS paper_account ("
+                 "id INTEGER PRIMARY KEY CHECK (id = 1), balance REAL NOT NULL, opened_at TEXT)")
+    assert "AUTO_INCREMENT" not in out, out
+    assert "PRIMARY KEY" in out and "CHECK (id = 1)" in out
+
+    # an ordinary integer key must still auto-number, or every table loses its ids
+    assert "AUTO_INCREMENT" in my.ddl("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, a TEXT)")
+
+
+def test_entry_order_tables_get_a_column_to_order_by():
+    """SQLite orders by its implicit rowid; MySQL has no per-row identifier, so the
+    tables whose row ORDER means something get an AUTO_INCREMENT column instead."""
+    out = my.ddl("CREATE TABLE IF NOT EXISTS perf_ledger (txn_id TEXT PRIMARY KEY, trade_date DATE)")
+    assert f"`{my.ENTRY_ORDER_COLUMN}` BIGINT NOT NULL AUTO_INCREMENT UNIQUE" in out, out
+    # and nothing else gains a column it never asked for
+    assert my.ENTRY_ORDER_COLUMN not in my.ddl("CREATE TABLE other (a TEXT PRIMARY KEY)")
+
+
+def test_entry_order_column_follows_the_live_backend(tmp_path, monkeypatch, runtime_url_cache):
+    """The queries that need entry order ask for the column name rather than writing
+    `rowid`, which keeps one query correct on either backend."""
+    import json
+    from db.backend import entry_order_column
+    schema = runtime_url_cache
+    cfg = tmp_path / "atip_data"
+    cfg.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    def column(url, database_cfg, table="perf_ledger"):
+        (cfg / "config.json").write_text(json.dumps({"database": database_cfg}))
+        if url is None:
+            monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+        else:
+            monkeypatch.setenv("ATIP_DATABASE_URL", url)
+        schema._PG_URL.clear()
+        schema._MYSQL_URL.clear()
+        return entry_order_column(table, url)
+
+    gated = {"allow_experimental": True}
+    assert column(None, {}) == "rowid"
+    assert column("mysql://u@h/d", {"backend": "mysql", **gated}) == my.ENTRY_ORDER_COLUMN
+
+    # a table with no such column must raise rather than name one that is not there
+    with pytest.raises(ValueError):
+        column("mysql://u@h/d", {"backend": "mysql", **gated}, table="order_log")
+
+
+@live_only
+def test_a_same_day_sell_never_sorts_before_its_buy(live_db):
+    """The reason perf_ledger needs entry order at all, and the one failure mode this
+    is here to prevent. wealth/perf/engine.py records it: ordering by the random
+    txn_id put a same-day SELL before its BUY about half the time, which capped the
+    sell as EXCESS_SELL and lost the round trip. Both rows share a trade_date and
+    have no ts, so only the entry-order column decides."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE perf_ledger (txn_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, "
+                  "owner_id TEXT NOT NULL, portfolio TEXT NOT NULL, trade_date DATE NOT NULL, "
+                  "ts TEXT, kind TEXT NOT NULL, quantity REAL)")
+        c.commit()
+        # 'zzz' inserted first and 'aaa' second: ordering by txn_id would invert them
+        c.execute("INSERT INTO perf_ledger (txn_id, tenant_id, owner_id, portfolio, trade_date, kind, quantity) "
+                  "VALUES (?,?,?,?,?,?,?)", ("zzz", "t1", "o1", "main", "2026-10-01", "BUY", 10))
+        c.execute("INSERT INTO perf_ledger (txn_id, tenant_id, owner_id, portfolio, trade_date, kind, quantity) "
+                  "VALUES (?,?,?,?,?,?,?)", ("aaa", "t1", "o1", "main", "2026-10-01", "SELL", 10))
+        c.commit()
+
+        order = my.ENTRY_ORDER_COLUMN
+        kinds = [r[0] for r in c.execute(
+            f"SELECT kind FROM perf_ledger ORDER BY trade_date, ts, {order}").fetchall()]
+        assert kinds == ["BUY", "SELL"], f"entry order lost: {kinds}"
+
+        # and the column really is engine-assigned, not something a writer supplied
+        seqs = [r[0] for r in c.execute(f"SELECT {order} FROM perf_ledger ORDER BY {order}").fetchall()]
+        assert seqs == [1, 2], seqs
+    finally:
+        c.close()
+
+
+@live_only
+def test_a_reserved_column_is_usable_when_backticked(live_db):
+    """`signal` is reserved in MySQL 8, so `INSERT INTO ai_scores (..., signal)` is
+    errno 1064 -- the failure that the runtime switch turns up most often. Backticks
+    fix it and are portable: SQLite accepts them too, so one query serves both."""
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE ai_scores (symbol TEXT, date DATE, score REAL, signal TEXT)")
+        c.commit()
+        with pytest.raises(sqlite3.OperationalError) as e:
+            # deliberately NOT backticked: this is the failure the quoting fixes
+            c.execute("INSERT INTO ai_scores (symbol, date, score, signal) VALUES (?,?,?,?)",
+                      ("ACME", "2026-10-01", 60, "HOLD"))
+        assert e.value.args[0] == 1064
+        c.rollback()
+
+        c.execute("INSERT INTO ai_scores (symbol, date, score, `signal`) VALUES (?,?,?,?)",
+                  ("ACME", "2026-10-01", 60, "HOLD"))
+        c.commit()
+        assert c.execute("SELECT `signal` FROM ai_scores").fetchone()[0] == "HOLD"
+    finally:
+        c.close()
+
+
+# ── CAST target types ─────────────────────────────────────────────────────
+#
+# MySQL accepts none of SQLite's five storage classes as a CAST target except
+# REAL. The three ATIP sites (data/bhavcopy.py, data/corporate_actions.py x2)
+# all failed with errno 1064 until db.mysql._cast() existed.
+
+def test_sqlite_cast_targets_become_ones_mysql_accepts():
+    assert my.translate("SELECT CAST(x AS TEXT) FROM t") == "SELECT CAST(x AS CHAR) FROM t"
+    assert my.translate("SELECT CAST(x AS BLOB) FROM t") == "SELECT CAST(x AS BINARY) FROM t"
+    assert my.translate("SELECT CAST(x AS REAL) FROM t") == "SELECT CAST(x AS REAL) FROM t"
+    # MySQL's own spellings are left exactly as written
+    for t in ("CHAR", "DATE", "SIGNED", "UNSIGNED", "DECIMAL(20,6)"):
+        assert my.translate(f"SELECT CAST(x AS {t}) FROM t") == f"SELECT CAST(x AS {t}) FROM t"
+
+
+def test_the_integer_cast_truncates_rather_than_rounding():
+    """CAST(x AS SIGNED) is the obvious rewrite and it is WRONG: MySQL rounds
+    where SQLite truncates toward zero. The expression is wrapped, not renamed."""
+    assert my.translate("SELECT CAST(x AS INTEGER) FROM t") == \
+        "SELECT CAST(TRUNCATE(x, 0) AS SIGNED) FROM t"
+    # ATIP's real shape: the cast target sits behind a nested ')'
+    assert my.translate("UPDATE prices_daily SET volume=CAST(ROUND(volume/?) AS INTEGER) WHERE symbol=?") == \
+        "UPDATE prices_daily SET volume=CAST(TRUNCATE(ROUND(volume/%s), 0) AS SIGNED) WHERE symbol=%s"
+    # nested casts translate from the inside out
+    assert my.translate("SELECT CAST(CAST(x AS INTEGER) AS TEXT) FROM t") == \
+        "SELECT CAST(CAST(TRUNCATE(x, 0) AS SIGNED) AS CHAR) FROM t"
+    # a type name inside a literal is not a type
+    assert my.translate("SELECT CAST('AS INTEGER' AS TEXT) FROM t") == \
+        "SELECT CAST('AS INTEGER' AS CHAR) FROM t"
+
+
+def test_a_cast_with_no_faithful_target_is_refused_not_guessed():
+    """SQLite keeps CAST(1.7 AS NUMERIC) as 1.7. MySQL's DECIMAL defaults to
+    (10,0) and rounds it to 2; DECIMAL(65,30) keeps the value but returns it
+    zero-padded, so the Python value still differs. Refusing beats guessing."""
+    with pytest.raises(UnsupportedSQL, match="CAST AS NUMERIC"):
+        my.translate("SELECT CAST(x AS NUMERIC) FROM t")
+
+
+@live_only
+def test_the_integer_cast_agrees_with_sqlite_value_for_value(live_db):
+    """The regression guard, measured rather than argued.
+
+    Both paths matter, and they do not round alike: MySQL parses a 2.5 written
+    into the SQL as DECIMAL and rounds half away from zero (3), but receives a
+    2.5 bound as a parameter as DOUBLE and rounds half to even (2). So the naive
+    CAST(x AS SIGNED) is wrong on different values depending on how the value
+    arrives -- +-1.7 either way, and the .5 cases only as literals. TRUNCATE is
+    right on all of them, both ways.
+    """
+    conn, cur = live_db
+    sq = sqlite3.connect(":memory:")
+    values = (1.7, 1.2, 2.5, -1.7, -1.2, -2.5, 0.5, 0.0, None)
+    naive_wrong = set()
+    for v in values:
+        want = sq.execute("SELECT CAST(? AS INTEGER)", (v,)).fetchone()[0]
+
+        cur.execute(my.translate("SELECT CAST(? AS INTEGER)"), (v,))
+        assert cur.fetchone()[0] == want, f"bound {v}: MySQL disagrees with SQLite"
+        cur.execute("SELECT CAST(%s AS SIGNED)", (v,))
+        if cur.fetchone()[0] != want:
+            naive_wrong.add(("bound", v))
+
+        if v is None:
+            continue
+        lit = sq.execute(f"SELECT CAST({v} AS INTEGER)").fetchone()[0]
+        cur.execute(my.translate(f"SELECT CAST({v} AS INTEGER)"))
+        assert cur.fetchone()[0] == lit, f"literal {v}: MySQL disagrees with SQLite"
+        cur.execute(f"SELECT CAST({v} AS SIGNED)")
+        if cur.fetchone()[0] != lit:
+            naive_wrong.add(("literal", v))
+
+    # the fix is load-bearing, not defensive: name the cases it carries
+    assert ("bound", 1.7) in naive_wrong and ("literal", 0.5) in naive_wrong, naive_wrong
+
+
+# ── derived tables and self-referencing UPDATEs ───────────────────────────
+
+def test_unaliased_derived_tables_are_named():
+    """SQLite allows FROM (SELECT ...) unnamed; MySQL answers errno 1248. The
+    shape is data/bhavcopy.py's 5-day-average UPDATE."""
+    assert my.translate("UPDATE t SET a=(SELECT AVG(x) FROM (SELECT x FROM t ORDER BY d DESC LIMIT 5)) WHERE d=?") == \
+        "UPDATE t SET a=(SELECT AVG(x) FROM (SELECT x FROM t ORDER BY d DESC LIMIT 5) AS _d1) WHERE d=%s"
+    # every sibling of a FROM list, not just the one after the keyword
+    assert my.translate("SELECT * FROM (SELECT a FROM t), (SELECT b FROM u)") == \
+        "SELECT * FROM (SELECT a FROM t) AS _d1, (SELECT b FROM u) AS _d2"
+    assert my.translate("SELECT * FROM t, (SELECT b FROM u)") == \
+        "SELECT * FROM t, (SELECT b FROM u) AS _d1"
+    assert my.translate("SELECT * FROM t JOIN (SELECT a FROM u) ON t.a=u.a") == \
+        "SELECT * FROM t JOIN (SELECT a FROM u) AS _d1 ON t.a=u.a"
+
+
+def test_an_existing_alias_is_left_alone_and_scalar_subqueries_are_not_touched():
+    """An alias on a (SELECT ...) that is NOT a FROM-list element is a syntax
+    error, so the walk has to tell the two apart."""
+    for sql in ("SELECT * FROM (SELECT a FROM t) AS d, (SELECT b FROM u) e",
+                "SELECT a, (SELECT b FROM u) FROM t",
+                "INSERT INTO t VALUES (1, (SELECT a FROM u))",
+                "SELECT * FROM t WHERE a IN (SELECT a FROM u)"):
+        assert my.translate(sql) == sql.replace("?", "%s"), sql
+
+
+def test_backticked_reserved_words_survive_translation():
+    """ATIP's shared SQL backticks the columns MySQL 8 reserves. They pass through
+    here untouched; db.postgres.translate turns them into double quotes."""
+    assert my.translate("SELECT `signal`, `key` FROM t WHERE `rows`=?") == \
+        "SELECT `signal`, `key` FROM t WHERE `rows`=%s"
+
+
+@live_only
+def test_the_signal_log_dedupe_runs_on_mysql_and_is_idempotent(live_db):
+    """scores/signal_log.flag_duplicates' statement. The correlated form it
+    replaced was errno 1093 -- MySQL will not read the UPDATE target in a
+    subquery -- and neither dialect's own idiom (UPDATE..FROM, UPDATE..JOIN) is
+    portable, so the keeper is computed in an uncorrelated derived table."""
+    import inspect
+    import scores.signal_log as sl
+    conn, cur = live_db
+    cur.execute(my.ddl("CREATE TABLE signal_log (id INTEGER PRIMARY KEY, signal_date TEXT, "
+                       "symbol TEXT, signal TEXT, logged_at TEXT, duplicate_of INTEGER)",
+                       keyed={"signal_date", "symbol", "signal"}))
+    # id order deliberately disagrees with logged_at order: id 3 was logged first
+    rows = [(1, "2026-01-02", "ACME", "BUY", "2026-01-02 10:00"),
+            (2, "2026-01-02", "ACME", "BUY", "2026-01-02 11:00"),
+            (3, "2026-01-02", "ACME", "BUY", "2026-01-02 09:00"),
+            (4, "2026-01-02", "ZZZ", "SELL", "2026-01-02 10:00")]
+    cur.executemany(my.translate("INSERT INTO signal_log (id,signal_date,symbol,`signal`,logged_at) "
+                                 "VALUES (?,?,?,?,?)"), rows)
+
+    # the statement the module builds, translated for MySQL
+    body = inspect.getsource(sl.flag_duplicates)
+    keeper = body[body.index('keeper = """') + 12:body.index("WHERE k.id = signal_log.id") + 26]
+    sql = f"UPDATE signal_log SET duplicate_of = ({keeper})\nWHERE duplicate_of IS NULL AND id <> ({keeper})"
+
+    cur.execute(my.translate(sql))
+    assert cur.rowcount == 2, "the two later copies are the duplicates"
+    cur.execute("SELECT id, duplicate_of FROM signal_log ORDER BY id")
+    assert cur.fetchall() == ((1, 3), (2, 3), (3, None), (4, None)), \
+        "the keeper is the earliest logged_at, not the lowest id"
+
+    cur.execute(my.translate(sql))
+    assert cur.rowcount == 0, "flagging duplicates must be idempotent"
+
+
+def test_no_sql_uses_a_mysql_reserved_word_unquoted():
+    """The guard for the switch's commonest failure.
+
+    Six of ATIP's column names are reserved in MySQL 8 -- change, key, rank,
+    rows, signal, trigger. Unquoted, each is errno 1064: 73 of the 164 statement
+    errors the runtime census found, and the cause of the lock-wait timeouts and
+    duplicate-key errors that followed, since a statement that fails leaves its
+    transaction open holding InnoDB row locks. Backticks are portable -- SQLite
+    accepts them, db.postgres.translate turns them into double quotes -- so this
+    stays at zero rather than being re-measured later.
+    """
+    from pathlib import Path
+
+    from db.dialect_scan import reserved_identifiers
+
+    # the one deliberate exception: the test below proves the failure this guards
+    allowed = {("tests/test_mysql_backend.py", "signal")}
+    bad = [(f, ln, w, ex) for f, ln, w, ex in reserved_identifiers(Path(__file__).resolve().parents[1])
+           if (f, w.lower()) not in allowed]
+    assert not bad, "backtick these, or db.mysql will hand them to MySQL as errno 1064:\n" + \
+        "\n".join(f"  {f}:{ln} [{w}]  {ex}" for f, ln, w, ex in bad)
+
+
+def test_an_upsert_on_a_backticked_column_rewrites_excluded():
+    """Quoting the reserved columns broke this and SQLite hid it.
+
+    MySQL has no `excluded`; the translator rewrites excluded.col to VALUES(col).
+    A backtick is not a word character, so the \\w+ the rewrite used stopped
+    matching the moment the column was quoted, leaving `excluded.` in the
+    statement for MySQL to fail on. SQLite takes excluded.`signal` natively, so
+    the whole SQLite suite stayed green over it. scores/engine.py issues exactly
+    this upsert on every scored symbol."""
+    assert my.translate("INSERT INTO ai_scores (symbol,`signal`) VALUES (?,?) "
+                        "ON CONFLICT(symbol) DO UPDATE SET `signal`=excluded.`signal`") == \
+        ("INSERT INTO ai_scores (symbol,`signal`) VALUES (%s,%s)  ON DUPLICATE KEY UPDATE  "
+         "`signal`=VALUES(`signal`)")
+    # arithmetic on the target row keeps working too
+    assert "`rows`=`rows`+VALUES(`rows`)" in my.translate(
+        "INSERT INTO s (day,`rows`) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET `rows`=`rows`+excluded.`rows`")
+
+
+def test_a_column_that_is_both_keyed_and_defaulted_takes_the_larger_width():
+    """The two paths into this module have to agree on the same table.
+
+    research/tech_signals.py's technical_signal.status is TEXT NOT NULL DEFAULT
+    'OPEN' with its own CREATE INDEX. Given the whole statement list up front
+    (the migration tool) the key is known and the keyed width applies; reached one
+    statement at a time (the runtime) only the DEFAULT is visible when the CREATE
+    TABLE runs, and the later CREATE INDEX does not narrow a column it can already
+    index. The same table came out VARCHAR(191) one way and VARCHAR(255) the
+    other until the larger width won on both.
+    """
+    both = my.ddl("CREATE TABLE t (status TEXT NOT NULL DEFAULT 'OPEN')", keyed={"status"})
+    assert f"VARCHAR({max(my.KEYED_TEXT_LEN, my.DEFAULTED_TEXT_LEN)})" in both, both
+    # neither rule is disturbed on its own
+    assert f"VARCHAR({my.KEYED_TEXT_LEN})" in my.ddl("CREATE TABLE t (k TEXT)", keyed={"k"})
+    assert f"VARCHAR({my.DEFAULTED_TEXT_LEN})" in my.ddl("CREATE TABLE t (d TEXT DEFAULT 'x')", keyed=set())
+    # and a plain TEXT column stays TEXT
+    assert "TEXT" in my.ddl("CREATE TABLE t (note TEXT)", keyed=set())
+
+
+@live_only
+def test_the_connection_pins_the_session_time_zone(live_db):
+    """306 of ATIP's columns are TIMESTAMP, and MySQL converts those through the
+    SESSION time zone both ways -- so left at the default (SYSTEM) every stored
+    time means whatever the host's OS time zone happens to be, and a value written
+    on one host reads back shifted on another.
+
+    Pinned to UTC, which is what SQLite does rather than merely being stable:
+    ATIP's DEFAULT CURRENT_TIMESTAMP columns are SQLite's CURRENT_TIMESTAMP, and
+    that is UTC (tools/repair_news_timezone.py exists because these two disagreed
+    once already).
+    """
+    import datetime
+
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        assert c.execute("SELECT @@session.time_zone").fetchone()[0] == "+00:00"
+
+        # an explicitly written wall-clock value comes back unchanged
+        c.execute("CREATE TABLE tz (id INTEGER PRIMARY KEY, ts TIMESTAMP, made TIMESTAMP "
+                  "DEFAULT CURRENT_TIMESTAMP)")
+        c.execute("INSERT INTO tz (id, ts) VALUES (?, ?)", (1, "2026-10-08 09:30:00"))
+        c.commit()
+        got = c.execute("SELECT ts FROM tz WHERE id=1").fetchone()[0]
+        assert str(got) == "2026-10-08 09:30:00", f"TIMESTAMP shifted: {got}"
+
+        # and the server's CURRENT_TIMESTAMP is UTC, as SQLite's is
+        mine = c.execute("SELECT NOW(), UTC_TIMESTAMP()").fetchone()
+        assert mine[0] == mine[1], f"NOW() is not UTC: {mine}"
+        made = c.execute("SELECT made FROM tz WHERE id=1").fetchone()[0]
+        drift = abs((made - datetime.datetime.utcnow()).total_seconds())
+        assert drift < 120, f"DEFAULT CURRENT_TIMESTAMP is {drift}s from UTC now"
+    finally:
+        c.close()
