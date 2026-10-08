@@ -1089,3 +1089,40 @@ def test_a_column_that_is_both_keyed_and_defaulted_takes_the_larger_width():
     assert f"VARCHAR({my.DEFAULTED_TEXT_LEN})" in my.ddl("CREATE TABLE t (d TEXT DEFAULT 'x')", keyed=set())
     # and a plain TEXT column stays TEXT
     assert "TEXT" in my.ddl("CREATE TABLE t (note TEXT)", keyed=set())
+
+
+@live_only
+def test_the_connection_pins_the_session_time_zone(live_db):
+    """306 of ATIP's columns are TIMESTAMP, and MySQL converts those through the
+    SESSION time zone both ways -- so left at the default (SYSTEM) every stored
+    time means whatever the host's OS time zone happens to be, and a value written
+    on one host reads back shifted on another.
+
+    Pinned to UTC, which is what SQLite does rather than merely being stable:
+    ATIP's DEFAULT CURRENT_TIMESTAMP columns are SQLite's CURRENT_TIMESTAMP, and
+    that is UTC (tools/repair_news_timezone.py exists because these two disagreed
+    once already).
+    """
+    import datetime
+
+    conn, cur = live_db
+    c = my.MySQLConnection(LIVE_URL)
+    try:
+        assert c.execute("SELECT @@session.time_zone").fetchone()[0] == "+00:00"
+
+        # an explicitly written wall-clock value comes back unchanged
+        c.execute("CREATE TABLE tz (id INTEGER PRIMARY KEY, ts TIMESTAMP, made TIMESTAMP "
+                  "DEFAULT CURRENT_TIMESTAMP)")
+        c.execute("INSERT INTO tz (id, ts) VALUES (?, ?)", (1, "2026-10-08 09:30:00"))
+        c.commit()
+        got = c.execute("SELECT ts FROM tz WHERE id=1").fetchone()[0]
+        assert str(got) == "2026-10-08 09:30:00", f"TIMESTAMP shifted: {got}"
+
+        # and the server's CURRENT_TIMESTAMP is UTC, as SQLite's is
+        mine = c.execute("SELECT NOW(), UTC_TIMESTAMP()").fetchone()
+        assert mine[0] == mine[1], f"NOW() is not UTC: {mine}"
+        made = c.execute("SELECT made FROM tz WHERE id=1").fetchone()[0]
+        drift = abs((made - datetime.datetime.utcnow()).total_seconds())
+        assert drift < 120, f"DEFAULT CURRENT_TIMESTAMP is {drift}s from UTC now"
+    finally:
+        c.close()

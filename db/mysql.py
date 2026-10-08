@@ -901,6 +901,22 @@ class MySQLConnection:
             autocommit=False,
             # keep DATE/DATETIME as returned types; ATIP's SQLite path uses
             # PARSE_DECLTYPES and compares against date/datetime objects.
+            #
+            # Pin the session time zone. MySQL converts a TIMESTAMP to UTC on the
+            # way in and back on the way out using THIS setting, and the schema has
+            # 306 TIMESTAMP columns against 1 DATETIME -- so left at the default
+            # (SYSTEM) every stored time would mean whatever the host's OS time zone
+            # happened to be, and a value written on one host would read back
+            # shifted on another. Measured on 8.0.46: 09:30 written at +05:30 reads
+            # back as 04:00 at +00:00, while the lone DATETIME is untouched.
+            #
+            # UTC is the value that matches SQLite rather than merely being stable:
+            # ATIP's DEFAULT CURRENT_TIMESTAMP columns are SQLite's
+            # CURRENT_TIMESTAMP, which is UTC (see tools/repair_news_timezone.py,
+            # written after the last time these two disagreed). Explicitly written
+            # IST values round-trip unchanged either way, since the same offset
+            # applies in both directions.
+            init_command="SET time_zone = '+00:00'",
         )
         self.row_factory = None                       # accepted for sqlite3 compatibility
         self._keys: dict = {}
