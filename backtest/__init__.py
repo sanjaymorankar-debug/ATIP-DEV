@@ -13,6 +13,7 @@ One module per stage of the flow, so each can be used and checked on its own:
     metrics.py     performance and drawdown metrics, pure functions (BT-09, BT-11)
     periods.py     research / validation / test separation (BT-03)
     walkforward.py rolling walk-forward validation (BT-02)
+    cpcv.py        combinatorially purged cross-validation paths and PBO by CSCV (W39b)
     montecarlo.py  trade-shuffle and return-bootstrap analysis (BT-13)
     store.py       run records: config snapshot, trades, equity, metrics (BT-16)
     service.py     create / run / retrieve -- what the CLI and the API call

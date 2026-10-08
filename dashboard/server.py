@@ -1528,6 +1528,36 @@ if HAS_FASTAPI:
         _bg(cost_sweep, b["request"], mults, b.get("scale", "costs"))
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind cost_sweep)"})
 
+    @app.post("/api/backtests/cpcv", dependencies=_guard)
+    async def api_backtest_cpcv(request: _Req):
+        """Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?}
+        -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths."""
+        from backtest.cpcv import prepare_cpcv, run_cpcv
+        b = await request.json()
+        try:
+            args = (b["request"], int(b.get("groups", 6)), int(b.get("test_groups", 2)), b.get("candidates"),
+                    b.get("select_by", "sharpe"), int(b.get("purge") or 0), int(b.get("embargo") or 0))
+            prepare_cpcv(*args)
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(run_cpcv, *args)
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind cpcv)"})
+
+    @app.post("/api/backtests/{run_id}/pbo", dependencies=_guard)
+    async def api_backtest_pbo(run_id: str, request: _Req):
+        """Body (optional): {partitions? (16), metric? sharpe|mean|total_return} -- the probability of backtest
+        overfitting (CSCV) of the run's trials (an optimisation), computed now and stored as a run of kind pbo."""
+        from backtest.cpcv import pbo_for_run
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        try:
+            out = pbo_for_run(run_id, int((b or {}).get("partitions", 16)), (b or {}).get("metric", "sharpe"))
+        except (ValueError, TypeError, AttributeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=404 if str(e).startswith("no backtest run") else 400)
+        return JSONResponse(json_safe(out))
+
     @app.post("/api/backtests/study", dependencies=_guard)
     async def api_backtest_study(request: _Req):
         """Body: {strategy_id, start, end, space?, hypothesis?, method?, max_trials?, universe?}."""
@@ -1551,7 +1581,7 @@ if HAS_FASTAPI:
             run = bt_store.get_run(conn, run_id)
             if not run:
                 return JSONResponse({"error": "not found"}, status_code=404)
-            if run["kind"] == "walk_forward":
+            if run["kind"] in ("walk_forward", "cpcv"):
                 run["children"] = bt_store.child_runs(conn, run_id)
             return JSONResponse(json_safe(run))
         finally: conn.close()

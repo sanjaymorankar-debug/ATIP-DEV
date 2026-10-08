@@ -9,14 +9,20 @@ PF-06: the W2 backtest engine simulates partial position changes.
           holding it closes the position
   adapter strategy versions' ADD / REDUCE decisions become those Signals, and the
           "REDUCE / ADD decisions are not simulated" bias warning is gone
+  event-driven engine (BT-17, backtest/event_driven.py) trades ADD / REDUCE with the same
+          sizing and accounting, through its own order model: working orders, latency,
+          participation cap, TWAP slices, impact, TTL
 
 Prices are hand-written: PAR follows an explicit path of (open, high, low, close) bars
 and QQQ sits at 50. A scripted strategy emits a fixed list of Signals per session. Costs
-are the flat model at 0.1% per leg and slippage is off unless a test says otherwise, so
-every expected number below is worked out by hand in the comments.
+are the flat model at 0.1% per leg and slippage is off unless a test says otherwise (the
+event-driven runs set impact "none"), so every expected number below is worked out by
+hand in the comments.
 
 Runs that never ADD or REDUCE must not change at all: test_buy_sell_only_runs_are_unchanged
-pins digests of full results computed with the engine before PF-06.
+pins digests of full results computed with the engine before PF-06, and
+test_event_driven_buy_sell_only_runs_are_unchanged those of the event-driven engine before
+it traded ADD / REDUCE.
 """
 
 import hashlib
@@ -56,14 +62,15 @@ def _insert(rows):
     conn.close()
 
 
-def _seed(path):
+def _seed(path, volume=10_000_000):
     """PAR: path[i] = (open, high, low, close) on session i, None = no bar that day; after
-    the path it stays at its last close. QQQ: 50 every day. Volume never binds."""
+    the path it stays at its last close. QQQ: 50 every day. Volume never binds unless a
+    test gives PAR a smaller one."""
     rows, last = [], None
     for i, d in enumerate(_days()):
         bar = path[i] if i < len(path) else (last, last, last, last)
         if bar is not None:
-            rows.append(("PAR", str(d), *bar, 10_000_000))
+            rows.append(("PAR", str(d), *bar, volume))
             last = bar[3]
         rows.append(("QQQ", str(d), 50.0, 50.0, 50.0, 50.0, 10_000_000))
     _insert(rows)
@@ -620,25 +627,258 @@ def test_round_trips_from_rows_without_partials_is_one_to_one():
     assert round_trips_from_rows(open_only) == []                   # still open: not a closed trade
 
 
-def test_event_driven_engine_refuses_add_and_reduce_instead_of_opening_positions(db, monkeypatch):
-    """BT-17 has no partial positions: an ADD / REDUCE used to fall through to the BUY branch, so
-    one for a symbol not held opened a new position. Now it is an event plus a bias warning."""
+# ── the event-driven engine (BT-17) trades ADD / REDUCE through its order model ──
+
+ED_ROW_KEYS = ROW_KEYS + ["impact_bps"]
+
+
+def _run_ed(last=15, universe=("PAR", "QQQ"), ed=None, **kw):
     from backtest import event_driven as ED
     from db.schema import get_connection
-    _seed([(100, 100, 100, 100)] + _flat(*([100] * 15)))
-    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 1: [_sig("ADD", quantity=5)],
-                          2: [_sig("REDUCE", sym="QQQ", quantity=3), _sig("ADD", sym="QQQ", value=1000.0)]})
+    req = {"strategy_id": "scripted", "universe": list(universe), "start": str(_days()[0]),
+           "end": str(_days()[last]), "initial_capital": 100_000, "sizing": dict(SIZING), **FLAT_COSTS}
+    req.update(kw)
     conn = get_connection()
     try:
-        res = ED.run({"strategy_id": "scripted", "universe": ["PAR", "QQQ"], "start": str(_days()[0]),
-                      "end": str(_days()[15]), "initial_capital": 100_000, "sizing": dict(SIZING), **FLAT_COSTS},
-                     conn)
+        return ED.run({**req, "event_driven": {"impact": "none", **(ed or {})}}, conn)
     finally:
         conn.close()
-    assert {t["symbol"] for t in res["trades"]} <= {"PAR"}, "QQQ must never be bought"
-    ev = [e["event"] for e in res["events"] if "not simulated" in e["event"]]
-    assert len(ev) == 3
-    assert any("ADD x2" in w and "REDUCE x1" in w for w in res["bias_report"]["warnings"])
+
+
+def test_event_driven_add_then_reduce_then_sell_matches_the_engine(db, monkeypatch):
+    _seed([(100, 100, 100, 100), (100, 102, 100, 102), (104, 106, 104, 106), (110, 110, 108, 108)]
+          + _flat(105))
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0, reason="in")], 1: [_sig("ADD", quantity=50)],
+                          2: [_sig("REDUCE", quantity=60)], 3: [_sig("SELL")]})
+    ed, w2 = _run_ed(), _run()
+    d = _days()
+    # whole fills at the next open (latency 1, volume never binds, no impact): every leg is the
+    # engine's, worked out in test_add_then_reduce_then_sell_hand_computed -- REDUCE 60 at 110 nets
+    # 507.32 on a 6,086.08 basis, SELL 90 at 105 nets 311.43. The rows' entry_price is the event
+    # engine's own convention, the cost per share incl. entry costs: 6,086.08 / 60 = 101.4347.
+    red, sell = ed["trades"]
+    assert list(red) == ED_ROW_KEYS + ["adds", "partial"] and list(sell) == ED_ROW_KEYS + ["adds"]
+    assert (red["qty"], red["entry_date"], red["exit_date"], red["exit_reason"], red["partial"], red["adds"]) == (
+        60, d[1], d[3], "REDUCE", True, 1)
+    assert (red["entry_price"], red["entry_ref_price"], red["exit_price"], red["costs"], red["net_pnl"]) == (
+        101.4347, 101.3333, 110.0, 6.6, 507.32)
+    assert red["return_pct"] == round(507.32 / 6086.08 * 100, 4)
+    assert (sell["qty"], sell["exit_date"], sell["exit_reason"], sell["net_pnl"], sell["adds"]) == (
+        90, d[4], "SELL_SIGNAL", 311.43, 1)
+    assert [(t["qty"], t["exit_date"], t["net_pnl"], t["return_pct"]) for t in ed["trades"]] == \
+        [(t["qty"], t["exit_date"], t["net_pnl"], t["return_pct"]) for t in w2["trades"]]
+    assert [(p["cash"], p["equity"], p["n_positions"], p["realized_cum"]) for p in ed["equity"]] == \
+        [(p["cash"], p["equity"], p["n_positions"], p["realized_cum"]) for p in w2["equity"]]
+    m = ed["metrics"]
+    assert (m["trades"], m["wins"], m["trade_rows"], m["partial_exits"], m["adds"]) == (1, 1, 2, 1, 1)
+    assert m["expectancy"] == pytest.approx(818.75) and m["expectancy_return"] == w2["metrics"]["expectancy_return"]
+    assert (m["fills"], m["partial_fills"], m["costs_paid"]) == (4, 0, 31.25)
+    assert ed["events"] == [] and not any("not simulated" in w for w in ed["bias_report"]["warnings"])
+
+
+def test_event_driven_add_fills_through_the_order_model(db, monkeypatch):
+    # PAR trades 30,000 shares a bar and at most 0.2% of it fills per order per bar: 60 shares
+    _seed(_flat(100, 100, 100, 100, 100, 102, 104, 106), volume=30_000)
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 3: [_sig("ADD", quantity=150)]})
+    res = _run_ed(ed={"latency_bars": 2, "slices": 2, "participation_cap": 0.002},
+                  sizing={**SIZING, "max_position_pct": 50})
+    d = _days()
+    # BUY 100 (0.5% risk over a 5.00 stop) in two TWAP children of 50: s2 and s3 at 100 -> 10,010 paid.
+    # ADD 150 at s3's close (room: 50% of 99,990 less 10,000 held -> 399 shares) in two children of 75,
+    # eligible s5 and s6; each fills <= 60 a bar, the rest keeps working:
+    #   s5  child 1: 60 at 102 (6,120 + 6.12)
+    #   s6  child 1: 15 at 104 (1,560 + 1.56), child 2: 60 at 104 (6,240 + 6.24)
+    #   s7  child 2: 15 at 106 (1,590 + 1.59)
+    # 250 shares cost 25,535.51 (fills 25,510 + costs); closed at the end at 106: 26,500 - 26.50
+    assert [(p["cash"], p["positions_value"]) for p in res["equity"][4:8]] == [
+        (89_990.0, 10_000.0), (83_863.88, 16_320.0), (76_056.08, 24_440.0), (74_464.49, 26_500.0)]
+    [row] = res["trades"]
+    assert (row["qty"], row["entry_date"], row["exit_reason"], row["adds"]) == (250, d[2], "END_OF_WINDOW", 4)
+    assert (row["entry_price"], row["entry_ref_price"]) == (round(25_535.51 / 250, 4), 102.04)
+    assert row["net_pnl"] == round(26_500 - 26.5 - 25_535.51, 2) and "partial" not in row
+    m = res["metrics"]
+    assert (m["fills"], m["partial_fills"], m["adds"], m["partial_exits"], m["trade_rows"]) == (6, 2, 4, 0, 1)
+    assert res["events"] == []
+
+
+def test_event_driven_add_short_of_cash_keeps_working_until_cash_frees_up_or_its_ttl(db, monkeypatch):
+    _seed(_flat(100))                                        # PAR 100, QQQ 50 throughout
+    sizing = {**SIZING, "risk_per_trade_pct": 4.5, "max_position_pct": 100}
+    buys = [_sig("BUY", stop_price=90.0), _sig("BUY", "QQQ", stop_price=45.0)]
+    # 4.5% risk: PAR 4,500 / 10 = 450 shares, QQQ 4,500 / 5 = 900 shares, both at s1: 2 x 45,045 paid
+    _script(monkeypatch, {0: buys, 2: [_sig("ADD", quantity=200), _sig("SELL", "QQQ")]})
+    res = _run_ed(sizing=sizing)
+    d = _days()
+    # s3: the ADD (created first) meets 9,910 cash: 9,910 // 100.2 = 98 shares (9,809.80 paid), the rest
+    # keeps working; the QQQ SELL then frees 44,955 and the remaining 102 fill at s4 (10,210.20)
+    assert res["events"] == [{"date": d[3], "symbol": "PAR", "event": "add cut to 98 of 200 shares: cash"}]
+    assert [p["cash"] for p in res["equity"][1:5]] == [9_910.0, 9_910.0, 45_055.2, 34_845.0]
+    par = next(t for t in res["trades"] if t["symbol"] == "PAR")
+    assert (par["qty"], par["adds"], res["metrics"]["adds"]) == (650, 2, 2)
+    # without the SELL nothing frees cash: 9,950 buys 99 of the 200, 40.10 is left, the other 101 expire
+    _script(monkeypatch, {0: buys, 2: [_sig("ADD", quantity=200)]})
+    res = _run_ed(sizing=sizing, initial_capital=100_040, ed={"ttl_bars": 2})
+    assert res["events"] == [{"date": d[3], "symbol": "PAR", "event": "add cut to 99 of 200 shares: cash"},
+                             {"date": d[5], "symbol": "PAR", "event": "ADD 101 unfilled, expired after 2 bars"}]
+    par = next(t for t in res["trades"] if t["symbol"] == "PAR")
+    assert (par["qty"], par["adds"]) == (549, 1) and res["equity"][3]["cash"] == 40.1
+
+
+def test_event_driven_reduce_writes_partial_rows_through_the_order_model(db, monkeypatch):
+    _seed(_flat(100, 100, 100, 100, 100, 110, 120), volume=30_000)
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 3: [_sig("REDUCE", quantity=90)]})
+    res = _run_ed(ed={"latency_bars": 2, "participation_cap": 0.002})
+    d = _days()
+    # BUY 100: 60 at s2, 40 at s3 (the cap), 10,010 paid. REDUCE 90 (eligible s5) sells <= 60 a bar:
+    #   s5  60 at 110: basis 10,010 x 60/100 = 6,006, 6,600 - 6.60 -> net 587.40, 40 left: partial
+    #   s6  30 at 120: basis 4,004 x 30/40 = 3,003, 3,600 - 3.60 -> net 593.40, 10 left: partial
+    # the last 10 close at the end at 120: 1,200 - 1.20 - 1,001 = 197.80
+    rows = res["trades"]
+    assert [(t["qty"], t["exit_date"], t["exit_reason"], t["net_pnl"], t.get("partial")) for t in rows] == [
+        (60, d[5], "REDUCE", 587.4, True), (30, d[6], "REDUCE", 593.4, True), (10, d[15], "END_OF_WINDOW", 197.8, None)]
+    assert [(t["entry_price"], t["entry_ref_price"]) for t in rows[:2]] == [(100.1, 100.0), (100.1, 100.0)]
+    assert res["equity"][6]["realized_cum"] == 1180.8 and res["equity"][6]["n_positions"] == 1
+    assert res["equity"][-1]["equity"] == 101_378.6 == 100_000 + sum(t["net_pnl"] for t in rows)
+    m = res["metrics"]
+    # one position, one round trip: 1,378.60 over its 10,010 basis
+    assert (m["trades"], m["wins"], m["trade_rows"], m["partial_exits"], m["adds"]) == (1, 1, 3, 2, 0)
+    assert m["expectancy"] == pytest.approx(1378.6) and m["expectancy_return"] == round(1378.6 / 10_010 * 100, 4)
+    assert (m["fills"], m["partial_fills"]) == (4, 2)
+
+
+@pytest.mark.parametrize("sig", [{"quantity": 500}, {"fraction": 1.0}], ids=["quantity", "fraction"])
+def test_event_driven_reduce_at_or_above_the_holding_closes_the_position(db, monkeypatch, sig):
+    _seed(_flat(100, 100) + [(103, 103, 103, 103)])
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 1: [_sig("REDUCE", **sig)]})
+    res = _run_ed()
+    d = _days()
+    [row] = res["trades"]                             # 100 at 100 (10,010 paid) sold at 103: 10,300 - 10.30
+    assert list(row) == ED_ROW_KEYS                   # an ordinary closing row: not partial
+    assert (row["qty"], row["exit_date"], row["exit_reason"], row["net_pnl"]) == (100, d[2], "REDUCE", 279.7)
+    assert _events(res) == [f"reduce {500 if 'quantity' in sig else 100} >= 100 held: position closed"]
+    assert res["equity"][2]["n_positions"] == 0 and "partial_exits" not in res["metrics"]
+
+
+def test_event_driven_reduce_waits_for_volume_and_notes_the_close_once(db, monkeypatch):
+    days = _days()
+    _insert([("PAR", str(d), 100.0, 100.0, 100.0, 100.0, 5 if i == 2 else 10_000_000) for i, d in enumerate(days)]
+            + [("QQQ", str(d), 50.0, 50.0, 50.0, 50.0, 10_000_000) for d in days])
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)], 1: [_sig("REDUCE", quantity=500)]})
+    res = _run_ed()
+    # s2 trades 5 shares (10% of it rounds to none): the REDUCE waits a bar and sells all 100 at s3
+    assert _events(res)[0] == "reduce 500 >= 100 held: position closed"
+    assert _events(res)[1].startswith("REDUCE no fill: bar volume 5") and len(res["events"]) == 2
+    [row] = res["trades"]
+    assert (row["qty"], row["exit_date"], row["exit_reason"]) == (100, days[3], "REDUCE") and "partial" not in row
+
+
+def test_event_driven_add_or_reduce_of_a_name_not_held_is_ignored_and_never_opens_one(db, monkeypatch):
+    _seed(_flat(100, 100) + [(94, 94, 93, 94)] + _flat(94))
+    _script(monkeypatch, {0: [_sig("ADD", "QQQ", quantity=10), _sig("REDUCE", "QQQ", quantity=5),
+                              _sig("ADD", "QQQ", value=1000.0), _sig("BUY", stop_price=95.0)],
+                          1: [_sig("ADD", quantity=10), _sig("REDUCE", quantity=20)]})
+    res = _run_ed()
+    d = _days()
+    # s2 gaps through the stop: the protective STOP closes PAR at the open (94) before the ADD and the
+    # REDUCE queued at s1's close reach it -- both are dropped, neither reopens the position
+    assert res["events"] == [
+        {"date": d[0], "symbol": "QQQ", "event": "add ignored: QQQ is not held"},
+        {"date": d[0], "symbol": "QQQ", "event": "reduce ignored: QQQ is not held"},
+        {"date": d[0], "symbol": "QQQ", "event": "add ignored: QQQ is not held"},
+        {"date": d[2], "symbol": "PAR", "event": "add dropped: position no longer held"},
+        {"date": d[2], "symbol": "PAR", "event": "reduce dropped: position no longer held"}]
+    [row] = res["trades"]
+    assert (row["symbol"], row["qty"], row["exit_reason"], row["exit_price"]) == ("PAR", 100, "STOP", 94.0)
+    assert all(p["n_positions"] == 0 for p in res["equity"][2:])
+    assert res["metrics"]["fills"] == 2 and "adds" not in res["metrics"]          # the BUY and the STOP
+
+
+def test_event_driven_an_exit_wins_over_a_working_change(db, monkeypatch):
+    _seed(_flat(100, 100, 103, 103, 103))
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0)],
+                          1: [_sig("REDUCE", quantity=30), _sig("ADD", quantity=10), _sig("SELL")]})
+    res = _run_ed()
+    assert [(t["qty"], t["exit_reason"]) for t in res["trades"]] == [(100, "SELL_SIGNAL")]
+    assert _events(res) == ["reduce dropped: exit queued", "add dropped: exit queued"]
+    # a max-hold exit cancels a REDUCE decided the session before it
+    _script(monkeypatch, {0: [_sig("BUY", stop_price=95.0, max_hold_sessions=2)], 2: [_sig("REDUCE", quantity=30)]})
+    res = _run_ed()
+    d = _days()
+    assert [(t["qty"], t["exit_reason"], t["exit_date"]) for t in res["trades"]] == [(100, "MAX_HOLD", d[3])]
+    assert res["events"] == [{"date": d[3], "symbol": "PAR", "event": "reduce dropped: exit queued"}]
+
+
+def test_event_driven_still_flags_signals_it_cannot_trade(db, monkeypatch):
+    from backtest import strategies
+    from backtest.strategy import Strategy
+    _seed(_flat(100, 100, 100))
+
+    class Short(Strategy):
+        strategy_id, version, default_params = "scripted", "1", {}
+
+        def on_bar(self, ctx):
+            return [SimpleNamespace(symbol="PAR", side="SHORT")] if ctx.as_of == _days()[0] else []
+
+    monkeypatch.setitem(strategies.REGISTRY, "scripted", Short)
+    res = _run_ed()
+    assert _events(res) == ["SHORT not simulated by the event-driven engine"] and res["trades"] == []
+    assert "signals not simulated by the event-driven engine: SHORT x1" in res["bias_report"]["warnings"]
+
+
+def test_event_driven_strategy_version_reduces_and_stores_partial_rows(db):
+    from backtest import event_driven as ED
+    from backtest import store
+    from db.schema import get_connection
+    _seed_waves()
+    _store(_mf("mf_reduce", reduce_threshold=45))
+    out = ED.run_and_store({"strategy_id": "mf_reduce", "universe": list(WAVES), "start": LEGACY[0],
+                            "end": LEGACY[1]})
+    conn = get_connection()
+    try:
+        run = store.get_run(conn, out["run_id"])
+        rows = store.get_rows(conn, "backtest_trade", out["run_id"])
+        end = store.get_rows(conn, "backtest_equity", out["run_id"])[-1]["equity"]
+    finally:
+        conn.close()
+    parts = [t for t in rows if t["partial"]]
+    m = run["metrics"]
+    assert parts and all(t["exit_reason"] == "REDUCE" for t in parts)
+    assert m["partial_exits"] == len(parts) and m["trade_rows"] == len(rows) > m["trades"]
+    assert not any("not simulated" in w for w in run["bias_report"]["warnings"])
+    assert sum(t["net_pnl"] for t in rows) == pytest.approx(end - 1_000_000, abs=0.01 * len(rows))
+
+
+# Full-result digests of the event-driven engine BEFORE it traded ADD / REDUCE (same data, same
+# requests): BUY / SELL-only runs must not change at all.
+ED_LEGACY_RUNS = {
+    "dip": ({"strategy_id": "dip", "universe": list(WAVES)}, {},
+            30, "8cdc049abe10fa008c0db753e713af13d86f9890daefeb324b6bba7d99645caf"),
+    "dip_sliced_capped": ({"strategy_id": "dip", "universe": list(WAVES)},
+                          {"slices": 3, "latency_bars": 2, "ttl_bars": 5, "participation_cap": 0.001},
+                          30, "4417c9808ef7e6da6b5c97d453dfdc583cdaab301c0e91646e49e5d35a5cb44a"),
+    "dip_short_hold_open_end": ({"strategy_id": "dip", "universe": list(WAVES), "close_out_at_end": False,
+                                 "params": {"max_hold_sessions": 2, "target_pct": 2, "stop_pct": 1.5}},
+                                {"slices": 2, "participation_cap": 0.0003, "ttl_bars": 2, "impact": "none"},
+                                117, "2a4a2a2b48c4a38becd60592e93955974d77b5f9929d1c048c76b68a479e5b8a"),
+    "buy_and_hold": ({"strategy_id": "buy_and_hold", "universe": ["UPP", "DWN", "RUN"], "cost_model": "flat"},
+                     {"impact": "none"}, 3, "3d04451056c6ca555c9e6943d0d1142936a180a47d3b2bde22143e5bf908ae25"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(ED_LEGACY_RUNS))
+def test_event_driven_buy_sell_only_runs_are_unchanged(db, name):
+    from backtest import event_driven as ED
+    from db.schema import get_connection
+    _seed_waves()
+    req, ed, trades, digest = ED_LEGACY_RUNS[name]
+    conn = get_connection()
+    try:
+        res = ED.run({**req, "start": LEGACY[0], "end": LEGACY[1], "event_driven": ed}, conn)
+    finally:
+        conn.close()
+    assert all(list(t) in (ED_ROW_KEYS, ROW_KEYS) for t in res["trades"])
+    assert {"trade_rows", "partial_exits", "adds"}.isdisjoint(res["metrics"])
+    assert (res["metrics"]["trades"], _digest(res)) == (trades, digest)
 
 
 def test_code_strategy_add_and_reduce_become_partial_decisions_live(db):

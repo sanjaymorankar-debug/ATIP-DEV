@@ -539,13 +539,19 @@ def _round_trips(st: SimState) -> tuple[list, list]:
     each position's closing row; a one-row position keeps its row's own figures. A
     position still open at the end (close_out_at_end false) is not a closed trade:
     its partial rows stay in the trade rows and the equity curve, not in the stats."""
-    still_open = {p.uid for p in st.positions.values()}
+    return fold_round_trips(st.trades, st.trade_legs, {p.uid for p in st.positions.values()})
+
+
+def fold_round_trips(trades: list, trade_legs: list, still_open: set) -> tuple[list, list]:
+    """_round_trips on plain lists, for any engine that keeps one (position uid, net,
+    basis) leg per trade row (the event-driven engine, BT-17): `still_open` holds the
+    uids of positions open at the end."""
     rows, legs = {}, {}
-    for t, (uid, net, basis) in zip(st.trades, st.trade_legs):
+    for t, (uid, net, basis) in zip(trades, trade_legs):
         rows.setdefault(uid, []).append(t)
         legs.setdefault(uid, []).append((net, basis))
     last = {}
-    for k, (uid, _n, _b) in enumerate(st.trade_legs):
+    for k, (uid, _n, _b) in enumerate(trade_legs):
         if uid not in still_open:
             last[uid] = k
     pnls, rets = [], []

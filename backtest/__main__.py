@@ -19,6 +19,12 @@
                            [--scale costs|slippage|both]      (BT-19: cost stress + break-even)
     python -m backtest study momentum|mean_reversion_rsi|<strategy> --start D --end D [--space '{...}']
                            [--trials 30]      (W23: optimise -> validate -> sensitivity -> robustness -> test)
+    python -m backtest cpcv --strategy dip --start D --end D --groups 6 --test-groups 2
+                           [--candidates '[{"stop_pct":3},{"stop_pct":5}]'] [--select-by sharpe]
+                           [--purge 10 --embargo 1]   (CPCV: distribution of phi out-of-sample paths)
+    python -m backtest pbo OPTIMIZATION_RUN_ID [--partitions 16] [--metric sharpe|mean|total_return]
+    python -m backtest pbo --matrix returns.csv|returns.json [--partitions 16]
+                           (PBO by CSCV on trial returns -- backtest/cpcv.py)
 """
 
 import argparse
@@ -82,6 +88,21 @@ def main(argv=None):
     st.add_argument("--space", type=json.loads, default=None); st.add_argument("--trials", type=int, default=30)
     st.add_argument("--method", default="adaptive"); st.add_argument("--universe", type=lambda s: s.split(","),
                                                                         default=None)
+    cv = sub.add_parser("cpcv"); common(cv)
+    cv.add_argument("--start", required=True); cv.add_argument("--end", required=True)
+    cv.add_argument("--groups", type=int, default=6, help="N groups of sessions")
+    cv.add_argument("--test-groups", type=int, default=2, help="k groups tested per split: C(N, k) splits")
+    cv.add_argument("--candidates", type=json.loads, default=None, help="JSON list of param objects")
+    cv.add_argument("--select-by", default="sharpe", choices=("sharpe", "sortino", "total_return"))
+    cv.add_argument("--purge", type=int, default=0, help="sessions dropped from the end of a training group "
+                                                         "before a test group")
+    cv.add_argument("--embargo", type=int, default=0, help="sessions dropped from the start of a training group "
+                                                           "after a test group")
+    pb = sub.add_parser("pbo"); pb.add_argument("run_id", nargs="?", default=None,
+                                                help="a parent run whose trials share its window (an optimisation)")
+    pb.add_argument("--matrix", default=None, help="CSV / JSON of returns: rows = sessions, columns = trials")
+    pb.add_argument("--partitions", type=int, default=16); pb.add_argument("--metric", default="sharpe",
+                                                                           choices=("sharpe", "mean", "total_return"))
 
     sub.add_parser("list")
     s = sub.add_parser("show"); s.add_argument("run_id")
@@ -140,6 +161,23 @@ def main(argv=None):
         out = run_study(a.strategy, a.space, a.start, a.end, method=a.method, max_trials=a.trials,
                         universe=a.universe)
         print(json.dumps(out, indent=2, default=str))
+    elif a.cmd == "cpcv":
+        from backtest.cpcv import run_cpcv
+        req = request(); req.update({"start": a.start, "end": a.end})
+        out = run_cpcv(req, a.groups, a.test_groups, a.candidates, a.select_by, a.purge, a.embargo)
+        print(json.dumps({k: out.get(k) for k in ("run_id", "status", "n_groups", "k_test", "n_splits", "n_paths",
+                                                  "distribution", "selection_frequency", "pbo", "notes")},
+                         indent=2, default=str))
+    elif a.cmd == "pbo":
+        from backtest import cpcv as CV
+        if bool(a.run_id) == bool(a.matrix):
+            ap.error("pbo needs a run_id or --matrix (one of them)")
+        if a.matrix:
+            mat, labels = CV.load_matrix(a.matrix)
+            out = CV.pbo(mat, a.partitions, a.metric, labels=labels)
+        else:
+            out = CV.pbo_for_run(a.run_id, a.partitions, a.metric)
+        print(json.dumps({k: v for k, v in out.items() if k != "logit_values"}, indent=2, default=str))
     elif a.cmd == "montecarlo":
         print(json.dumps(service.run_montecarlo(a.run_id, a.method, a.sims, a.seed, a.block), indent=2, default=str))
     else:

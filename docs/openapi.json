@@ -349,6 +349,61 @@
     }
    }
   },
+  "/api/backtests/cpcv": {
+   "post": {
+    "summary": "Api Backtest Cpcv",
+    "description": "Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?}\n-- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths.",
+    "operationId": "api_backtest_cpcv_api_backtests_cpcv_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/backtests/{run_id}/pbo": {
+   "post": {
+    "summary": "Api Backtest Pbo",
+    "description": "Body (optional): {partitions? (16), metric? sharpe|mean|total_return} -- the probability of backtest\noverfitting (CSCV) of the run's trials (an optimisation), computed now and stored as a run of kind pbo.",
+    "operationId": "api_backtest_pbo_api_backtests__run_id__pbo_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/backtests/study": {
    "post": {
     "summary": "Api Backtest Study",

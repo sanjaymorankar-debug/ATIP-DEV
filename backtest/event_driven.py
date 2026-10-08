@@ -9,8 +9,8 @@ size -> price impact (EX-12), and orders worked in slices (EX-11 TWAP).
     MarketEvent   one timestamp's bars (a daily session, or a 15-min bar when timeframe='15m')
     SignalEvent   from the strategy after the last bar of each session (same Strategy interface,
                   same point-in-time daily view as the engine -- strategies run unchanged)
-    OrderEvent    sized like the engine (orders.risk.size_position, max_positions); BUY orders
-                  may be split into `slices` TWAP children, one per bar; each order becomes
+    OrderEvent    sized like the engine (orders.risk.size_position, max_positions); BUY and ADD
+                  orders may be split into `slices` TWAP children, one per bar; each order becomes
                   eligible `latency_bars` bars after it is created (default 1: never the signal bar)
     FillEvent     MARKET at the bar open; LIMIT when the bar trades through the limit (at the
                   better of open and limit); STOP when the bar touches the stop (at the worse of open
@@ -23,6 +23,44 @@ Protective exits: each position's stop / target (from the signal or default_stop
 STOP / LIMIT order evaluated on every bar -- intraday bars decide which came first; on daily bars
 a bar covering both counts as the stop (the engine's pessimistic rule). max_hold_sessions closes at
 the next session's first bar.
+
+Partial position changes (PF-06). ADD and REDUCE signals change a HELD position with the W2
+engine's sizing and accounting (backtest/engine.py's module docstring), but through this engine's
+order model: each is a working MARKET order -- eligible latency_bars after the signal, filled at
+most participation_cap x bar volume per bar (the rest keeps working), priced by the impact model
+for that fill's participation, charged by the cost model, cancelled after ttl_bars (an event).
+Within a bar, working orders fill in the order they were created, after the protective exits.
+A run with no ADD / REDUCE signal produces exactly the result it did before they existed.
+
+  ADD     for a symbol not held -> ignored (event). Skipped while a SELL, an ADD, or the BUY that
+          opened the position is still working. Sized at the decision close like the engine:
+          quantity; else value // close; else like a BUY (orders.risk.size_position on equity, the
+          signal's stop or default_stop_pct); then capped so the position (held qty x close + the
+          ADD) stays within sizing.max_position_pct of equity -- a cap or a skip is an event.
+          max_positions does not apply. Split into `slices` TWAP children like a BUY. Each fill:
+          the BUY side of the impact model, the cash check of a BUY (what cash does not cover keeps
+          working; the first shortfall of an order is an event "add cut to n of m shares: cash"),
+          then the position grows: its cost (fills + costs) and reference cost accumulate, so the
+          entry price is the quantity-weighted average; stop, target, entry date and the max-hold
+          clock stay those of the first entry. Rows of a position that was added to carry
+          "adds": n (its ADD fills; metrics "adds" counts them all).
+  REDUCE  for a symbol not held -> ignored (event). Skipped while a SELL or another REDUCE for it
+          is working. Sized at the decision against the quantity held then (the quantity the
+          strategy saw): quantity, else floor(fraction x held) (at least 1), else half the held
+          quantity (at least 1). At its first fill, a REDUCE of the held quantity or more closes
+          the position (event "reduce q >= n held: position closed"). Each fill is a SELL of that
+          many shares, never more than is held: a trade row with the position's pro-rata cost
+          (average entry incl. entry costs, this engine's convention), exit_reason "REDUCE", and
+          "partial": true while shares remain; the fill that empties the position writes an
+          ordinary (not partial) row.
+  EXITS   an exit wins over a change: a SELL signal or a max-hold exit cancels the symbol's working
+          ADD / REDUCE orders (event "... dropped: exit queued"); an ADD / REDUCE whose position
+          was closed (stop / target) or replaced before it fills is dropped (event "... dropped:
+          position no longer held").
+  METRICS as the engine: with partial rows, trade statistics fold a position's rows into one round
+          trip (backtest.engine.fold_round_trips); a run with an ADD or a partial row also carries
+          trade_rows, partial_exits and adds. Every leg is realised once, so the rows' net P&L sums
+          to final equity - initial capital when the run ends flat.
 
 Output has the engine's shape (trades, equity, metrics, drawdowns, events, bias_report), so it is
 stored with backtest.store and shown wherever runs are listed (kind='event_driven').
@@ -71,6 +109,9 @@ class _Order:
     filled: int = 0
     signal: object = None
     exit_kind: str | None = None    # STOP / TARGET for protective orders
+    uid: int = 0                    # ADD / REDUCE: the position they were decided for
+    group: int = 0                  # ADD / REDUCE: shared by an order's TWAP children
+    done: bool = False              # ADD / REDUCE: dropped or cancelled -- leaves the working list
 
 
 @dataclass
@@ -86,6 +127,8 @@ class _Pos:
     target: float | None = None
     max_hold: int | None = None
     reason: str = ""
+    uid: int = 0                    # which position a trade row belongs to (round trips in metrics)
+    adds: int = 0                   # ADD fills into it
 
 
 class _Bars:
@@ -175,14 +218,19 @@ def run(request: dict, conn) -> dict:
     positions: dict = {}
     working: list = []
     trades, events, equity = [], [], []
-    not_simulated = {}                                 # W39: ADD / REDUCE signals this engine does not trade
+    trade_legs = []                                    # (position uid, net, basis) per trade row, unrounded
+    not_simulated = {}                                 # signal sides this engine cannot trade
     oid = itertools.count(1)
+    uids = itertools.count(1)
     seq = itertools.count()
     q: list = []
     last_close = {}
     costs_paid = slip_paid = turnover = realized = 0.0
     session_idx = -1
     fills_n = partial_n = 0
+    partial_rows = adds_n = 0                          # PF-06: partial-exit trade rows, ADD fills
+    cash_noted = set()                                 # ADD order groups whose cash shortfall is an event
+    closes_noted = set()                               # REDUCE orders found to cover the whole position
 
     # the event queue: market events per timestamp, end-of-session markers after each session's last bar
     days = [p[0].date() for p in bars.points]
@@ -194,35 +242,67 @@ def run(request: dict, conn) -> dict:
     def equity_now():
         return cash + sum(p.qty * last_close.get(s, p.cost / max(1, p.qty)) for s, p in positions.items())
 
+    def drop_change(o: _Order, d, text):
+        """An ADD / REDUCE that can no longer fill: it and its TWAP siblings leave the working list."""
+        for w in working:
+            if w.group == o.group and w.side == o.side:
+                w.done = True
+        o.done = True
+        events.append({"date": d, "symbol": o.symbol, "event": text})
+
+    def cancel_changes(symbol, d):
+        """An exit wins over a change: cancel the symbol's working ADD / REDUCE orders."""
+        for w in working:
+            if w.symbol == symbol and w.side in ("ADD", "REDUCE") and not w.done:
+                drop_change(w, d, f"{w.side.lower()} dropped: exit queued")
+
     def fill(o: _Order, bar, i, d):
-        nonlocal cash, costs_paid, slip_paid, turnover, realized, fills_n, partial_n
+        nonlocal cash, costs_paid, slip_paid, turnover, realized, fills_n, partial_n, partial_rows, adds_n
+        side = "SELL" if o.side in ("SELL", "REDUCE") else "BUY"     # ADD buys, REDUCE sells
         # reference price for this order type on this bar
         if o.otype == "MARKET":
             ref = bar.open
         elif o.otype == "LIMIT":
-            hit = bar.low <= o.price if o.side == "BUY" else bar.high >= o.price
+            hit = bar.low <= o.price if side == "BUY" else bar.high >= o.price
             if not hit:
                 return
-            ref = min(bar.open, o.price) if o.side == "BUY" else max(bar.open, o.price)
+            ref = min(bar.open, o.price) if side == "BUY" else max(bar.open, o.price)
         else:  # STOP
-            hit = bar.high >= o.price if o.side == "BUY" else bar.low <= o.price
+            hit = bar.high >= o.price if side == "BUY" else bar.low <= o.price
             if not hit:
                 return
-            ref = max(bar.open, o.price) if o.side == "BUY" else min(bar.open, o.price)
+            ref = max(bar.open, o.price) if side == "BUY" else min(bar.open, o.price)
+        held = None
+        if o.side in ("ADD", "REDUCE"):         # a change of the position it was decided for, or nothing
+            held = positions.get(o.symbol)
+            if not held or held.uid != o.uid:
+                drop_change(o, d, f"{o.side.lower()} dropped: position no longer held")
+                return
+            if o.side == "REDUCE" and not o.filled and o.qty >= held.qty and o.group not in closes_noted:
+                closes_noted.add(o.group)       # at its first fill: once, even if that bar has no volume
+                events.append({"date": d, "symbol": o.symbol,
+                               "event": f"reduce {o.qty} >= {held.qty} held: position closed"})
+                o.qty = held.qty
         want = o.qty - o.filled
+        if o.side == "REDUCE":
+            want = min(want, held.qty)          # never more than is held
         room = int(cap * bar.volume) if bar.volume else want
         qty = min(want, room)
-        if o.side == "BUY":
+        if side == "BUY":
             px0, _ = impact(o.symbol, "BUY", qty, ref, d)
             afford = int(cash // (px0 * 1.002)) if px0 > 0 else 0
+            if o.side == "ADD" and afford < qty and o.group not in cash_noted:
+                cash_noted.add(o.group)
+                events.append({"date": d, "symbol": o.symbol,
+                               "event": f"add cut to {max(0, afford)} of {qty} shares: cash"})
             qty = min(qty, afford)
         if qty < 1:
             if room < 1:
                 events.append({"date": d, "symbol": o.symbol, "event": f"{o.side} no fill: bar volume {bar.volume}"})
             return
-        px, bps = impact(o.symbol, o.side, qty, ref, d)
+        px, bps = impact(o.symbol, side, qty, ref, d)
         value = qty * px
-        ch = costs.total(o.side, value)
+        ch = costs.total(side, value)
         costs_paid += ch
         slip_paid += abs(px - ref) * qty
         turnover += value
@@ -230,10 +310,17 @@ def run(request: dict, conn) -> dict:
         fills_n += 1
         if o.filled < o.qty:
             partial_n += 1
-        if o.side == "BUY":
+        if side == "BUY":
             cash -= value + ch
+            if o.side == "ADD":                 # weighted-average entry; stop / target / clock unchanged
+                held.qty += qty
+                held.cost += value + ch
+                held.ref_cost += qty * ref
+                held.adds += 1
+                adds_n += 1
+                return
             p = positions.get(o.symbol) or _Pos(o.symbol, entry_date=d, entry_idx=i, entry_session=session_idx,
-                                                reason=o.reason)
+                                                reason=o.reason, uid=next(uids))
             p.qty += qty
             p.cost += value + ch
             p.ref_cost += qty * ref
@@ -252,19 +339,28 @@ def run(request: dict, conn) -> dict:
             cash += proceeds
             net = proceeds - basis
             realized += net
-            trades.append({"symbol": o.symbol, "entry_date": p.entry_date, "entry_price": round(basis / qty, 4),
-                           "entry_ref_price": round(p.ref_cost / p.qty, 4), "qty": qty, "exit_date": d,
-                           "exit_price": round(px, 4), "exit_ref_price": round(ref, 4),
-                           "exit_reason": o.exit_kind or o.reason or "SELL_SIGNAL", "gross_pnl": round(qty * px - basis, 2),
-                           "costs": round(ch, 2), "net_pnl": round(net, 2),
-                           "return_pct": round(net / basis * 100, 4) if basis else None,
-                           "holding_sessions": session_idx - p.entry_session, "entry_reason": p.reason,
-                           "impact_bps": round(bps, 2)})
+            row = {"symbol": o.symbol, "entry_date": p.entry_date, "entry_price": round(basis / qty, 4),
+                   "entry_ref_price": round(p.ref_cost / p.qty, 4), "qty": qty, "exit_date": d,
+                   "exit_price": round(px, 4), "exit_ref_price": round(ref, 4),
+                   "exit_reason": o.exit_kind or o.reason or "SELL_SIGNAL", "gross_pnl": round(qty * px - basis, 2),
+                   "costs": round(ch, 2), "net_pnl": round(net, 2),
+                   "return_pct": round(net / basis * 100, 4) if basis else None,
+                   "holding_sessions": session_idx - p.entry_session, "entry_reason": p.reason,
+                   "impact_bps": round(bps, 2)}
+            if p.adds:
+                row["adds"] = p.adds
+            if o.side == "REDUCE" and qty < p.qty:
+                row["partial"] = True
+                partial_rows += 1
+            trades.append(row)
+            trade_legs.append((p.uid, net, basis))
             p.cost -= basis
             p.ref_cost -= p.ref_cost * qty / p.qty
             p.qty -= qty
             if p.qty == 0:
                 del positions[o.symbol]
+                if o.side == "REDUCE":
+                    o.done = True               # the position is gone: nothing left to reduce
 
     while q:
         ev = heapq.heappop(q)
@@ -276,6 +372,7 @@ def run(request: dict, conn) -> dict:
                 session_idx += 1
                 for s, p in list(positions.items()):           # max hold: out at the session's first bar
                     if p.max_hold and session_idx - p.entry_session >= p.max_hold:
+                        cancel_changes(s, d)
                         working.append(_Order(next(oid), s, "SELL", p.qty, eligible_idx=i, reason="MAX_HOLD"))
             # protective exits first (they rest at the broker), then working orders
             for s, p in list(positions.items()):
@@ -292,9 +389,9 @@ def run(request: dict, conn) -> dict:
             still = []
             for o in working:
                 bar = row.get(o.symbol)
-                if o.eligible_idx <= i and bar:
+                if o.eligible_idx <= i and bar and not o.done:
                     fill(o, bar, i, d)
-                if o.filled >= o.qty:
+                if o.done or o.filled >= o.qty:
                     continue
                 if i >= o.expire_idx:
                     events.append({"date": d, "symbol": o.symbol, "event": f"{o.side} {o.qty - o.filled} unfilled, "
@@ -323,16 +420,81 @@ def run(request: dict, conn) -> dict:
             signals = strat.on_bar(ctx) or []
             pending_buys = {o.symbol for o in working if o.side == "BUY"}
             pending_sells = {o.symbol for o in working if o.side == "SELL"}
+            pending_changes = {(o.side, o.symbol) for o in working if o.side in ("ADD", "REDUCE") and not o.done}
             for sig in signals:
                 if sig.symbol not in universe.symbols:
                     continue
-                if sig.side in ("ADD", "REDUCE"):           # W39: PF-06 partial changes are W2-engine only
+                if sig.side not in ("BUY", "SELL", "ADD", "REDUCE"):
                     events.append({"date": d, "symbol": sig.symbol,
                                    "event": f"{sig.side} not simulated by the event-driven engine"})
                     not_simulated[sig.side] = not_simulated.get(sig.side, 0) + 1
                     continue
+                if sig.side in ("ADD", "REDUCE"):           # PF-06: a change of a held position
+                    p = positions.get(sig.symbol)
+                    if not p:
+                        events.append({"date": d, "symbol": sig.symbol,
+                                       "event": f"{sig.side.lower()} ignored: {sig.symbol} is not held"})
+                        continue
+                    if sig.symbol in pending_sells or (sig.side, sig.symbol) in pending_changes or (
+                            sig.side == "ADD" and sig.symbol in pending_buys):
+                        continue                    # an exit, the same change, or the entry is still working
+                    e0 = i + max(1, lat)
+                    if sig.side == "REDUCE":        # sized against what is held at the decision
+                        if sig.quantity is not None:
+                            qr = int(sig.quantity)
+                        elif sig.fraction is not None:
+                            qr = max(1, int(p.qty * float(sig.fraction) + 1e-9))
+                        else:
+                            qr = max(1, p.qty // 2)
+                        k0 = next(oid)
+                        working.append(_Order(k0, sig.symbol, "REDUCE", qr, eligible_idx=e0, expire_idx=e0 + ttl,
+                                              reason="REDUCE", signal=sig, uid=p.uid, group=k0))
+                        pending_changes.add(("REDUCE", sig.symbol))
+                        continue
+                    bar = history.bar(sig.symbol, d)
+                    if not bar:
+                        events.append({"date": d, "symbol": sig.symbol, "event": "add skipped: no bar at signal"})
+                        continue
+                    if sig.quantity is not None:
+                        total = int(sig.quantity)
+                    elif sig.value is not None:
+                        total = int(float(sig.value) // bar.close)
+                    else:
+                        stop = sig.stop_price if sig.stop_price is not None else \
+                            bar.close * (1 - sizing["default_stop_pct"] / 100)
+                        sz = size_position(bar.close, stop, capital=eq, risk_per_trade_pct=sizing["risk_per_trade_pct"],
+                                           max_position_pct=sizing["max_position_pct"])
+                        total = int(sz["quantity"])
+                        if total < 1:
+                            events.append({"date": d, "symbol": sig.symbol, "event": f"add skipped: {sz['reason']}"})
+                            continue
+                    room = int((eq * sizing["max_position_pct"] / 100 - p.qty * bar.close) // bar.close)
+                    if total > room:
+                        cap_note = f"max_position_pct ({sizing['max_position_pct']}% of equity)"
+                        if room < 1:
+                            events.append({"date": d, "symbol": sig.symbol,
+                                           "event": f"add skipped: position at {cap_note}"})
+                            continue
+                        events.append({"date": d, "symbol": sig.symbol,
+                                       "event": f"add capped to {room} of {total} shares: {cap_note}"})
+                        total = room
+                    if total < 1:
+                        events.append({"date": d, "symbol": sig.symbol, "event": "add skipped: less than one share"})
+                        continue
+                    n = min(slices, total)
+                    base = total // n
+                    k0 = None
+                    for k in range(n):              # TWAP children, as for a BUY
+                        qk = base + (1 if k < total - base * n else 0)
+                        ok = next(oid)
+                        k0 = k0 or ok
+                        working.append(_Order(ok, sig.symbol, "ADD", qk, eligible_idx=e0 + k, expire_idx=e0 + k + ttl,
+                                              reason="ADD", signal=sig, uid=p.uid, group=k0))
+                    pending_changes.add(("ADD", sig.symbol))
+                    continue
                 if sig.side == "SELL":
                     if sig.symbol in positions and sig.symbol not in pending_sells:
+                        cancel_changes(sig.symbol, d)
                         working.append(_Order(next(oid), sig.symbol, "SELL", positions[sig.symbol].qty,
                                               eligible_idx=i + max(1, lat), expire_idx=i + max(1, lat) + ttl,
                                               reason="SELL_SIGNAL"))
@@ -372,29 +534,39 @@ def run(request: dict, conn) -> dict:
             cash += p.qty * px - ch
             realized += net
             costs_paid += ch
-            trades.append({"symbol": s, "entry_date": p.entry_date, "entry_price": round(p.cost / p.qty, 4),
-                           "entry_ref_price": round(p.ref_cost / p.qty, 4), "qty": p.qty, "exit_date": last_d,
-                           "exit_price": round(px, 4), "exit_ref_price": round(px, 4), "exit_reason": "END_OF_WINDOW",
-                           "gross_pnl": round(p.qty * px - p.cost, 2), "costs": round(ch, 2), "net_pnl": round(net, 2),
-                           "return_pct": round(net / p.cost * 100, 4) if p.cost else None,
-                           "holding_sessions": session_idx - p.entry_session, "entry_reason": p.reason})
+            row = {"symbol": s, "entry_date": p.entry_date, "entry_price": round(p.cost / p.qty, 4),
+                   "entry_ref_price": round(p.ref_cost / p.qty, 4), "qty": p.qty, "exit_date": last_d,
+                   "exit_price": round(px, 4), "exit_ref_price": round(px, 4), "exit_reason": "END_OF_WINDOW",
+                   "gross_pnl": round(p.qty * px - p.cost, 2), "costs": round(ch, 2), "net_pnl": round(net, 2),
+                   "return_pct": round(net / p.cost * 100, 4) if p.cost else None,
+                   "holding_sessions": session_idx - p.entry_session, "entry_reason": p.reason}
+            if p.adds:
+                row["adds"] = p.adds
+            trades.append(row)
+            trade_legs.append((p.uid, net, p.cost))
         positions.clear()
         equity[-1].update({"cash": round(cash, 2), "positions_value": 0.0, "equity": round(cash, 2), "exposure_pct": 0.0,
                            "n_positions": 0, "realized_cum": round(realized, 2), "unrealized": 0.0})
     for o in working:
-        events.append({"date": last_d, "symbol": o.symbol, "event": f"{o.side} {o.qty - o.filled} unfilled at end"})
+        if not o.done:
+            events.append({"date": last_d, "symbol": o.symbol, "event": f"{o.side} {o.qty - o.filled} unfilled at end"})
 
     eqs = [p["equity"] for p in equity]
     dts = [p["date"] for p in equity]
     for p, (peak, dd) in zip(equity, M.drawdown_series(eqs)):
         p["peak_equity"], p["drawdown_pct"] = round(peak, 2), round(dd * 100, 4)
     rf = float(snap.get("risk_free_rate_pct") or 0) / 100
-    metrics = M.summarize(dts, eqs, [t["net_pnl"] for t in trades],
-                          [t["return_pct"] for t in trades if t["return_pct"] is not None],
-                          rf_annual=rf, exposure=[p["exposure_pct"] or 0 for p in equity])
+    pnls = [t["net_pnl"] for t in trades]
+    rets = [t["return_pct"] for t in trades if t["return_pct"] is not None]
+    if partial_rows:                                   # PF-06: statistics per closed position (round trip)
+        from backtest.engine import fold_round_trips
+        pnls, rets = fold_round_trips(trades, trade_legs, {p.uid for p in positions.values()})
+    metrics = M.summarize(dts, eqs, pnls, rets, rf_annual=rf, exposure=[p["exposure_pct"] or 0 for p in equity])
     metrics.update({"costs_paid": round(costs_paid, 2), "slippage_paid": round(slip_paid, 2),
                     "turnover": round(turnover, 2), "fills": fills_n, "partial_fills": partial_n,
                     "events": len(events), "open_positions_at_end": len(positions)})
+    if partial_rows or adds_n:
+        metrics.update({"trade_rows": len(trades), "partial_exits": partial_rows, "adds": adds_n})
     bias = {
         "engine": "event_driven (BT-17)",
         "entry_timing": f"signals at the session close; orders eligible {max(1, lat)} bar(s) later; never on the "
@@ -406,8 +578,8 @@ def run(request: dict, conn) -> dict:
         "warnings": (["intraday bars: only sessions stored in intraday_bars (DP-03 retention) are simulated"]
                      if ed["timeframe"] != "1d" else [])
                     + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else [])
-                    + ([f"partial position changes not simulated by the event-driven engine: "
-                        f"{', '.join(f'{k} x{n}' for k, n in sorted(not_simulated.items()))} (the W2 engine trades them)"]
+                    + ([f"signals not simulated by the event-driven engine: "
+                        f"{', '.join(f'{k} x{n}' for k, n in sorted(not_simulated.items()))}"]
                        if not_simulated else []),
     }
     snap_out = dict(snap, event_driven=ed)
