@@ -1588,7 +1588,9 @@ def _w39_nifty_history():
 
 
 def _w39_technical_signals():
-    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert."""
+    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert.
+    The snapshot's 75-minute rating is built here from the day's stored 15-minute bars: after the close all
+    five 75-minute bars are complete and the agreement compares it with the same session's daily rating."""
     if not is_market_day():
         return
     try:
@@ -1599,8 +1601,8 @@ def _w39_technical_signals():
 
 
 def _w39_saved_screens():
-    """Store the day's fundamental scorecards, then re-run the saved screens after the research reports;
-    alert on new matches."""
+    """Store the day's fundamental scorecards (with the DVM scores and zone), then re-run the saved screens
+    after the research reports; alert on new matches."""
     if not is_market_day():
         return
     try:

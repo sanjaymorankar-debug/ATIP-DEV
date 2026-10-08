@@ -1,6 +1,6 @@
 """
-W39 pages: /research (equity research reports with the fundamental scorecard, ratings, hit rate and
-the scorecard's record, 7-year history coverage),
+W39 pages: /research (equity research reports with the fundamental scorecard and the DVM view, ratings,
+hit rate and the scorecard's record, 7-year history coverage),
 /screener (fundamental + technical stock screener with presets and saved screens), /signals
 (end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, the
 event calendar, FII flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
@@ -10,6 +10,8 @@ places an order.
 Payoff chart colours: categorical slots 1 and 2 of the dataviz reference palette, dark steps
 (#3987e5 expiry, #d95926 target date), validated on the panel surface #1e293b (contrast and
 CVD separation pass); the target-date line is also dashed, so identity never rests on colour.
+DVM meters (/research): one series, slot 1 #3987e5 on a track of the same ramp's darker step (#184f95), the
+low / high thresholds marked in muted ink, and the score always printed beside the bar.
 """
 
 import json
@@ -34,6 +36,9 @@ ul.b{margin:4px 0 0 18px}ul.b li{margin:3px 0}.two{display:grid;grid-template-co
 .ax.fl{display:flex;align-items:center;justify-content:center}
 .ck{margin-top:5px;font-size:12px;line-height:1.35}.ck .d{color:var(--muted);font-size:11.5px;margin-left:16px}
 .ck i{font-style:normal;display:inline-block;width:14px;font-weight:700}
+.dvm .v{font-size:20px;font-weight:600}.meter{position:relative;height:8px;background:#184f95;border-radius:4px;margin:6px 0 4px}
+.meter>span{display:block;height:100%;background:#3987e5;border-radius:4px}
+.meter>i{position:absolute;top:-3px;width:2px;height:14px;background:var(--muted)}.ck .s{display:inline-block;min-width:28px;font-weight:600}
 #tip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
  font-size:12px;display:none;z-index:9}
 """
@@ -83,7 +88,19 @@ const li=xs=>xs&&xs.length?`<ul class="b">${xs.map(x=>`<li>${esc(x)}</li>`).join
 async function load(rebuild){const s=document.getElementById('sym').value.trim().toUpperCase();if(!s)return;const el=document.getElementById('rep');el.innerHTML='<div class="card muted">Loading…</div>';
  try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 async function scard(s){const el=document.getElementById('scd');if(!el)return;
- try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}}
+ try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}
+ const dv=document.getElementById('dvd');if(!dv)return;
+ try{dv.innerHTML=dvmcard(await j(`/api/research/dvm/${encodeURIComponent(s)}`))}catch(e){dv.innerHTML=`<div class="card muted">No DVM view: ${esc(e.message)}</div>`}}
+const ZCLS={STRONG_PERFORMER:'BUY',VALUE_UNDER_RADAR:'ADD',EXPENSIVE_PERFORMER:'ADD',MID_RANGE:'NOT_RATED',WEAK:'REDUCE',VALUE_TRAP:'SELL',MOMENTUM_TRAP:'SELL'};
+function dvmcard(d){const lv=d.levels||{high:55,low:35};
+ const ax=a=>`<div class="ax dvm"><b>${esc(a.label)}</b> <span class="v">${a.score==null?'—':n(a.score,0)}</span><span class="muted"> / 100${a.level?' · '+stl(a.level):''}</span>
+ <div class="meter" role="img" aria-label="${esc(a.label)} ${a.score==null?'unknown':n(a.score,0)+' of 100'}" title="${esc(a.label)}: ${a.score==null?'unknown':n(a.score,0)} (low below ${lv.low}, high ${lv.high}+)"><span style="width:${a.score==null?0:Math.max(0,Math.min(100,a.score))}%"></span><i style="left:${lv.low}%"></i><i style="left:${lv.high}%"></i></div>
+ <div class="muted" style="font-size:11.5px">${esc(a.basis)}</div>
+ ${a.components.map(c=>`<div class="ck"><span class="s">${c.score==null?'·':n(c.score,0)}</span>${esc(c.label)} <span class="muted">${c.score==null?'(no data)':'× '+n(c.weight*100,0)+'%'}</span><div class="d">${esc(c.detail)}</div></div>`).join('')}</div>`;
+ const z=d.zone;
+ return `<div class="card"><h3>DVM view: ${z?`<span class="pill ${ZCLS[z.key]||'NOT_RATED'}">${esc(z.label)}</span> <span class="muted">${esc(z.reading)}</span>`:`<span class="muted">${esc(d.note||'no zone')}</span>`}</h3>
+ <div class="muted">Durability, valuation and momentum, 0–100 each (Trendlyne-style): durability from the scorecard's financial-health and past-performance checks, valuation from the research model's fair value and the P/E against the industry (P/B for financials; high = cheap), momentum from the daily technical rating and the RS rating. High is ${lv.high}+, low below ${lv.low} (the two marks on each bar).${z?` Zone rule: ${esc(z.rule)}.`:''} A description, not advice: the zones have no track record yet.</div>
+ <div class="axes">${d.axes.map(ax).join('')}</div></div>`}
 const AXN={value:'Value',growth:'Growth',past:'Past',health:'Health',dividend:'Dividend'};
 function flake(axes){const cx=160,cy=118,R=80,ang=i=>(-90+72*i)*Math.PI/180,pt=(i,r)=>[cx+r*Math.cos(ang(i)),cy+r*Math.sin(ang(i))];
  const ring=k=>axes.map((_,i)=>pt(i,R*k/6).map(v=>v.toFixed(1)).join(',')).join(' ');
@@ -109,7 +126,7 @@ function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.
  <div class="grid"><div class="stat"><div class="k">Price</div><div class="v">${rs(r.price)}</div></div><div class="stat"><div class="k">12-month target</div><div class="v">${rs(r.target_price)}</div></div>
  <div class="stat"><div class="k">Upside</div><div class="v">${pct(r.upside_pct)}</div></div><div class="stat"><div class="k">Fair value</div><div class="v">${rs(r.fair_value)}</div></div>
  <div class="stat"><div class="k">Uncertainty</div><div class="v">${esc((r.uncertainty||'—').replace('_',' '))}</div></div><div class="stat"><div class="k">Moat proxy / quality</div><div class="v">${esc(q.moat_proxy||'—')} / ${n(q.quality_score,0)}</div></div></div></div>
- <div id="scd"><div class="card muted">Loading the scorecard…</div></div>
+ <div id="scd"><div class="card muted">Loading the scorecard…</div></div><div id="dvd"></div>
  <div class="two"><div class="card"><h3>Investment thesis</h3>${li(r.thesis)}</div><div class="card"><h3>Risks</h3>${li(r.risks)}</div></div>
  <div class="card"><h3>Catalysts</h3>${li(r.catalysts)}</div>
  <div class="two"><div class="card"><h3>Valuation methods (cost of equity ${v.cost_of_equity_pct}%)</h3>${table(['Method','Value','Weight','Basis'],meth)}</div>

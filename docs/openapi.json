@@ -6538,6 +6538,43 @@
     }
    }
   },
+  "/api/research/dvm/{symbol}": {
+   "get": {
+    "summary": "Api Dvm",
+    "operationId": "api_dvm_api_research_dvm__symbol__get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/research/equity/run": {
    "post": {
     "summary": "Api Research Run",

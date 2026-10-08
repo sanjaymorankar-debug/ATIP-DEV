@@ -16,6 +16,7 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/research/hit-rate                      closed calls by rating
     GET  /api/research/scorecard/{symbol}            the fundamental scorecard: 5 axes x 6 checks, each with its numbers
     GET  /api/research/scorecard-record?horizon=60   return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed
+    GET  /api/research/dvm/{symbol}                  durability / valuation / momentum 0-100, the zone, every input
     GET  /api/data/history/coverage                  how much of the universe reaches back 7 years
     POST /api/data/history/backfill                  {symbols?, max?, years?} one budgeted backfill pass
     GET  /screener                                   the stock screener page (fundamental + technical)
@@ -148,6 +149,17 @@ def register(app, guard, Req, get_connection, json_safe):
             if sc is None:
                 raise LookupError(f"no fundamentals stored for {s}")
             return sc
+        return await run(f)
+
+    @app.get("/api/research/dvm/{symbol}")
+    async def api_dvm(symbol: str):
+        def f(conn):
+            from research.dvm import for_symbol
+            s = _sym(symbol)
+            x = for_symbol(conn, s)
+            if x is None:
+                raise LookupError(f"{s} is not in the screener snapshot (no price, fundamentals or technical snapshot)")
+            return x
         return await run(f)
 
     @app.post("/api/research/equity/run", dependencies=guard)
