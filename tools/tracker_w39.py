@@ -305,9 +305,9 @@ NEW_ROWS += [
          owner="Claude (development), PR #4",
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
                "DEPLOYED; independent validation PENDING"),
-    _row('W39-PATTERNS', 'Technical Analysis', 'Chart patterns from swing pivots (CP-01..03)', 'Darvas box, VCP, double bottom, ascending triangle, head and shoulders', SRC4, "P1", IMPL, 85,
-         'research/patterns.py: patterns as scans with levels, screener setups, alerts held until a positive 30-signal record',
-         'Rule-based approximations; no inverse H&S, descending triangles, channels or wedges yet', 'research/patterns.py', 'tests/test_w39_patterns.py',
+    _row('W39-PATTERNS', 'Technical Analysis', 'Chart patterns from swing pivots (CP-01..04) and marks on the stock chart', 'Darvas box, VCP, double bottom, ascending triangle, head and shoulders; W39b: inverse H&S, descending triangle, channels, wedges, chart marks', SRC4, "P1", IMPL, 85,
+         'research/patterns.py: patterns as scans with levels, screener setups, alerts held until a positive 30-signal record. W39b (CP-04): inverse head and shoulders, descending triangle, rising / falling channels (breakout and breakdown each), rising / falling wedges -- 14 pattern scans, each calibrated at 0.02-0.1 % of stock-days on random walks; the stock chart (/api/stock/{symbol}/history chart_marks) marks signals, pattern breakouts, candle patterns and the lines of the patterns in place, on daily / weekly / monthly bars, with a toggle',
+         'Rule-based approximations; independent QA; each new scan needs 30 closed signals before its alerts start', 'research/patterns.py; dashboard/stock_view.py', 'tests/test_w39_patterns.py; tests/test_w39b_patterns_more.py',
          owner="Claude (development), PR #4",
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
                "DEPLOYED; independent validation PENDING"),
@@ -484,8 +484,31 @@ UPDATES = {
     "ENT-07": {"Blocker / Input Required": "Owner decision: how ATIP is exposed to the internet (Cloudflare Tunnel / "
                "Tailscale / VPS reverse proxy), the domain and TLS"},
     "ENT-08": {"Blocker / Input Required": "Depends on ENT-07 (no exposure decided)"},
-    "ENT-04": {"Status": "BLOCKED", "Blocker / Input Required": "Owner decision: payment gateway (Razorpay / Stripe / "
-               "Cashfree) and its merchant credentials"},
+    "ENT-04": {"Status": "BLOCKED", "Completion %": "90",
+               "Current Implementation": "Plans, subscriptions, invoices DRAFT/OPEN/PAID, provider interface "
+               "(sandbox/noop), dunning + grace, payment webhook consumer. W39b (gateway decision delegated: "
+               "Razorpay -- UPI / cards / netbanking, native Subscriptions): enterprise/razorpay.py on the existing "
+               "payments interface -- REST v1 invoices with idempotent receipts, customers, plans, autopay "
+               "subscriptions, cancel; signed webhook mapping onto invoices, payments, refunds, dunning and grace "
+               "(out-of-order safe, money once per Razorpay id); reconcile() polling so payments settle without a "
+               "public webhook; keys only from the vault; live keys refused without billing.razorpay.allow_live "
+               "and the production environment",
+               "Next Action / Missing Work": "Owner: run the flows in Razorpay test mode (docs/BILLING_RAZORPAY.md); "
+               "GST tax lines are not built (ENT-14 PAYMENTS-TAX)",
+               "Key Files": "enterprise/payments.py; enterprise/razorpay.py; enterprise/billing.py; enterprise/w32.py; "
+                            "db/schema_billing.py",
+               "Evidence": "tests/test_w39b_razorpay.py (26 tests on recorded Razorpay v1 response shapes)",
+               "Blocker / Input Required": "Owner: a KYC-activated Razorpay business account with Invoices and "
+               "Subscriptions enabled; store RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / WEBHOOK_SECRET_RAZORPAY with "
+               "python -m ops vault-set; registering the webhook URL needs ENT-07 (public HTTPS)"},
+    "API-04": {"Current Implementation": "Signed inbound/outbound webhooks + W32 business consumers (payments, "
+               "broker order.update), event status PROCESSED/IGNORED/FAILED. W39b: the Razorpay provider payloads "
+               "are mapped (POST /api/webhooks/razorpay: X-Razorpay-Signature HMAC-SHA256 of the raw body, event-id "
+               "and body-digest dedupe, 72 h replay bound, REJECTED rows for bad signatures)",
+               "Next Action / Missing Work": "Independent QA; verify against real Razorpay test-mode deliveries "
+               "once ENT-07 gives ATIP a public URL; a broker postback mapping when a broker offers one",
+               "Key Files": "enterprise/w32.py; enterprise/razorpay.py; ops/webhooks.py; dashboard/ops_routes.py",
+               "Evidence": "tests/test_w39b_razorpay.py"},
     "ENT-14": {"Status": "BLOCKED", "Blocker / Input Required": "Legal: a qualified professional must review and "
                "sign off each register item (SEBI RA / IA applicability)"},
     "ENT-16": {"Status": "BLOCKED", "Next Action / Missing Work": "DBS-05 (PostgreSQL path) and OPS-04 (container "

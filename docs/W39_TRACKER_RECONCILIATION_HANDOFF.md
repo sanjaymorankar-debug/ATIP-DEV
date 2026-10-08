@@ -2,7 +2,7 @@
 
 **Branch:** `claude/wizardly-curie-fbjeoa` (draft PR sanjaymorankar-debug/ATIP-DEV#5), based on master `1732829`.
 
-**Date:** 2026-10-07
+**Date:** 2026-10-07 (rounds 1–2), 2026-10-08 (merge with #4, round 3)
 
 **Status:** developed, with automated tests; independent QA (ChatGPT) and owner UAT are pending. Not deployed.
 
@@ -174,22 +174,77 @@ An audit found none of the 14 requirements missing outright, but most were only 
   - The API-key 429 lacked a `request_id`.
   - Two resources returned JSON as text. Decoded `metrics` / `formats` fields are now added beside it.
 
-**Recorded for the owner (QR-11).** The sensitivity check ignores a neighbouring parameter value with too few trades. So a strategy that stops trading one step away is not flagged as a knife edge. This is a methodology call.
+**QR-11 (sensitivity).** The sensitivity check used to ignore a neighbouring parameter value with too few trades, so a strategy that stops trading one step away was not flagged. That is now reported as a thin edge (decision below).
+
+## Batch 6 — round 3: decisions taken, analysis tools, billing, packaging (2026-10-08)
+
+### Decisions taken (owner instruction: take the decisions, report them here)
+
+| Item | Decision | How to reverse |
+|---|---|---|
+| EX-17 aggressive exit | `aggressive_enabled=false` stops **new** entries in `strategy.live`. Open positions keep being managed (stops, targets, trails), so switching it off never strands a position. A CRI-spike exit was added and ships **off** (`cri_exit_threshold: null`). Exits stay on the existing broker path, which already runs the pretrade checks (price band, circuit limits). | One config key each |
+| QR-11 thin neighbours | A neighbour with no metric (too few trades, or a failed run) is reported in `thin_neighbours` / `thin_edges`, **not** as a knife edge. `robust_share` keeps its meaning. | Report-only; nothing gates on it |
+| ENT-04 gateway | **Razorpay**: UPI, cards and netbanking, with native Subscriptions. Built against Razorpay's documented API. Inert until the keys are stored. | `billing.provider` back to `sandbox` |
+| MF analytics | Read-only analytics on stored AMFI NAVs. MFs stay out of the wealth ledger (owner Scope Exclusions). | — |
+| ENT-12 tax report | Not built (owner Scope Exclusions: tax). | — |
+| PEAD horizon | 60 sessions (the drift window), and no minimum confluence for its alert. Alerts are held until 30 closed signals with positive expectancy. | Parameters in `research/tech_signals.py` |
+
+### Built
+
+| Area | What | Tests |
+|---|---|---|
+| EX-17 | The flag gates entries; `cri_exit_threshold` closes the remaining quantity with `MARKET_RISK_EXIT` | `tests/test_strategy_live.py` (4 new) |
+| QR-11 | Thin edges in the sensitivity summary, the study and the CLI | `tests/test_w39_qa_suite.py` |
+| W39B-TF75 | 75-minute rating from stored 15-minute bars (completed bars only, 7 sessions needed, never a stale session) and its agreement with the daily rating; 20:30 run; screener preset | `tests/test_w39b_tf75.py` (47) |
+| W39B-DVM | Durability / valuation / momentum 0–100 with every input explained, and 7 zones; stored nightly; `/api/research/dvm/{symbol}`; card on /research; 3 presets | `tests/test_w39b_dvm.py` (40) |
+| W39B-PEAD | SUE and revenue SUE, point in time from the NSE broadcast; EPS-trend proxy; `pead_bull` / `pead_bear` scans; 20:35 job; `/api/research/earnings-surprise/{symbol}` | `tests/test_w39b_earnings_surprise.py` (18) |
+| W39-DEPTH20 (OF-01..03) | Order-flow imbalance from the 20-level feed (Cont–Kukanov–Stoikov, best level and multi-level) and its validation. Off unless `depth20.enabled`. | `tests/test_w39b_ofi.py` (19) |
+| W39B-MFA | Mutual fund returns, rolling returns, risk, drawdowns, benchmark stats, SIP / lump-sum XIRR, category rank, compare | `tests/test_w39b_mf_analytics.py` (19) |
+| W39-PATTERNS (CP-04) | Inverse H&S, descending triangle, channels and wedges as scans, calibrated on random walks; signals, patterns and their lines drawn on the stock chart | `tests/test_w39b_patterns_more.py` (19) |
+| BT-14 | CPCV paths (purge + embargo, C(N−1,k−1) paths) and PBO by CSCV; CLI and two routes | `tests/test_w39b_cpcv_pbo.py` (28) |
+| BT-17 / PF-06 | The event-driven engine trades ADD / REDUCE through its order model | `tests/test_w39_backtest_partial.py` |
+| ENT-04 / API-04 | Razorpay provider, signed webhook mapping, reconcile polling, live mode refused without the explicit switch and production | `tests/test_w39b_razorpay.py` (26); `docs/BILLING_RAZORPAY.md` |
+| OPS-04 | The image is built and smoke-tested in CI (`.github/workflows/docker.yml`): health, uid, IST, no state or secrets in the image, live gate closed | CI `docker` job |
+| Deploy | `deploy/deploy_release.sh` / `deploy/rollback_release.sh` for the Mac, exercised on Linux (deploy, code rollback, rollback with database restore) | `docs/W39B_DEPLOY_RUNBOOK.md` |
+
+### Bugs fixed
+
+- **Event-driven SELLs (BT-17, already in the engine).**
+  - A SELL with nothing left to sell was charged costs, turnover and a fill. This happened when a max-hold exit was queued on the bar a stop fired.
+  - A SELL larger than the holding was charged on its full size.
+  - A slow max-hold exit was queued again every session.
+  - One pinned result changed: one exit's costs went from 59.26 to 45.04, and a later buy got one more share. It is re-pinned with that explanation.
+- **Container image.** Local agent worktrees (`.claude/`, 75 MB) were copied into the image. They are now excluded, and CI checks it.
+
+### Limits stated by the builders
+
+- **75-minute rating:** computed once a day, as of the close. There is no live intraday refresh.
+- **DVM and PEAD:** the weights and thresholds are ATIP's definitions, not backtested. Record whether they pay before using them.
+- **PEAD:** needs 9+ quarters of NSE XBRL history, and uses ATIP's own history, not consensus estimates.
+- **OFI:** not verified against live Dhan frames (no Data API access here).
+- **Razorpay:**
+  - Tested on recorded response shapes only.
+  - Check these in test mode: the `receipt` / `subscription_id` invoice filters, the cancel-at-cycle-end response, and that autopay charges carry the invoice id.
+  - GST tax lines are not built.
+- **CPCV:** runs on the W2 engine only. The stochastic-dominance test is not implemented.
 
 ## Blocked (needs the owner) — the work moved on
 
 | ID | Exact input required |
 |---|---|
-| EX-17 aggressive exit | (1) Should `aggressive_enabled=false` stop `strategy.live --manage`? Nothing reads the flag today. (2) Add a CRI-spike exit (which threshold?) and route it through the W4 risk engine? |
 | EX-19 broker GTT / forever orders | Authorization for LIVE broker order placement, and the Dhan forever-order API enabled on the account. |
 | BR-08 sandbox | A Dhan-issued sandbox token. |
 | ENT-07 / ENT-08 exposure | How ATIP is exposed (tunnel / VPN / VPS reverse proxy), plus the domain and TLS. |
-| ENT-04 billing | The payment gateway and its merchant credentials. |
+| ENT-04 billing | Gateway decided and built (Razorpay). Still needs a KYC-activated Razorpay account with Invoices and Subscriptions, and the keys stored with `python -m ops vault-set`. The webhook URL needs ENT-07. |
 | ENT-14 regulatory | Sign-off by a qualified professional (SEBI RA / IA). |
 | ENT-16 HA | Switch the runtime to PostgreSQL and choose a host. The DBS-05 / OPS-04 groundwork is done. |
 | SE-05 AI strategies | Not an owner decision: evidence. No model has passed validation yet (NO_EDGE); retrain after the DP-23 backfill. |
 | UAT-001 | The owner runs the UAT journeys and records acceptance. |
+| Deploy on the Mac | Run `docs/W39B_DEPLOY_RUNBOOK.md` (tag, dry run, `deploy/deploy_release.sh ATIP-W39B --authorize`). The code is merged; only the owner's machine runs production. |
+| Dhan Data API | The Data API subscription. Without it, the 20-level depth and OFI, the 15-minute bars behind the 75-minute rating, and order-book pressure get no data (Dhan error DH-902 / 806). |
+| Consensus estimates | A licensed estimates feed, for a consensus-based surprise and analyst revisions. PEAD and the research reports use ATIP's own history meanwhile. |
+| Live execution | The owner's explicit go-ahead for LIVE orders (options one-click, GTT, aggressive strategy). Everything ships PAPER-only. |
 
 ## Test results
 
-`pytest tests/`: see the PR description for the final count. The baseline before W39 was 563 passed and 31 skipped.
+`pytest tests/`: **1,326 passed, 31 skipped** after round 3 (2026-10-08), with all seven feature branches merged. It was 1,089 after the merge with #4, and the baseline before W39 was 563 passed. CI on PR #5 runs `tests` and `docker`.
