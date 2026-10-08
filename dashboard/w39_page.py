@@ -1,6 +1,6 @@
 """
-W39 pages: /research (equity research reports with the fundamental scorecard and the DVM view, ratings,
-hit rate and the scorecard's record, 7-year history coverage),
+W39 pages: /research (equity research reports with the fundamental scorecard, the DVM view and the
+earnings surprise card, ratings, hit rate and the scorecard's record, 7-year history coverage),
 /screener (fundamental + technical stock screener with presets and saved screens), /signals
 (end-of-day technical signals and their track record), /market-pulse (global cues, GIFT Nifty, the
 event calendar, FII flows and positioning, order-book pressure, your pending orders) and /options-builder (multi-leg
@@ -86,7 +86,7 @@ function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggl
 document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
 const li=xs=>xs&&xs.length?`<ul class="b">${xs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<span class="muted">none found</span>';
 async function load(rebuild){const s=document.getElementById('sym').value.trim().toUpperCase();if(!s)return;const el=document.getElementById('rep');el.innerHTML='<div class="card muted">Loading…</div>';
- try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+ try{const r=rebuild?await post(`/api/research/equity/${encodeURIComponent(s)}/refresh`):await j(`/api/research/equity/${encodeURIComponent(s)}`);el.innerHTML=render(r);scard(s);esurp(s)}catch(e){el.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 async function scard(s){const el=document.getElementById('scd');if(!el)return;
  try{el.innerHTML=scorecard(await j(`/api/research/scorecard/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">No fundamental scorecard: ${esc(e.message)}</div>`}
  const dv=document.getElementById('dvd');if(!dv)return;
@@ -101,6 +101,21 @@ function dvmcard(d){const lv=d.levels||{high:55,low:35};
  return `<div class="card"><h3>DVM view: ${z?`<span class="pill ${ZCLS[z.key]||'NOT_RATED'}">${esc(z.label)}</span> <span class="muted">${esc(z.reading)}</span>`:`<span class="muted">${esc(d.note||'no zone')}</span>`}</h3>
  <div class="muted">Durability, valuation and momentum, 0–100 each (Trendlyne-style): durability from the scorecard's financial-health and past-performance checks, valuation from the research model's fair value and the P/E against the industry (P/B for financials; high = cheap), momentum from the daily technical rating and the RS rating. High is ${lv.high}+, low below ${lv.low} (the two marks on each bar).${z?` Zone rule: ${esc(z.rule)}.`:''} A description, not advice: the zones have no track record yet.</div>
  <div class="axes">${d.axes.map(ax).join('')}</div></div>`}
+async function esurp(s){const el=document.getElementById('esd');if(!el)return;
+ try{el.innerHTML=ecard(await j(`/api/research/earnings-surprise/${encodeURIComponent(s)}`))}catch(e){el.innerHTML=`<div class="card muted">Earnings surprise: ${esc(e.message)}</div>`}}
+function ecard(o){const x=o.latest||{},sg=v=>v==null?'—':(v>0?'+':'')+n(v,2);
+ const why=(v,r)=>v==null&&r?`<div class="muted" style="font-size:11.5px;margin-top:3px">${esc(r)}</div>`:'';
+ const tr=x.eps_trend?`${esc(stl(x.eps_trend))} <span class="muted" style="font-size:12px">${x.eps_trend_pts>0?'+':''}${n(x.eps_trend_pts,1)} pts</span>`:'—';
+ const sig=(o.signals||[]).slice(0,5).map(s=>`<tr><td>${esc(String(s.date).slice(0,10))}</td><td>${s.direction==='BULL'?'▲ positive':'▼ negative'}</td><td>${rs(s.entry)}</td><td>${rs(s.stop)}</td><td>${rs(s.target)}</td><td>${s.confluence}/6</td><td>${esc(s.status)}</td><td>${pct(s.excess_60d)}</td></tr>`);
+ const rec=(o.record||[]).map(r=>`${esc(r.name)}: ${r.closed} closed, avg R ${r.avg_r==null?'—':n(r.avg_r,2)}, alerts ${r.alerts==='on'?'on':`held (${Math.min(r.closed,30)}/30)`}`).join(' · ');
+ return `<div class="card"><h3>Earnings surprise <span class="muted">${esc(x.quarter||'')} · filed ${esc(String(x.available_from||x.known_on||'').slice(0,16))}${x.exact_date?'':' (estimated)'} · ${x.days_since_result} days ago</span></h3>
+ <div class="muted">${esc(o.method)}</div>
+ <div class="grid" style="margin-top:8px"><div class="stat"><div class="k">EPS surprise (SUE)</div><div class="v">${sg(x.sue)}</div>${why(x.sue,x.sue_reason)}</div>
+ <div class="stat"><div class="k">Revenue surprise (SUE)</div><div class="v">${sg(x.sue_revenue)}</div>${why(x.sue_revenue,x.sue_revenue_reason)}</div>
+ <div class="stat"><div class="k">EPS trend (revisions proxy)</div><div class="v">${tr}</div>${why(x.eps_trend,x.eps_trend_reason)}</div>
+ <div class="stat"><div class="k">EPS vs a year earlier</div><div class="v">${n(x.eps_q)} <span class="muted" style="font-size:12px">vs ${n(x.eps_year_ago)}</span></div></div></div>
+ ${sig.length?`<div style="margin-top:8px">${table(['Drift signal','Surprise','Entry','Stop','Target','Confluence','Status','vs Nifty 60d'],sig)}</div>`:`<div class="muted" style="margin-top:6px">No post-earnings-drift signal (it needs |SUE| of ${n(o.trigger,0)}+ on the first session after a filing).</div>`}
+ ${rec?`<div class="muted" style="margin-top:6px">${rec}</div>`:''}</div>`}
 const AXN={value:'Value',growth:'Growth',past:'Past',health:'Health',dividend:'Dividend'};
 function flake(axes){const cx=160,cy=118,R=80,ang=i=>(-90+72*i)*Math.PI/180,pt=(i,r)=>[cx+r*Math.cos(ang(i)),cy+r*Math.sin(ang(i))];
  const ring=k=>axes.map((_,i)=>pt(i,R*k/6).map(v=>v.toFixed(1)).join(',')).join(' ');
@@ -127,6 +142,7 @@ function render(r){const v=r.valuation,ps=r.price_stats||{},q=r.quality||{},f=r.
  <div class="stat"><div class="k">Upside</div><div class="v">${pct(r.upside_pct)}</div></div><div class="stat"><div class="k">Fair value</div><div class="v">${rs(r.fair_value)}</div></div>
  <div class="stat"><div class="k">Uncertainty</div><div class="v">${esc((r.uncertainty||'—').replace('_',' '))}</div></div><div class="stat"><div class="k">Moat proxy / quality</div><div class="v">${esc(q.moat_proxy||'—')} / ${n(q.quality_score,0)}</div></div></div></div>
  <div id="scd"><div class="card muted">Loading the scorecard…</div></div><div id="dvd"></div>
+ <div id="esd"></div>
  <div class="two"><div class="card"><h3>Investment thesis</h3>${li(r.thesis)}</div><div class="card"><h3>Risks</h3>${li(r.risks)}</div></div>
  <div class="card"><h3>Catalysts</h3>${li(r.catalysts)}</div>
  <div class="two"><div class="card"><h3>Valuation methods (cost of equity ${v.cost_of_equity_pct}%)</h3>${table(['Method','Value','Weight','Basis'],meth)}</div>
@@ -343,7 +359,7 @@ async function fwd(){const h=document.getElementById('rh').value,mc=document.get
 async function rec(){fwd();const mc=document.getElementById('rc').value,al=document.getElementById('ra').value;
  const [r,ge]=await Promise.all([j('/api/signals/technical/stats?min_confluence='+mc+(al?'&alignment='+al:'')),j('/api/signals/technical/gate-effect?min_confluence='+mc)]);
  document.getElementById('geff').innerHTML=table(['Signals born','Open','Closed','Win rate','Avg R','Avg return'],ge.groups.map(o=>`<tr><td>${o.alignment==='UNKNOWN'?'<span class="muted">before the gate</span>':apill(o.alignment)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td></tr>`))+`<div class="muted" style="margin-top:4px">${esc(ge.verdict||ge.note)}</div>`;
- document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return','Alerts'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td><td>${o.alerts==='held'?`<span class="muted" style="white-space:nowrap" title="a chart-pattern scan alerts once 30 of its signals have closed with a positive average R">held · ${Math.min(o.closed,30)}/30</span>`:'on'}</td></tr>`))}
+ document.getElementById('stats').innerHTML=table(['Scan','','Open','Closed','Target','Stopped','Expired','Win rate','Avg R','Avg return','Alerts'],r.map(o=>`<tr><td>${esc(o.name)}</td><td>${dpill(o.direction)}</td><td>${o.open}</td><td>${o.closed}</td><td>${o.target}</td><td>${o.stopped}</td><td>${o.expired}</td><td>${o.win_rate_pct==null?'—':o.win_rate_pct+'%'}</td><td>${o.avg_r==null?'—':(o.avg_r>0?'+':'')+o.avg_r}</td><td>${pct(o.avg_return_pct)}</td><td>${o.alerts==='held'?`<span class="muted" style="white-space:nowrap" title="a chart-pattern or post-earnings-drift scan alerts once 30 of its signals have closed with a positive average R">held · ${Math.min(o.closed,30)}/30</span>`:'on'}</td></tr>`))}
 async function runNow(){document.getElementById('ro').textContent=' computing…';try{const o=await post('/api/signals/technical/run');document.getElementById('ro').textContent=` ${o.rows} stocks, ${o.signals} signals (${o.as_of})`;gate();today()}catch(e){document.getElementById('ro').textContent=' '+e.message}}
 gate();show('today');
 </script></body></html>"""
