@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -52,6 +53,65 @@ def statements(root: Path):
                 if sql and sql.strip():
                     yield str(p.relative_to(root)).replace("\\", "/"), n.lineno, sql
 
+
+# ── reserved identifiers ──────────────────────────────────────────────────
+#
+# MySQL 8 reserves six of the column names ATIP declares. Unquoted, each is
+# errno 1064 -- the single most common failure when the runtime moved to MySQL
+# (73 of 164 statement errors, plus the lock-wait and duplicate-key cascades that
+# followed from the transactions they left open). Backticks are portable: SQLite
+# accepts them for MySQL compatibility and db.postgres.translate turns them into
+# double quotes, so one statement serves all three backends.
+MYSQL_RESERVED = ("change", "key", "rank", "rows", "signal", "trigger")
+
+# A word is already quoted after a backtick (MySQL/SQLite) or a double quote
+# (PostgreSQL); KEY in PRIMARY KEY, RANK() OVER and ROWS BETWEEN are syntax.
+_RESERVED_RX = re.compile(rf"(?<![`\"\w])(?:{'|'.join(MYSQL_RESERVED)})(?![`\"\w])", re.I)
+_STARTS_SQL = re.compile(r"^\s*(SELECT|INSERT\s+(INTO|OR)|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\b", re.I)
+_IS_STATEMENT = re.compile(r"\b(FROM|INTO|UPDATE|SET)\b", re.I)
+
+
+def _reserved_is_syntax(sql: str, m) -> bool:
+    before = sql[max(0, m.start() - 24):m.start()].rstrip().upper()
+    after = sql[m.end():m.end() + 16].lstrip().upper()
+    return bool(re.search(r"\b(PRIMARY|FOREIGN|UNIQUE|DUPLICATE)$", before)
+                or re.search(r"\b(CREATE|DROP)$", before)
+                or re.search(r"^\(\s*\)\s*OVER", after)
+                or re.search(r"^(BETWEEN|UNBOUNDED|CURRENT)\b", after))
+
+
+def reserved_identifiers(root: Path):
+    """(file, line, word, excerpt) for each MySQL-reserved word used unquoted.
+
+    Every string literal that reads as a SQL statement is checked, not just the
+    ones passed straight to execute(): ATIP also builds SQL in a variable and
+    hands it to helpers like dashboard's _rows(), and those sites failed exactly
+    the same way. DDL is skipped -- db.mysql.ddl() quotes its own identifiers.
+    """
+    for p in sorted(root.rglob("*.py")):
+        if SKIP_DIRS - {"tests"} & set(p.relative_to(root).parts):
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8")
+            tree = ast.parse(txt)
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for n in ast.walk(tree):
+            if isinstance(n, ast.JoinedStr):
+                sql = "".join(v.value if isinstance(v, ast.Constant) else " x " for v in n.values)
+            elif isinstance(n, ast.Constant) and isinstance(n.value, str):
+                sql = n.value
+            else:
+                continue
+            if not (_STARTS_SQL.match(sql) and _IS_STATEMENT.search(sql)):
+                continue                                   # prose that opens with a verb is not SQL
+            if re.match(r"\s*(CREATE|ALTER|DROP|PRAGMA)\b", sql, re.I):
+                continue
+            for m in _RESERVED_RX.finditer(sql):
+                if sql[:m.start()].count("'") % 2 or _reserved_is_syntax(sql, m):
+                    continue
+                yield (str(p.relative_to(root)).replace("\\", "/"), n.lineno, m.group(0),
+                       " ".join(sql[max(0, m.start() - 40):m.end() + 24].split()))
 
 def _kind(err: str) -> str:
     if err.startswith("INSERT OR REPLACE"):

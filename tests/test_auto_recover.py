@@ -102,7 +102,7 @@ def test_recovery_notice_and_brief_report_reruns(conn, monkeypatch):
     assert r["recorded"]
     from pipeline.recover import ensure_table
     ensure_table(conn)
-    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,signal) VALUES ('ACME','2026-10-01',60,'HOLD')")
+    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,`signal`) VALUES ('ACME','2026-10-01',60,'HOLD')")
     conn.execute("INSERT INTO job_recovery (day,step,attempts,last_at,last_result,problems) VALUES (?,?,?,?,?,?)",
                  (str(dt.date.today()), "news", 1, dt.datetime.now(), "RAN", "MISSED News (morning)"))
     conn.commit()

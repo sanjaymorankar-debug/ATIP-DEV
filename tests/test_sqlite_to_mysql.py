@@ -256,3 +256,70 @@ def test_running_it_twice_does_not_fail_on_the_index(tmp_path):
         my.commit()
     finally:
         my.close()
+
+
+@live_only
+def test_migrating_perf_ledger_keeps_the_entry_order(tmp_path):
+    """perf_ledger's MySQL-only `seq` replaces SQLite's rowid as the tie-breaker the
+    P&L ordering depends on, and it is assigned as rows are inserted -- so a migrated
+    table must come back in the source's entry order, not in any index's order.
+
+    The copy names every column, so SQLite serves it with a table scan and rowid
+    order follows without being asked for; the tool asks anyway, because SQLite
+    promises no order without ORDER BY. This test pins the property the P&L needs,
+    whichever way the planner leans: it passes today with or without that clause.
+    """
+    from tools.sqlite_to_mysql import execute
+    # inserted in an order that disagrees with every index on the table
+    entry = [("z-first", "2026-03-01", "09:00", 10.0),
+             ("a-second", "2026-01-01", "10:00", 20.0),
+             ("m-third", "2026-02-01", "11:00", 30.0)]
+    src = _db(tmp_path,
+              "CREATE TABLE perf_ledger (txn_id TEXT PRIMARY KEY, trade_date DATE, ts TEXT, qty REAL)",
+              "CREATE INDEX idx_pl_date ON perf_ledger(trade_date, txn_id)",
+              rows=[("INSERT INTO perf_ledger (txn_id, trade_date, ts, qty) VALUES (?,?,?,?)", entry)])
+
+    import pymysql
+    from urllib.parse import urlparse
+    u = urlparse(LIVE_URL.replace("mysql+pymysql://", "mysql://"))
+    db = (u.path or "").lstrip("/")
+    conn_args = dict(host=u.hostname, port=u.port or 3306, user=u.username or "root",
+                     password=u.password or "", charset="utf8mb4")
+    admin = pymysql.connect(**conn_args)
+    admin.cursor().execute(f"DROP DATABASE IF EXISTS `{db}`")
+    admin.cursor().execute(f"CREATE DATABASE `{db}` CHARACTER SET utf8mb4")
+    admin.close()
+
+    p = plan(src)
+    assert execute(src, LIVE_URL, p)["ok"]
+
+    my = pymysql.connect(database=db, **conn_args)
+    try:
+        cur = my.cursor()
+        cur.execute("SELECT txn_id FROM perf_ledger ORDER BY seq")
+        assert [r[0] for r in cur.fetchall()] == [r[0] for r in entry], \
+            "seq must follow the source's entry order, not an index's order"
+    finally:
+        my.close()
+
+
+def test_sqlite_promises_no_order_without_an_order_by(tmp_path):
+    """Why the copy spells out ORDER BY for the entry-order tables: the same table
+    hands back a different order depending on which columns are asked for."""
+    src = _db(tmp_path,
+              "CREATE TABLE pl (txn_id TEXT, trade_date DATE, ts TEXT, qty REAL)",
+              "CREATE INDEX idx_pl_date ON pl(trade_date, txn_id)",
+              rows=[("INSERT INTO pl (txn_id, trade_date, ts, qty) VALUES (?,?,?,?)",
+                     [("z-first", "2026-03-01", "09:00", 1.0),
+                      ("a-second", "2026-01-01", "10:00", 2.0),
+                      ("m-third", "2026-02-01", "11:00", 3.0)])])
+    c = sqlite3.connect(src)
+    try:
+        entry = ["z-first", "a-second", "m-third"]
+        every = [r[0] for r in c.execute("SELECT txn_id, trade_date, ts, qty FROM pl")]
+        subset = [r[0] for r in c.execute("SELECT txn_id, trade_date FROM pl")]
+        assert every == entry, "a full column list is a table scan: rowid order"
+        assert subset == sorted(entry), "a covered subset comes back in index order"
+        assert [r[0] for r in c.execute("SELECT txn_id, trade_date FROM pl ORDER BY rowid")] == entry
+    finally:
+        c.close()

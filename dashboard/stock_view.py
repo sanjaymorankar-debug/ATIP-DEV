@@ -72,12 +72,12 @@ def stock_history(conn, symbol: str, sessions: int = 400) -> dict:
              "low_52w": min(float(p["low"] or p["close"]) for p in yr),
              "ret_1w": ret(5), "ret_1m": ret(21), "ret_3m": ret(63), "ret_6m": ret(126), "ret_1y": ret(250),
              "avg_volume_20d": round(sum(vols) / len(vols)) if vols else None, "sessions": len(px)}
-    scores = _rows(conn, "SELECT date, atip_score, atip_rank, vpi, mri, rri, zpi, cri, acs, spi, signal, confidence, "
+    scores = _rows(conn, "SELECT date, atip_score, atip_rank, vpi, mri, rri, zpi, cri, acs, spi, `signal`, confidence, "
                          "beta_1y, regime, top_factor_1, top_factor_2 FROM ai_scores WHERE symbol=? ORDER BY date",
                    (sym,))
     for s in scores:
         s["date"] = str(s["date"])[:10]
-    sigs = _rows(conn, "SELECT id, signal_date, signal, entry_price, atip_score, zpi, cri, model_version "
+    sigs = _rows(conn, "SELECT id, signal_date, `signal`, entry_price, atip_score, zpi, cri, model_version "
                        "FROM signal_log WHERE symbol=? AND duplicate_of IS NULL ORDER BY signal_date DESC LIMIT 200",
                  (sym,))
     for s in sigs:

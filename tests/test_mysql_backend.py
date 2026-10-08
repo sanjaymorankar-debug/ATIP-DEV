@@ -871,6 +871,7 @@ def test_a_reserved_column_is_usable_when_backticked(live_db):
         c.execute("CREATE TABLE ai_scores (symbol TEXT, date DATE, score REAL, signal TEXT)")
         c.commit()
         with pytest.raises(sqlite3.OperationalError) as e:
+            # deliberately NOT backticked: this is the failure the quoting fixes
             c.execute("INSERT INTO ai_scores (symbol, date, score, signal) VALUES (?,?,?,?)",
                       ("ACME", "2026-10-01", 60, "HOLD"))
         assert e.value.args[0] == 1064
@@ -1026,3 +1027,44 @@ def test_the_signal_log_dedupe_runs_on_mysql_and_is_idempotent(live_db):
 
     cur.execute(my.translate(sql))
     assert cur.rowcount == 0, "flagging duplicates must be idempotent"
+
+
+def test_no_sql_uses_a_mysql_reserved_word_unquoted():
+    """The guard for the switch's commonest failure.
+
+    Six of ATIP's column names are reserved in MySQL 8 -- change, key, rank,
+    rows, signal, trigger. Unquoted, each is errno 1064: 73 of the 164 statement
+    errors the runtime census found, and the cause of the lock-wait timeouts and
+    duplicate-key errors that followed, since a statement that fails leaves its
+    transaction open holding InnoDB row locks. Backticks are portable -- SQLite
+    accepts them, db.postgres.translate turns them into double quotes -- so this
+    stays at zero rather than being re-measured later.
+    """
+    from pathlib import Path
+
+    from db.dialect_scan import reserved_identifiers
+
+    # the one deliberate exception: the test below proves the failure this guards
+    allowed = {("tests/test_mysql_backend.py", "signal")}
+    bad = [(f, ln, w, ex) for f, ln, w, ex in reserved_identifiers(Path(__file__).resolve().parents[1])
+           if (f, w.lower()) not in allowed]
+    assert not bad, "backtick these, or db.mysql will hand them to MySQL as errno 1064:\n" + \
+        "\n".join(f"  {f}:{ln} [{w}]  {ex}" for f, ln, w, ex in bad)
+
+
+def test_an_upsert_on_a_backticked_column_rewrites_excluded():
+    """Quoting the reserved columns broke this and SQLite hid it.
+
+    MySQL has no `excluded`; the translator rewrites excluded.col to VALUES(col).
+    A backtick is not a word character, so the \\w+ the rewrite used stopped
+    matching the moment the column was quoted, leaving `excluded.` in the
+    statement for MySQL to fail on. SQLite takes excluded.`signal` natively, so
+    the whole SQLite suite stayed green over it. scores/engine.py issues exactly
+    this upsert on every scored symbol."""
+    assert my.translate("INSERT INTO ai_scores (symbol,`signal`) VALUES (?,?) "
+                        "ON CONFLICT(symbol) DO UPDATE SET `signal`=excluded.`signal`") == \
+        ("INSERT INTO ai_scores (symbol,`signal`) VALUES (%s,%s)  ON DUPLICATE KEY UPDATE  "
+         "`signal`=VALUES(`signal`)")
+    # arithmetic on the target row keeps working too
+    assert "`rows`=`rows`+VALUES(`rows`)" in my.translate(
+        "INSERT INTO s (day,`rows`) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET `rows`=`rows`+excluded.`rows`")

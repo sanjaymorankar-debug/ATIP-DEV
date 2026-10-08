@@ -474,7 +474,11 @@ def translate(sql: str, pk_of=None) -> str:
     mcon = re.search(r"\bON\s+CONFLICT\s*(\([^)]*\))?\s*DO\s+UPDATE\s+SET\b", text, re.I)
     if mcon:
         text = text[:mcon.start()] + " ON DUPLICATE KEY UPDATE " + text[mcon.end():]
-    text = re.sub(r"\bexcluded\.(\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
+    # The column may be backticked -- ATIP quotes the names MySQL 8 reserves, and
+    # `signal`=excluded.`signal` is a real upsert in scores/engine.py. A backtick is
+    # not a word character, so \w+ alone left `excluded.` in place and MySQL then
+    # failed on a table it has no name for.
+    text = re.sub(r"\bexcluded\.(`[^`]+`|\w+)", lambda g: f"VALUES({g.group(1)})", text, flags=re.I)
 
     text = _greatest(text)
     text = _cast(text)

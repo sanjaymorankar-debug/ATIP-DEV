@@ -158,8 +158,8 @@ def run_portfolio_sync(trade_date=None):
         df["weight_pct"]=(df["current_val"]/total*100).round(2) if total else 0
         count=0
         for _,row in df.iterrows():
-            sc=conn.execute("SELECT atip_score,vpi,cri,zpi,signal FROM ai_scores WHERE symbol=? AND date=?",(row["symbol"],str(trade_date))).fetchone()
-            conn.execute("""INSERT INTO portfolio_holdings (date,symbol,qty,avg_price,cmp,current_val,pnl,pnl_pct,weight_pct,atip_score,vpi,cri,zpi,signal)
+            sc=conn.execute("SELECT atip_score,vpi,cri,zpi,`signal` FROM ai_scores WHERE symbol=? AND date=?",(row["symbol"],str(trade_date))).fetchone()
+            conn.execute("""INSERT INTO portfolio_holdings (date,symbol,qty,avg_price,cmp,current_val,pnl,pnl_pct,weight_pct,atip_score,vpi,cri,zpi,`signal`)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol,date) DO UPDATE SET qty=excluded.qty,avg_price=excluded.avg_price,
                 cmp=excluded.cmp,current_val=excluded.current_val,pnl=excluded.pnl,pnl_pct=excluded.pnl_pct,weight_pct=excluded.weight_pct""",
                 (str(trade_date),row["symbol"],row["qty"],row["avg_price"],row["cmp"],row["current_val"],

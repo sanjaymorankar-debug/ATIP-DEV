@@ -164,7 +164,7 @@ def t_ranked_list(conn, a):
     d = _latest_session(conn)
     where = {"buy_signals": " AND signal='BUY'", "sell_signals": " AND signal='SELL'"}.get(kind, "")
     return {"session": d, "kind": kind, "rows": _rows(
-        conn, f"SELECT symbol, atip_score, vpi, rri, mri, cri, zpi, signal, top_factor_1, top_factor_2 FROM ai_scores "
+        conn, f"SELECT symbol, atip_score, vpi, rri, mri, cri, zpi, `signal`, top_factor_1, top_factor_2 FROM ai_scores "
               f"WHERE date=?{where} ORDER BY {LIST_SQL[kind]} LIMIT ?", d, n)}
 
 
@@ -172,7 +172,7 @@ def t_portfolio(conn, _):
     d = conn.execute("SELECT MAX(date) FROM portfolio_holdings").fetchone()[0]
     s = _latest_session(conn)
     return {"as_of": str(d)[:10] if d else None, "holdings": _rows(
-        conn, "SELECT h.symbol, h.qty, h.avg_price, h.cmp, h.pnl_pct, h.weight_pct, s.atip_score, s.cri, s.signal "
+        conn, "SELECT h.symbol, h.qty, h.avg_price, h.cmp, h.pnl_pct, h.weight_pct, s.atip_score, s.cri, s.`signal` "
               "FROM portfolio_holdings h LEFT JOIN ai_scores s ON s.symbol=h.symbol AND s.date=? WHERE h.date=? "
               "ORDER BY h.weight_pct DESC", s, d)} if d else {"as_of": None, "holdings": []}
 
@@ -192,7 +192,7 @@ def t_news(conn, a):
 def t_score_history(conn, a):
     sym = str(a.get("symbol") or "").upper().strip()
     n = max(5, min(int(a.get("sessions") or 30), 120))
-    rows = _rows(conn, "SELECT date, atip_score, cri, zpi, signal FROM ai_scores WHERE symbol=? ORDER BY date DESC "
+    rows = _rows(conn, "SELECT date, atip_score, cri, zpi, `signal` FROM ai_scores WHERE symbol=? ORDER BY date DESC "
                        "LIMIT ?", sym, n)
     return {"symbol": sym, "rows": list(reversed(rows))}
 

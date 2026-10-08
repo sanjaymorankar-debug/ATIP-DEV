@@ -134,12 +134,12 @@ def write_predictions(trade_date=None, conn=None) -> dict:
                 actionable += 1
             conn.execute("""
                 INSERT INTO predictions (
-                    pred_date, symbol, signal, atip_score, vpi, zpi, mri, cri, acs,
+                    pred_date, symbol, `signal`, atip_score, vpi, zpi, mri, cri, acs,
                     entry_price, stop_loss, target_1, target_2, risk_reward,
                     position_size_pct, confidence, reasoning, regime, is_tod
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(pred_date,symbol) DO UPDATE SET
-                    signal=excluded.signal, atip_score=excluded.atip_score,
+                    `signal`=excluded.`signal`, atip_score=excluded.atip_score,
                     vpi=excluded.vpi, zpi=excluded.zpi, mri=excluded.mri,
                     cri=excluded.cri, acs=excluded.acs,
                     entry_price=excluded.entry_price, stop_loss=excluded.stop_loss,

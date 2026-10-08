@@ -98,7 +98,7 @@ def write(dataset: str, part_date, df: pd.DataFrame, knowledge_time=None, source
             data = gzip.compress(buf.getvalue().encode("utf-8"))
             path.write_bytes(data)
         kt = knowledge_time or datetime.now()
-        conn.execute("INSERT INTO lake_partition (dataset,partition_date,version,path,format,rows,columns_json,sha256,"
+        conn.execute("INSERT INTO lake_partition (dataset,partition_date,version,path,format,`rows`,columns_json,sha256,"
                      "bytes,source,knowledge_time,written_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                      (dataset, str(d), ver, str(path), fmt, int(len(df)), json.dumps(list(map(str, df.columns))),
                       hashlib.sha256(data).hexdigest(), len(data), source, str(kt)[:19], datetime.now()))
@@ -119,7 +119,7 @@ def _read_file(path: str, fmt: str) -> pd.DataFrame:
 def parts(dataset, start=None, end=None, as_of=None, conn=None) -> list:
     conn, own = _conn(conn)
     try:
-        sql = ("SELECT partition_date, version, path, format, rows, knowledge_time FROM lake_partition WHERE dataset=?")
+        sql = ("SELECT partition_date, version, path, format, `rows`, knowledge_time FROM lake_partition WHERE dataset=?")
         args = [dataset]
         if start:
             sql += " AND partition_date>=?"
@@ -214,7 +214,7 @@ def stats(conn=None) -> dict:
     conn, own = _conn(conn)
     try:
         rows = [dict(zip(("dataset", "partitions", "files", "rows", "bytes", "first", "last", "formats"), r)) for r in
-                conn.execute("SELECT dataset, COUNT(DISTINCT partition_date), COUNT(*), SUM(rows), SUM(bytes), "
+                conn.execute("SELECT dataset, COUNT(DISTINCT partition_date), COUNT(*), SUM(`rows`), SUM(bytes), "
                              "MIN(partition_date), MAX(partition_date), GROUP_CONCAT(DISTINCT format) FROM lake_partition "
                              "GROUP BY dataset ORDER BY dataset")]
         return {"root": str(ROOT), "write_format": _fmt(), "datasets": rows}

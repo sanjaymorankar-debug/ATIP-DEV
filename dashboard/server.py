@@ -352,7 +352,7 @@ def get_top25(td):
     conn=get_connection()
     try:
         def t25(col,where=""):
-            return q(conn,f"SELECT s.symbol,s.atip_score,s.{col},s.signal,s.cri,s.acs,s.beta_1y,p.close as cmp,"
+            return q(conn,f"SELECT s.symbol,s.atip_score,s.{col},s.`signal`,s.cri,s.acs,s.beta_1y,p.close as cmp,"
                           f"(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=s.symbol AND p2.date<s.date ORDER BY p2.date DESC LIMIT 1) AS prev_close "
                           f"FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=s.date "
                           f"WHERE s.date=? {where} ORDER BY s.{col} DESC LIMIT 25",str(td))

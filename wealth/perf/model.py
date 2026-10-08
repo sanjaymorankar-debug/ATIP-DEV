@@ -58,7 +58,7 @@ def load_signals(conn, start: date, end: date) -> list:
     # a fresh install has none yet, which used to crash the whole report.
     from scores.signal_log import ensure_tables
     ensure_tables(conn)
-    rows = conn.execute("SELECT id, run_id, signal_date, symbol, signal, entry_price, atip_score, vpi, cri, zpi, regime, "
+    rows = conn.execute("SELECT id, run_id, signal_date, symbol, `signal`, entry_price, atip_score, vpi, cri, zpi, regime, "
                         "model_version, logged_at FROM signal_log WHERE duplicate_of IS NULL AND signal_date>=? AND "
                         "signal_date<=? ORDER BY signal_date, logged_at", (str(start), str(end))).fetchall()
     seen, out = set(), []

@@ -112,7 +112,7 @@ def test_house_ledger_import_is_idempotent_and_owner_scoped(temp_db):
 def test_position_attribution_identity(temp_db):
     conn, ds = fresh(temp_db)
     sd = ds[100]
-    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,signal,entry_price) VALUES "
+    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,`signal`,entry_price) VALUES "
                  "('S1','r',?,?,'ACME','BUY',?)", (str(sd), str(sd), conn.execute(
                      "SELECT close FROM prices_daily WHERE symbol='ACME' AND date=?", (str(sd),)).fetchone()[0]))
     conn.commit()
@@ -128,7 +128,7 @@ def test_position_attribution_identity(temp_db):
 
 def test_model_and_executable_are_reported_separately(temp_db):
     conn, ds = fresh(temp_db)
-    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,signal,entry_price) VALUES "
+    conn.execute("INSERT INTO signal_log (id,run_id,logged_at,signal_date,symbol,`signal`,entry_price) VALUES "
                  "('S2','r',?,?,'ACME','BUY',120)", (str(ds[60]), str(ds[60])))
     conn.commit()
     m = MD.build(conn, ds[0], ds[-1], D.Prices(conn, ds[0], ds[-1]), {})

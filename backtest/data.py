@@ -237,7 +237,7 @@ class ScoresHistory:
 
     def __init__(self, conn, start, end):
         self._rows = {}
-        for r in conn.execute("SELECT date, symbol, signal, atip_score, vpi, zpi, cri, acs, mri, rri "
+        for r in conn.execute("SELECT date, symbol, `signal`, atip_score, vpi, zpi, cri, acs, mri, rri "
                               "FROM ai_scores WHERE date>=? AND date<=?", (str(_d(start)), str(_d(end)))):
             self._rows.setdefault(_d(r[0]), {})[r[1]] = {
                 "signal": r[2], "atip_score": r[3], "vpi": r[4], "zpi": r[5], "cri": r[6],

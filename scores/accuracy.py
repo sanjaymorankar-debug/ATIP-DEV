@@ -106,7 +106,7 @@ def update_accuracy(target_date=None) -> int:
             # nobody has measured for this horizon yet.
             cutoff = str(target_date - timedelta(days=int(horizon * 1.6) + 3))
             preds = conn.execute(f"""
-                SELECT p.pred_date, p.symbol, p.signal, p.entry_price, p.stop_loss, p.target_1
+                SELECT p.pred_date, p.symbol, p.`signal`, p.entry_price, p.stop_loss, p.target_1
                 FROM predictions p
                 LEFT JOIN accuracy_tracker a
                        ON a.pred_date=p.pred_date AND a.symbol=p.symbol
@@ -130,7 +130,7 @@ def update_accuracy(target_date=None) -> int:
                 )
                 conn.execute(f"""
                     INSERT INTO accuracy_tracker
-                        (pred_date, symbol, signal, entry_price,
+                        (pred_date, symbol, `signal`, entry_price,
                          {col_price}, {col_ret}, {col_ok}, hit_target_1, hit_stop_loss)
                     VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(pred_date,symbol) DO UPDATE SET
@@ -161,7 +161,7 @@ def update_accuracy(target_date=None) -> int:
 def generate_report(symbol=None, days_back=90) -> dict:
     conn = get_connection()
     since = str(date.today() - timedelta(days=days_back))
-    sql = """SELECT a.symbol,a.signal,a.return_5d,a.correct_5d,a.return_10d,a.correct_10d,
+    sql = """SELECT a.symbol,a.`signal`,a.return_5d,a.correct_5d,a.return_10d,a.correct_10d,
                     a.return_20d,a.correct_20d,a.hit_target_1,a.hit_stop_loss
              FROM accuracy_tracker a WHERE a.pred_date>=?"""
     params = [since]

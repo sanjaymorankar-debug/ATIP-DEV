@@ -216,7 +216,7 @@ def cycles(conn, owner, limit=30) -> list:
 
 # ── Mode ───────────────────────────────────────────────────────────────────
 def get_mode(conn, owner) -> dict:
-    r = conn.execute("SELECT value FROM wealth_preference WHERE tenant_id=? AND owner_id=? AND key='mode'",
+    r = conn.execute("SELECT value FROM wealth_preference WHERE tenant_id=? AND owner_id=? AND `key`='mode'",
                      (owner["tenant_id"], owner["owner_id"])).fetchone()
     if r:
         return {"mode": r[0], "source": "preference"}
@@ -231,8 +231,8 @@ def set_mode(conn, owner, mode) -> dict:
     m = str(mode or "").upper()
     if m not in MODES:
         raise ValueError(f"mode must be one of {list(MODES)}")
-    conn.execute("INSERT INTO wealth_preference (tenant_id,owner_id,key,value,updated_at) VALUES (?,?,'mode',?,?) "
-                 "ON CONFLICT(tenant_id,owner_id,key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+    conn.execute("INSERT INTO wealth_preference (tenant_id,owner_id,`key`,value,updated_at) VALUES (?,?,'mode',?,?) "
+                 "ON CONFLICT(tenant_id,owner_id,`key`) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
                  (owner["tenant_id"], owner["owner_id"], m, C.now()))
     conn.commit()
     return get_mode(conn, owner)
@@ -246,7 +246,7 @@ def signal_suitability(conn, owner, symbol: str, _ctx: dict | None = None) -> di
     ctx = _ctx or {}
     d = ctx.get("dna") or dna.summary(conn, owner)
     summ = ctx.get("summary") or H.summary(conn, owner)
-    sc = conn.execute("SELECT date, atip_score, signal, cri, vpi, confidence FROM ai_scores WHERE symbol=? ORDER BY "
+    sc = conn.execute("SELECT date, atip_score, `signal`, cri, vpi, confidence FROM ai_scores WHERE symbol=? ORDER BY "
                       "date DESC LIMIT 1", (sym,)).fetchone()
     sc = dict(sc) if sc else None
     checks = []
@@ -307,8 +307,8 @@ def todays_signals(conn, owner, limit=15) -> list:
     except ValueError:
         ctx["equity_drift"] = {}
     held = {p["symbol"] for p in ctx["summary"]["positions"] if p["symbol"]}
-    rows = conn.execute("SELECT symbol, signal, atip_score FROM ai_scores WHERE date=? AND (signal='BUY' OR (symbol IN "
-                        f"({','.join('?' * len(held)) or 'NULL'}) AND signal IN ('SELL','EXIT','AVOID'))) ORDER BY "
+    rows = conn.execute("SELECT symbol, `signal`, atip_score FROM ai_scores WHERE date=? AND (`signal`='BUY' OR (symbol IN "
+                        f"({','.join('?' * len(held)) or 'NULL'}) AND `signal` IN ('SELL','EXIT','AVOID'))) ORDER BY "
                         "atip_score DESC LIMIT ?", (d0, *held, int(limit))).fetchall()
     out = []
     for x in rows:

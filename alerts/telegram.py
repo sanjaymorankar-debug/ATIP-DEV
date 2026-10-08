@@ -149,7 +149,7 @@ def check_broad_selloff(trade_date=None):
 def check_zpi_alerts(trade_date=None):
     if trade_date is None: trade_date=date.today()
     conn=get_connection()
-    try: rows=conn.execute("SELECT symbol,zpi,vpi,acs FROM ai_scores WHERE date=? AND zpi>=75 AND signal='BUY' AND cri<40 ORDER BY zpi DESC LIMIT 5",(str(trade_date),)).fetchall()
+    try: rows=conn.execute("SELECT symbol,zpi,vpi,acs FROM ai_scores WHERE date=? AND zpi>=75 AND `signal`='BUY' AND cri<40 ORDER BY zpi DESC LIMIT 5",(str(trade_date),)).fetchall()
     finally: conn.close()
     if not rows: return 0
     lines="".join(f"\n🎯 <b>{r['symbol']}</b>  ZPI:{r['zpi']:.0f}  VPI:{r['vpi']:.0f}" for r in rows)
@@ -160,7 +160,7 @@ def check_cri_alerts(trade_date=None):
     if trade_date is None: trade_date=date.today()
     conn=get_connection()
     try:
-        rows=conn.execute("""SELECT p.symbol,p.pnl_pct,s.cri,s.signal FROM portfolio_holdings p
+        rows=conn.execute("""SELECT p.symbol,p.pnl_pct,s.cri,s.`signal` FROM portfolio_holdings p
             JOIN ai_scores s ON p.symbol=s.symbol AND s.date=?
             WHERE p.date=? AND s.cri>80 ORDER BY s.cri DESC""",(str(trade_date),str(trade_date))).fetchall()
     finally: conn.close()
@@ -272,9 +272,9 @@ def send_morning_digest(trade_date=None):
         glb=conn.execute("SELECT sp500_chg,global_score FROM global_markets "
                          "WHERE date<=? ORDER BY date DESC LIMIT 1",(td,)).fetchone()
         buys=conn.execute("SELECT symbol,atip_score,zpi,cri,acs FROM ai_scores "
-                          "WHERE date=? AND signal='BUY' ORDER BY atip_score DESC LIMIT 5",(td,)).fetchall()
+                          "WHERE date=? AND `signal`='BUY' ORDER BY atip_score DESC LIMIT 5",(td,)).fetchall()
         sells=conn.execute("SELECT symbol,atip_score,cri FROM ai_scores "
-                           "WHERE date=? AND signal='SELL' ORDER BY cri DESC LIMIT 5",(td,)).fetchall()
+                           "WHERE date=? AND `signal`='SELL' ORDER BY cri DESC LIMIT 5",(td,)).fetchall()
         tod=conn.execute("""SELECT s.symbol,s.acs,p.close cmp,t.atr_14 FROM ai_scores s
                             LEFT JOIN prices_daily p ON p.symbol=s.symbol AND p.date=s.date
                             LEFT JOIN technical_indicators t ON t.symbol=s.symbol AND t.date=s.date

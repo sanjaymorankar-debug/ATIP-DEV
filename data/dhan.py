@@ -1287,21 +1287,21 @@ def sync_dhan_portfolio(trade_date: date = None) -> dict:
 
             # Get ATIP scores for this stock
             sc = conn.execute(
-                "SELECT atip_score,vpi,cri,zpi,signal FROM ai_scores WHERE symbol=? AND date=?",
+                "SELECT atip_score,vpi,cri,zpi,`signal` FROM ai_scores WHERE symbol=? AND date=?",
                 (sym, str(trade_date))
             ).fetchone()
 
             conn.execute("""
                 INSERT INTO portfolio_holdings
                     (date,symbol,qty,avg_price,cmp,current_val,pnl,pnl_pct,
-                     atip_score,vpi,cri,zpi,signal)
+                     atip_score,vpi,cri,zpi,`signal`)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(symbol,date) DO UPDATE SET
                     qty=excluded.qty, avg_price=excluded.avg_price,
                     cmp=excluded.cmp, current_val=excluded.current_val,
                     pnl=excluded.pnl, pnl_pct=excluded.pnl_pct,
                     atip_score=excluded.atip_score, vpi=excluded.vpi, cri=excluded.cri,
-                    zpi=excluded.zpi, signal=excluded.signal
+                    zpi=excluded.zpi, `signal`=excluded.`signal`
             """, (str(trade_date), sym, qty, avg, cmp, cur_val, pnl, pnl_pct,
                   sc["atip_score"] if sc else None, sc["vpi"] if sc else None,
                   sc["cri"] if sc else None, sc["zpi"] if sc else None,

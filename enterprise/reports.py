@@ -79,7 +79,7 @@ def section(conn, kind, tenant, params) -> list:
     if kind == "factor_ranking":
         f = params.get("factor")
         top = int(params.get("top") or 25)
-        q = "SELECT as_of, symbol, factor_key, score, rank FROM quant_factor_score WHERE as_of=(SELECT MAX(as_of) FROM " \
+        q = "SELECT as_of, symbol, factor_key, score, `rank` FROM quant_factor_score WHERE as_of=(SELECT MAX(as_of) FROM " \
             "quant_factor_score)"
         a = []
         if f:
@@ -152,7 +152,7 @@ def run(conn, report_id, fmt="html", actor=None) -> dict:
     rep = dict(r)
     out = render(conn, rep, fmt)
     oid = "rpo_" + uuid.uuid4().hex[:14]
-    conn.execute("INSERT INTO enterprise_report_output (output_id,report_id,tenant_id,user_id,format,content,rows,"
+    conn.execute("INSERT INTO enterprise_report_output (output_id,report_id,tenant_id,user_id,format,content,`rows`,"
                  "created_at) VALUES (?,?,?,?,?,?,?,?)", (oid, report_id, rep["tenant_id"], actor or rep["user_id"], fmt,
                                                           out["content"], out["rows"], datetime.now()))
     conn.execute("UPDATE enterprise_report SET last_run_at=? WHERE report_id=?", (datetime.now(), report_id))

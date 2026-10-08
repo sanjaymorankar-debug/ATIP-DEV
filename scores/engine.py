@@ -906,9 +906,9 @@ def run_scoring_pipeline(trade_date=None):
                 # purely so the dashboard can show each stock's actual beta.
                 beta_1y=compute_beta(sym,conn)
                 factors=[f for f in [f"VPI:{vpi:.0f}",f"ZPI:{zpi:.0f}",f"MRI:{mri:.0f}",f"CRI:{cri:.0f}"] if f]
-                conn.execute("""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,signal,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
+                conn.execute("""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,`signal`,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,signal=excluded.signal,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3""",
+                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,`signal`=excluded.`signal`,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3""",
                     # Every column the run just recomputed is refreshed. The
                     # list used to stop at beta_1y, so a re-score left spi,
                     # confidence, the four component scores, the regime and the
@@ -949,7 +949,7 @@ def run_scoring_pipeline(trade_date=None):
         # months here (see the threshold block above) — so say so loudly,
         # and show how far the best candidate actually fell short.
         try:
-            mix=conn.execute("SELECT signal, COUNT(*) n FROM ai_scores WHERE date=? GROUP BY signal",
+            mix=conn.execute("SELECT `signal`, COUNT(*) n FROM ai_scores WHERE date=? GROUP BY `signal`",
                              (str(trade_date),)).fetchall()
             log.info("  signals: "+", ".join(f"{r['signal']}={r['n']}" for r in mix))
             result["signals"]={r["signal"]:r["n"] for r in mix}

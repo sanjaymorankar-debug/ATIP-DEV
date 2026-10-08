@@ -86,7 +86,7 @@ def load_bars(conn) -> dict:
 def load_signals(conn) -> dict:
     """(date, symbol) -> ai_scores row, for signal mode."""
     out = {}
-    for r in conn.execute("SELECT date,symbol,signal,zpi,cri,acs,atip_score FROM ai_scores").fetchall():
+    for r in conn.execute("SELECT date,symbol,`signal`,zpi,cri,acs,atip_score FROM ai_scores").fetchall():
         out[(r["date"], r["symbol"])] = dict(r)
     return out
 

@@ -300,7 +300,7 @@ def run(conn=None, trigger="scheduled", now=None) -> dict:
         n = {s: sum(1 for r in results if r["status"] == s) for s in (PASS, WARN, FAIL, NA)}
         worse = [r for r in results if RANK[r["status"]] > RANK.get(before.get(r["check_id"], PASS), 0)]
         summary = f"{n[PASS]} pass, {n[WARN]} warn, {n[FAIL]} fail, {n[NA]} n/a"
-        conn.execute("INSERT INTO compliance_run (run_id, at, trigger, passed, warned, failed, summary) VALUES "
+        conn.execute("INSERT INTO compliance_run (run_id, at, `trigger`, passed, warned, failed, summary) VALUES "
                      "(?,?,?,?,?,?,?)", (rid, now or datetime.now(), trigger, n[PASS], n[WARN], n[FAIL], summary))
         for r in results:
             conn.execute("INSERT INTO compliance_result (run_id, check_id, title, status, detail, evidence_json) "

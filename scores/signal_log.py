@@ -285,7 +285,7 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
         # SELL) is genuinely new information, so that still appends, and both
         # rows remain visible side by side.
         existing = {(r["symbol"], r["signal"]) for r in conn.execute(
-            "SELECT symbol, signal FROM signal_log "
+            "SELECT symbol, `signal` FROM signal_log "
             "WHERE signal_date=? AND duplicate_of IS NULL",
             (str(trade_date),)).fetchall()}
 
@@ -295,7 +295,7 @@ def log_signals(trade_date=None, conn=None, actionable_only=True) -> dict:
                 result["skipped"] = result.get("skipped", 0) + 1
                 continue
             conn.execute("""
-                INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, signal,
+                INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, `signal`,
                     entry_price, atip_score, vpi, spi, rri, mri, cri, msi, zpi, acs,
                     mh_score, regime, is_tod, model_version, weights_hash, notes)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -387,9 +387,9 @@ def evaluate_outcomes(max_sessions=MAX_TRACK_SESSIONS) -> dict:
         res["entry_prices_filled"] = fill_missing_entry_prices(conn)
         ths = momentum_thresholds()
         sigs = conn.execute("""
-            SELECT id, symbol, signal, signal_date, entry_price
+            SELECT id, symbol, `signal`, signal_date, entry_price
             FROM signal_log
-            WHERE entry_price IS NOT NULL AND signal IN ('BUY','SELL')
+            WHERE entry_price IS NOT NULL AND `signal` IN ('BUY','SELL')
               AND duplicate_of IS NULL
             ORDER BY signal_date
         """).fetchall()
@@ -532,7 +532,7 @@ def success_report(symbol=None, since=None, signal=None) -> dict:
         w = " AND ".join(where)
 
         rows = conn.execute(f"""
-            SELECT l.signal, o.threshold_pct, o.hit, o.sessions_to_hit, o.still_open,
+            SELECT l.`signal`, o.threshold_pct, o.hit, o.sessions_to_hit, o.still_open,
                    COALESCE(o.sessions_tracked,0) AS tracked,
                    o.max_favourable_pct, o.max_adverse_pct,
                    COALESCE(o.data_gap_sessions,0) AS gap
@@ -613,7 +613,7 @@ def recent_signals(limit=200, symbol=None):
         if symbol:
             w += " AND l.symbol=?"; p.append(symbol.upper())
         rows = conn.execute(f"""
-            SELECT l.id, l.signal_date, l.symbol, l.signal, l.entry_price, l.atip_score,
+            SELECT l.id, l.signal_date, l.symbol, l.`signal`, l.entry_price, l.atip_score,
                    l.zpi, l.cri, l.acs, l.regime, l.is_tod, l.model_version, l.logged_at
             FROM signal_log l {w}
             ORDER BY l.signal_date DESC, l.atip_score DESC LIMIT ?

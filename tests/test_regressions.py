@@ -92,7 +92,7 @@ def test_signal_log_dedupes_on_date_symbol_signal(temp_db):
     conn = get_connection()
     S.ensure_tables(conn)
     import uuid
-    cols = ("id, run_id, logged_at, signal_date, symbol, signal, entry_price, "
+    cols = ("id, run_id, logged_at, signal_date, symbol, `signal`, entry_price, "
             "model_version, weights_hash")
 
     def insert(model, logged_at):
@@ -128,7 +128,7 @@ def test_signal_log_keeps_a_genuinely_different_signal(temp_db):
     for sig in ("BUY", "SELL"):
         conn.execute(
             "INSERT INTO signal_log (id, run_id, logged_at, signal_date, symbol, "
-            "signal, entry_price, model_version, weights_hash) VALUES (?,?,?,?,?,?,?,?,?)",
+            "`signal`, entry_price, model_version, weights_hash) VALUES (?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), "r", "2026-09-08T01:00:00", "2026-09-07",
              "ACME", sig, 100.0, "m", "w"))
     conn.commit()

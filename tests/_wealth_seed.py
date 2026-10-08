@@ -47,7 +47,7 @@ def seed_market(conn, n=260):
     last = ds[-1]
     conn.execute("INSERT INTO market_health (date,mh_score,regime,breadth,fii_score,global_score) VALUES "
                  "(?,?,?,?,?,?)", (str(last), 62.0, "BULL", 55.0, 60.0, 58.0))
-    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,vpi,cri,zpi,signal,regime) VALUES "
+    conn.execute("INSERT INTO ai_scores (symbol,date,atip_score,vpi,cri,zpi,`signal`,regime) VALUES "
                  "(?,?,?,?,?,?,?,?)", ("ACME", str(last), 72.0, 65.0, 30.0, 60.0, "BUY", "BULL"))
     for i, d in enumerate(ds[-30:]):
         conn.execute("INSERT INTO global_markets (date,time,gold,usd_inr,global_score) VALUES (?,?,?,?,?)",
