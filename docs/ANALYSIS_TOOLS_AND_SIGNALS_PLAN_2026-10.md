@@ -187,7 +187,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 |---|---|---|---|
 | Indicators, 39 scans (incl. 6 chart-pattern breakouts, 2 RS-line scans and a delivery spike), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | — | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (135 fields, `CONTAINS`, 43 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (139 fields, `CONTAINS`, 44 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
