@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-08 10:33 by `python -m ops api-docs` from the running application (573 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 10:39 by `python -m ops api-docs` from the running application (576 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -222,6 +222,9 @@ Generated 2026-10-08 10:33 by `python -m ops api-docs` from the running applicat
 | POST | `/api/data/macro/refresh` | research:run | token |  |  |
 | GET | `/api/data/macro/{series_id}` | dashboard:read |  | `series_id`, `as_of` | ?as_of |
 | GET | `/api/data/mf` | dashboard:read |  | `q`, `limit`=50 | ?q=&limit=50  latest NAVs, name search |
+| GET | `/api/data/mf/compare` | dashboard:read |  | `schemes`, `category_of`, `same_plan`=1, `as_of` | ?schemes=a,b,...&as_of \| ?category_of=<code>&same_plan=1   W39b |
+| GET | `/api/data/mf/{scheme}/analytics` | dashboard:read |  | `scheme`, `hurdle`, `rf`, `benchmark`, `risk_years`, `as_of`, `peers`=1 | ?hurdle&rf&benchmark&risk_years&as_of&peers=1 |
+| GET | `/api/data/mf/{scheme}/sip` | dashboard:read |  | `scheme`, `amount`, `day`=1, `start`, `end`, `lump_sum` | ?amount&day=1&start&end&lump_sum |
 | GET | `/api/data/ticks` | dashboard:read |  | `day`, `symbol`, `limit`=2000 | ?day&symbol&limit=2000 |
 | POST | `/api/data/ticks/minute-bars` | research:run | token |  | {day?}  rebuild 1-min bars from ticks |
 | GET | `/api/data/ticks/status` | dashboard:read |  | `days`=10 | ?days=10  tick capture per day                    DP-04 |
