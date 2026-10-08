@@ -1,7 +1,7 @@
 # ATIP — AI Trading Intelligence Platform v0.2
 
 > *"Turning Market Data into Daily Decisions."*
-> Personal Use · NSE/BSE · Python 3.10+ · Windows
+> Personal Use · NSE/BSE · Python 3.11+ · macOS (Windows still supported)
 
 ---
 
@@ -33,7 +33,7 @@
 ## Project Structure
 
 ```
-/Users/agtci/Documents/Project_Documents/Projects/ATIP/        ← RUN ALL COMMANDS FROM HERE
+/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev/    ← RUN ALL COMMANDS FROM HERE
 │
 ├── main.py                         ← SINGLE ENTRY POINT
 ├── requirements.txt
@@ -43,7 +43,7 @@
 │   macOS / Linux launchers
 ├── start_atip.sh                   ← Start ATIP
 ├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
-├── deploy/launchd/                 ← LaunchAgents: auto-start + 5-min snapshot
+├── deploy/launchd/                 ← LaunchAgents: auto-start, 5-min snapshot, Dhan token
 │
 │   Windows launchers (kept for the old machine)
 ├── install.bat                     ← Install all packages
@@ -87,17 +87,32 @@
 
 ## Quick Setup (macOS)
 
-The project lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP`.
+The project lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev`.
+Any folder name works, because the scripts find the project from their own
+location. Inside `~/Documents`, read the privacy and iCloud items under
+[Mac checks](#mac-checks) first.
+
+### Python 3.11 or newer — not the one macOS ships
+
+The `python3` that comes with macOS is 3.9, which is too old: ATIP needs 3.11+.
+Install a current Python with [Homebrew](https://brew.sh) and build the
+virtualenv from it by its full path, as in Step 1 below. Plain `python3 -m venv`
+picks up Apple's 3.9.
+
+```bash
+brew install python@3.13
+```
 
 ### Option A — one-time setup
 ```bash
-cd /Users/agtci/Documents/Project_Documents/Projects/ATIP
+cd /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
 
-# Step 1: a virtualenv and the packages
-python3 -m venv .venv
+# Step 1: a virtualenv from Homebrew's Python, and the packages
+"$(brew --prefix)/bin/python3.13" -m venv .venv
+.venv/bin/python --version           # must say 3.11 or newer
 .venv/bin/pip install -r requirements.txt
 
-# Step 2: config
+# Step 2: config (or bring atip_data/ over from Windows instead, see below)
 mkdir -p atip_data
 cp config_template.json atip_data/config.json
 open -e atip_data/config.json        # add your API keys
@@ -106,7 +121,7 @@ open -e atip_data/config.json        # add your API keys
 .venv/bin/python main.py --init
 .venv/bin/python main.py --dhan-securities
 
-# Step 4: first data run
+# Step 4: first data run (skip it if you brought the Windows database over)
 .venv/bin/python main.py --dhan-history
 
 # Step 5: start
@@ -114,7 +129,9 @@ open -e atip_data/config.json        # add your API keys
 ```
 
 `start_atip.sh` picks `.venv/bin/python` automatically when that virtualenv
-exists, so later runs are just `./start_atip.sh`.
+exists, so later runs are just `./start_atip.sh`. Keep `.venv`: the LaunchAgent
+starts with launchd's minimal `PATH`, which has no Homebrew in it, so without
+`.venv` it falls back to Apple's Python 3.9.
 
 ### Option B — Windows (the old machine)
 ```powershell
@@ -122,6 +139,66 @@ cd D:\Projects\ATIP
 # Right-click setup_atip.ps1 → Run with PowerShell as Administrator
 .\setup_atip.ps1 -All
 ```
+
+### Moving over from the Windows machine
+
+To keep your history, copy the Windows `atip_data/` across instead of starting
+from `config_template.json`:
+
+1. **Stop ATIP on Windows and switch off its auto-start first.** Otherwise both
+   machines run the schedule, send Telegram alerts and publish snapshots.
+   `.\setup_atip.ps1 -UnregisterStartup` removes the "ATIP Platform" task.
+   Also disable the "ATIP publish snapshot" task in Task Scheduler, and if
+   you used `atip_autostart.vbs`, remove its entry from the Startup folder
+   (`Win+R` → `shell:startup`).
+2. Copy `D:\Projects\ATIP\atip_data\` into `atip_data/` in the project folder on
+   the Mac. That brings `atip.db`, `config.json`, `publish.json`, `raw/`, and
+   `secrets/` if you have it. If `atip.db-wal` or `atip.db-shm` sit next to
+   `atip.db`, copy them too, because they can hold the most recent writes.
+   Bring the Windows `.env` as well if you had one.
+3. Run `.venv/bin/python main.py --init` anyway. It only adds what is missing
+   and never drops anything.
+
+### Anthropic API key: use `.env`, not `~/.zshrc`
+
+The LaunchAgent never reads your shell profile, so a key exported in
+`~/.zshrc` only works when you start ATIP from Terminal. Put it in a `.env` file
+in the project folder instead (git-ignored), with one line,
+`ANTHROPIC_API_KEY=sk-ant-...`:
+
+```bash
+touch .env && open -e .env
+```
+
+### Mac checks
+
+**Documents folder privacy.** macOS protects `~/Documents`, and a LaunchAgent
+has no window to ask you for permission. If the agent will not stay up
+(`launchctl list | grep com.atip` shows a non-zero status) and
+`atip_data/launchd.err` says `Operation not permitted`, either:
+- move the project out of Documents (e.g. to `~/ATIP-dev`) and re-run
+  `deploy/launchd/install.sh`; or
+- add `/bin/bash` under System Settings → Privacy & Security → Full Disk Access
+  (⌘⇧G in the file picker lets you type the path). If it still fails, add
+  Homebrew's Python there as well.
+
+**iCloud Drive.** If "Desktop & Documents Folders" is on (System Settings →
+your name → iCloud → iCloud Drive), iCloud syncs everything in `~/Documents`,
+including `atip_data/atip.db`, while ATIP is writing to it. A SQLite file
+copied mid-write can be corrupt. Turn that option off, or keep the project
+outside `~/Documents`.
+
+**Sleep.** Nothing runs while the Mac sleeps: no quotes, no post-market jobs,
+no order monitoring. On trading days, keep it awake:
+- MacBook: System Settings → Battery → Options → "Prevent automatic sleeping
+  on power adapter when the display is off", and leave it plugged in. Closing
+  the lid still sleeps it unless an external display is connected.
+- Desktop Mac: the same setting is under System Settings → Energy.
+
+**Time zone.** The schedule runs on the Mac's clock. The LaunchAgent sets
+`TZ=Asia/Kolkata` for itself. A manual `./start_atip.sh` uses the Mac's own
+time zone, so if the Mac is not on India time, start it with
+`TZ=Asia/Kolkata ./start_atip.sh`.
 
 ---
 
@@ -140,6 +217,9 @@ cd D:\Projects\ATIP
 ---
 
 ## All Commands
+
+On the Mac, use `.venv/bin/python` wherever these say `python`, or run
+`source .venv/bin/activate` once per Terminal window first.
 
 ```powershell
 # Setup
@@ -231,28 +311,45 @@ python main.py --live-feed
 ### macOS — LaunchAgents (current machine)
 
 ```bash
-deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload
+deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload + Dhan token refresh
 deploy/launchd/install.sh platform   # just the scheduler/dashboard
 deploy/launchd/install.sh snapshot   # just the snapshot upload
+deploy/launchd/install.sh token      # just the daily Dhan token refresh
 deploy/launchd/install.sh --uninstall
 ```
 
 The installer resolves the project's real location from its own path and writes
 the agents into `~/Library/LaunchAgents`, so nothing has a path baked in.
+Install the snapshot agent only once `atip_data/publish.json` exists. With the
+project in `~/Documents`, read [Mac checks](#mac-checks) before relying on
+either agent.
 
 | Agent | What it does |
 |---|---|
 | `com.atip.platform` | Starts ATIP at login and restarts it if it exits non-zero (`KeepAlive`), which is what the Windows Task Scheduler task provided and the Startup folder could not. |
 | `com.atip.publish-snapshot` | Runs `publish_snapshot.sh` every 5 minutes. Needs `atip_data/publish.json`. |
+| `com.atip.dhan-token-refresh` | Runs `tools/dhan_token_refresh.sh` daily at 06:30 and at login: renews the 24-hour Dhan token before the 07:00 pre-market run, and saves it where ATIP reads it (`config.json`, or the vault once migrated). Replaces the Windows `ATIP_DhanTokenRefresh` task. |
 
-Both set `TZ=Asia/Kolkata` so scheduled job times match the market session
-regardless of the machine's locale.
+All set `TZ=Asia/Kolkata` so scheduled job times match the market session
+regardless of the machine's locale. The token agent's 06:30 is the exception:
+launchd reads a calendar time in the Mac's own time zone, so keep the Mac on IST.
+
+The token agent renews a token that is still valid with no extra setup. To get
+a new one after it has **expired** (the Mac was off for over a day), it logs in
+with your Dhan PIN and TOTP. Add them once to `atip_data/config.json` (or as
+`DHAN_PIN` / `DHAN_TOTP_SECRET` in ATIP's secret store):
+```json
+"dhan_pin":         "<your 6-digit Dhan PIN>",
+"dhan_totp_secret": "<the base32 secret shown when you enable TOTP at web.dhan.co>"
+```
 
 **Verify:**
 ```bash
 launchctl list | grep com.atip          # a 0 in the second column = last run exited cleanly
 tail -f atip_data/launchd.err           # ATIP's own output
 tail -f atip_data/publish.log           # snapshot uploads
+tail atip_data/dhan_token_refresh.log   # "OK: new Dhan token saved" each morning
+tools/dhan_token_refresh.sh --check     # is the current token valid?
 ```
 
 **Stop:**
@@ -299,8 +396,12 @@ Open **http://localhost:8000** after starting ATIP.
 
 | Error | Fix |
 |-------|-----|
-| `ModuleNotFoundError: No module named 'atip'` | Run from `/Users/agtci/Documents/Project_Documents/Projects/ATIP/` not from inside a package subfolder |
+| `ModuleNotFoundError: No module named 'atip'` | Run from the project folder (the one holding `main.py`), not from inside a package subfolder |
+| `SyntaxError` / `TypeError` at start-up on the Mac | Run `.venv/bin/python --version`. If it says 3.9, `.venv` was built from Apple's Python: `rm -rf .venv` and redo Step 1 with Homebrew's |
+| LaunchAgent won't stay up; `launchd.err` says `Operation not permitted` | macOS privacy protection on `~/Documents`; see [Mac checks](#mac-checks) |
+| Anthropic key works from Terminal but not at login | It's exported in `~/.zshrc`; move it to `.env` in the project folder |
 | `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data/config.json` |
+| Dhan token expired / `401` from Dhan | Run `tools/dhan_token_refresh.sh` and read `atip_data/dhan_token_refresh.log`; make sure `deploy/launchd/install.sh token` was run |
 | `security_id not found` | Run `python main.py --dhan-securities` first |
 | `pandas-ta` fails on Python 3.14 | Not needed — ATIP uses `ta` (`pip install ta`); see docs/DEV_SETUP.md |
 | Dashboard empty | Run `python main.py --run postmarket` first to populate data |

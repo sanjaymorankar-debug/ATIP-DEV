@@ -4,16 +4,18 @@
 # Replaces, on macOS, everything the Windows launchers did:
 #   ATIP_TaskScheduler.xml + atip_autostart.vbs  -> com.atip.platform.plist
 #   "ATIP publish snapshot" scheduled task       -> com.atip.publish-snapshot.plist
+#   "ATIP_DhanTokenRefresh" scheduled task       -> com.atip.dhan-token-refresh.plist
 #
 # The plists in this folder carry __ATIP_DIR__ placeholders; this script
 # substitutes the project's real location (resolved from its own path, never
 # hardcoded) and writes the result into ~/Library/LaunchAgents.
 #
 # Usage:
-#   deploy/launchd/install.sh              # install both agents
+#   deploy/launchd/install.sh              # install all three agents
 #   deploy/launchd/install.sh platform     # just the scheduler/dashboard
 #   deploy/launchd/install.sh snapshot     # just the 5-minute snapshot upload
-#   deploy/launchd/install.sh --uninstall  # unload and remove both
+#   deploy/launchd/install.sh token        # just the daily Dhan token refresh
+#   deploy/launchd/install.sh --uninstall  # unload and remove all three
 set -euo pipefail
 
 ATIP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,6 +24,7 @@ DEST_DIR="$HOME/Library/LaunchAgents"
 
 PLATFORM_LABEL="com.atip.platform"
 SNAPSHOT_LABEL="com.atip.publish-snapshot"
+TOKEN_LABEL="com.atip.dhan-token-refresh"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "launchd is macOS-only. On Linux use systemd (see deploy/cloud/cloud-init.yaml)." >&2
@@ -54,21 +57,24 @@ install_one() {
 }
 
 uninstall_all() {
-    for label in "$PLATFORM_LABEL" "$SNAPSHOT_LABEL"; do
+    for label in "$PLATFORM_LABEL" "$SNAPSHOT_LABEL" "$TOKEN_LABEL"; do
         bootout "$label"
         rm -f "$DEST_DIR/$label.plist"
         echo "  removed $label"
     done
 }
 
-chmod +x "$ATIP_DIR/start_atip.sh" "$ATIP_DIR/publish_snapshot.sh" 2>/dev/null || true
+chmod +x "$ATIP_DIR/start_atip.sh" "$ATIP_DIR/publish_snapshot.sh" \
+         "$ATIP_DIR/tools/dhan_token_refresh.sh" 2>/dev/null || true
 
 case "${1:-all}" in
     --uninstall|uninstall) uninstall_all ;;
     platform)              install_one "$PLATFORM_LABEL" ;;
     snapshot)              install_one "$SNAPSHOT_LABEL" ;;
-    all)                   install_one "$PLATFORM_LABEL"; install_one "$SNAPSHOT_LABEL" ;;
-    *) echo "usage: $0 [all|platform|snapshot|--uninstall]" >&2; exit 2 ;;
+    token)                 install_one "$TOKEN_LABEL" ;;
+    all)                   install_one "$PLATFORM_LABEL"; install_one "$SNAPSHOT_LABEL"
+                           install_one "$TOKEN_LABEL" ;;
+    *) echo "usage: $0 [all|platform|snapshot|token|--uninstall]" >&2; exit 2 ;;
 esac
 
 echo
@@ -79,3 +85,6 @@ echo "Stop:    launchctl bootout gui/$UID/$PLATFORM_LABEL"
 echo
 echo "Note: the snapshot agent needs atip_data/publish.json (targets + tokens)."
 echo "      See publish_snapshot.py's docstring."
+echo "Note: the Dhan token agent renews a still-valid token on its own; to recover"
+echo "      an EXPIRED one it needs dhan_pin + dhan_totp_secret (see the docstring"
+echo "      of tools/dhan_token_refresh.py). Log: atip_data/dhan_token_refresh.log"
