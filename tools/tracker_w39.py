@@ -373,6 +373,53 @@ NEW_ROWS += [
                "DEPLOYED; independent validation PENDING"),
 ]
 
+# ── W39b round 3 (2026-10-08): analysis tools from docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md and the
+#    gap analysis (section 4), built on branch claude/wizardly-curie-fbjeoa (PR #5) ─────────────────────────
+SRC5 = "W39b (PR #5): docs/ATIP_GAP_ANALYSIS_2026-10.md section 4; docs/ANALYSIS_TOOLS_AND_SIGNALS_PLAN_2026-10.md"
+NOTE5 = "W39b developed 2026-10-08 on branch claude/wizardly-curie-fbjeoa (PR #5); independent validation PENDING"
+NEW_ROWS += [
+    _row("W39B-TF75", "Technical Analysis", "75-minute technical rating and its agreement with the daily one",
+         "Trendlyne / TradingView-style intraday timeframe rating", SRC5, "P2", IMPL, 85,
+         "research/technicals.py bars_75 / rating_75: the daily rating's votes on 75-minute bars built only from "
+         "stored 15-minute bars (09:15 / 10:30 / 11:45 / 13:00 / 14:15), completed bars only, 35 bars (7 sessions) "
+         "needed, never a stale session; stored in technical_snapshot (tech_rating_75*, rsi_14_75, "
+         "supertrend_dir_75, bar_75_end, mtf_alignment_75) by the 20:30 run; screener fields and a preset",
+         "Independent QA; no live intraday refresh (once a day, as of the close); /signals has no 75-minute column",
+         "research/technicals.py; research/tech_signals.py; research/screener.py", "tests/test_w39b_tf75.py",
+         notes=NOTE5),
+    _row("W39B-DVM", "Research", "DVM view: durability, valuation, momentum 0-100 and zones",
+         "Trendlyne-style DVM scores with explanations", SRC5, "P2", IMPL, 85,
+         "research/dvm.py: durability from the scorecard's 12 health / past-performance checks, valuation from "
+         "the research fair value (60 %) and P/E (P/B for financials) vs the industry median (40 %), momentum "
+         "from the technical and RS ratings; every score explains itself with its numbers; seven zones; stored "
+         "nightly on fundamental_scorecard (dvm_*); GET /api/research/dvm/{symbol}; DVM card on /research; 3 "
+         "screener presets",
+         "Independent QA; weights are ATIP's definitions, not backtested -- record whether the zones pay before "
+         "using them", "research/dvm.py; research/scorecard.py; dashboard/w39_routes.py", "tests/test_w39b_dvm.py",
+         notes=NOTE5),
+    _row("W39B-PEAD", "Research", "Earnings surprise (SUE), EPS-trend proxy and a post-earnings-drift scan",
+         "Earnings surprise and PEAD (gap analysis 4.7)", SRC5, "P2", IMPL, 85,
+         "research/earnings_surprise.py: SUE and revenue SUE vs the same quarter a year earlier (8-quarter "
+         "standard deviation, 4 needed), point in time from the NSE broadcast date; EPS-trend revisions proxy; "
+         "pead_bull / pead_bear scans (|SUE| >= 2, first session after the filing, 60-session horizon) stored "
+         "and tracked like every scan, alerts held until 30 closed signals with positive expectancy; 20:35 job; "
+         "screener fields and a preset; GET /api/research/earnings-surprise/{symbol}",
+         "Independent QA; needs 9+ quarters of NSE XBRL history (run the history backfill); no consensus "
+         "estimates (ATIP's own history only); filings arrive with the Saturday fundamentals job",
+         "research/earnings_surprise.py; research/tech_signals.py", "tests/test_w39b_earnings_surprise.py",
+         notes=NOTE5, blocker="For a consensus-based surprise: a consensus estimates feed (not available today)"),
+    _row("W39B-MFA", "Wealth / Mutual funds", "Mutual fund analytics on stored AMFI NAVs (read-only)",
+         "Value Research / Kuvera-style scheme analytics (gap analysis 4.3)", SRC5, "P2", IMPL, 85,
+         "data/mf_analytics.py: point-to-point and CAGR returns, 1Y / 3Y rolling returns with hurdle stats, "
+         "volatility / Sharpe / Sortino, drawdown with dates, beta / alpha / tracking error vs a price index, SIP "
+         "and lump-sum XIRR, category rank among stored schemes, side-by-side compare; 3 read-only GET routes; "
+         "scheme detail card on /data-platform",
+         "Independent QA. Holding MFs in the wealth ledger stays out of scope (owner Scope Exclusions); "
+         "benchmark is a price index, not total return; peers limited to stored schemes",
+         "data/mf_analytics.py; dashboard/w35_routes.py; dashboard/w35_page.py",
+         "tests/test_w39b_mf_analytics.py", notes=NOTE5),
+]
+
 # rows still in development when the files are generated: shown IN PROGRESS until merged
 IN_DEVELOPMENT: set = set()
 for _r in NEW_ROWS:
@@ -522,9 +569,29 @@ UPDATES = {
               "the W2 backtest simulates ADD / REDUCE (partial rows, averaged entries, max_position_pct cap, P&L "
               "conserved; BUY/SELL-only runs byte-identical); reweight_band_pct accepted by definition validation "
               "(was refused); saved runs, walk-forward and Monte Carlo count positions",
-              "Next Action / Missing Work": "Independent QA; the event-driven engine (BT-17) still trades whole "
-              "positions (it says so)", "Key Files": "portfolio/optimize.py; strategy_engine/kinds.py; "
-              "backtest/engine.py; strategy_engine/adapter.py", "Evidence": "tests/test_w39_backtest_partial.py"},
+              "Next Action / Missing Work": "Independent QA. W39b: the event-driven engine (BT-17) now trades "
+              "ADD / REDUCE too, through its own order model", "Key Files": "portfolio/optimize.py; "
+              "strategy_engine/kinds.py; backtest/engine.py; backtest/event_driven.py; strategy_engine/adapter.py",
+              "Evidence": "tests/test_w39_backtest_partial.py"},
+    "BT-14": {"Completion %": "90", "Current Implementation": "W23: robustness battery (costs x2, slippage x3, "
+              "universe halves, period halves, regimes, Monte Carlo) with verdict. W39b: backtest/cpcv.py -- "
+              "combinatorial purged cross-validation (N groups, k test groups, purge + embargo per AFML 7.4, "
+              "C(N-1,k-1) out-of-sample paths with their distribution) and PBO by CSCV (Bailey et al.: logits, "
+              "degradation regression, probability of loss; from a matrix or an optimisation's trials); "
+              "python -m backtest cpcv | pbo; POST /api/backtests/cpcv and /api/backtests/{id}/pbo",
+              "Next Action / Missing Work": "Independent QA; the stochastic-dominance test is not implemented; "
+              "CPCV runs on the W2 engine only",
+              "Key Files": "backtest/robustness.py; backtest/cpcv.py", "Evidence": "tests/test_w39b_cpcv_pbo.py"},
+    "BT-17": {"Current Implementation": "W34: backtest/event_driven.py -- event queue over daily or intraday bars; "
+              "latency, partial fills vs bar volume, MARKET/LIMIT/STOP, impact-priced fills, TWAP slices, intrabar "
+              "protective exits; same Strategy interface; stored as kind event_driven. W39b: ADD / REDUCE through "
+              "the order model (matches the W2 engine leg for leg on a hand-computed case; BUY / SELL-only runs "
+              "byte-identical); fix: a SELL with nothing left to sell (a max-hold exit queued on the bar a stop "
+              "fired) was charged costs and a fill, an over-sized SELL was charged on its full size, and a slow "
+              "max-hold exit was queued again every session",
+              "Next Action / Missing Work": "Independent QA; the engine does not yet report the adapter's skipped "
+              "decisions the way W2 does",
+              "Evidence": "tests/test_w39_backtest_partial.py (test_event_driven_*)"},
     "API-05": {"Completion %": "100", "Current Implementation": "W31: python -m ops api-docs (openapi.json + "
                "API_REFERENCE.md, 362 routes with permissions). W39: every public v1 resource has a typed response "
                "schema (openapi-v1.json) checked against the real handlers by a contract test; error bodies "
@@ -545,6 +612,7 @@ UPDATES = {
 
 # Deployment-tracker wave of every module (owner waves 1-9 are module groups; 11-20 = repo W11-W20)
 WAVE_BY_PREFIX = [
+    (r"^W39B-", "W39b (PR #5)"),
     (r"^W39-", "W39 (PR #4)"),
     (r"^(INV|WLT|GOL|AAL|RBL|PERF|AIA|INT|QA|UAT|REL)-", None),     # by ID below
     (r"^(DBS|OPS|MON|SEC|API-0[12])", "1"), (r"^(DP|NS-01|AD)", "2"), (r"^TA", "3"),
