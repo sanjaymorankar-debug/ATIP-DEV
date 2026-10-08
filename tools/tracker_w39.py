@@ -384,14 +384,21 @@ for _r in NEW_ROWS:
 NEW_ROWS += [
     _row("EX-17", "Execution", "Aggressive exit: enable flag + CRI-spike / momentum-decay exit",
          "Aggressive exit default-disabled until validated (owner workbook Wave 9)", "Owner deployment tracker: "
-         "Wave 9", "P1", "BLOCKED", 60,
-         "strategy/aggressive.py: ATR trail, T1 partial, T2 checkpoint; DEFAULTS aggressive_enabled=False but no "
-         "code reads the flag (off only because nothing schedules strategy.live); bypasses the W4 risk engine",
-         "Decide whether the flag gates strategy.live enter/manage, and whether to add a CRI-spike exit",
-         "strategy/aggressive.py; strategy/live.py", "tests/test_aggressive_*.py (74 tests)",
-         blocker="Owner decision: (1) should aggressive_enabled=false stop `python -m strategy.live --manage` "
-                 "(today it runs regardless)? (2) add a CRI-spike exit (threshold?) and route orders through the "
-                 "W4 risk engine? Changing either alters live exit behaviour"),
+         "Wave 9", "P1", IMPL, 85,
+         "strategy/aggressive.py: ATR trail, T1 partial, T2 checkpoint. W39b (decision taken under the owner's "
+         "'take the decisions' instruction): aggressive_enabled=false refuses NEW entries in strategy.live, while "
+         "open positions keep being managed (stops / targets / trails), so switching it off never strands a "
+         "position; new cri_exit_threshold (default off) closes the remaining quantity with MARKET_RISK_EXIT when "
+         "the stock's crash-risk index reaches it, on the existing broker path (pretrade checks incl. price band "
+         "and circuit limits unchanged); threshold validated to (0, 100]",
+         "Independent QA; the owner picks a CRI threshold (e.g. 80) after reviewing CRI history before turning it "
+         "on; the aggressive strategy stays unscheduled and PAPER",
+         "strategy/aggressive.py; strategy/live.py",
+         "tests/test_strategy_live.py (test_disabled_flag_refuses_new_entries_but_keeps_managing_open_positions, "
+         "test_cri_spike_exits_the_whole_position_only_when_configured, test_cri_below_threshold_or_unknown_does_"
+         "not_exit, test_cri_threshold_is_validated); tests/test_aggressive_*.py",
+         notes="W39b developed 2026-10-08 on branch claude/wizardly-curie-fbjeoa (PR #5); was BLOCKED on an owner "
+               "decision, decided as described (reversible: one config key each); independent validation PENDING"),
     _row("EX-18", "Execution", "Basket orders (paper)", "Zerodha / Dhan parity: place a list of orders together",
          SRC_NOTES, "P2", IMPL, 80, "W39: orders/basket.py -- named baskets, margin / risk pre-check of the whole "
                                    "basket, all-or-nothing PAPER placement through the existing order path",
@@ -459,9 +466,28 @@ UPDATES = {
                            "test_postmarket_refuses_a_session_that_is_a_copy_of_the_previous_one",
                "Notes+": "W39: end-to-end test of run_postmarket on 260 seeded sessions (offline steps run for real) "
                "in tests/test_w39_qa_suite.py"},
-    "QR-11": {"Notes+": "W39 QA finding (owner methodology call): a neighbouring parameter value with too few trades "
-              "is ignored, so 'stops trading one step away' is not flagged as a knife edge "
-              "(backtest/sensitivity.py)"},
+    "OPS-04": {"Completion %": "75",
+               "Current Implementation": "W38: Dockerfile (IST, non-root, volume, healthcheck), docker-compose "
+               "(127.0.0.1-only ports, optional postgres profile), deploy/atip.env.example, cloud-init VM. W39b: the "
+               "image is BUILT and smoke-tested (dev container + .github/workflows/docker.yml on every PR): --init "
+               "on an empty volume, /health/live and /health/ready 200, uid 10001, IST, no state / .git / .claude "
+               "in the image, live_gate() closed; BASE_IMAGE build arg for registry mirrors; .dockerignore fix "
+               "(local agent worktrees had added 75 MB)",
+               "Next Action / Missing Work": "Owner: choose a host (ENT-16) and exposure (ENT-07); Kubernetes "
+               "manifests and a registry push only after that",
+               "Key Files": "Dockerfile; docker-compose.yml; .dockerignore; .github/workflows/docker.yml; "
+                            "docs/CONTAINER_DEPLOYMENT.md",
+               "Evidence": ".github/workflows/docker.yml; docs/CONTAINER_DEPLOYMENT.md (Status)"},
+    "QR-11": {"Current Implementation": "W23: one-at-a-time sensitivity curves, stability, knife-edge flags, 2-D "
+              "heat map. W39b: a +-1 step neighbour with fewer than min_trades trades (or a failed run) is listed in "
+              "thin_neighbours / thin_edges (study summary and CLI too) instead of vanishing; knife_edge and "
+              "robust_share still compare only neighbours that have a metric",
+              "Next Action / Missing Work": "Independent QA",
+              "Evidence": "test_a_neighbour_that_stops_trading_is_a_thin_edge_not_a_knife_edge; "
+                          "test_stability_and_knife_edge_by_hand (tests/test_w39_qa_suite.py)",
+              "Notes+": "W39 QA finding (methodology call): 'stops trading one step away' was not flagged. W39b "
+              "decision: report it as a separate thin-edge fragility flag rather than a knife edge, so robust_share "
+              "keeps its meaning"},
     "TA-05": {"Current Implementation": "52-week 23.6/38.2/50/61.8 levels; W39: swing-anchored Fibonacci (last two "
               "5-bar pivots in 120 sessions, 38.2 / 50 / 61.8 levels, nearest level and distance) in technical_ext, "
               "shown in the stock panel", "Next Action / Missing Work": "Independent QA",
