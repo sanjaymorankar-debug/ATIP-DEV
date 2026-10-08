@@ -69,6 +69,7 @@ _D += (" investor_profile investor_profile_version perf_ledger perf_ledger_void 
        "wealth_allocation_policy wealth_allocation_run wealth_classification wealth_cycle_run wealth_feedback "
        "wealth_goal wealth_goal_event wealth_goal_projection wealth_holding wealth_liability wealth_preference "
        "wealth_rebalance_plan wealth_snapshot")
+_D += " enterprise_billing_ref"                # W39b: payment-gateway ids (Razorpay) per tenant
 # W39: history backfill progress and research reports (owner research, shared reference data)
 _G += (" prices_daily_backfill research_report technical_snapshot technical_signal order_book_pressure "
        "fo_participant_oi market_cue market_regime_gate fundamental_scorecard macro_event intraday_signal depth20_snapshot global_snapshot")

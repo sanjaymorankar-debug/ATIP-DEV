@@ -1,15 +1,22 @@
 """
-Payments, invoicing, dunning and plan changes (W9, ENT-04). NO REAL CHARGE IS EVER MADE
-in W9: the default provider is SANDBOX and the real-provider adapters refuse.
+Payments, invoicing, dunning and plan changes (W9, ENT-04). The default provider is SANDBOX:
+no real charge is made unless the owner configures Razorpay (W39b).
 
-Providers (config.json "saas.payments.provider"):
+Providers (config.json "saas.payments.provider", or its W39b alias "billing.provider"; the
+"billing" section wins when both are set):
     sandbox    simulated: succeeds, unless the tenant setting sandbox_fail_payments is true
                (lets testers exercise dunning)
     noop       records the attempt as PENDING; nothing ever settles
-    razorpay / stripe   adapters exist so the interface is fixed, but they REFUSE
-               (ProviderNotEnabled) -- enabling a real provider is an owner decision with
-               credentials the owner enters, and a separate build step
-Validation (ops/config) rejects any non-sandbox/noop provider outside production.
+    razorpay   W39b, enterprise/razorpay.py: one Razorpay invoice (UPI / card / netbanking link) per
+               collection, PENDING until Razorpay reports it paid (webhook, or reconcile() when no
+               webhook can reach ATIP); autopay subscriptions on top. Inert until the owner stores
+               RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET: every attempt is REFUSED and the invoice stays
+               OPEN (docs/BILLING_RAZORPAY.md)
+    stripe     the adapter still REFUSES (ProviderNotEnabled)
+A provider that cannot be reached or rejects the request raises ProviderError: the attempt is
+recorded ERROR, nothing was charged and no dunning starts.
+Validation (ops/config): stripe is refused; Razorpay test keys are allowed anywhere, live keys
+only in production with billing.razorpay.allow_live.
 
 Invoice lifecycle: DRAFT (billing.draft_invoice) -> finalize -> OPEN (due in 7 days)
     -> collect -> PAID | payment FAILED (invoice stays OPEN)
@@ -23,7 +30,9 @@ Plan change (change_plan): immediate; prorated credit for the unused part of the
 and charge for the new plan's remaining period -> one DRAFT invoice; a downgrade is
 refused while current usage exceeds the new plan's limits.
 Billing cycle (run_cycle, daily): subscriptions whose period ended get a DRAFT invoice for
-the period, finalized and collected, and the period rolls forward.
+the period, finalized and collected, and the period rolls forward -- except subscriptions on
+Razorpay autopay (payment_provider 'razorpay'): Razorpay bills those, and each charge arrives as
+a PAID invoice (enterprise/razorpay.py).
 Payments are idempotent per (invoice, attempt number) (enterprise_payment.idempotency_key).
 """
 
@@ -37,16 +46,32 @@ from pathlib import Path
 from enterprise import audit
 
 
+CONFIG_PATH = Path("atip_data") / "config.json"
+
+
 class ProviderNotEnabled(RuntimeError):
     pass
 
 
+class ProviderError(RuntimeError):
+    """The provider could not be reached or rejected the request: nothing was charged."""
+
+
+def payment_config(cfg: dict | None = None) -> dict:
+    """saas.payments with the W39b alias section "billing" merged over it (nested sections merged)."""
+    if cfg is None:
+        try:
+            cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    out = dict((cfg.get("saas") or {}).get("payments") or {})
+    for k, v in (cfg.get("billing") or {}).items():
+        out[k] = {**out[k], **v} if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 def settings() -> dict:
-    try:
-        cfg = json.loads((Path("atip_data") / "config.json").read_text(encoding="utf-8"))
-    except Exception:
-        cfg = {}
-    p = (cfg.get("saas") or {}).get("payments") or {}
+    p = payment_config()
     return {"provider": str(p.get("provider") or "sandbox").lower(), "grace_days": int(p.get("grace_days") or 7),
             "retry_days": list(p.get("retry_days") or [1, 3, 5]), "due_days": int(p.get("due_days") or 7),
             "currency": p.get("currency") or "INR"}
@@ -55,7 +80,7 @@ def settings() -> dict:
 class SandboxProvider:
     name = "sandbox"
 
-    def charge(self, conn, tenant_id, amount, currency, reference) -> tuple:
+    def charge(self, conn, tenant_id, amount, currency, reference, **kw) -> tuple:
         from enterprise.tenants import get
         fail = bool(((get(conn, tenant_id) or {}).get("settings") or {}).get("sandbox_fail_payments"))
         if fail:
@@ -66,7 +91,7 @@ class SandboxProvider:
 class NoopProvider:
     name = "noop"
 
-    def charge(self, conn, tenant_id, amount, currency, reference) -> tuple:
+    def charge(self, conn, tenant_id, amount, currency, reference, **kw) -> tuple:
         return "PENDING", None, "noop provider: nothing is charged"
 
 
@@ -84,7 +109,28 @@ def provider():
         return SandboxProvider()
     if name == "noop":
         return NoopProvider()
+    if name == "razorpay":                         # W39b: refuses by itself until credentials are configured
+        from enterprise.razorpay import RazorpayProvider
+        return RazorpayProvider()
     return _Refusing(name)
+
+
+def provider_status() -> dict:
+    """What the configured provider can do right now (never a credential)."""
+    name = settings()["provider"]
+    if name == "razorpay":
+        from enterprise.razorpay import RazorpayProvider
+        return RazorpayProvider().status()
+    return {"provider": name, "state": {"sandbox": "SANDBOX", "noop": "NOOP"}.get(name, "REFUSED")}
+
+
+def reconcile(conn) -> dict:
+    """Daily (saas_daily): settle what the provider reports paid when no webhook reached ATIP."""
+    name = settings()["provider"]
+    if name != "razorpay":
+        return {"skipped": f"provider {name}"}
+    from enterprise.razorpay import reconcile as rzp_reconcile
+    return rzp_reconcile(conn)
 
 
 def _inv(conn, invoice_id) -> dict:
@@ -121,13 +167,20 @@ def collect(conn, invoice_id, actor="billing") -> dict:
     pid = "pay_" + uuid.uuid4().hex[:16]
     now = datetime.now()
     try:
-        status, ref, err = prov.charge(conn, inv["tenant_id"], inv["amount"], inv["currency"], key)
+        status, ref, err = prov.charge(conn, inv["tenant_id"], inv["amount"], inv["currency"], key,
+                                       invoice_id=invoice_id)
     except ProviderNotEnabled as e:
         status, ref, err = "REFUSED", None, str(e)
+    except ProviderError as e:                     # W39b: unreachable / rejected -- nothing charged, no dunning
+        status, ref, err = "ERROR", None, str(e)[:300]
+    extra = getattr(prov, "last", None) or {}      # W39b: the provider's payment id and pay link, if it has them
     conn.execute("INSERT INTO enterprise_payment (payment_id,tenant_id,invoice_id,provider,amount,currency,status,"
                  "provider_ref,idempotency_key,error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                  (pid, inv["tenant_id"], invoice_id, prov.name, inv["amount"], inv["currency"], status, ref, key, err,
                   now, now))
+    if extra.get("payment_id"):
+        conn.execute("UPDATE enterprise_payment SET provider_payment_id=? WHERE payment_id=?",
+                     (extra["payment_id"], pid))
     if status == "SUCCEEDED":
         conn.execute("UPDATE enterprise_invoice SET status='PAID', paid_at=?, payment_id=? WHERE invoice_id=?",
                      (now, pid, invoice_id))
@@ -143,7 +196,8 @@ def collect(conn, invoice_id, actor="billing") -> dict:
     if status in ("SUCCEEDED", "FAILED"):
         _tell(conn, inv["tenant_id"], f"Payment {status.lower()} for invoice {invoice_id}",
               err or f"{inv['currency']} {inv['amount']:,.2f}", "warning" if status == "FAILED" else "info")
-    return {"payment_id": pid, "status": status, "error": err, "invoice": _inv(conn, invoice_id)}
+    return {"payment_id": pid, "status": status, "error": err, "invoice": _inv(conn, invoice_id),
+            "pay_url": extra.get("url")}
 
 
 def _tell(conn, tenant_id, title, body, severity="info"):
@@ -212,6 +266,9 @@ def change_plan(conn, tenant_id, plan_id, actor) -> dict:
     sub = billing.subscription(conn, tenant_id)
     if not sub:
         return billing.subscribe(conn, tenant_id, plan_id, actor=actor)
+    if sub.get("payment_provider") == "razorpay":  # W39b: Razorpay would keep charging the old plan
+        raise ValueError("this workspace pays by Razorpay autopay: cancel autopay (POST /api/billing/autopay/cancel), "
+                         "change the plan, then start autopay on the new plan")
     use = usage(conn, tenant_id)
     over = [k for k, v in (plan.get("limits") or {}).items()
             if v is not None and (use.get(k.replace("max_", "")) or 0) > v]
@@ -253,8 +310,8 @@ def run_cycle(conn, today=None) -> dict:
     billed = 0
     for tid, pid, start, end in conn.execute(
             "SELECT tenant_id, plan_id, started_at, current_period_end FROM enterprise_subscription WHERE status IN "
-            "('ACTIVE','PAST_DUE') AND current_period_end IS NOT NULL AND DATE(current_period_end)<=?",
-            (str(today),)).fetchall():
+            "('ACTIVE','PAST_DUE') AND current_period_end IS NOT NULL AND DATE(current_period_end)<=? AND "
+            "COALESCE(payment_provider,'')<>'razorpay'", (str(today),)).fetchall():     # W39b: autopay bills itself
         pend = datetime.fromisoformat(str(end)[:19])
         inv = billing.draft_invoice(conn, tid, str((pend - timedelta(days=30)).date()), str(pend.date()), "billing")
         try:

@@ -60,6 +60,7 @@ INVENTORY = {
     "enterprise_usage": ("operational", False, "billing evidence; kept"),
     "enterprise_invoice": ("financial", False, "kept (accounting)"),
     "enterprise_payment": ("financial", False, "kept (accounting); no card data is ever stored"),
+    "enterprise_billing_ref": ("financial", False, "kept (accounting); payment-gateway ids only, no card / UPI data"),
     "tenant_paper_account": ("financial", False, "tenant lifetime"),
     "tenant_paper_position": ("financial", False, "tenant lifetime"),
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),

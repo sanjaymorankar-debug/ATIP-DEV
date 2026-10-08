@@ -10,9 +10,12 @@ INBOUND  POST /api/webhooks/{source}
   Checks   signature (constant-time), timestamp within 300 s (replay window), event id not
            seen before for this source (ops_webhook_event PRIMARY KEY -> duplicate = 200
            {"duplicate": true}, processed once), body <= 256 KB, JSON.
-  Effect   the event is recorded (payload sha256, type) as RECEIVED. ATIP has no inbound
-           integration that ACTS on a webhook yet (billing / broker postbacks are future
-           work): the endpoint is the verified, idempotent intake those will use.
+  Effect   the event is recorded (payload sha256, type) as RECEIVED; enterprise/w32.consume
+           then acts on it (payments, broker, razorpay) and sets PROCESSED / IGNORED / FAILED.
+  RAZORPAY (W39b) POST /api/webhooks/razorpay is verified Razorpay's way instead
+           (enterprise/razorpay.verify_inbound): X-Razorpay-Signature = hex HMAC-SHA256 of the raw
+           body with WEBHOOK_SECRET_RAZORPAY (no DEFAULT fallback), X-Razorpay-Event-Id as the
+           event id, the payload's created_at as the replay bound.
 
 OUTBOUND endpoints (ops_webhook_endpoint, registered via /api/ops/webhooks) receive
   ATIP events (emit(event_type, payload)). Each delivery (ops_webhook_delivery) is signed
@@ -62,6 +65,9 @@ def verify_inbound(conn, source: str, headers: dict, body: bytes) -> tuple:
     import re
     if not re.match(r"^[a-z0-9_]{1,32}$", source or ""):
         return 404, {"error": {"code": "NOT_FOUND", "message": "unknown webhook source"}}
+    if source == "razorpay":                      # W39b: Razorpay signs the raw body its own way
+        from enterprise.razorpay import verify_inbound as razorpay_inbound
+        return razorpay_inbound(conn, headers, body)
     secret = _secret_for(source)
     if not secret:
         return 503, {"error": {"code": "DEPENDENCY_UNAVAILABLE", "message": f"webhook source {source} not configured"}}

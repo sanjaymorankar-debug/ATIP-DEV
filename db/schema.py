@@ -226,6 +226,17 @@ def _run_additive_migrations(conn):
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W34_COLUMNS.items():
         _add_missing_columns(conn, table, cols)
+    from db.schema_billing import BILLING_TABLES, BILLING_COLUMNS, BILLING_INDEXES   # W39b: Razorpay (ENT-04)
+    for name, ddls in BILLING_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in BILLING_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
+    for ddl in BILLING_INDEXES:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError as e:
+            log.warning(f"  billing index skipped: {e}")
+    conn.commit()
     from db.schema_w35 import W35_TABLES                    # W35: data platform
     for name, ddls in W35_TABLES.items():
         _create_table_if_missing(conn, name, ddls)
