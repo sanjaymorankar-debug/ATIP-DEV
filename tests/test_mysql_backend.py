@@ -1069,3 +1069,23 @@ def test_an_upsert_on_a_backticked_column_rewrites_excluded():
     # arithmetic on the target row keeps working too
     assert "`rows`=`rows`+VALUES(`rows`)" in my.translate(
         "INSERT INTO s (day,`rows`) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET `rows`=`rows`+excluded.`rows`")
+
+
+def test_a_column_that_is_both_keyed_and_defaulted_takes_the_larger_width():
+    """The two paths into this module have to agree on the same table.
+
+    research/tech_signals.py's technical_signal.status is TEXT NOT NULL DEFAULT
+    'OPEN' with its own CREATE INDEX. Given the whole statement list up front
+    (the migration tool) the key is known and the keyed width applies; reached one
+    statement at a time (the runtime) only the DEFAULT is visible when the CREATE
+    TABLE runs, and the later CREATE INDEX does not narrow a column it can already
+    index. The same table came out VARCHAR(191) one way and VARCHAR(255) the
+    other until the larger width won on both.
+    """
+    both = my.ddl("CREATE TABLE t (status TEXT NOT NULL DEFAULT 'OPEN')", keyed={"status"})
+    assert f"VARCHAR({max(my.KEYED_TEXT_LEN, my.DEFAULTED_TEXT_LEN)})" in both, both
+    # neither rule is disturbed on its own
+    assert f"VARCHAR({my.KEYED_TEXT_LEN})" in my.ddl("CREATE TABLE t (k TEXT)", keyed={"k"})
+    assert f"VARCHAR({my.DEFAULTED_TEXT_LEN})" in my.ddl("CREATE TABLE t (d TEXT DEFAULT 'x')", keyed=set())
+    # and a plain TEXT column stays TEXT
+    assert "TEXT" in my.ddl("CREATE TABLE t (note TEXT)", keyed=set())

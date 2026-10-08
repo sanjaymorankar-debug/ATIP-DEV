@@ -68,6 +68,13 @@ MYSQL_RESERVED = ("change", "key", "rank", "rows", "signal", "trigger")
 # (PostgreSQL); KEY in PRIMARY KEY, RANK() OVER and ROWS BETWEEN are syntax.
 _RESERVED_RX = re.compile(rf"(?<![`\"\w])(?:{'|'.join(MYSQL_RESERVED)})(?![`\"\w])", re.I)
 _STARTS_SQL = re.compile(r"^\s*(SELECT|INSERT\s+(INTO|OR)|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\b", re.I)
+
+# A bare column list, handed to a helper that splices it into a SELECT -- e.g.
+# research/screener.py's _latest_rows(conn, table, "t.atip_score, t.signal", ...).
+# It carries no verb, so the check above cannot see it. The shape is strict: only
+# comma-separated identifiers, optionally qualified, and nothing else -- which no
+# prose string in the code base matches.
+_COLUMN_LIST = re.compile(r"^\s*[\w`]+(?:\.[\w`]+)?(?:\s*,\s*[\w`]+(?:\.[\w`]+)?)+\s*$")
 _IS_STATEMENT = re.compile(r"\b(FROM|INTO|UPDATE|SET)\b", re.I)
 
 
@@ -86,7 +93,9 @@ def reserved_identifiers(root: Path):
     Every string literal that reads as a SQL statement is checked, not just the
     ones passed straight to execute(): ATIP also builds SQL in a variable and
     hands it to helpers like dashboard's _rows(), and those sites failed exactly
-    the same way. DDL is skipped -- db.mysql.ddl() quotes its own identifiers.
+    the same way. Bare column lists spliced into a SELECT are checked too, since
+    they carry no verb to recognise. DDL is skipped -- db.mysql.ddl() quotes its
+    own identifiers.
     """
     for p in sorted(root.rglob("*.py")):
         if SKIP_DIRS - {"tests"} & set(p.relative_to(root).parts):
@@ -103,7 +112,8 @@ def reserved_identifiers(root: Path):
                 sql = n.value
             else:
                 continue
-            if not (_STARTS_SQL.match(sql) and _IS_STATEMENT.search(sql)):
+            is_statement = _STARTS_SQL.match(sql) and _IS_STATEMENT.search(sql)
+            if not (is_statement or _COLUMN_LIST.match(sql)):
                 continue                                   # prose that opens with a verb is not SQL
             if re.match(r"\s*(CREATE|ALTER|DROP|PRAGMA)\b", sql, re.I):
                 continue

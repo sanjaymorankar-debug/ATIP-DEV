@@ -230,7 +230,7 @@ def gather(conn, symbol: str, uni: Universe | None = None) -> dict:
                if not _d(h.get("period_end") or h.get("report_date")) or
                _d(h.get("period_end") or h.get("report_date")) <= as_of]
     _own_multiples(conn, symbol, history)
-    scores = _latest(conn, "SELECT date, atip_score, signal, confidence, beta_1y, fund_score, tech_score, inst_score, "
+    scores = _latest(conn, "SELECT date, atip_score, `signal`, confidence, beta_1y, fund_score, tech_score, inst_score, "
                            "news_score, regime, top_factor_1, top_factor_2, top_factor_3 FROM ai_scores "
                            "WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 1", (symbol, str(as_of)))
     try:

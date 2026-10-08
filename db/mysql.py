@@ -626,12 +626,26 @@ def _column_def(part: str, keyed: set, checked: set = frozenset()) -> str:
     rest = re.sub(r"DEFAULT\s*\(?\s*date\s*\(\s*'now'\s*\)\s*\)?", "DEFAULT (CURRENT_DATE)", rest, flags=re.I)
 
     # TEXT -> VARCHAR where MySQL will not take TEXT: in a key, or with a DEFAULT.
+    #
+    # A column that is BOTH takes the LARGER length, which is what keeps the two
+    # paths into this module agreeing. research/tech_signals.py's
+    # technical_signal.status is the first such column: TEXT NOT NULL DEFAULT
+    # 'OPEN' with its own CREATE INDEX. Given the whole statement list up front
+    # (the migration tool) the key is known and the keyed length applied; reached
+    # one statement at a time (the runtime) only the DEFAULT is visible when the
+    # CREATE TABLE runs, and the later CREATE INDEX does not narrow a column it
+    # can already index -- so the same table came out VARCHAR(191) one way and
+    # VARCHAR(255) the other. Taking the max satisfies both rules: 255 utf8mb4
+    # characters is 1020 bytes, well inside InnoDB's 3072-byte index key limit.
     if re.search(r"\bTEXT\b", rest, re.I):
         has_default = bool(re.search(r"\bDEFAULT\b", rest, re.I))
+        width = None
         if name in keyed:
-            rest = re.sub(r"\bTEXT\b", f"VARCHAR({KEYED_TEXT_LEN})", rest, count=1, flags=re.I)
+            width = max(KEYED_TEXT_LEN, DEFAULTED_TEXT_LEN) if has_default else KEYED_TEXT_LEN
         elif has_default:
-            rest = re.sub(r"\bTEXT\b", f"VARCHAR({DEFAULTED_TEXT_LEN})", rest, count=1, flags=re.I)
+            width = DEFAULTED_TEXT_LEN
+        if width is not None:
+            rest = re.sub(r"\bTEXT\b", f"VARCHAR({width})", rest, count=1, flags=re.I)
 
     for rx, repl in _TYPE_RULES:
         rest = re.sub(rx, repl, rest, flags=re.I)

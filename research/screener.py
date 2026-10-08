@@ -579,7 +579,7 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
         book = {r["symbol"]: r for r in book_latest(conn, day=as_of, limit=5000)}
     except Exception:
         book = {}
-    sc = _latest_rows(conn, "ai_scores", "t.atip_score, t.signal", syms, as_of)
+    sc = _latest_rows(conn, "ai_scores", "t.atip_score, t.`signal`", syms, as_of)
     rr = _latest_rows(conn, "research_report", "t.rating, t.upside_pct, t.fair_value, t.moat_proxy, t.quality_score",
                       syms, as_of, date_col="as_of")
     shp = {}
