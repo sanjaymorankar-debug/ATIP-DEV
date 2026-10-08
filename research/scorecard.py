@@ -29,7 +29,8 @@ dividend axis, as on the Snowflake.
                                       row["_scorecard"]
     for_symbol(conn, symbol)          the detail for one stock, from the cached screener snapshot
     store(conn, rows, as_of)          the day's counts into fundamental_scorecard (the 20:50 saved-screens
-                                      job), so the scorecard builds its own record
+                                      job), so the scorecard builds its own record; the same row carries the
+                                      day's DVM scores and zone (research/dvm.py, built from the same rows)
     record(conn, horizon)             return vs the Nifty over the next `horizon` sessions by score band,
                                       one sample per stock per month
 
@@ -64,9 +65,12 @@ DDL = (
     """CREATE TABLE IF NOT EXISTS fundamental_scorecard (
         symbol TEXT NOT NULL, as_of DATE NOT NULL, price REAL, checks_passed INTEGER, checks_known INTEGER,
         value_checks INTEGER, growth_checks INTEGER, past_checks INTEGER, health_checks INTEGER,
-        dividend_checks INTEGER, checks_json TEXT, created_at TIMESTAMP, PRIMARY KEY (symbol, as_of))""",
+        dividend_checks INTEGER, checks_json TEXT, created_at TIMESTAMP, dvm_d REAL, dvm_v REAL, dvm_m REAL,
+        dvm_zone TEXT, PRIMARY KEY (symbol, as_of))""",
     "CREATE INDEX IF NOT EXISTS idx_fundamental_scorecard_asof ON fundamental_scorecard(as_of)",
 )
+# columns added after FS-03 shipped (db/schema_w39.py W39_COLUMNS): the day's DVM scores (research/dvm.py)
+ADDED_COLUMNS = {"fundamental_scorecard": {"dvm_d": "REAL", "dvm_v": "REAL", "dvm_m": "REAL", "dvm_zone": "TEXT"}}
 
 
 def settings() -> dict:
@@ -81,6 +85,12 @@ def settings() -> dict:
 def ensure_tables(conn):
     for d in DDL:
         conn.execute(d)
+    try:
+        from db.schema import _add_missing_columns
+        for table, cols in ADDED_COLUMNS.items():
+            _add_missing_columns(conn, table, cols)
+    except Exception:
+        pass
 
 
 def _d(v):
@@ -551,16 +561,20 @@ def store(conn, rows: list, as_of=None) -> int:
             continue
         flags = {a["key"]: [None if x["pass"] is None else int(x["pass"]) for x in a["checks"]] for a in sc["axes"]}
         conn.execute("""INSERT INTO fundamental_scorecard (symbol, as_of, price, checks_passed, checks_known, value_checks,
-                            growth_checks, past_checks, health_checks, dividend_checks, checks_json, created_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                            growth_checks, past_checks, health_checks, dividend_checks, checks_json, created_at,
+                            dvm_d, dvm_v, dvm_m, dvm_zone)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(symbol, as_of) DO UPDATE SET price=excluded.price,
                             checks_passed=excluded.checks_passed, checks_known=excluded.checks_known,
                             value_checks=excluded.value_checks, growth_checks=excluded.growth_checks,
                             past_checks=excluded.past_checks, health_checks=excluded.health_checks,
-                            dividend_checks=excluded.dividend_checks, checks_json=excluded.checks_json""",
+                            dividend_checks=excluded.dividend_checks, checks_json=excluded.checks_json,
+                            dvm_d=excluded.dvm_d, dvm_v=excluded.dvm_v, dvm_m=excluded.dvm_m,
+                            dvm_zone=excluded.dvm_zone""",
                      (r["symbol"], as_of, r.get("price"), sc["checks_passed"], sc["checks_known"], sc["value_checks"],
                       sc["growth_checks"], sc["past_checks"], sc["health_checks"], sc["dividend_checks"],
-                      json.dumps(flags), datetime.now()))
+                      json.dumps(flags), datetime.now(), r.get("dvm_d"), r.get("dvm_v"), r.get("dvm_m"),
+                      r.get("dvm_zone")))
         n += 1
     conn.commit()
     return n

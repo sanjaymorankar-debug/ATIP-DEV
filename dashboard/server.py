@@ -1446,20 +1446,22 @@ if HAS_FASTAPI:
 
     @app.post("/api/backtests/walkforward", dependencies=_guard)
     async def api_backtest_walkforward(request: _Req):
-        """Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?}."""
+        """Body: {request:{...start,end...}, train, validation, test, step, candidates?, select_by?,
+        purge?, embargo?} -- purge / embargo (BT-18) are sessions, default 0 (no gap between windows)."""
         import threading
         from backtest.walkforward import run_walk_forward, build_windows, trading_sessions
         b = await request.json()
         try:
             req = b["request"]
+            purge, embargo = int(b.get("purge") or 0), int(b.get("embargo") or 0)
             bt_service.resolve_config(req)
             build_windows(trading_sessions(req["start"], req["end"]), int(b["train"]), int(b["validation"]),
-                          int(b["test"]), int(b["step"]))
+                          int(b["test"]), int(b["step"]), purge, embargo)
         except (ValueError, KeyError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         threading.Thread(target=run_walk_forward, daemon=True,
                          args=(req, int(b["train"]), int(b["validation"]), int(b["test"]), int(b["step"]),
-                               b.get("candidates"), b.get("select_by", "sharpe"))).start()
+                               b.get("candidates"), b.get("select_by", "sharpe"), purge, embargo)).start()
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind walk_forward)"})
 
     # ── W23: optimisation, sensitivity, robustness, research study ─────────
@@ -1513,6 +1515,18 @@ if HAS_FASTAPI:
             return JSONResponse({"error": str(e)}, status_code=400)
         _bg(robustness, b["request"], int(b.get("n_subsamples", 3)), int(b.get("seed", 42)))
         return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind robustness)"})
+
+    @app.post("/api/backtests/costsweep", dependencies=_guard)
+    async def api_backtest_costsweep(request: _Req):
+        """Body: {request, multipliers? (default [0,0.5,1,1.5,2,3,5]), scale? costs|slippage|both} (BT-19)."""
+        from backtest.robustness import cost_sweep, prepare_cost_sweep
+        b = await request.json()
+        try:
+            mults = prepare_cost_sweep(b["request"], b.get("multipliers"), b.get("scale", "costs"))
+        except (ValueError, KeyError, TypeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _bg(cost_sweep, b["request"], mults, b.get("scale", "costs"))
+        return JSONResponse({"status": "RUNNING", "note": "the parent run appears in /api/backtests (kind cost_sweep)"})
 
     @app.post("/api/backtests/study", dependencies=_guard)
     async def api_backtest_study(request: _Req):
@@ -1622,6 +1636,8 @@ if HAS_FASTAPI:
     _register_w38_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w39_routes import register as _register_w39_routes                   # W39
     _register_w39_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w39_retail_routes import register as _register_w39b_routes           # W39b: baskets, SIP
+    _register_w39b_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

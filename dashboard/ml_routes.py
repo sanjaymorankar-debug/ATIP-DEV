@@ -12,6 +12,8 @@ Nothing here can create an intent, a risk decision or an order.
     GET  /api/ml/datasets/{id}
     GET  /api/ml/models                   POST (token) {model_id, name, model_type, label_kind, feature_set, ...}
     GET  /api/ml/models/{id}              versions, events, metrics, explanations
+    GET  /api/ml/models/{id}/lineage      ?version -- W39 (ML-18) version -> dataset snapshot -> feature set
+                                          -> code version -> strategies / backtests (ml.registry.lineage)
     POST /api/ml/models/{id}/train        (token) {dataset: spec, params?} -- background
     POST /api/ml/models/{id}/lifecycle    (token) {version, to_state, reason}
     POST /api/ml/models/{id}/activate     (token) {version, reason}   (APPROVED -> ACTIVE only)
@@ -225,6 +227,17 @@ def register(app, guard, Req, get_connection, json_safe):
                 conn, "SELECT * FROM ml_model_explanation WHERE model_id=? ORDER BY created_at DESC", (mid,))]
             m["allowed_transitions"] = {k: sorted(v) for k, v in REG.TRANSITIONS.items()}
             return JSONResponse(json_safe(m))
+        finally:
+            conn.close()
+
+    @app.get("/api/ml/models/{mid}/lineage")
+    async def api_ml_model_lineage(mid: str, version: str = None):
+        """W39 (ML-18): one version's manifest (default: the ACTIVE version, else the latest)."""
+        conn = conn_ready()
+        try:
+            return JSONResponse(json_safe(REG.lineage(conn, mid, version)))
+        except BAD as e:
+            return err_for(e)
         finally:
             conn.close()
 

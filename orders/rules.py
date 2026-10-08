@@ -848,6 +848,13 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
         order_type=rule["order_type"], product_type=rule["product_type"],
         price=rule.get("limit_price") or 0, confirm=confirm,
     )
+    if result.get("status") == "PLACED":
+        # The bracket legs below are measured from the ACTUAL fill (see _create_bracket_legs).
+        # Use the broker's average traded price when it reports one -- the paper broker does;
+        # Dhan's place_order response does not, and then the trigger price stays the anchor.
+        filled_at = ((result.get("response") or {}).get("data") or {}).get("averageTradedPrice")
+        if filled_at:
+            exec_price = float(filled_at)
 
     conn = get_connection()
     try:

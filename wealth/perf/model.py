@@ -20,12 +20,23 @@ EXECUTABLE RETURN (what an account could actually have done)
     exit   the session after the model exit, at its open x (1 - slippage_bps)
     costs  NSE delivery charges (backtest/costs.py) on a `notional` position each side
     liquidity  skipped (NOT_EXECUTABLE) when the notional exceeds max_adv_pct of the
-           20-session average traded value, or there is no next-session bar
+           20-session average traded value, or there is no next-session bar. W39: a
+           symbol with no volume history is kept but flagged liquidity UNKNOWN (it used
+           to pass silently), and the exit is checked too (exit_liquidity ABOVE_CAP)
     series equal weight, with entry / exit costs taken on those days
+    slippage_model  W39 (PERF-001-03). "fixed" (default): slippage_bps each side, as
+           above. "impact": each side's slippage is the EX-12 square-root impact
+           estimate (execution/impact.py) for that order -- half the Corwin-Schultz
+           spread + Y x daily sigma x sqrt(quantity / median ADV), with sigma, ADV and the
+           spread measured up to the signal date (entry) or the model exit date (exit),
+           so no later data is used. Y is impact_y when given, else the live-fill
+           calibration, else the default 0.7; the Y used is recorded. A side whose inputs
+           are missing (under 10 bars, no volume) falls back to slippage_bps and says so.
 
 SIGNAL ATTRIBUTION (per signal, against an actual portfolio's ledger)
-    entry     first BUY in the portfolio for the symbol within link_window sessions
-              on / after the signal date, not already linked to an earlier signal
+    entry     the BUY whose signal_ref is this signal (EXACT, W39), else the first BUY in
+              the portfolio for the symbol within link_window sessions on / after the
+              signal date, not already linked to an earlier signal (WINDOW)
     add-ons   further BUYs while that position is open
     exits     SELLs until the position is flat
     outcome   actual P&L (realized + unrealized) and return vs model and executable, and
@@ -40,7 +51,10 @@ POSITION ATTRIBUTION (per linked signal, in rupees on the actual quantity Q)
     costs          - fees
     The four add up exactly to actual P&L - model P&L on the same quantity.
     sizing         actual capital deployed vs the model notional, and the P&L the model
-                   return earns on each
+                   return earns on each. W39: the sizing effect in rupees,
+                   (Q - model quantity) x model P&L per share, so that
+                   actual P&L - model P&L on the model notional
+                       = entry timing + averaging + exit timing + costs + sizing
 """
 
 from __future__ import annotations
@@ -50,7 +64,9 @@ from datetime import date
 from wealth.perf import data as D
 from wealth.perf import metrics as M
 
-DEFAULTS = {"horizon": 20, "slippage_bps": 10.0, "notional": 100000.0, "max_adv_pct": 5.0, "link_window": 5}
+DEFAULTS = {"horizon": 20, "slippage_bps": 10.0, "notional": 100000.0, "max_adv_pct": 5.0, "link_window": 5,
+            "slippage_model": "fixed", "impact_y": None}
+SLIPPAGE_MODELS = ("fixed", "impact")
 
 
 def load_signals(conn, start: date, end: date) -> list:
@@ -81,8 +97,31 @@ def _cost_model():
         return cost_model("nse_delivery")
 
 
+def _slip(conn, o, y, side, sym, qty, ref_px, as_of):
+    """(bps, source, detail) for one side of an executable trade."""
+    if o["slippage_model"] != "impact":
+        return o["slippage_bps"], "fixed", None
+    from execution import impact as IM
+    est = IM.estimate(conn, sym, max(1, int(round(qty))), side, price=ref_px, as_of=as_of, y=y)
+    if not est.get("ok"):
+        return o["slippage_bps"], "fixed (impact inputs unavailable)", {"reason": est.get("reason")}
+    return est["total_bps"], "impact", {"half_spread_bps": est["half_spread_bps"], "impact_bps": est["impact_bps"],
+                                        "participation": est["participation"], "out_of_model": est["out_of_model"]}
+
+
 def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
     o = {**DEFAULTS, **{k: v for k, v in (opts or {}).items() if k in DEFAULTS and v is not None}}
+    if o["slippage_model"] not in SLIPPAGE_MODELS:
+        raise ValueError(f"slippage_model must be one of {SLIPPAGE_MODELS}")
+    y = y_src = None
+    if o["slippage_model"] == "impact":
+        if o["impact_y"] is not None:
+            y, y_src = float(o["impact_y"]), "given"
+            if not 0 < y <= 5:
+                raise ValueError("impact_y must be in (0, 5]")
+        else:
+            from execution import impact as IM
+            y, y_src = IM.current_y(conn)
     sigs = load_signals(conn, start, end)
     sells = {}
     for s in sigs:
@@ -135,13 +174,17 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
             exec_trades.append(et)
             continue
         adv = prices.adv_value(sym, sd)
+        if adv is None:
+            et["liquidity"] = "UNKNOWN"
+            et["liquidity_note"] = "no volume history: the liquidity cap could not be checked"
         if adv is not None and o["notional"] > adv * o["max_adv_pct"] / 100:
             et.update({"status": "NOT_EXECUTABLE", "reason": f"notional Rs {o['notional']:,.0f} above "
                        f"{o['max_adv_pct']}% of 20-session average traded value Rs {adv:,.0f}"})
             exec_trades.append(et)
             continue
         e_open = nb[1] or nb[2]
-        e_px = e_open * (1 + o["slippage_bps"] / 10000)
+        e_bps, e_src, e_det = _slip(conn, o, y, "BUY", sym, o["notional"] / e_open, e_open, sd)
+        e_px = e_open * (1 + e_bps / 10000)
         if still_open:
             x_d, x_raw = exit_d, exit_px
             x_reason = "open at period end (marked at close)"
@@ -151,14 +194,23 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
                 x_d, x_raw, x_reason = xb[0], (xb[1] or xb[2]), "next-session open after the model exit"
             else:
                 x_d, x_raw, x_reason = exit_d, exit_px, "model exit close (no later session in the period)"
-        x_px = x_raw * (1 - o["slippage_bps"] / 10000) if x_raw else None
-        buy_c = cm.total("BUY", o["notional"])
         qty = o["notional"] / e_px
+        x_bps, x_src, x_det = _slip(conn, o, y, "SELL", sym, qty, x_raw, exit_d) if x_raw else (0.0, "none", None)
+        x_px = x_raw * (1 - x_bps / 10000) if x_raw else None
+        buy_c = cm.total("BUY", o["notional"])
+        if x_px and not still_open:
+            x_adv = prices.adv_value(sym, x_d)
+            if x_adv is not None and qty * x_px > x_adv * o["max_adv_pct"] / 100:
+                et["exit_liquidity"] = "ABOVE_CAP"
+            elif x_adv is None:
+                et["exit_liquidity"] = "UNKNOWN"
         sell_c = cm.total("SELL", qty * x_px) if (x_px and not still_open) else 0.0
         pnl = qty * (x_px - e_px) - buy_c - sell_c if x_px else None
         et.update({"entry_date": str(nb[0]), "entry": round(e_px, 4), "exit_date": str(x_d),
                    "exit": round(x_px, 4) if x_px else None, "exit_reason": x_reason, "open": still_open,
-                   "costs": round(buy_c + sell_c, 2), "slippage_bps": o["slippage_bps"],
+                   "costs": round(buy_c + sell_c, 2), "slippage_bps": round(e_bps, 2),
+                   "exit_slippage_bps": round(x_bps, 2), "slippage_source": e_src, "exit_slippage_source": x_src,
+                   **({"slippage_detail": {"entry": e_det, "exit": x_det}} if (e_det or x_det) else {}),
                    "pnl": round(pnl, 2) if pnl is not None else None,
                    "ret": pnl / o["notional"] if pnl is not None else None,
                    "days": (x_d - nb[0]).days, "adv_value": round(adv, 0) if adv else None,
@@ -171,12 +223,16 @@ def build(conn, start: date, end: date, prices: D.Prices, opts: dict) -> dict:
     ok = [t for t in exec_trades if t["status"] == "EXECUTABLE" and t.get("exit")]
     e_ser = _series(cal, prices, [(t["symbol"], D._d(t["entry_date"]), t["entry"], D._d(t["exit_date"]), t["exit"],
                                    t["buy_cost_pct"], t["sell_cost_pct"], True) for t in ok])
+    if y is not None:
+        o = {**o, "impact_y_used": round(y, 4), "impact_y_source": y_src}
     return {"options": o, "signals": len(sigs), "repeats_ignored": repeats, "calendar": cal,
             "model": {"trades": model_trades, "series": m_ser, "trade_stats": M.trade_stats(
                 [t for t in model_trades if t["ret"] is not None])},
             "executable": {"trades": exec_trades, "series": e_ser, "trade_stats": M.trade_stats(
                 [t for t in ok if t["ret"] is not None]),
-                "not_executable": sum(1 for t in exec_trades if t["status"] == "NOT_EXECUTABLE")}}
+                "not_executable": sum(1 for t in exec_trades if t["status"] == "NOT_EXECUTABLE"),
+                "liquidity_unknown": sum(1 for t in exec_trades if t.get("liquidity") == "UNKNOWN"),
+                "exit_above_cap": sum(1 for t in exec_trades if t.get("exit_liquidity") == "ABOVE_CAP")}}
 
 
 def _series(cal, prices, legs):
@@ -209,10 +265,12 @@ def _series(cal, prices, legs):
     return out
 
 
-def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int) -> dict:
+def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int, notional: float | None = None) -> dict:
     """Signal lifecycle + position attribution against one actual portfolio.
     txns: basis-converted ledger rows (engine._basis) of that portfolio."""
     buys = [t for t in txns if t["kind"] == "BUY"]
+    exact = {t.get("signal_ref"): t for t in buys if t.get("signal_ref")}
+    reserved = {t["txn_id"] for t in exact.values()}      # an exact buy belongs to its own signal only
     used = set()
     items = []
     by_sym = {}
@@ -223,15 +281,17 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
         sym, sd = m["symbol"], D._d(m["signal_date"])
         limit = prices.nth_session_after(sym, sd, window)
         last_ok = limit[0] if limit else date.max
-        first = next((t for t in buys if t["symbol"] == sym and sd <= t["trade_date"] <= last_ok
-                      and t["txn_id"] not in used), None)
+        first, method = exact.get(m["signal_id"]), "EXACT"
+        if first is None or first["symbol"] != sym or first["txn_id"] in used:
+            first, method = next((t for t in buys if t["symbol"] == sym and sd <= t["trade_date"] <= last_ok
+                                  and t["txn_id"] not in used and t["txn_id"] not in reserved), None), "WINDOW"
         if not first:
             continue
         seq, q, cost_in, fees, proceeds, sold_q = [], 0.0, 0.0, 0.0, 0.0, 0.0
         exits = []
         for t in by_sym[sym]:
             if t["trade_date"] < first["trade_date"] or (t["kind"] == "BUY" and t["txn_id"] != first["txn_id"]
-                                                          and t["txn_id"] in used):
+                                                          and (t["txn_id"] in used or t["txn_id"] in reserved)):
                 continue
             if t["kind"] == "BUY":
                 if q <= 1e-9 and seq:
@@ -258,13 +318,21 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
         model_pnl_q = Q * (mx - me) if mx else None
         p1 = seq[0]["p"]
         attr = None
+        vs_notional = None
         if model_pnl_q is not None:
             attr = {"entry_timing": round(Q * (me - p1), 2), "averaging": round(Q * p1 - cost_in, 2),
                     "exit_timing": round(proceeds + open_val - Q * mx, 2), "costs": round(-fees, 2)}
             attr["total"] = round(sum(attr.values()), 2)
             attr["check"] = round(actual_pnl - model_pnl_q, 2)
+            if notional and me:
+                mq = notional / me
+                model_pnl_n = mq * (mx - me)
+                sizing = (Q - mq) * (mx - me)
+                vs_notional = {"model_quantity": round(mq, 6), "model_pnl": round(model_pnl_n, 2),
+                               "sizing": round(sizing, 2), "total": round(attr["total"] + sizing, 2),
+                               "check": round(actual_pnl - model_pnl_n, 2)}
         items.append({
-            "signal_id": m["signal_id"], "symbol": sym, "signal_date": m["signal_date"],
+            "signal_id": m["signal_id"], "symbol": sym, "signal_date": m["signal_date"], "link_method": method,
             "model": {"entry": me, "exit": mx, "exit_date": m["exit_date"], "ret_pct": _p(m["ret"])},
             "entry": {"date": str(first["trade_date"]), "price": round(p1, 4), "quantity": round(first["q"], 6),
                       "delay_sessions": _sessions(prices, sym, sd, first["trade_date"])},
@@ -274,8 +342,9 @@ def link_signals(conn, owner, portfolio, model_trades, txns, prices, window: int
             "actual": {"capital": round(cost_in, 2), "pnl": round(actual_pnl, 2),
                        "ret_pct": _p(actual_pnl / cost_in) if cost_in else None, "fees": round(fees, 2)},
             "position_attribution": attr,
-            "sizing": {"actual_capital": round(cost_in, 2), "model_notional": None,
+            "sizing": {"actual_capital": round(cost_in, 2), "model_notional": notional,
                        "model_pnl_on_actual_size": round(model_pnl_q, 2) if model_pnl_q is not None else None},
+            "attribution_vs_model_notional": vs_notional,
         })
     linked_buys = used
     disc = [t for t in buys if t["txn_id"] not in linked_buys]

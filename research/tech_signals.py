@@ -6,7 +6,11 @@ actually work on Indian stocks.
 
     technical_snapshot   one row per symbol per day: technical rating, RS rating (IBD-style 1-99:
                          0.4 ROC63 + 0.2 ROC126 + 0.2 ROC189 + 0.2 ROC252, ranked across the universe), key
-                         indicators, today's candlestick patterns and scan hits (the screener's technical half)
+                         indicators, today's candlestick patterns and scan hits (the screener's technical half);
+                         also the weekly rating and (Phase 3) the 75-minute rating on completed 75-minute bars
+                         built from the stored 15-minute bars (tech_rating_75*, mtf_alignment_75:
+                         research/technicals.py), computed here at 20:30, after the close, so the day's five
+                         75-minute bars are all complete and the agreement compares two ratings of one session
     technical_signal     one row per scan hit: direction, entry (the close), stop and target from
                          ATR (stop 2 x ATR, target 4 x ATR: 2 R), a 20-session horizon, and a
                          CONFLUENCE count of independent agreeing evidence:
@@ -68,7 +72,8 @@ SNAP_COLS = ["tech_rating", "tech_rating_label", "rs_rating", "rsi_14", "macd_hi
              "return_1m_pct", "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals",
              "tech_rating_w", "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment",
              "chart_patterns", "vcp_setup", "rs_line_at_high", "cap_bucket", "rs_rating_cap", "delivery_pct",
-             "delivery_ratio"]
+             "delivery_ratio", "tech_rating_75", "tech_rating_75_label", "rsi_14_75", "supertrend_dir_75", "bar_75_end",
+             "mtf_alignment_75"]
 
 DDL = (
     """CREATE TABLE IF NOT EXISTS technical_snapshot (
@@ -79,7 +84,8 @@ DDL = (
         bear_signals INTEGER, scans_json TEXT, created_at TIMESTAMP, tech_rating_w REAL, tech_rating_w_label TEXT,
         rsi_14_w REAL, supertrend_dir_w INTEGER, mtf_alignment TEXT, chart_patterns TEXT, vcp_setup INTEGER,
         rs_line_at_high INTEGER, cap_bucket TEXT, rs_rating_cap INTEGER, delivery_pct REAL, delivery_ratio REAL,
-        PRIMARY KEY (symbol, date))""",
+        tech_rating_75 REAL, tech_rating_75_label TEXT, rsi_14_75 REAL, supertrend_dir_75 INTEGER, bar_75_end TEXT,
+        mtf_alignment_75 TEXT, PRIMARY KEY (symbol, date))""",
     "CREATE INDEX IF NOT EXISTS idx_technical_snapshot_date ON technical_snapshot(date)",
     """CREATE TABLE IF NOT EXISTS technical_signal (
         signal_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, date DATE NOT NULL, scan TEXT NOT NULL, name TEXT,
@@ -103,7 +109,11 @@ ADDED_COLUMNS = {"technical_signal": {"market_gate": "TEXT", "alignment": "TEXT"
                                         "chart_patterns": "TEXT", "vcp_setup": "INTEGER",           # Phase 2 item 4
                                         "rs_line_at_high": "INTEGER", "cap_bucket": "TEXT",           # Phase 2 item 5
                                         "rs_rating_cap": "INTEGER",
-                                        "delivery_pct": "REAL", "delivery_ratio": "REAL"}}            # Phase 2 item 6
+                                        "delivery_pct": "REAL", "delivery_ratio": "REAL",             # Phase 2 item 6
+                                        "tech_rating_75": "REAL", "tech_rating_75_label": "TEXT",     # 75-minute rating
+                                        "rsi_14_75": "REAL", "supertrend_dir_75": "INTEGER", "bar_75_end": "TEXT",
+                                        "mtf_alignment_75": "TEXT"}}
+TF75_SESSIONS = 60       # sessions of 15-minute bars read for the 75-minute rating (300 bars; intraday_bars keeps 90 days)
 
 
 def ensure_tables(conn):
@@ -154,6 +164,22 @@ def load_bars(conn, symbols, as_of, lookback_days=LOOKBACK_DAYS) -> dict:
                 break
             cur = r[0]
             buf.append(r[1:])
+    return out
+
+
+def load_15m(conn, symbols, as_of, sessions: int = TF75_SESSIONS) -> dict:
+    """{symbol: 15-minute bars} of the last `sessions` trading days up to as_of's close, through
+    research/intraday_signals.py's loader (interval_min 15 only, so 1-minute tick bars never mix in; each bar
+    counted once done). {} when intraday_bars is missing or empty."""
+    from research.intraday_signals import SESSION_CLOSE, load_bars as load_intraday
+    out, d = {}, _d(as_of)
+    syms = sorted(set(symbols))
+    for i in range(0, len(syms), 400):
+        try:
+            out.update(load_intraday(conn, d, datetime.combine(d, SESSION_CLOSE), syms[i:i + 400], sessions))
+        except Exception as e:                      # no intraday_bars table (a fresh or trimmed database)
+            log.debug(f"15-minute bars for the 75-minute rating: {e}")
+            break
     return out
 
 
@@ -300,6 +326,7 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
             except Exception:
                 symbols = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM fundamental_data")]
         bars = load_bars(conn, symbols, as_of)
+        bars15 = load_15m(conn, [s for s, df in bars.items() if df.index[-1].date() == as_of], as_of)
         bench = benchmark(conn, as_of)
         ctx = _context(conn, as_of)
         gate = _gate(conn, as_of)
@@ -309,7 +336,7 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
         for sym, df in bars.items():
             if df.index[-1].date() != as_of:          # no bar today: stale, skip rather than repeat yesterday
                 continue
-            snap = T.snapshot(df, bench)
+            snap = T.snapshot(df, bench, bars15.get(sym))
             if snap:
                 snaps[sym] = snap
         rs_rank(snaps)
@@ -350,6 +377,7 @@ def run_technical(symbols: list | None = None, as_of=None, conn=None) -> dict:
             conn.close()
     return {"status": "SUCCESS" if n else "EMPTY", "rows": n, "signals": sigs, "as_of": str(as_of),
             "benchmark": bench is not None, "evaluated": ev, "forward": fwd,
+            "rated_75": sum(1 for v in snaps.values() if v.get("tech_rating_75") is not None),
             "market_gate": {k: (gate or {}).get(k) for k in ("date", "gate", "status", "dd_count")} if gate else None}
 
 

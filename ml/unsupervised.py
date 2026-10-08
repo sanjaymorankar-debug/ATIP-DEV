@@ -20,6 +20,9 @@ ANOMALIES  detect_anomalies(conn, as_of, symbols=None, threshold=4.0)
     squared robust z's). A stock is flagged when any single z beats `threshold` or the
     multivariate score beats threshold^2. Moves on a corporate-action ex-date are
     marked explained (split / bonus). Stored in ml_anomaly. Informational.
+
+MARKET STATES  (W39, ML-17) the clustering of MARKET days rather than stocks -- a Gaussian
+    hidden Markov model of daily NIFTY50 return / realised vol / VIX -- is ml/hmm.py.
 """
 
 from __future__ import annotations
@@ -30,14 +33,19 @@ from datetime import datetime
 import numpy as np
 
 
-def _kmeans(Z, k, seed, iters=100):
-    rng = np.random.default_rng(seed)
+def _kmeans(Z, k, seed, iters=100, init=None):
+    """Lloyd's k-means from k-means++ seeds (seeded), or from the given `init` centroids
+    (W39: the market HMM's deterministic quantile seeds, ml/hmm.py)."""
     n = len(Z)
-    cent = [Z[rng.integers(n)]]
-    for _ in range(1, k):
-        d = np.min([((Z - c) ** 2).sum(1) for c in cent], axis=0)
-        cent.append(Z[rng.choice(n, p=d / d.sum())] if d.sum() > 0 else Z[rng.integers(n)])
-    C = np.array(cent)
+    if init is not None:
+        C = np.array(init, dtype=float)
+    else:
+        rng = np.random.default_rng(seed)
+        cent = [Z[rng.integers(n)]]
+        for _ in range(1, k):
+            d = np.min([((Z - c) ** 2).sum(1) for c in cent], axis=0)
+            cent.append(Z[rng.choice(n, p=d / d.sum())] if d.sum() > 0 else Z[rng.integers(n)])
+        C = np.array(cent)
     lab = np.zeros(n, dtype=int)
     for _ in range(iters):
         D = ((Z[:, None, :] - C[None]) ** 2).sum(2)

@@ -195,11 +195,13 @@ def evaluate(conn, notify=True) -> list:
                          "notified_at=COALESCE(excluded.notified_at, ops_alert.notified_at)",
                          (name, "FIRING", sev, msg, now, now, now if (send and notify) else None))
             if send and notify:
+                conn.commit()        # notify() writes alert_log on its own connection: release the write lock
                 _notify(name, sev, msg)
         elif prev and prev[0] == "FIRING":
             conn.execute("UPDATE ops_alert SET status='RESOLVED', resolved_at=?, last_at=? WHERE rule=?",
                          (now, now, name))
             if notify:
+                conn.commit()
                 _notify(name, "info", f"resolved: {name}")
         out.append({"rule": name, "firing": firing, "severity": sev, "message": msg})
     conn.commit()

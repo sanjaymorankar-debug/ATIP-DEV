@@ -201,7 +201,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 
 **Candle patterns** (`candles`, 19, each BULL / BEAR / NEUTRAL): engulfing, harami, marubozu, hammer and hanging man, inverted hammer and shooting star (trend-qualified), doji, morning and evening star, piercing line, dark cloud cover, three white soldiers, three black crows, inside bar, NR7.
 
-**39 scans** (`SCANS`, completed daily bars only; 27 bullish, 11 bearish, 1 neutral; the 6 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL and the delivery spike under DL below):
+**47 scans** (`SCANS`, completed daily bars only; 31 bullish, 15 bearish, 1 neutral; the 14 chart-pattern breakouts are described under CP, the 2 RS-line scans under RL and the delivery spike under DL below):
 - Crosses, firing on the crossing day only: golden / death cross, EMA 9/21, price across the 200-DMA, MACD signal and zero line, RSI out of oversold / overbought and across 50, Supertrend flips.
 - Breakouts: 52-week high **on volume** (> 1.5 × the 20-day average), 52-week low, Donchian 20 and 55, 20-day breakdown.
 - Others: volume surges, TTM squeeze firing, Bollinger lower-band bounce, ADX crossing 25, Minervini trend template, RS leader, pullback to the 50-DMA in an up-trend, pocket pivot, gap up, NR7 inside bar.
@@ -378,7 +378,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - Alerts note "weekly trend agrees".
 - `forward_stats` adds `by_weekly`: agrees / disagrees / no weekly rating × gate. It is shown on the Track record tab as "Does the weekly trend add?".
 
-## CP-01..CP-03: chart patterns (`research/patterns.py`), Phase 2 item 4
+## CP-01..CP-04: chart patterns (`research/patterns.py`), Phase 2 item 4 and the rest of plan §7
 
 **Pivots:**
 - `swings(high, low, k=3)`: a swing high is higher than the 3 bars before and not exceeded by the 3 after, so it is confirmed 3 sessions later. Lows are mirrored.
@@ -390,24 +390,31 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 - **Double bottom:** two swing lows within 3 %, 10–60 sessions apart, the second within 30 sessions, after a 10 % decline. The neckline (middle peak) is 6 %+ above them and not closed above since.
 - **Ascending triangle:** 2+ swing highs within 1.5 % of the resistance, spread over 10+ sessions, the last being the latest swing high. Rising swing lows (+1 % each) since the first touch.
 - **Head and shoulders top:** the last three swing highs, the head 3 %+ above both shoulders, the shoulders within 8 % of each other, after an advance. The neckline through the two troughs is extended to today and was not broken before today.
+- **Inverse head and shoulders (CP-04):** the mirror: the last three swing lows, the head 3 %+ below both shoulders, the shoulders within 8 % of each other, after a decline (a close 8 %+ above the left shoulder in the 40 sessions before it). The neckline through the two peaks is extended to today, not closed above since the right shoulder.
+- **Descending triangle (CP-04):** 2+ swing lows within 1.5 % of the support over 10+ sessions, the last being the latest swing low; falling swing highs (−1 % each) since the first touch; no close below the support since.
+- **Channels (CP-04):** least-squares lines through the last 3 swing highs and the last 3 swing lows (`_trendlines`). Each of those pivots within 15 % of the gap of its line; no close beyond a line (by more than that before the last pivot, at all after it). Parallel: the gap at the end 0.75–1.33x the gap at the start. Both lines up 4 %+ (rising) or down 4 %+ (falling) over 20+ sessions; 3–25 % tall.
+- **Wedges (CP-04):** the same lines converging: the gap at the end ≤ 60 % of the start and still positive today (apex ahead), ≤ 25 % tall at the start, 20+ sessions. Rising: both up, the flatter upper line 3 %+. Falling: both down, the flatter lower line 3 %+.
 
 **Scans:**
 - `darvas_breakout`, `darvas_breakdown`, `vcp_breakout` (needs ≥ 1.4x volume), `double_bottom_breakout`, `ascending_triangle_breakout`, `head_shoulders_breakdown`.
+- CP-04: `inverse_head_shoulders_breakout`, `descending_triangle_breakdown`, `rising_channel_breakout` / `_breakdown`, `falling_channel_breakout` / `_breakdown` (each direction its own record), `rising_wedge_breakdown`, `falling_wedge_breakout`. `PATTERN_SCANS` is `patterns.SCAN_PATTERN`'s keys, so a new pattern scan is held back without a second list to edit.
 - Each rule returns its reason text with the pattern's levels; `run_scans` now accepts a string reason.
-- `detect(d)` computes all patterns once per frame. The cache is keyed to the frame's last bar, because pandas copies `attrs` onto slices.
+- `detect(d)` computes all patterns once per frame. The cache is keyed to the frame's last bar, because pandas copies `attrs` onto slices; it is wrapped so that copy hands the same object on instead of deep-copying it on every column access. `swings` is one vectorised window pass (the same pivots as the loop it replaced).
 
 **Alerts:**
 - `T.PATTERN_SCANS` alert only after `PROVE_CLOSED` (30) closed signals with average R > 0 (`proven_scans`).
 - `scan_stats` rows carry `pattern` and `alerts` (`on` / `held`). The Track record shows "held · n/30".
 
 **Snapshot and screener:**
-- `chart_patterns`: patterns in place near their trigger, with levels: the upper half of a Darvas box or double-bottom base, within 3 % of a triangle's resistance, any VCP below its pivot, a head and shoulders above its neckline.
+- `chart_patterns`: patterns in place near their trigger, with levels: the upper half of a Darvas box, double-bottom or inverse head-and-shoulders base, within 3 % of a triangle's resistance or support, any VCP below its pivot, a head and shoulders above its neckline, a price between a channel's or wedge's lines.
 - `vcp_setup` 1/0.
-- Presets: "Chart pattern breakouts" and "VCP setups (not yet broken out)".
+- Presets: "Chart pattern breakouts" (now with the inverse head and shoulders, falling wedge and channel breakouts), "Chart pattern breakdowns" (CP-04) and "VCP setups (not yet broken out)".
+- Stock chart (CP-04): `patterns.active(d)` lists every pattern in place with its lines; `/api/stock/{symbol}/history` returns them with the stored `technical_signal` rows and `technical_snapshot` candle patterns as `chart_marks`, and the panel draws them (Patterns toggle).
 
 **Calibration:**
 - On 4,800 random-walk stock-days, breakouts fired on 0.02 % (VCP) to 1.2 % (Darvas breakdown) of days.
 - Setups were listed on 0.2 % (VCP) to 7 % (Darvas box).
+- CP-04, on 50,000 random-walk stock-days: inverse head and shoulders 0.078 %, descending triangle 0.038 %, rising channel 0.032 % up / 0.092 % down, falling channel 0.098 % up / 0.020 % down, rising wedge 0.046 %, falling wedge 0.084 %; setups 0.15–0.69 %.
 
 ## RL-01..RL-02: RS line and size-group ranks, Phase 2 item 5
 
@@ -634,6 +641,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 | `tests/test_w39_scorecard.py` | 12 | value checks with their numbers; a loss-maker fails the earnings checks; growth vs a savings rate and the market, self-funded growth; non-payer fails and unknown skips the dividend axis, quartiles and cover; banks not scored on debt, debt-free passes, net debt from debt and cash; past checks from stored quarters (3-year EPS, acceleration, margin, debt trend); point-in-time history in %; dividends parsed from the calendar and split-adjusted, under-2-year calendar unknown; screener fields, presets, for_symbol and the 20:50 job storing them; record by band, one sample a month, too-few guard, bad horizon; API 200 / 404 / 400 and the page; permissions and classification |
 | `tests/test_w39_delivery.py` | 4 | the spike needs the ratio, the 30 % level and an up day, and no data means no hit; snapshot fields; bars read from prices_daily and stored by a run that signals; preset |
 | `tests/test_w39_rs_line.py` | 7 | RS-line new high on the first day only; RS line leads while price is below its high, and not when price is at a high; snapshot flag; AMFI cut-offs and RS within each group; market caps from the latest shares on or before the date; run stores group and rank; screener fields and presets |
+| `tests/test_w39b_patterns_more.py` | 19 | inverse head and shoulders with uneven-shoulder, no-decline and already-broken negatives; descending triangle and rising highs rejected; rising / falling channel breakouts and breakdowns, widening and flat lines rejected; rising wedge breakdown, falling wedge breakout, channel vs wedge kept apart; scans held like the first five; snapshot and presets; `active()` lines; random-walk calibration bounds; the stock route's `chart_marks`, the candle sides, `node --check` and a Playwright check of the drawn marks and the toggle |
 | `tests/test_w39_patterns.py` | 11 | Darvas box and breakout, still-inside and steady-climb negatives, breakdown; VCP contractions, dry-up and volume-confirmed breakout, widening pullbacks and no dry-up rejected; double bottom breakout and uneven lows rejected; ascending triangle; head-and-shoulders breakdown; pattern scans carry their levels; snapshot lists setups; screener fields and presets; pattern alerts held until 30 closed with positive R |
 | `tests/test_w39_weekly.py` | 10 | weekly bars aggregate and keep only completed weeks; a Friday-holiday week counts from the next Monday; the weekly rating needs 35 weeks and follows the trend; agreement truth tables; snapshot fields; run stores weekly fields and tags signals; forward split by weekly agreement; screener fields and presets; old snapshot table gets the columns; page |
 | `tests/test_w39_track_record.py` | 6 | forward returns signed for direction and measured against the Nifty on the same sessions; filled as sessions pass, never rewritten; stats by scan × gate and by confluence band with n / beat % / median / mean; today's signals carry their scan's record in today's market; gate and status at birth for older signals; API and 400 |
@@ -662,7 +670,7 @@ Strikes snap to the ATM on the symbol's strike grid (NIFTY 50, BANKNIFTY 100, ot
 **Chart patterns:**
 - Rule-based approximations of patterns drawn by eye; they will miss some textbook shapes and catch some that a trader would reject.
 - Closes only for breakouts (no intraday trigger).
-- Inverse head and shoulders, descending triangles, channels and wedges are not built yet.
+- Channels and wedges are fitted through the last three pivots on each side only; an older touch does not count, and a line through three pivots can be steeper than one a trader would draw through four.
 
 **Track record by horizon:**
 - Measured from the signal day's close, not the next open.

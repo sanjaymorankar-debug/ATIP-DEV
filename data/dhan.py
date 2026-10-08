@@ -404,6 +404,24 @@ def fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
         return _fetch_live_quotes(symbols, dhan)
 
 
+_CIRCUIT_KEYS = {"upper": ("upper_circuit_limit", "upperCircuitLimit", "upper_circuit", "uc_limit", "upper_limit"),
+                 "lower": ("lower_circuit_limit", "lowerCircuitLimit", "lower_circuit", "lc_limit", "lower_limit")}
+
+
+def _circuit_field(q: dict, side: str):
+    """Dhan's quote carries upper_circuit_limit / lower_circuit_limit; tolerate the other
+    spellings seen across API versions. A missing, zero or unparsable value -> None."""
+    for k in _CIRCUIT_KEYS[side]:
+        v = q.get(k)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            return v
+    return None
+
+
 def _fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
     """
     Fetch live LTP, OHLC, volume, prev_close for a list of symbols.
@@ -479,6 +497,9 @@ def _fetch_live_quotes(symbols: list, dhan=None) -> pd.DataFrame:
                     "volume":     q.get("volume"),
                     "chg_pct":    chg_pct,
                     "timestamp":  datetime.now(),
+                    # W39 (RK-21): the day's circuit band, for orders/risk.circuit_check
+                    "upper_circuit": _circuit_field(q, "upper"),
+                    "lower_circuit": _circuit_field(q, "lower"),
                 }
                 if ltp is None:
                     log.warning(f"  {sym}: quote resolved with ltp=None — raw fields seen: {list(q.keys())}")
@@ -861,6 +882,7 @@ class DhanLiveFeed:
         """Write buffered ticks to database."""
         if not self._buffer:
             return
+        conn = None
         try:
             conn = get_connection()
             # Create live_ticks table if not exists
@@ -893,11 +915,12 @@ class DhanLiveFeed:
                      ltp, open_, high, low, close, vol, str(ts), tick.get("received_at",""))
                 )
             conn.commit()
-            conn.close()
             log.debug(f"  💾 Flushed {len(self._buffer)} ticks to DB")
         except Exception as e:
             log.warning(f"  Tick flush failed: {e}")
         finally:
+            if conn is not None:
+                conn.close()      # W39: also on failure (a half-written batch kept the write lock)
             self._buffer = []
             self._last_store = datetime.now()
 
@@ -990,13 +1013,17 @@ def get_tracked_symbols(conn=None) -> list:
     return sorted(symbols)
 
 
-def store_daily_bars(conn, sym, df, start_dt, end_dt, events=None):
+def store_daily_bars(conn, sym, df, start_dt, end_dt, events=None, basis_date=None):
     """
     Write Dhan daily bars for one symbol into prices_daily, on the stored
     corporate-action basis (data/corporate_actions.py): Dhan adjusts prices for
     splits and bonuses itself, possibly days late, and never adjusts volume.
     Returns (rows written, bars held for reconciliation, stored closes that moved >1%).
     Shared by run_historical_pipeline and the W39 history backfill. No commit.
+    basis_date: the day Dhan's returned basis refers to -- the day of the fetch (Dhan
+    adjusts its whole history as of today). Defaults to end_dt, the same thing for
+    the daily pipeline; a backfill window ending years ago must pass today, or the
+    "recent unreconciled ex-date" rule would test the window's own old dates.
     """
     from data.corporate_actions import to_stored_basis
     stored = {str(r[0]): (r[1], r[2]) for r in conn.execute(
@@ -1018,7 +1045,7 @@ def store_daily_bars(conn, sym, df, start_dt, end_dt, events=None):
         bar = (row.get("open"), row.get("high"), row.get("low"),
                row.get("close"), row.get("volume"))
         if events:
-            bar = to_stored_basis(date_str, bar, stored.get(date_str), events, end_dt)
+            bar = to_stored_basis(date_str, bar, stored.get(date_str), events, basis_date or end_dt)
             if bar is None:
                 held += 1
                 continue
@@ -1226,19 +1253,33 @@ def run_live_quote_refresh(symbols: list = None) -> dict:
         )
     """)
 
-    for _, row in df.iterrows():
-        conn.execute("""
-            INSERT OR REPLACE INTO live_quotes
-                (symbol,ltp,open,high,low,prev_close,volume,chg_pct,timestamp)
-            VALUES(?,?,?,?,?,?,?,?,?)
-        """, (row.get("symbol"), row.get("ltp"), row.get("open"),
-              row.get("high"), row.get("low"), row.get("prev_close"),
-              row.get("volume"), row.get("chg_pct"),
-              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        count += 1
-
     conn.commit()
-    conn.close()
+    try:                                       # W39 columns (schema_w39): absent until init_db has migrated
+        conn.execute("SELECT upper_circuit, lower_circuit FROM live_quotes WHERE 1=0").fetchall()
+        circuits = True
+    except Exception:
+        conn.rollback()
+        circuits = False
+    try:
+        for _, row in df.iterrows():
+            vals = [row.get("symbol"), row.get("ltp"), row.get("open"), row.get("high"), row.get("low"),
+                    row.get("prev_close"), row.get("volume"), row.get("chg_pct"),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+            if circuits:
+                conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,"
+                             "chg_pct,timestamp,upper_circuit,lower_circuit) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                             vals + [_circuit_field(row, "upper"), _circuit_field(row, "lower")])
+            else:
+                conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,"
+                             "chg_pct,timestamp) VALUES(?,?,?,?,?,?,?,?,?)", vals)
+            count += 1
+        conn.commit()
+    finally:
+        # A batch that fails part-way is rolled back now, not whenever the garbage collector reaches the
+        # connection (sqlite3 connections sit in a reference cycle): until then its write lock stalls
+        # every later writer on this thread for the full busy timeout -- run_job's FAILED pipeline_log
+        # row and its failure alert (alerts.telegram.notify) first, both then lost.
+        conn.close()
     log.info(f"  ✓ Live quotes refreshed: {count} stocks")
     log_job("dhan_live_quotes", "SUCCESS", count)
     return {"status": "SUCCESS", "rows": count}
@@ -1263,6 +1304,7 @@ def sync_dhan_portfolio(trade_date: date = None) -> dict:
         record_portfolio_sync(trade_date, "dhan", "FAILED", error=str(e))
         return {"status": "FAILED", "error": str(e)}
 
+    conn = None
     try:
         resp = dhan.get_holdings()
         if not resp or resp.get("status") == "failure":
@@ -1335,6 +1377,12 @@ def sync_dhan_portfolio(trade_date: date = None) -> dict:
         return {"status": "SUCCESS", "rows": count, "total_value": total_val}
 
     except Exception as e:
+        if conn is not None:
+            # Roll a half-written batch back now: left to the garbage collector (sqlite3 connections
+            # sit in a reference cycle), its write lock would make the FAILED row below -- and
+            # run_job's own row and failure alert (alerts.telegram.notify) -- wait out the busy
+            # timeout and be lost.
+            conn.close()
         log.error(f"  Portfolio sync failed: {e}")
         record_portfolio_sync(trade_date, "dhan", "FAILED", error=str(e))
         return {"status": "FAILED", "error": str(e)}

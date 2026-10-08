@@ -18,8 +18,12 @@ Tables added in W39 (history, research & options tooling), applied by db/schema.
 
 Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE ADD COLUMN):
     technical_signal        RG-03  market_gate, alignment (the gate each signal was born under)
+    technical_snapshot      TA-05  the weekly rating, chart patterns, RS line, size groups, delivery % (Phase 2);
+                                   tech_rating_75, tech_rating_75_label, rsi_14_75, supertrend_dir_75, bar_75_end,
+                                   mtf_alignment_75 (the 75-minute rating and its agreement with the daily one)
     market_cue              EV-02  events, band_pct (the macro events behind a morning and the band given);
                             GS-03  sync_expected_pct (the synchronised model's estimate)
+    fundamental_scorecard   FS-03  dvm_d, dvm_v, dvm_m, dvm_zone (the day's DVM view, research/dvm.py)
 """
 
 from data.history_backfill import DDL as _BACKFILL
@@ -36,6 +40,7 @@ from data.depth20 import DDL as _DEPTH20
 from research.global_sync import DDL as _GSYNC
 from research.regime_gate import DDL as _GATE
 from research.scorecard import DDL as _SCORE
+from research.scorecard import ADDED_COLUMNS as _SCORE_COLS
 from research.tech_signals import ADDED_COLUMNS as _TECH_COLS
 
 W39_TABLES = {
@@ -55,4 +60,4 @@ W39_TABLES = {
     "global_snapshot": _GSYNC,
 }
 
-W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS}
+W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS, **_SCORE_COLS}

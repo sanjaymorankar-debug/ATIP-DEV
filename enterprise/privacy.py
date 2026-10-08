@@ -306,7 +306,8 @@ RULES = [
     (r"^assistant_", "personal", True, "conversation history: account lifetime; removed on a delete request"),
     (r"^(investor_profile|wealth_|perf_)", "financial", True, "owner's financial records: kept (audit, tax)"),
     (r"^(portfolio_|broker_import_run|live_pnl_snapshot)", "financial", True, "holdings / imports: kept"),
-    (r"^(paper_|tenant_paper|tenant_pnl|pnl_daily|order_log|order_rules|oms_|exec_algo|execution_|reconciliation_|"
+    (r"^(paper_|tenant_paper|tenant_pnl|pnl_daily|order_log|order_rules|order_basket|sip_|oms_|exec_algo|execution_|"
+     r"reconciliation_|"
      r"risk_)", "financial", False, "paper / order records: kept (trade audit)"),
     (r"^(prices_daily|intraday_bars|index_levels|live_quotes|live_ticks|global_|fo_|option_chain|options_|"
      r"derivatives_|bulk_deals|corporate_|fii_dii|institutional_data|insider_trade|sast_disclosure|shareholding_|"

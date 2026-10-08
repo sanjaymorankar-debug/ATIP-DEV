@@ -386,6 +386,8 @@ def test_stock_panel_draws_the_marks_without_js_errors(api):
             assert count("#svmarks .svm-sig") == 2, "golden cross (below) and MACD bearish (above)"
             assert count("#svmarks .svm-cdl") == 2, "Hammer and Bearish engulfing; NR7 is neutral and not drawn"
             assert count("#svmarks .svm-line") >= 1
+            assert "undefined" not in page.inner_html("#svmarks") and "NaN" not in page.inner_html("#svmarks")
+            assert page.get_attribute("#svmarks .svm-pat", "fill") == "#22c55e", "a BULL breakout is green"
             assert "Inverse head and shoulders" in page.inner_text("#svpl")
             i = 45                                     # the pattern-breakout day (all bars are in the 1Y range)
             tip = page.evaluate("""(i) => {const svg = document.getElementById('svsvg'), r = svg.getBoundingClientRect();
@@ -398,6 +400,9 @@ def test_stock_panel_draws_the_marks_without_js_errors(api):
             assert count("#svmarks") == 0 and "hidden" in page.inner_text("#svpl"), "the toggle hides them"
             page.click("#svpatbtn")
             assert count("#svmarks .svm-pat") == 1
+            page.click("#sv .bar button:text-is('Weekly')")             # the marks of a week gather on its bar
+            assert count("#svmarks .svm-pat") == 1 and count("#svmarks .svm-line") >= 1
+            assert "undefined" not in page.inner_html("#svmarks") and "NaN" not in page.inner_html("#svmarks")
         finally:
             browser.close()
     assert not errors, errors

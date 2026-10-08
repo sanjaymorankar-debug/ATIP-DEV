@@ -5,6 +5,9 @@
   "dhan_client_id":     "YOUR_DHAN_CLIENT_ID",
   "dhan_access_token":  "YOUR_DHAN_ACCESS_TOKEN",
   "_get_dhan":          "Login at https://web.dhanhq.com → My Profile → Apps → Create App. FREE for personal use.",
+  "dhan_pin":           "",
+  "dhan_totp_secret":   "",
+  "_dhan_totp":         "Token renewal: tools/dhan_token_refresh.py, run daily by the macOS LaunchAgent (deploy/launchd/install.sh) or the Windows task ATIP_DhanTokenRefresh. An EXPIRED token can only be regenerated with your 6-digit Dhan PIN and the base32 TOTP secret shown when you enable TOTP at web.dhan.co > Profile > DhanHQ Trading APIs. Better: move both into the encrypted vault (python -m ops vault-migrate --apply).",
 
   "_SECTION_2": "=== ANTHROPIC (Claude API — News AI sentiment) ===",
   "_get_anthropic":     "Set as environment variable: ANTHROPIC_API_KEY=sk-ant-... from console.anthropic.com",

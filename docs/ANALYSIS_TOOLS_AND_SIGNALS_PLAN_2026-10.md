@@ -25,7 +25,7 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 6. **Publish a track record per signal** (Tickeron odds of success, Danelfin probability advantage, Trade Ideas Holly's nightly backtests).
 
 **What ATIP now does (this round):**
-- **Technical screener:** 47 end-of-day scans (14 chart-pattern breakouts, 2 RS-line scans and a delivery spike added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 21 technical and 3 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement and chart patterns).
+- **Technical screener:** 47 end-of-day scans (14 chart-pattern breakouts, 2 RS-line scans and a delivery spike added in Phase 2) and 19 candle patterns, plus a technical rating, an IBD-style RS rating and the order-book pressure as screener fields. They mix freely with the fundamentals in one query language, and there are 22 technical and 6 combined presets (Phase 2 added a weekly rating, the daily / weekly agreement, chart patterns and the DVM view; Phase 3 a 75-minute rating and the daily / 75-minute agreement).
 - **Signal engine:** every scan hit gets an entry, a stop (2 × ATR), a target (4 × ATR) and a confluence count out of 6. Each signal is followed until it hits its target or stop, or 20 sessions pass. Each scan then shows a win rate and average R.
 - **Market pulse:**
   - a global-cue model fitted on ATIP's own data, with its walk-forward record;
@@ -37,8 +37,8 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 - **Your pending orders:** Dhan open orders and forever orders (read-only), plus ATIP's own resting paper orders and target/stop rules, on one page.
 
 **The best plan from here** (section 8):
-- **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes, an explainable fundamental composite and an event calendar (all **built**, see §8).
-- **Phase 3:** intraday scans and depth imbalance (needs the Dhan Data API).
+- **Phase 2 (uses data ATIP already has):** regime gate, a per-signal record split by regime and horizon, weekly-timeframe rating, chart patterns, RS-line highs and size-group ranks, delivery spikes, an explainable fundamental composite with a DVM-style three-axis view and an event calendar (all **built**, see §8).
+- **Phase 3:** intraday scans, depth imbalance and a 75-minute rating from the stored 15-minute bars (needs the Dhan Data API).
 - **Phase 4:** natural-language screening and a read-only ATIP MCP server (**built**; English screening works without a working Anthropic key through a rule translator, and better with one).
 - **Phase 5:** live execution, only with your explicit go-ahead.
 
@@ -187,13 +187,15 @@ Nothing here is investment advice. ATIP's signals are for the owner's own use; s
 |---|---|---|---|
 | Indicators, 47 scans (incl. 14 chart-pattern breakouts, 2 RS-line scans and a delivery spike), 19 candle patterns, technical rating | `research/technicals.py`, `research/patterns.py` | Stock panel chart (`dashboard/stock_view.py`): signal, pattern-breakout and candle markers, the lines of the patterns in place | — |
 | Technical snapshot, RS rating, signals with levels, confluence and outcomes | `research/tech_signals.py` (`technical_snapshot`, `technical_signal`) | `/signals` (Today, Track record); alerts (category "signals") | 20:30 daily |
-| Technical + combined screener | `research/screener.py` (134 fields, `CONTAINS`, 40 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
+| Technical + combined screener | `research/screener.py` (143 fields, `CONTAINS`, 44 presets, columns that follow the query) | `/screener` | Saved screens 20:50 |
 | Market pulse | `research/market_pulse.py` (`market_cue`) | `/market-pulse` | GIFT 08:45 and 09:05; gap check 09:35; Nifty history 23:20 |
 | Participant OI | `data/participant_oi.py` (`fo_participant_oi`) | `/market-pulse` | 20:15 |
 | Order-book pressure | `data/order_pressure.py` (`order_book_pressure`, kept 90 days) | `/market-pulse`, screener | Every 15 minutes in market hours |
 | Your open orders | `portfolio/open_orders.py` | `/market-pulse` | On page load |
 | Market regime gate (Phase 2, item 1) | `research/regime_gate.py` (`market_regime_gate`; `technical_signal.market_gate`, `alignment`) | `/market-pulse` (gate card and chart), `/signals` (banner, filter, "Does the market gate help?") | With the 20:30 signal run |
 | Weekly rating and daily / weekly agreement (Phase 2, item 3) | `research/technicals.py` `weekly_bars`, `weekly_rating`, `mtf_alignment`; `technical_snapshot.*_w`, `technical_signal.weekly_agrees` | `/signals` Weekly column and "Does the weekly trend add?"; screener fields and 2 presets | With the 20:30 signal run |
+| 75-minute rating and daily / 75-minute agreement (Phase 3) | `research/technicals.py` `bars_75`, `rating_75`; `technical_snapshot.*_75`, `mtf_alignment_75` | Screener fields and the preset "75-minute and daily both bullish" | With the 20:30 signal run |
+| DVM view (Phase 2, item 7) | `research/dvm.py`; `fundamental_scorecard.dvm_d / dvm_v / dvm_m / dvm_zone` | `/research` (next to the scorecard), screener fields and 3 presets | Stored with the 20:50 scorecards |
 | Track record by regime and horizon (Phase 2, item 2) | `research/tech_signals.py` `evaluate_forward`, `forward_stats` (`technical_signal.ret_*` / `excess_*` at 5/20/60, `market_status`) | `/signals`: a record next to each scan; Track record → "Against the Nifty, by market and holding period" | With the 20:30 signal run |
 
 **API:**
@@ -224,11 +226,11 @@ They use synthetic series with known answers. Examples:
 |---|---|---|
 | ~~Distribution-day regime gate; follow-through day~~ | IBD / MarketSmith | 2: **built** |
 | ~~Track record by regime; forward returns at 5/20/60 days vs Nifty~~ | Tickeron, Danelfin | 2: **built** |
-| Weekly technical rating (**built**, Phase 2); 75-minute rating | TradingView any-timeframe | 3 (75-minute) |
+| ~~Weekly technical rating; 75-minute rating~~ | TradingView any-timeframe | 2 / 3: **built** |
 | ~~Chart patterns: Darvas box, VCP, ascending triangle, double bottom, head and shoulders; channels, wedges, inverse head and shoulders, descending triangle~~ | Finviz, TrendSpider, StockEdge | 2: **built** |
 | ~~RS-line new high; rank within cap bucket~~ | IBD, StockCharts | 2: **built** |
 | ~~Delivery-% spike scan (NSE `DELIV_PER`)~~ | StockEdge, Chartink | 2: **built** |
-| Explainable fundamental composite (Snowflake-style 5 × 6 checks, **built**, Phase 2); a DVM-style three-axis view | Simply Wall St, Trendlyne | 2 (DVM: later) |
+| ~~Explainable fundamental composite (Snowflake-style 5 × 6 checks); a DVM-style three-axis view~~ | Simply Wall St, Trendlyne | 2: **built** |
 | ~~Intraday scans: 15-minute opening-range breakout, open = low/high, intraday squeeze~~ | Chartink, Streak | 3: **built** |
 | Depth-weighted imbalance from 20-level depth (**built**, Phase 3); order-flow imbalance (OFI) from quote changes | Institutional microstructure | 3 (OFI: later) |
 | ~~English → screener query~~ | TradingView AI Screener, Trendlyne, Screener.in | 4: **built** |
@@ -298,6 +300,12 @@ They use synthetic series with known answers. Examples:
    - A check with no data never passes; the debt checks are not scored for banks and NBFCs; a loss-maker fails the earnings checks and a non-payer the dividend axis.
    - Shown on `/research` under the report header, with a five-axis chart. Screener fields `checks_passed` (0–30) and one 0–6 count per axis, with presets "Scorecard all-rounders", "Healthy and growing", "Undervalued with a clean record" and "Dependable dividends".
    - **Its own record:** the 20:50 job stores each day's scorecards; "Does the scorecard pay?" on `/research` shows return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed, one sample per stock per month, 30 samples a band before it counts.
+   - **DVM view. Built** (`research/dvm.py`): Trendlyne-style durability, valuation and momentum, 0–100 each, every score returned with its inputs and their numbers.
+     - **Durability:** the share of the scorecard's 12 financial-health and past-performance checks that passed, of those that could be made (4 needed; a bank's debt checks drop out rather than fail).
+     - **Valuation** (high = cheap): 60 % price vs the research model's fair value (50 + 1.25 × the % discount: 40 % below → 100, at fair value 50, 40 % above → 0) and 40 % the P/E against its industry's median, P/B for banks and NBFCs (100 × (1.5 − multiple ÷ median); a loss-maker scores 0 on it; 3+ peers needed). Either part alone when the other is missing.
+     - **Momentum:** half the daily technical rating (−1..+1 → 0..100), half the RS rating (1–99).
+     - **Zones** (all three scores needed; high 55+, low below 35; the first rule that holds wins): *Strong performer* (all three high), *Value trap* (valuation high, durability low), *Momentum trap* (momentum high, durability low), *Expensive performer* (durability and momentum high, valuation not), *Value, under the radar* (durability and valuation high, momentum not), *Weak* (durability and momentum low), *Mid-range* (the rest).
+     - Stored nightly on the scorecard's own row (`fundamental_scorecard.dvm_*`, the 20:50 job): it is built from the same screener rows, one per stock per day. Screener fields `dvm_d`, `dvm_v`, `dvm_m`, `dvm_zone`; presets "DVM strong performers", "Sound and cheap, not yet in favour" and "DVM value and momentum traps". On `/research` under the scorecard. No track record yet: the stored zones make one possible.
 8. **Event calendar. Built** (`research/event_calendar.py`).
    - **Dates:** Fed decisions (2026, and the Fed's tentative 2027 calendar), US CPI and US jobs-report releases for 2026, RBI decisions for 2026-27, seeded from the official calendars (checked against two sources each on 2026-10-07). More come from `config.json` `"event_calendar": {"events": [...]}` or the add form on `/market-pulse`. The seed needs a yearly refresh, like the NSE holiday list.
    - **Which session it hits:** US releases come after India's close (CPI and payrolls at 08:30 New York = 18:00 / 19:00 IST; the Fed at 14:00 New York = 23:30 / 00:30 IST, following US daylight saving), so they hit the next NSE session's open, holidays skipped. The RBI decides at 10:00 IST, during the session.
@@ -323,6 +331,12 @@ They use synthetic series with known answers. Examples:
    - Global snapshots at 15:31 and 08:42 IST on trading days: S&P 500 and Nasdaq 100 futures, the Nikkei and Hang Seng (trading by 08:45 IST), Brent and gold futures, the dollar index and USD/INR, from Yahoo.
    - Each morning: the log moves from India's close to 08:45 against the Nifty's opening gap (first reading 09:15–09:30). Ridge regression once 40 mornings exist, walk-forward against "no change" and against the GIFT estimate on the same mornings.
    - `capture_gift` stores its estimate next to GIFT's and the daily-close model's, and the open-gap record scores all three. Until 40 mornings exist the page says how many are stored.
+4. **75-minute technical rating. Built** (`research/technicals.py` `bars_75`, `rating_75`).
+   - The daily rating's votes on 75-minute bars (the session in five: 09:15–10:30, 10:30–11:45, 11:45–13:00, 13:00–14:15, 14:15–15:30), built from the stored 15-minute bars only (interval 15, regular session, each bar counted once done).
+   - **Completed bars only:** a 75-minute bar counts once its end has passed and its closing 15-minute bar is stored, or once the day's session is over; so a bar still waiting for its last 15 minutes never counts, and a half day's last bar (or a bar missing a 15-minute bar the feed never delivered) counts after the close with the bars it has.
+   - Needs 35 completed 75-minute bars (7 sessions); the SMA 200 votes need 40 sessions (`intraday_bars` keeps 90 days, about 60). Given only when the last completed bar is on the daily bar's own session, so a failed 15-minute fetch never passes off an older chart as today's.
+   - **When:** with the 20:30 signal run, not every 15 minutes: after the close all five of the day's bars are complete and the agreement compares two ratings of the same session; a 75-minute bar completes only five times a day and the 15-minute bars arrive every 30 minutes, so an intraday cadence would mostly recompute the same value, and the snapshot row it lives in is a daily one.
+   - `mtf_alignment_75`: BULL when the daily and 75-minute ratings are both BUY / STRONG_BUY, BEAR when both SELL / STRONG_SELL, else MIXED. Screener fields `tech_rating_75`, `tech_rating_75_label`, `mtf_alignment_75`, `rsi_14_75`, `supertrend_dir_75`; preset "75-minute and daily both bullish".
 
 ### Phase 4: AI as the interface
 1. **English → screener query. Built** (`research/screener_nl.py`).

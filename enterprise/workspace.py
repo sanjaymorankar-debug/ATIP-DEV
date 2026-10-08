@@ -99,7 +99,18 @@ def get_owned(conn, table, key, value, tenant_id, user_id) -> dict:
     for k in ("symbols_json", "params_json"):
         if k in d:
             d[k.replace("_json", "")] = json.loads(d.pop(k) or "null")
+    _formats(d)
     return d
+
+
+def _formats(d):
+    """W39 (API-05 finding): a report's scheduled formats decoded as "formats"; formats_json (the
+    text the v1 contract published) stays beside it -- an additive change."""
+    if "formats_json" in d:
+        try:
+            d["formats"] = json.loads(d["formats_json"]) if d["formats_json"] else None
+        except ValueError:
+            d["formats"] = None
 
 
 def list_owned(conn, table, tenant_id, user_id) -> list:
@@ -111,6 +122,7 @@ def list_owned(conn, table, tenant_id, user_id) -> list:
         for k in ("symbols_json", "params_json"):
             if k in d:
                 d[k.replace("_json", "")] = json.loads(d.pop(k) or "null")
+        _formats(d)
         out.append(d)
     return out
 

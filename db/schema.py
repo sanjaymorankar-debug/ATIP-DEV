@@ -234,6 +234,11 @@ def _run_additive_migrations(conn):
         _create_table_if_missing(conn, name, ddls)
     for table, cols in W39_COLUMNS.items():
         _add_missing_columns(conn, table, cols)
+    from db.schema_w39b import W39B_TABLES, W39B_COLUMNS    # W39b: tracker reconciliation (PERF-001 detail, notes)
+    for name, ddls in W39B_TABLES.items():
+        _create_table_if_missing(conn, name, ddls)
+    for table, cols in W39B_COLUMNS.items():
+        _add_missing_columns(conn, table, cols)
 
 def _create_table_if_missing(conn, name, ddls):
     """Additive migration: create a table (and its indexes) an existing
@@ -958,6 +963,7 @@ WEALTH_TABLES = {
             source TEXT NOT NULL, source_ref TEXT NOT NULL, trade_date DATE NOT NULL, ts TEXT, kind TEXT NOT NULL,
             symbol TEXT, quantity REAL, price REAL, gross_value REAL, fees REAL, reference_price REAL,
             price_quality TEXT, strategy_id TEXT, tag TEXT, note TEXT, created_at TIMESTAMP, import_run TEXT,
+            entry_seq INTEGER, order_ref TEXT, signal_ref TEXT, fee_breakdown TEXT,
             UNIQUE(tenant_id, owner_id, source, source_ref))""",
         "CREATE INDEX IF NOT EXISTS idx_perf_ledger_pf ON perf_ledger(tenant_id, owner_id, portfolio, trade_date)",
     ),
@@ -1868,6 +1874,7 @@ def log_job(job_name, status, rows=0, error=None, run_date=None, start_time=None
     """
     end_time = end_time or datetime.now()
     start_time = start_time or end_time
+    conn = None
     try:
         conn = get_connection()
         conn.execute(
@@ -1876,9 +1883,14 @@ def log_job(job_name, status, rows=0, error=None, run_date=None, start_time=None
             (str(run_date or __import__('datetime').date.today()), job_name, start_time, end_time,
              status, rows, str(error)[:2000] if error else None, kind,
              round((end_time - start_time).total_seconds(), 1)))
-        conn.commit(); conn.close()
+        conn.commit()
     except Exception as e:
         log.warning(f"  pipeline_log: could not record {job_name} {status}: {e}")
+    finally:
+        # W39: closed on failure too -- an unclosed sqlite3 connection keeps its write lock until a
+        # GC pass (reference cycle), stalling the next writer for the whole busy timeout
+        if conn is not None:
+            conn.close()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

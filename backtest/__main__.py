@@ -7,6 +7,7 @@
     python -m backtest walkforward --strategy dip --start 2025-03-01 --end 2026-09-23
                            --train 120 --validation 40 --test 40 --step 40
                            --candidates '[{"stop_pct":3},{"stop_pct":5}]'
+                           [--purge 10 --embargo 1]   (BT-18: gaps between windows; default 0 / 0)
     python -m backtest montecarlo RUN_ID --method trade_shuffle --sims 1000 --seed 42
     python -m backtest list
     python -m backtest show RUN_ID
@@ -14,6 +15,8 @@
                            [--method grid|random|adaptive] [--trials 60] [--select-by sharpe]
     python -m backtest sensitivity --strategy dip --start D --end D --space '{...}' [--steps 2] [--pairwise a,b]
     python -m backtest robustness --strategy dip --start D --end D [--subsamples 3]
+    python -m backtest costsweep --strategy dip --start D --end D [--multipliers 0,0.5,1,1.5,2,3,5]
+                           [--scale costs|slippage|both]      (BT-19: cost stress + break-even)
     python -m backtest study momentum|mean_reversion_rsi|<strategy> --start D --end D [--space '{...}']
                            [--trials 30]      (W23: optimise -> validate -> sensitivity -> robustness -> test)
 """
@@ -50,6 +53,8 @@ def main(argv=None):
         w.add_argument(f"--{k}", type=int, required=True, help="sessions")
     w.add_argument("--candidates", type=json.loads, default=None, help="JSON list of param objects")
     w.add_argument("--select-by", default="sharpe")
+    w.add_argument("--purge", type=int, default=0, help="sessions dropped from the end of each in-sample window")
+    w.add_argument("--embargo", type=int, default=0, help="sessions skipped at the start of each out-of-sample window")
 
     m = sub.add_parser("montecarlo"); m.add_argument("run_id")
     m.add_argument("--method", default="trade_shuffle"); m.add_argument("--sims", type=int, default=1000)
@@ -67,6 +72,11 @@ def main(argv=None):
     rb = sub.add_parser("robustness"); common(rb)
     rb.add_argument("--start", required=True); rb.add_argument("--end", required=True)
     rb.add_argument("--subsamples", type=int, default=3)
+    cs = sub.add_parser("costsweep"); common(cs)
+    cs.add_argument("--start", required=True); cs.add_argument("--end", required=True)
+    cs.add_argument("--multipliers", type=lambda s: [float(x) for x in s.split(",")], default=None,
+                    help="comma-separated, default 0,0.5,1,1.5,2,3,5")
+    cs.add_argument("--scale", default="costs", choices=("costs", "slippage", "both"))
     st = sub.add_parser("study"); st.add_argument("strategy")
     st.add_argument("--start", required=True); st.add_argument("--end", required=True)
     st.add_argument("--space", type=json.loads, default=None); st.add_argument("--trials", type=int, default=30)
@@ -97,8 +107,11 @@ def main(argv=None):
     elif a.cmd == "walkforward":
         from backtest.walkforward import run_walk_forward
         req = request(); req.update({"start": a.start, "end": a.end})
-        out = run_walk_forward(req, a.train, a.validation, a.test, a.step, a.candidates, a.select_by)
-        print(json.dumps({k: out[k] for k in ("run_id", "status", "oos_metrics")}, indent=2, default=str))
+        out = run_walk_forward(req, a.train, a.validation, a.test, a.step, a.candidates, a.select_by,
+                               a.purge, a.embargo)
+        print(json.dumps({k: out[k] for k in ("run_id", "status", "oos_metrics", "purge_sessions", "embargo_sessions",
+                                              "sessions_purged", "sessions_embargoed", "recommended_purge_sessions")},
+                         indent=2, default=str))
     elif a.cmd == "optimize":
         from backtest.optimize import optimize
         req = request(); req.update({"start": a.start, "end": a.end})
@@ -108,7 +121,7 @@ def main(argv=None):
         from backtest.sensitivity import sensitivity
         req = request(); req.update({"start": a.start, "end": a.end})
         out = sensitivity(req, a.space, a.select_by, a.steps, pairwise=a.pairwise.split(",") if a.pairwise else None)
-        print(json.dumps({k: out.get(k) for k in ("run_id", "robust_share", "knife_edges", "parameters")}, indent=2,
+        print(json.dumps({k: out.get(k) for k in ("run_id", "robust_share", "knife_edges", "thin_edges", "parameters")}, indent=2,
                          default=str))
     elif a.cmd == "robustness":
         from backtest.robustness import robustness
@@ -116,6 +129,12 @@ def main(argv=None):
         out = robustness(req, a.subsamples)
         print(json.dumps({k: out.get(k) for k in ("run_id", "verdict", "score", "checks", "regimes", "monte_carlo")},
                          indent=2, default=str))
+    elif a.cmd == "costsweep":
+        from backtest.robustness import cost_sweep
+        req = request(); req.update({"start": a.start, "end": a.end})
+        out = cost_sweep(req, a.multipliers, a.scale)
+        print(json.dumps({k: out.get(k) for k in ("run_id", "status", "scale", "break_even", "break_even_note",
+                                                  "monotone", "points", "notes")}, indent=2, default=str))
     elif a.cmd == "study":
         from backtest.study import run_study
         out = run_study(a.strategy, a.space, a.start, a.end, method=a.method, max_trials=a.trials,

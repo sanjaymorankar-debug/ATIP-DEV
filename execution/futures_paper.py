@@ -220,6 +220,23 @@ def settle_expired(as_of=None) -> dict:
         conn.close()
 
 
+def gross_notional(conn) -> float:
+    """RK-21 (W39): sum of |lots| x lot size x mark over the open positions -- the gross
+    exposure the futures book adds (mark: the latest stored futures close, else the
+    position's average price). 0.0 before the futures tables exist."""
+    import sqlite3
+    try:
+        rows = conn.execute("SELECT underlying, lots, lot_size, avg_price FROM paper_futures_position "
+                            "WHERE lots<>0").fetchall()
+    except sqlite3.OperationalError:
+        return 0.0
+    total = 0.0
+    for und, lots, lot_size, avg in rows:
+        c = contract(conn, und)
+        total += abs(int(lots)) * int(lot_size) * (c["price"] if c else float(avg))
+    return round(total, 2)
+
+
 def book(conn) -> dict:
     rows = []
     for r in conn.execute("SELECT * FROM paper_futures_position WHERE lots<>0 ORDER BY strategy_id, underlying"):

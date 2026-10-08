@@ -11,8 +11,14 @@ instead of a small hardcoded list. Falls back gracefully:
 
 Nothing here ever raises — a broken/unreachable NSE endpoint degrades to
 a smaller universe rather than crashing the pipeline.
+
+W39: a failed download is remembered for FAIL_BACKOFF_MIN minutes (per process),
+and only one thread downloads at a time. Before, every caller retried NSE while
+the cache was missing or stale -- each wealth page read made up to 6 outbound
+calls (14 ms -> 1.7 s with NSE refusing, up to ~96 s with NSE timing out).
+force_refresh=True still always tries.
 """
-import time, logging
+import io, threading, time, logging
 from pathlib import Path
 from datetime import datetime, timedelta
 import requests, pandas as pd
@@ -26,6 +32,13 @@ NSE_HOME       = "https://www.nseindia.com"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0",
            "Accept": "*/*", "Referer": "https://www.nseindia.com/"}
 CACHE_MAX_AGE_DAYS = 7  # index reshuffles happen quarterly; a week-old list is fine
+FAIL_BACKOFF_MIN = 30   # after a failed download, use the stale cache / defaults this long
+_last_failure = None    # time.monotonic() of the last failed download in this process
+_download_lock = threading.Lock()
+
+
+def _recently_failed() -> bool:
+    return _last_failure is not None and time.monotonic() - _last_failure < FAIL_BACKOFF_MIN * 60
 
 
 def _cache_is_fresh(path: Path) -> bool:
@@ -50,22 +63,9 @@ def fetch_nifty500_symbols(force_refresh: bool = False) -> list:
         except Exception as e:
             log.warning(f"  Nifty500 cache read failed, will re-download: {e}")
 
-    try:
-        session = requests.Session(); session.headers.update(HEADERS)
-        try:
-            session.get(NSE_HOME, timeout=12); time.sleep(1.0)
-        except Exception as e:
-            log.warning(f"  NSE session warm-up: {e}")
-        r = session.get(NIFTY500_URL, timeout=20)
-        r.raise_for_status()
-        NIFTY500_CACHE.write_bytes(r.content)
-        df = pd.read_csv(NIFTY500_CACHE)
-        syms = _extract_symbols(df)
-        if syms:
-            log.info(f"  ✓ Nifty 500 list refreshed from NSE: {len(syms)} symbols")
-            return syms
-    except Exception as e:
-        log.warning(f"  Nifty500 download failed: {e}")
+    syms = _download(force_refresh)
+    if syms:
+        return syms
 
     # Fall back to whatever cached copy exists, even if stale
     if NIFTY500_CACHE.exists():
@@ -80,6 +80,42 @@ def fetch_nifty500_symbols(force_refresh: bool = False) -> list:
 
     log.warning("  No Nifty 500 list available (no network, no cache) — caller should fall back to defaults")
     return []
+
+
+def _download(force_refresh: bool) -> list:
+    """One download attempt at a time; skipped (-> []) within FAIL_BACKOFF_MIN of a failure
+    unless forced, or when another thread refreshed the cache meanwhile."""
+    global _last_failure
+    if not force_refresh and _recently_failed():
+        return []
+    with _download_lock:
+        if not force_refresh:
+            if _recently_failed():
+                return []
+            if _cache_is_fresh(NIFTY500_CACHE):          # another thread just refreshed it
+                try:
+                    return _extract_symbols(pd.read_csv(NIFTY500_CACHE))
+                except Exception:
+                    pass
+        try:
+            session = requests.Session(); session.headers.update(HEADERS)
+            try:
+                session.get(NSE_HOME, timeout=12); time.sleep(1.0)
+            except Exception as e:
+                log.warning(f"  NSE session warm-up: {e}")
+            r = session.get(NIFTY500_URL, timeout=20)
+            r.raise_for_status()
+            syms = _extract_symbols(pd.read_csv(io.BytesIO(r.content)))
+            if not syms:
+                raise ValueError("no symbols in the downloaded list")
+            NIFTY500_CACHE.write_bytes(r.content)
+            _last_failure = None
+            log.info(f"  ✓ Nifty 500 list refreshed from NSE: {len(syms)} symbols")
+            return syms
+        except Exception as e:
+            _last_failure = time.monotonic()
+            log.warning(f"  Nifty500 download failed: {e} (not retried for {FAIL_BACKOFF_MIN} min)")
+            return []
 
 
 def _extract_symbols(df: pd.DataFrame) -> list:

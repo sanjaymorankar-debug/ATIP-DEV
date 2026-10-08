@@ -446,7 +446,11 @@ class CompositeEvaluator(Evaluator):
 
 
 class PythonEvaluator(Evaluator):
-    """A W2 code strategy behind the same interface."""
+    """A W2 code strategy behind the same interface. W39 (PF-06): a Signal ADD / REDUCE of a
+    held symbol becomes an ADD / REDUCE decision whose share quantity rides on the decision
+    (features.rebalance_qty, read by engine._quantity) when the signal gives one -- quantity,
+    fraction x held, or value // close; an ADD / REDUCE of a symbol not held decides nothing.
+    (It used to fall through to BUY.)"""
 
     def decide(self, env, as_of, held, session_index=None):
         from backtest.strategies import REGISTRY
@@ -462,6 +466,22 @@ class PythonEvaluator(Evaluator):
             if sig.side == "SELL":
                 dec = EXIT if sig.symbol in held else SELL
                 out.append(self.intent(sig.symbol, as_of, dec, None, sig.reason or "sell signal", fctx))
+            elif sig.side in ("ADD", "REDUCE"):
+                if sig.symbol not in held or fctx is None:
+                    continue
+                act = ADD if sig.side == "ADD" else REDUCE
+                it = self.intent(sig.symbol, as_of, act, None, sig.reason or f"{sig.side.lower()} signal", fctx,
+                                 entry=act == ADD)
+                q = sig.quantity
+                if q is None and sig.fraction is not None:
+                    q = max(1, int(float(held[sig.symbol].get("qty", 0)) * float(sig.fraction)))
+                if q is None and sig.value is not None and fctx.get("close"):
+                    q = int(float(sig.value) // float(fctx["close"])) or None
+                if q:
+                    it.features["rebalance_qty"] = int(q)
+                if act == ADD:
+                    it.stop_price = sig.stop_price
+                out.append(it)
             else:
                 it = self.intent(sig.symbol, as_of, BUY, None, sig.reason or "buy signal", fctx)
                 it.stop_price, it.target_price = sig.stop_price, sig.target_price

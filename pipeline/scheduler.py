@@ -1588,7 +1588,9 @@ def _w39_nifty_history():
 
 
 def _w39_technical_signals():
-    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert."""
+    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert.
+    The snapshot's 75-minute rating is built here from the day's stored 15-minute bars: after the close all
+    five 75-minute bars are complete and the agreement compares it with the same session's daily rating."""
     if not is_market_day():
         return
     try:
@@ -1599,8 +1601,8 @@ def _w39_technical_signals():
 
 
 def _w39_saved_screens():
-    """Store the day's fundamental scorecards, then re-run the saved screens after the research reports;
-    alert on new matches."""
+    """Store the day's fundamental scorecards (with the DVM scores and zone), then re-run the saved screens
+    after the research reports; alert on new matches."""
     if not is_market_day():
         return
     try:
@@ -1951,6 +1953,14 @@ def start_scheduler():
 
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
+
+    # ── W39b: stock SIP (paper) ───
+    try:
+        from pipeline import w39_jobs
+        for line in w39_jobs.schedule_jobs(schedule, run_job):
+            log.info(f"  W39b job: {line}")
+    except Exception as e:
+        log.warning(f"  W39b jobs not scheduled: {e}")
 
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):

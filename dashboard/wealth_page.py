@@ -38,8 +38,9 @@ button.primary{background:#0369a1;border-color:#0369a1;cursor:pointer}button{cur
 .disc{font-size:11px;color:var(--muted);margin-top:18px;border-top:1px solid var(--line);padding-top:8px}
 .msg{padding:6px 10px;border-radius:6px;margin:6px 0;background:#1e3a5f}.msg.e{background:#7f1d1d}
 @media(max-width:640px){.wrap{padding:10px}.top a{margin-left:8px}}
+body.simple .adv{display:none!important}#vw button{padding:2px 9px;font-size:11.5px}#vw button.on{background:#0369a1;border-color:#0369a1}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="ld" class="muted" style="font-size:11px"></span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="vw" title="Simple hides the audit, ledger and trade-level detail"><button data-v="simple" onclick="setView('simple')">Simple</button><button data-v="detailed" onclick="setView('detailed')">Detailed</button></span> <span id="ld" class="muted" style="font-size:11px"></span></div>
 <div><a href="/">Trader dashboard</a><a href="/strategies">Strategies</a><a href="/trading">Trading</a><a href="/backtests">Backtests</a></div></div>
 <div class="wrap"><div id="uat_banner"></div><div class="tabs" id="tabs"></div>
 """
@@ -58,6 +59,9 @@ const table=(h,rows)=>`<div class="tw"><table><thead><tr>${h.map(x=>`<th${x.star
 const card=(k,v,sub,bar)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="muted" style="font-size:11px">${sub}</div>`:''}${bar!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,bar))}%"></i></div>`:''}</div>`;
 const msg=(el,t,e)=>{document.getElementById(el).innerHTML=`<div class="msg${e?' e':''}">${esc(t)}</div>`};
 const LOADERS={};let CUR=null;
+// W39 (UX-01) progressive disclosure: Simple hides every .adv block; Detailed (the default) shows all.
+function setView(v){v=v==='simple'?'simple':'detailed';document.body.classList.toggle('simple',v==='simple');
+ document.querySelectorAll('#vw button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));try{localStorage.setItem('atip_wealth_view',v)}catch(e){}}
 function show(id){CUR=id;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='t_'+id));
  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===id));
  try{localStorage.setItem('atip_wealth_tab',id)}catch(e){}
@@ -160,6 +164,7 @@ def render(token: str) -> str:
     js = COMMON_JS + "".join(t[3] for t in TABS)
     first = TABS[0][0]
     boot = (f"document.getElementById('tabs').innerHTML={json.dumps(tabs)};"
+            "let _v='detailed';try{_v=localStorage.getItem('atip_wealth_view')||_v}catch(e){}setView(_v);"
             f"let _t='{first}';try{{_t=localStorage.getItem('atip_wealth_tab')||_t}}catch(e){{}}"
             f"if(!document.getElementById('t_'+_t))_t='{first}';show(_t);")
     html = HEAD + bodies + FEEDBACK + FOOT + "<script>" + js + FEEDBACK_JS + boot + "</script></body></html>"

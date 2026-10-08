@@ -365,14 +365,17 @@ class IndexFeedManager:
         cols = list(record.keys())
         placeholders = ",".join("?" * len(cols))
         conn = get_connection()
-        # (date, time) is unique. OR IGNORE: a row already stamped this second
-        # is either our own or markets.py's fuller snapshot, and neither
-        # should be overwritten by this lighter one.
-        conn.execute(
-            f"INSERT OR IGNORE INTO index_levels ({','.join(cols)}) VALUES ({placeholders})",
-            [record[c] for c in cols],
-        )
-        conn.commit()
+        try:
+            # (date, time) is unique. OR IGNORE: a row already stamped this second
+            # is either our own or markets.py's fuller snapshot, and neither
+            # should be overwritten by this lighter one.
+            conn.execute(
+                f"INSERT OR IGNORE INTO index_levels ({','.join(cols)}) VALUES ({placeholders})",
+                [record[c] for c in cols],
+            )
+            conn.commit()
+        finally:
+            conn.close()          # W39: this flush (every 15 s) never closed its connection
         log.debug(f"  Index feed flush → {len(snap)} indexes @ {record['time']}")
 
 

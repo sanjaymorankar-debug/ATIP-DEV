@@ -14,6 +14,11 @@ Stock detail view + table filtering for the main dashboard (W26).
         * clicking any row / card that carries data-sym opens the stock panel:
           price chart (line or candles, 1M / 3M / 6M / 1Y / All, volume, BUY / SELL
           signal markers, crosshair), ATIP score chart, and tabs for scores,
+          W39 (DB-20, "history like any trading software"): 3Y / 5Y ranges (up to
+          2500 sessions, ~10 years, are loaded), daily / weekly / monthly bars, SMA
+          20 / 50 / 200, EMA 21 and Bollinger (20, 2) overlays computed on the whole
+          series so the left edge is right, a log scale, and 3Y / 5Y / since-first-bar
+          returns;
           signals, technicals, position & orders; Buy / Sell open the existing
           order modal. Esc or the backdrop closes it; the page auto-refresh is
           held while it is open.
@@ -23,7 +28,8 @@ Stock detail view + table filtering for the main dashboard (W26).
           BEAR), a small dot at the bar for a bullish / bearish candle pattern, and
           the lines of each pattern in place (box top / bottom, neckline,
           resistance / support, channel or wedge lines) dashed from where the pattern
-          starts to the last bar. The crosshair line names them. Plain SVG, as before.
+          starts to the last bar. On weekly / monthly bars the marks of a week / month
+          gather on its bar. The crosshair line names them. Plain SVG, as before.
         * ATIP Scores table: search matches symbol / company only, the signal
           filter matches the signal value exactly (the old filter matched the
           row text, so every row matched "sell" / "buy" through its order
@@ -81,6 +87,10 @@ def stock_history(conn, symbol: str, sessions: int = 400) -> dict:
              "high_52w": max(float(p["high"] or p["close"]) for p in yr),
              "low_52w": min(float(p["low"] or p["close"]) for p in yr),
              "ret_1w": ret(5), "ret_1m": ret(21), "ret_3m": ret(63), "ret_6m": ret(126), "ret_1y": ret(250),
+             "ret_3y": ret(750), "ret_5y": ret(1250),
+             "ret_all": round((last / closes[0] - 1) * 100, 2) if closes[0] else None, "first_date": px[0]["date"],
+             "high_all": max(float(p["high"] or p["close"]) for p in px),
+             "low_all": min(float(p["low"] or p["close"]) for p in px),
              "avg_volume_20d": round(sum(vols) / len(vols)) if vols else None, "sessions": len(px)}
     scores = _rows(conn, "SELECT date, atip_score, atip_rank, vpi, mri, rri, zpi, cri, acs, spi, signal, confidence, "
                          "beta_1y, regime, top_factor_1, top_factor_2 FROM ai_scores WHERE symbol=? ORDER BY date",
@@ -238,7 +248,7 @@ tr[data-sym]{cursor:pointer}.tod-card[data-sym]{cursor:pointer}
 <div id="sv-back" onclick="if(event.target===this)svClose()"><div id="sv" role="dialog" aria-modal="true"></div></div>
 <script>
 (function(){
-var S={data:null,range:'1Y',kind:'line',sym:null,pat:st().svpat!==false};
+var S={data:null,range:'1Y',kind:'line',sym:null,iv:'D',ov:{},log:false,pat:st().svpat!==false};
 function st(){try{return JSON.parse(sessionStorage.getItem('atip.dash')||'{}')}catch(e){return {}}}
 function save(k,v){try{var o=st();o[k]=v;sessionStorage.setItem('atip.dash',JSON.stringify(o))}catch(e){}}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -329,7 +339,19 @@ document.addEventListener('click',function(e){
   openStock(sym);
 });
 
-function cut(arr,key){var m={'1M':21,'3M':63,'6M':126,'1Y':250}[S.range];return m?arr.slice(-m):arr}
+var RANGES={'1M':21,'3M':63,'6M':126,'1Y':250,'3Y':750,'5Y':1250,'All':0};
+var OV={sma20:['SMA 20','#f59e0b'],sma50:['SMA 50','#a78bfa'],sma200:['SMA 200','#f472b6'],ema21:['EMA 21','#22d3ee'],bb:['Bollinger 20,2','#94a3b8']};
+function bucketKey(ds,iv){if(iv==='D')return ds;if(iv==='M')return ds.slice(0,7);var d=new Date(ds+'T00:00:00Z'),wd=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-wd);return d.toISOString().slice(0,10)}
+function agg(P,iv){var out=[],cur=null;P.forEach(function(p){var k=bucketKey(p.date,iv),hi=+p.high||+p.close,lw=+p.low||+p.close;
+  if(!cur||cur.k!==k){cur={k:k,date:p.date,open:+p.open||+p.close,high:hi,low:lw,close:+p.close,volume:+p.volume||0};out.push(cur)}
+  else{cur.date=p.date;cur.high=Math.max(cur.high,hi);cur.low=Math.min(cur.low,lw);cur.close=+p.close;cur.volume+=(+p.volume||0)}});return out}
+function sma(c,n){var o=[],s=0;for(var i=0;i<c.length;i++){s+=c[i];if(i>=n)s-=c[i-n];o.push(i>=n-1?s/n:null)}return o}
+function ema(c,n){var o=[],k=2/(n+1),e=null;for(var i=0;i<c.length;i++){if(i===n-1){var s=0;for(var j=0;j<n;j++)s+=c[j];e=s/n}else if(i>=n)e=c[i]*k+e*(1-k);o.push(i>=n-1?e:null)}return o}
+function boll(c,n,m){var mid=sma(c,n),up=[],dn=[];for(var i=0;i<c.length;i++){if(mid[i]==null){up.push(null);dn.push(null);continue}var v=0;for(var j=i-n+1;j<=i;j++)v+=Math.pow(c[j]-mid[i],2);var sd=Math.sqrt(v/n);up.push(mid[i]+m*sd);dn.push(mid[i]-m*sd)}return {mid:mid,up:up,dn:dn}}
+function overlays(A){var c=A.map(function(p){return +p.close}),o={};if(S.ov.sma20)o.sma20=sma(c,20);if(S.ov.sma50)o.sma50=sma(c,50);if(S.ov.sma200)o.sma200=sma(c,200);if(S.ov.ema21)o.ema21=ema(c,21);if(S.ov.bb){var b=boll(c,20,2);o.bb=b.mid;o.bb_up=b.up;o.bb_dn=b.dn}return o}
+function series(){var d=S.data,A=agg(d.prices,S.iv),O=overlays(A),m=RANGES[S.range],i0=0;
+  if(m&&d.prices.length>m){var sd=d.prices[d.prices.length-m].date;while(i0<A.length&&A[i0].date<sd)i0++}
+  var Os={};Object.keys(O).forEach(function(k){Os[k]=O[k].slice(i0)});return {P:A.slice(i0),O:Os}}
 function render(){
   var d=S.data,s=d.stats,p=document.getElementById('sv');
   var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;
@@ -337,11 +359,13 @@ function render(){
   var h='<div class="hd"><div><div class="sym">'+esc(d.symbol)+'</div><div class="nm">'+esc(d.name||'')+'</div></div>'+
    '<div><div class="px">₹'+n(cmp)+' '+pc(chg)+'</div><div class="nm">'+(live&&live>0?'live':'close '+esc(s.last_date))+'</div></div>'+
    '<div class="btns"><button class="b-buy" onclick="svOrder(\'BUY\')">Buy</button><button class="b-sell" onclick="svOrder(\'SELL\')">Sell</button><button class="b-x" onclick="svClose()">✕</button></div></div>';
-  h+='<div class="kv">'+[['52W high',n(s.high_52w)],['52W low',n(s.low_52w)],['1W',pc(s.ret_1w)],['1M',pc(s.ret_1m)],['3M',pc(s.ret_3m)],['6M',pc(s.ret_6m)],['1Y',pc(s.ret_1y)],['Avg vol 20D',n(s.avg_volume_20d,0)]]
+  h+='<div class="kv">'+[['52W high',n(s.high_52w)],['52W low',n(s.low_52w)],['1W',pc(s.ret_1w)],['1M',pc(s.ret_1m)],['3M',pc(s.ret_3m)],['6M',pc(s.ret_6m)],['1Y',pc(s.ret_1y)],['3Y',pc(s.ret_3y)],['5Y',pc(s.ret_5y)],['Since '+esc(s.first_date||''),pc(s.ret_all)],['High / low (loaded)',n(s.high_all)+' / '+n(s.low_all)],['Avg vol 20D',n(s.avg_volume_20d,0)]]
     .map(function(x){return '<div><span>'+x[0]+'</span><b>'+x[1]+'</b></div>'}).join('')+'</div>';
-  h+='<div class="bar">'+['1M','3M','6M','1Y','All'].map(function(r){return '<button class="'+(S.range===r?'on':'')+'" onclick="svRange(\''+r+'\')">'+r+'</button>'}).join('')+
-     '<span class="sp"></span><button class="'+(S.kind==='line'?'on':'')+'" onclick="svKind(\'line\')">Line</button><button class="'+(S.kind==='candle'?'on':'')+'" onclick="svKind(\'candle\')">Candles</button>'+
-     '<button id="svpatbtn" class="'+(S.pat?'on':'')+'" onclick="svPat()" title="Chart patterns, technical signals and candle patterns">Patterns</button></div>';
+  h+='<div class="bar">'+Object.keys(RANGES).map(function(r){return '<button class="'+(S.range===r?'on':'')+'" onclick="svRange(\''+r+'\')">'+r+'</button>'}).join('')+
+     '<span class="sp"></span>'+[['D','Daily'],['W','Weekly'],['M','Monthly']].map(function(v){return '<button class="'+(S.iv===v[0]?'on':'')+'" onclick="svIv(\''+v[0]+'\')">'+v[1]+'</button>'}).join('')+
+     '<span class="sp"></span><button class="'+(S.kind==='line'?'on':'')+'" onclick="svKind(\'line\')">Line</button><button class="'+(S.kind==='candle'?'on':'')+'" onclick="svKind(\'candle\')">Candles</button><button class="'+(S.log?'on':'')+'" onclick="svLog()">Log</button></div>';
+  h+='<div class="bar">'+Object.keys(OV).map(function(k){return '<button class="'+(S.ov[k]?'on':'')+'" style="'+(S.ov[k]?'background:'+OV[k][1]+';border-color:'+OV[k][1]+';color:#0f172a':'')+'" onclick="svOv(\''+k+'\')">'+OV[k][0]+'</button>'}).join('')+
+     '<span class="sp"></span><button id="svpatbtn" class="'+(S.pat?'on':'')+'" onclick="svPat()" title="Chart patterns, technical signals and candle patterns">Patterns</button></div>';
   h+='<div id="svc"></div><div class="tip" id="svtip">Hover the chart for prices. ▲ BUY / ▼ SELL signals from the signal log.</div><div class="tip" id="svpl"></div>';
   var tabs=[['sc','Score history ('+d.scores.length+')'],['sg','Signals ('+d.signals.length+')'],['te','Technicals'],['po','Position & orders']];
   h+='<div class="tabs2">'+tabs.map(function(t,i){return '<div class="'+(i===0?'on':'')+'" onclick="svTab(\''+t[0]+'\',this)">'+t[1]+'</div>'}).join('')+'</div>';
@@ -350,25 +374,33 @@ function render(){
 }
 window.svRange=function(r){S.range=r;render()};
 window.svKind=function(k){S.kind=k;render()};
+window.svIv=function(v){S.iv=v;render()};
+window.svLog=function(){S.log=!S.log;render()};
+window.svOv=function(k){S.ov[k]=!S.ov[k];render()};
 window.svPat=function(){S.pat=!S.pat;save('svpat',S.pat);render()};
 window.svTab=function(id,el){document.querySelectorAll('#sv .pane').forEach(function(x){x.classList.remove('on')});document.querySelectorAll('#sv .tabs2 div').forEach(function(x){x.classList.remove('on')});document.getElementById('sv-'+id).classList.add('on');el.classList.add('on')};
 window.svOrder=function(side){var d=S.data;if(typeof openOrderModal!=='function'){alert('Order entry is not available on this page');return}
   var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;svClose();openOrderModal(d.symbol,(live&&live>0)?live:d.stats.last_close,side)};
 
 function chart(){
-  var d=S.data,P=cut(d.prices),W=1000,H=300,HV=60,HS=110,L=8,R=62,T=10,G=18;
+  var d=S.data,SR=series(),P=SR.P,O=SR.O,W=1000,H=300,HV=60,HS=110,L=8,R=62,T=10,G=18;
   if(!P.length){document.getElementById('svc').innerHTML='';return}
   var hi=-1e18,lo=1e18,vmax=0;P.forEach(function(p){hi=Math.max(hi,+p.high||+p.close);lo=Math.min(lo,+p.low||+p.close);vmax=Math.max(vmax,+p.volume||0)});
-  /* the lines of the patterns in place, cut to the visible range (they always run to the last bar) */
-  var M=d.chart_marks||{},off=d.prices.length-P.length,gi={},segs=[],col={BULL:'#22c55e',BEAR:'#ef4444',BOTH:'#f59e0b'};
+  Object.keys(O).forEach(function(k){O[k].forEach(function(v){if(v!=null){hi=Math.max(hi,v);lo=Math.min(lo,v)}})});
+  /* the lines of the patterns in place, from the first visible bar they reach to the last bar; interpolated in
+     daily sessions (gi), so a weekly / monthly bar takes the line's value on its last session */
+  var M=d.chart_marks||{},gi={},segs=[],mc={BULL:'#22c55e',BEAR:'#ef4444',BOTH:'#f59e0b'};
   if(S.pat){d.prices.forEach(function(p,i){gi[p.date]=i});
-    (M.patterns||[]).forEach(function(pt){(pt.lines||[]).forEach(function(ln){var g0=gi[ln.from],g1=gi[ln.to];if(g0==null||g1==null||g1<off)return;
-      var at=function(g){return g1>g0?ln.from_value+(ln.to_value-ln.from_value)*(g-g0)/(g1-g0):ln.to_value},s0=Math.max(g0,off);
-      segs.push({pt:pt,ln:ln,i0:s0-off,v0:at(s0),i1:g1-off,v1:ln.to_value});hi=Math.max(hi,at(s0),ln.to_value);lo=Math.min(lo,at(s0),ln.to_value)})})}
-  var pad=(hi-lo)*0.06||1;hi+=pad;lo-=pad;
-  var cw=(W-L-R)/P.length,x=function(i){return L+cw*(i+0.5)},y=function(v){return T+(hi-v)/(hi-lo)*(H-T-HV-6)};
+    (M.patterns||[]).forEach(function(pt){(pt.lines||[]).forEach(function(ln){var g0=gi[ln.from],g1=gi[ln.to],j0=-1;if(g0==null||g1==null)return;
+      for(var j=0;j<P.length;j++){if(gi[P[j].date]>=g0){j0=j;break}}if(j0<0)return;
+      var at=function(g){return g1>g0?ln.from_value+(ln.to_value-ln.from_value)*(Math.min(g,g1)-g0)/(g1-g0):ln.to_value},
+          v0=at(Math.max(g0,gi[P[j0].date])),v1=at(gi[P[P.length-1].date]);
+      segs.push({pt:pt,ln:ln,i0:j0,v0:v0,i1:P.length-1,v1:v1});hi=Math.max(hi,v0,v1);lo=Math.min(lo,v0,v1)})})}
+  var lg=S.log&&lo>0,f=function(v){return lg?Math.log(v):v},fh,fl;
+  if(lg){fh=Math.log(hi);fl=Math.log(lo);var lp=(fh-fl)*0.06||0.01;fh+=lp;fl-=lp}else{var pad=(hi-lo)*0.06||1;hi+=pad;lo-=pad;fh=hi;fl=lo}
+  var cw=(W-L-R)/P.length,x=function(i){return L+cw*(i+0.5)},y=function(v){return T+(fh-f(v))/(fh-fl)*(H-T-HV-6)};
   var o='<svg viewBox="0 0 '+W+' '+(H+G+HS)+'" id="svsvg">';
-  for(var k=0;k<=4;k++){var gv=lo+(hi-lo)*k/4,gy=y(gv);o+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+gy+'" y2="'+gy+'" stroke="#1e293b"/><text x="'+(W-R+4)+'" y="'+(gy+4)+'" fill="#64748b" font-size="11">'+n(gv)+'</text>'}
+  for(var k=0;k<=4;k++){var gv=lg?Math.exp(fl+(fh-fl)*k/4):lo+(hi-lo)*k/4,gy=y(gv);o+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+gy+'" y2="'+gy+'" stroke="#1e293b"/><text x="'+(W-R+4)+'" y="'+(gy+4)+'" fill="#64748b" font-size="11">'+n(gv)+'</text>'}
   P.forEach(function(p,i){var vh=vmax?(+p.volume||0)/vmax*HV:0,up=i===0||+p.close>=+P[i-1].close;
     o+='<rect x="'+(x(i)-cw*0.4)+'" y="'+(H-vh)+'" width="'+Math.max(cw*0.8,0.6)+'" height="'+vh+'" fill="'+(up?'#05966955':'#dc262655')+'"/>'});
   if(S.kind==='candle'){P.forEach(function(p,i){var op=+p.open||+p.close,cl=+p.close,up=cl>=op,c=up?'#059669':'#dc2626';
@@ -376,51 +408,55 @@ function chart(){
          '<rect x="'+(x(i)-Math.max(cw*0.35,0.5))+'" y="'+y(Math.max(op,cl))+'" width="'+Math.max(cw*0.7,1)+'" height="'+Math.max(Math.abs(y(op)-y(cl)),1)+'" fill="'+c+'"/>'})}
   else{var up=+P[P.length-1].close>=+P[0].close,col=up?'#059669':'#dc2626',path=P.map(function(p,i){return(i?'L':'M')+x(i).toFixed(1)+' '+y(+p.close).toFixed(1)}).join(' ');
     o+='<path d="'+path+' L'+x(P.length-1)+' '+(H-HV-6)+' L'+x(0)+' '+(H-HV-6)+' Z" fill="'+col+'18"/><path d="'+path+'" fill="none" stroke="'+col+'" stroke-width="1.8"/>'}
-  var idx={};P.forEach(function(p,i){idx[p.date]=i});
-  d.signals.forEach(function(sg){var i=idx[sg.signal_date];if(i==null)return;var p=P[i],buy=sg.signal==='BUY';
+  Object.keys(O).forEach(function(k){var col=(OV[k]||OV[k.replace(/_(up|dn)$/,'')]||OV.bb)[1],seg='',on=false;
+    O[k].forEach(function(v,i){if(v==null){on=false;return}seg+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});
+    if(seg)o+='<path d="'+seg+'" fill="none" stroke="'+col+'" stroke-width="'+(k.indexOf('bb')===0?1:1.4)+'"'+(k==='bb_up'||k==='bb_dn'?' stroke-dasharray="4 3"':'')+'/>'});
+  var idx={};P.forEach(function(p,i){idx[p.k]=i});
+  d.signals.forEach(function(sg){var i=idx[bucketKey(sg.signal_date,S.iv)];if(i==null)return;var p=P[i],buy=sg.signal==='BUY';
     var yy=buy?y(+p.low||+p.close)+14:y(+p.high||+p.close)-6;
     o+='<text x="'+x(i)+'" y="'+yy+'" text-anchor="middle" font-size="13" fill="'+(buy?'#22c55e':'#ef4444')+'">'+(buy?'▲':'▼')+'</text>'});
-  /* technical signals (◆ chart-pattern breakout, ● any other scan), candle patterns (•) and pattern lines */
-  var sigBy={},cdlBy={},inBy={};
-  (M.signals||[]).forEach(function(z){(sigBy[z.date]=sigBy[z.date]||[]).push(z)});
-  (M.candles||[]).forEach(function(z){(cdlBy[z.date]=cdlBy[z.date]||[]).push(z)});
-  (M.in_place||[]).forEach(function(z){inBy[z.date]=z.text});
+  /* technical signals (◆ chart-pattern breakout, ● any other scan) and candle patterns (•), per visible bar */
+  var bk=function(ds){return bucketKey(ds,S.iv)},sigBy={},cdlBy={},inBy={};
+  (M.signals||[]).forEach(function(z){(sigBy[bk(z.date)]=sigBy[bk(z.date)]||[]).push(z)});
+  (M.candles||[]).forEach(function(z){(cdlBy[bk(z.date)]=cdlBy[bk(z.date)]||[]).push(z)});
+  (M.in_place||[]).forEach(function(z){inBy[bk(z.date)]=z.text});
   if(S.pat){var cl=function(v){return Math.max(T+4,Math.min(H-HV-4,v))};o+='<g id="svmarks">';
-    segs.forEach(function(g){var c=col[g.pt.side]||col.BOTH,y0=y(g.v0),y1=y(g.v1),t=g.pt.name+': '+g.ln.label.toLowerCase()+' '+n(g.v1);
+    segs.forEach(function(g){var c=mc[g.pt.side]||mc.BOTH,y0=y(g.v0),y1=y(g.v1),t=g.pt.name+': '+g.ln.label.toLowerCase()+' '+n(g.v1);
       o+='<line class="svm-line" x1="'+x(g.i0)+'" y1="'+y0+'" x2="'+x(g.i1)+'" y2="'+y1+'" stroke="'+c+'" stroke-width="1.4" stroke-dasharray="6 4"><title>'+esc(t)+'</title></line>'+
          '<text x="'+(x(g.i1)-4)+'" y="'+(y1-4)+'" text-anchor="end" font-size="10.5" fill="'+c+'">'+esc(g.ln.label+' '+n(g.v1))+'</text>'});
-    P.forEach(function(p,i){var hy=y(+p.high||+p.close),ly=y(+p.low||+p.close);
-      (cdlBy[p.date]||[]).forEach(function(z){if(z.side!=='BULL'&&z.side!=='BEAR')return;
-        o+='<circle class="svm-cdl" cx="'+x(i)+'" cy="'+cl(z.side==='BULL'?ly+5:hy-5)+'" r="2.2" fill="'+col[z.side]+'"/>'});
-      var ss=sigBy[p.date];if(!ss)return;
+    P.forEach(function(p,i){var hy=y(+p.high||+p.close),ly=y(+p.low||+p.close),sd={};
+      (cdlBy[p.k]||[]).forEach(function(z){if((z.side!=='BULL'&&z.side!=='BEAR')||sd[z.side])return;sd[z.side]=1;
+        o+='<circle class="svm-cdl" cx="'+x(i)+'" cy="'+cl(z.side==='BULL'?ly+5:hy-5)+'" r="2.2" fill="'+mc[z.side]+'"/>'});
+      var ss=sigBy[p.k];if(!ss)return;
       ['BULL','BEAR'].forEach(function(dir){var g=ss.filter(function(z){return z.direction===dir});if(!g.length)return;var b=dir==='BULL';
-        if(g.some(function(z){return z.pattern}))o+='<text class="svm-pat" x="'+x(i)+'" y="'+cl(b?ly+27:hy-18)+'" text-anchor="middle" font-size="13" fill="'+col[dir]+'">◆</text>';
-        else o+='<circle class="svm-sig" cx="'+x(i)+'" cy="'+cl(b?ly+22:hy-22)+'" r="3" fill="'+col[dir]+'" fill-opacity=".85"/>'})});
+        if(g.some(function(z){return z.pattern}))o+='<text class="svm-pat" x="'+x(i)+'" y="'+cl(b?ly+27:hy-18)+'" text-anchor="middle" font-size="13" fill="'+mc[dir]+'">◆</text>';
+        else o+='<circle class="svm-sig" cx="'+x(i)+'" cy="'+cl(b?ly+22:hy-22)+'" r="3" fill="'+mc[dir]+'" fill-opacity=".85"/>'})});
     o+='</g>'}
-  var sm={};d.scores.forEach(function(s){sm[s.date]=s});
+  var sm={};d.scores.forEach(function(s){sm[bucketKey(s.date,S.iv)]=s});
   var sy=function(v){return H+G+(100-v)/100*(HS-8)+4};
   o+='<text x="'+L+'" y="'+(H+G-4)+'" fill="#64748b" font-size="11">ATIP score</text>';
   [45,70].forEach(function(b){o+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+sy(b)+'" y2="'+sy(b)+'" stroke="#334155" stroke-dasharray="3 4"/><text x="'+(W-R+4)+'" y="'+(sy(b)+4)+'" fill="#64748b" font-size="11">'+b+'</text>'});
-  var seg='',started=false;P.forEach(function(p,i){var s=sm[p.date];if(!s||s.atip_score==null){started=false;return}seg+=(started?'L':'M')+x(i).toFixed(1)+' '+sy(+s.atip_score).toFixed(1)+' ';started=true});
+  var seg='',started=false;P.forEach(function(p,i){var s=sm[p.k];if(!s||s.atip_score==null){started=false;return}seg+=(started?'L':'M')+x(i).toFixed(1)+' '+sy(+s.atip_score).toFixed(1)+' ';started=true});
   o+=seg?'<path d="'+seg+'" fill="none" stroke="#38bdf8" stroke-width="1.8"/>':'<text x="'+(W/2)+'" y="'+(H+G+HS/2)+'" fill="#475569" font-size="12" text-anchor="middle">no ATIP scores in this range</text>';
-  P.forEach(function(p,i){var s=sm[p.date];if(s&&s.atip_score!=null)o+='<circle cx="'+x(i)+'" cy="'+sy(+s.atip_score)+'" r="1.8" fill="#38bdf8"/>'});
+  P.forEach(function(p,i){var s=sm[p.k];if(s&&s.atip_score!=null)o+='<circle cx="'+x(i)+'" cy="'+sy(+s.atip_score)+'" r="1.8" fill="#38bdf8"/>'});
   o+='<line id="svx" x1="0" x2="0" y1="'+T+'" y2="'+(H+G+HS)+'" stroke="#94a3b8" stroke-dasharray="2 3" visibility="hidden"/>';
   o+='<rect x="'+L+'" y="0" width="'+(W-L-R)+'" height="'+(H+G+HS)+'" fill="transparent" id="svhit"/></svg>';
   document.getElementById('svc').innerHTML=o;
   var svg=document.getElementById('svsvg'),hit=document.getElementById('svhit'),vx=document.getElementById('svx'),tip=document.getElementById('svtip');
   hit.addEventListener('mousemove',function(ev){var r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width*W,i=Math.max(0,Math.min(P.length-1,Math.floor((px-L)/cw)));
-    var p=P[i],s=sm[p.date],sg=d.signals.filter(function(z){return z.signal_date===p.date})[0];
-    var ts=S.pat?(sigBy[p.date]||[]):[],cd=S.pat?(cdlBy[p.date]||[]):[],ip=S.pat?inBy[p.date]:null;
+    var p=P[i],s=sm[p.k],sg=d.signals.filter(function(z){return bucketKey(z.signal_date,S.iv)===p.k})[0];
+    var ts=S.pat?(sigBy[p.k]||[]):[],cd=S.pat?(cdlBy[p.k]||[]):[],ip=S.pat?inBy[p.k]:null;
     vx.setAttribute('x1',x(i));vx.setAttribute('x2',x(i));vx.setAttribute('visibility','visible');
-    tip.innerHTML='<b>'+esc(p.date)+'</b> &nbsp;O '+n(p.open)+' H '+n(p.high)+' L '+n(p.low)+' C <b>'+n(p.close)+'</b> &nbsp;Vol '+n(p.volume,0)+
-      (s?' &nbsp;| ATIP <b>'+n(s.atip_score,0)+'</b> '+esc(s.signal||''):'')+(sg?' &nbsp;| <b style="color:'+(sg.signal==='BUY'?'#22c55e':'#ef4444')+'">'+esc(sg.signal)+' signal</b> @ '+n(sg.entry_price):'')+
-      (ts.length?' &nbsp;| '+ts.map(function(z){return '<b style="color:'+(col[z.direction]||col.BOTH)+'">'+(z.pattern?'◆ ':'')+esc(z.name)+'</b>'+(z.reason?' <span class="mut">'+esc(z.reason)+'</span>':'')}).join(', '):'')+
-      (cd.length?' &nbsp;| candles: '+cd.map(function(z){return '<span style="color:'+(col[z.side]||'#94a3b8')+'">'+esc(z.name)+'</span>'}).join(', '):'')+
+    var ovt=Object.keys(O).filter(function(k){return OV[k]&&O[k][i]!=null}).map(function(k){return OV[k][0]+' '+n(O[k][i])}).join(' · ');
+    tip.innerHTML='<b>'+(S.iv==='D'?'':(S.iv==='W'?'week to ':'month to '))+esc(p.date)+'</b> &nbsp;O '+n(p.open)+' H '+n(p.high)+' L '+n(p.low)+' C <b>'+n(p.close)+'</b> &nbsp;Vol '+n(p.volume,0)+
+      (s?' &nbsp;| ATIP <b>'+n(s.atip_score,0)+'</b> '+esc(s.signal||''):'')+(sg?' &nbsp;| <b style="color:'+(sg.signal==='BUY'?'#22c55e':'#ef4444')+'">'+esc(sg.signal)+' signal</b> @ '+n(sg.entry_price):'')+(ovt?' &nbsp;| '+ovt:'')+
+      (ts.length?' &nbsp;| '+ts.map(function(z){return '<b style="color:'+(mc[z.direction]||mc.BOTH)+'">'+(z.pattern?'◆ ':'')+esc(z.name)+'</b>'+(S.iv==='D'?'':' '+esc(z.date.slice(5)))+(z.reason?' <span class="mut">'+esc(z.reason)+'</span>':'')}).join(', '):'')+
+      (cd.length?' &nbsp;| candles: '+cd.map(function(z){return '<span style="color:'+(mc[z.side]||'#94a3b8')+'">'+esc(z.name)+'</span>'}).join(', '):'')+
       (ip?' &nbsp;| in place: <span class="mut">'+esc(ip)+'</span>':'')});
   hit.addEventListener('mouseleave',function(){vx.setAttribute('visibility','hidden')});
   var pl=document.getElementById('svpl'),pts=M.patterns||[];
   if(pl)pl.innerHTML=!S.pat?'<span class="mut">Chart patterns, technical signals and candle patterns hidden (Patterns).</span>':
-    (pts.length?'In place on the last bar: '+pts.map(function(pt){return '<b style="color:'+(col[pt.side]||col.BOTH)+'">'+esc(pt.name)+'</b> '+
+    (pts.length?'In place on the last bar: '+pts.map(function(pt){return '<b style="color:'+(mc[pt.side]||mc.BOTH)+'">'+esc(pt.name)+'</b> '+
       (pt.lines||[]).map(function(l){return esc(l.label.toLowerCase())+' '+n(l.to_value)}).join(' / ')+
       (pt.triggered?' <b>· '+(/breakdown$/.test(pt.triggered)?'broke down':'broke out')+' today</b>':'')}).join(' &nbsp;·&nbsp; ')
       :'<span class="mut">No chart pattern in place on the last bar.</span>')+
@@ -431,9 +467,12 @@ function scoresTable(d){return tbl(['Date','ATIP','Rank','VPI','MRI','RRI','ZPI'
   return '<tr><td>'+esc(s.date)+'</td><td><b>'+n(s.atip_score,0)+'</b></td><td>'+n(s.atip_rank,0)+'</td><td>'+n(s.vpi,0)+'</td><td>'+n(s.mri,0)+'</td><td>'+n(s.rri,0)+'</td><td>'+n(s.zpi,0)+'</td><td>'+n(s.cri,0)+'</td><td>'+n(s.acs,0)+'</td><td>'+esc(s.signal||'')+'</td><td class="mut">'+esc(s.regime||'')+'</td><td class="mut">'+esc(s.top_factor_1||'')+'</td></tr>'}),'No ATIP scores stored for this stock.')}
 function signalsTable(d){return tbl(['Issued','Signal','Entry','ATIP','First target hit','Best','Worst','Sessions','Model'],d.signals.map(function(s){var f=s.first_hit;
   return '<tr><td>'+esc(s.signal_date)+'</td><td style="font-weight:600;color:'+(s.signal==='BUY'?'#059669':'#dc2626')+'">'+esc(s.signal)+'</td><td>₹'+n(s.entry_price)+'</td><td>'+n(s.atip_score,0)+'</td><td>'+(f?esc(String(f.hit_date).slice(0,10))+' @'+f.threshold_pct+'%':'<span class="mut">—</span>')+'</td><td>'+pc(s.best_pct)+'</td><td>'+pc(s.worst_pct)+'</td><td>'+n(s.sessions_tracked,0)+'</td><td class="mut">'+esc(s.model_version||'')+'</td></tr>'}),'No BUY / SELL signals logged for this stock.')}
-function techTable(d){var t=d.technicals||{},e=d.technical_ext||{};
+function techTable(d){var t=d.technicals||{},e=d.technical_ext||{},sp=function(v){return v==null?'—':(v>=0?'+':'')+n(v)+'%'},fl={fib_382:'38.2%',fib_500:'50%',fib_618:'61.8%'};
   var rows=[['As of',t.date||e.date],['RSI 14',t.rsi_14],['MACD hist',t.macd_hist],['ADX 14',t.adx_14],['EMA 21',t.ema_21],['EMA 50',t.ema_50],['SMA 200',t.sma_200],['Above 200 DMA',t.above_200dma==null?null:(t.above_200dma?'yes':'no')],['ATR %',t.atr_pct],['Bollinger upper / lower',t.bb_upper!=null?n(t.bb_upper)+' / '+n(t.bb_lower):null],['Pivot / R1 / S1',t.pivot!=null?n(t.pivot)+' / '+n(t.r1)+' / '+n(t.s1):null],['Volume ratio',t.volume_ratio],
-    ['Support (touches)',e.sr_support!=null?n(e.sr_support)+' ('+n(e.sr_support_touches,0)+')':null],['Resistance (touches)',e.sr_resistance!=null?n(e.sr_resistance)+' ('+n(e.sr_resistance_touches,0)+')':null],['VWAP 20D',e.vwap_20d],['Supertrend',e.supertrend!=null?n(e.supertrend)+' ('+esc(e.supertrend_dir)+')':null],['Weekly / monthly trend',e.weekly_trend!=null?esc(e.weekly_trend)+' / '+esc(e.monthly_trend):null],['MTF alignment',e.mtf_alignment],['Beta 60D',e.beta_60],['MFI 14',e.mfi_14]]
+    ['Support (touches)',e.sr_support!=null?n(e.sr_support)+' ('+n(e.sr_support_touches,0)+')':null],['Resistance (touches)',e.sr_resistance!=null?n(e.sr_resistance)+' ('+n(e.sr_resistance_touches,0)+')':null],['VWAP 20D',e.vwap_20d],['Supertrend',e.supertrend!=null?n(e.supertrend)+' ('+esc(e.supertrend_dir)+')':null],['Weekly / monthly trend',e.weekly_trend!=null?esc(e.weekly_trend)+' / '+esc(e.monthly_trend):null],['MTF alignment',e.mtf_alignment],['Beta 60D',e.beta_60],['MFI 14',e.mfi_14],
+    ['RS vs sector 126D / 63D',e.rs_sector_126!=null||e.rs_sector_63!=null?sp(e.rs_sector_126)+' / '+sp(e.rs_sector_63)+' vs '+(e.rs_sector_index||'')+(e.rs_sector_index==='NIFTY50'?' (no sector index)':''):null],['RS percentile in sector',e.rs_sector_pctile],
+    ['Fibonacci swing',e.fib_swing_dir!=null?(e.fib_swing_dir==='UP'?'UP '+n(e.fib_swing_low)+' → '+n(e.fib_swing_high):'DOWN '+n(e.fib_swing_high)+' → '+n(e.fib_swing_low)):null],['Swing Fib 38.2 / 50 / 61.8',e.fib_382!=null?n(e.fib_382)+' / '+n(e.fib_500)+' / '+n(e.fib_618):null],
+    ['Nearest swing Fib',e.fib_nearest!=null?(fl[e.fib_nearest]||e.fib_nearest)+(e.fib_nearest_dist_pct!=null?' (close '+sp(e.fib_nearest_dist_pct)+')':''):null]]
     .filter(function(r){return r[1]!=null&&r[1]!==''});
   return tbl(['Indicator','Value'],rows.map(function(r){return '<tr><td>'+r[0]+'</td><td><b>'+(typeof r[1]==='number'?n(r[1]):esc(r[1]))+'</b></td></tr>'}),'No technical indicators stored for this stock.')}
 function posTable(d){var h=d.holding,pp=d.paper_position,o='';

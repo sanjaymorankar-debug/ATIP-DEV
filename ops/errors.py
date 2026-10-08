@@ -7,6 +7,7 @@ AtipError(message, code=..., status=..., retryable=..., user_message=...)
     PermissionDenied      PERMISSION_DENIED       403
     NotFound              NOT_FOUND               404
     Conflict              CONFLICT                409  (duplicate / idempotency clash)
+    (GONE                 410  a v1 resource past its sunset date -- ops/http.py, W39)
     PayloadTooLarge       PAYLOAD_TOO_LARGE       413
     RateLimited           RATE_LIMITED            429  retryable (after Retry-After)
     DependencyUnavailable DEPENDENCY_UNAVAILABLE  503  retryable (broker / data source / db)
@@ -15,7 +16,8 @@ AtipError(message, code=..., status=..., retryable=..., user_message=...)
     TradingSafetyError    TRADING_SAFETY          409  NEVER retried
     InternalError         INTERNAL                500
 
-API error envelope (errors raised as AtipError, and any unhandled exception):
+API error envelope (errors raised as AtipError, FastAPI request validation (422, W39: with
+its "detail" list kept beside the envelope), and any unhandled exception):
     {"error": {"code", "message", "request_id", "retryable"}}
 The message is the user-safe one; internal detail and stack traces go to the log
 only (with the request id), never to the client. Existing W1-W7 routes keep their
@@ -72,6 +74,19 @@ def install_handlers(app):
         if exc.status >= 500:
             log.error(f"{exc.code} {request.method} {request.url.path}: {exc}", extra={"error_code": exc.code})
         return JSONResponse(envelope(exc.code, exc.user_message, rid, exc.retryable), status_code=exc.status)
+
+    from fastapi.encoders import jsonable_encoder
+    from fastapi.exceptions import RequestValidationError
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation(request, exc: RequestValidationError):
+        """W39 (API-05 finding): FastAPI's own 422 ({"detail": [...]}) bypassed the envelope the API
+        policy promises. The envelope now carries it; "detail" stays for existing clients."""
+        rid = context.request_id.get()
+        errs = jsonable_encoder(exc.errors())
+        where = lambda e: ".".join(str(x) for x in (e.get("loc") or [])[1:]) or "request"      # noqa: E731
+        msg = "; ".join(f"{where(e)}: {e.get('msg')}" for e in errs[:5]) or "invalid request"
+        return JSONResponse({**envelope("VALIDATION_FAILED", msg, rid), "detail": errs}, status_code=422)
 
     @app.exception_handler(Exception)
     async def _unhandled(request, exc: Exception):

@@ -93,12 +93,18 @@ def collect(app=None) -> list:
 def _perm(method, path, permission_for):
     """What authz really requires: public routes and self-service auth routes need no permission."""
     import re
-    from enterprise.authz import SELF, _public
+    from enterprise.authz import PUBLIC, SELF, _public
     if _public(method, re.sub(r"\{[^}]+\}", "x", path)):
         return "public"
     if re.match(SELF, path):
         return "signed-in"
-    return permission_for(method, path)
+    perm = permission_for(method, path)
+    if "{" in path:      # a path parameter PUBLIC spells out by value (GET /health/{component}: /health/wealth ...)
+        words = {w for m, rx in PUBLIC if m == method for w in re.findall(r"[a-z0-9_]+", rx)}
+        hits = sorted(w for w in words if _public(method, re.sub(r"\{[^}]+\}", w, path)))
+        if hits:
+            return f"public for {', '.join(hits)}; otherwise {perm}"
+    return perm
 
 
 def write(app=None, out_dir: str = "docs") -> dict:

@@ -8,8 +8,9 @@ ML configuration: atip_data/config.json section "ml" (all optional).
         "feature_set": "atip_core",        default feature-set name for new datasets
         "prediction_horizon": 5,           default label horizon (sessions)
         "model_path": "atip_data/ml",      where artifacts and dataset snapshots are written
-        "regime_source": "deterministic",  deterministic | ml | hybrid  (strategy regime)
+        "regime_source": "deterministic",  deterministic | ml | hybrid | hmm  (strategy regime)
         "regime_model": null,              model_id of the regime model (ml / hybrid)
+        "regime_hmm": {},                  W39 (ML-17) settings of the hmm source (ml/regime.py HMM_DEFAULTS)
         "training": {"validation_fraction": 0.2, "embargo_sessions": null, "min_rows": 200}
     }
 
@@ -34,9 +35,10 @@ DEFAULTS = {
     "model_path": "atip_data/ml",
     "regime_source": "deterministic",
     "regime_model": None,
+    "regime_hmm": {},
     "training": {"validation_fraction": 0.2, "embargo_sessions": None, "min_rows": 200},
 }
-REGIME_SOURCES = ("deterministic", "ml", "hybrid")
+REGIME_SOURCES = ("deterministic", "ml", "hybrid", "hmm")
 
 
 def settings() -> dict:

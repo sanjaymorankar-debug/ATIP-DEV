@@ -175,6 +175,7 @@ def run(request: dict, conn) -> dict:
     positions: dict = {}
     working: list = []
     trades, events, equity = [], [], []
+    not_simulated = {}                                 # W39: ADD / REDUCE signals this engine does not trade
     oid = itertools.count(1)
     seq = itertools.count()
     q: list = []
@@ -325,6 +326,11 @@ def run(request: dict, conn) -> dict:
             for sig in signals:
                 if sig.symbol not in universe.symbols:
                     continue
+                if sig.side in ("ADD", "REDUCE"):           # W39: PF-06 partial changes are W2-engine only
+                    events.append({"date": d, "symbol": sig.symbol,
+                                   "event": f"{sig.side} not simulated by the event-driven engine"})
+                    not_simulated[sig.side] = not_simulated.get(sig.side, 0) + 1
+                    continue
                 if sig.side == "SELL":
                     if sig.symbol in positions and sig.symbol not in pending_sells:
                         working.append(_Order(next(oid), sig.symbol, "SELL", positions[sig.symbol].qty,
@@ -399,7 +405,10 @@ def run(request: dict, conn) -> dict:
         "point_in_time_data": True, "universe": universe.as_dict(),
         "warnings": (["intraday bars: only sessions stored in intraday_bars (DP-03 retention) are simulated"]
                      if ed["timeframe"] != "1d" else [])
-                    + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else []),
+                    + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else [])
+                    + ([f"partial position changes not simulated by the event-driven engine: "
+                        f"{', '.join(f'{k} x{n}' for k, n in sorted(not_simulated.items()))} (the W2 engine trades them)"]
+                       if not_simulated else []),
     }
     snap_out = dict(snap, event_driven=ed)
     return {"strategy": strat.describe(), "sessions": len(set(days)), "bars": len(bars.points), "trades": trades,
