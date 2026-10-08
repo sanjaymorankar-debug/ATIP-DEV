@@ -2,15 +2,18 @@
 W39 (SC-20) — stock screener (fundamental + technical): Screener.in / Dhan ScanX / Kite Screener style filters over
 everything ATIP knows about a stock, one row per symbol.
 
-    FIELDS        126 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
-                  (ROE, ROCE, margins), growth (YoY, QoQ), balance sheet (debt/equity, interest cover,
+    FIELDS        147 screenable fields: valuation (P/E, P/B, PEG, yields, market cap), profitability
+                  (ROE, ROCE, margins), growth (YoY, QoQ), earnings surprise (research/earnings_surprise.py:
+                  SUE and revenue SUE against the same quarter a year earlier -- ATIP's own history, not
+                  consensus -- the EPS-trend revisions proxy, days since the result), balance sheet (debt/equity, interest cover,
                   cash, FCF), ownership (promoter, pledge, FPI, MF, promoter change), price (1-year /
                   3-year return, distance from 52-week high / low), ATIP (score, signal), the research
                   model (rating, upside, fair value, moat proxy, quality), a magic-formula rank
                   (Greenblatt, approximated with E/P and ROCE; financials excluded), the fundamental
-                  scorecard (research/scorecard.py: checks passed of 30 and per axis), the technical
+                  scorecard (research/scorecard.py: checks passed of 30 and per axis), the DVM view
+                  (research/dvm.py: durability, valuation, momentum 0-100 and the zone), the technical
                   snapshot (research/tech_signals.py: rating, weekly rating and daily / weekly agreement,
-                  RS rating, RSI, MACD, ADX, Supertrend,
+                  75-minute rating and daily / 75-minute agreement, RS rating, RSI, MACD, ADX, Supertrend,
                   patterns, chart patterns in place, VCP setup, signals and one scan_<key> 1/0 field per
                   scan) and order-book pressure
                   (data/order_pressure.py)
@@ -80,6 +83,16 @@ FIELDS = dict([
     _f("eps_growth_pct", "EPS growth YoY", "Growth", "%", aliases=("eps_growth",)),
     _f("qoq_revenue_pct", "Revenue growth QoQ", "Growth", "%", aliases=("qoq_sales",)),
     _f("qoq_profit_pct", "Profit growth QoQ", "Growth", "%", aliases=("qoq_profit",)),
+    _f("sue", "Earnings surprise (SUE)", "Earnings", "sd", aliases=("eps_surprise", "earnings_surprise"),
+       desc="(EPS - EPS of the same quarter a year earlier) / the standard deviation of that change over the 8 "
+            "quarters before; a surprise against ATIP's own history, not analyst consensus (research/earnings_surprise.py)"),
+    _f("sue_revenue", "Revenue surprise (SUE)", "Earnings", "sd", aliases=("revenue_surprise", "sales_surprise"),
+       desc="the same on quarterly revenue"),
+    _f("eps_trend", "EPS growth trend", "Earnings", kind="text", aliases=("revisions_proxy", "earnings_trend"),
+       desc="ACCELERATING / DECELERATING: trailing-4-quarter EPS growth against the filing before -- a proxy for "
+            "estimate revisions, not analyst revisions"),
+    _f("days_since_result", "Days since the latest result", "Earnings", "days",
+       aliases=("days_since_results", "result_age"), desc="calendar days since the latest quarter's filing was broadcast"),
     _f("revenue_cr", "Revenue (quarter)", "Size", "₹ cr", aliases=("sales", "revenue")),
     _f("profit_cr", "Net profit (quarter)", "Size", "₹ cr", aliases=("profit", "net_profit")),
     _f("eps_ttm", "EPS (TTM)", "Size", "₹", aliases=("eps",)),
@@ -110,6 +123,16 @@ FIELDS = dict([
     _f("mtf_alignment", "Daily + weekly agreement", "Technical", kind="text", aliases=("mtf", "timeframes"),
        desc="BULL: daily and weekly both BUY / STRONG_BUY; BEAR: both SELL / STRONG_SELL; else MIXED"),
     _f("rsi_14_w", "Weekly RSI (14)", "Technical", "", aliases=("weekly_rsi",)),
+    _f("tech_rating_75", "75-minute technical rating", "Technical", "-1..1", aliases=("rating_75m", "tech_rating_75m"),
+       desc="the same vote on completed 75-minute bars (the session in five from 09:15) built from the stored "
+            "15-minute bars; 35+ bars (7 sessions) needed; as of the close"),
+    _f("tech_rating_75_label", "75-minute rating label", "Technical", kind="text", aliases=("label_75m",),
+       desc="STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL on 75-minute bars"),
+    _f("mtf_alignment_75", "Daily + 75-minute agreement", "Technical", kind="text",
+       aliases=("mtf_75", "mtf_75m", "intraday_daily"),
+       desc="BULL: daily and 75-minute both BUY / STRONG_BUY; BEAR: both SELL / STRONG_SELL; else MIXED"),
+    _f("rsi_14_75", "75-minute RSI (14)", "Technical", "", aliases=("rsi_75m",)),
+    _f("supertrend_dir_75", "75-minute Supertrend direction", "Technical", "+1/-1", aliases=("supertrend_75m",)),
     _f("delivery_pct", "Delivery %", "Technical", "%", aliases=("deliv_pct", "delivery"),
        desc="NSE deliverable quantity as % of traded quantity (bhavcopy)"),
     _f("delivery_ratio", "Delivery % vs 20-day avg", "Technical", "x", aliases=("deliv_ratio",),
@@ -121,8 +144,9 @@ FIELDS = dict([
     _f("rs_rating_cap", "RS rating in size group (1-99)", "Technical", "", aliases=("rs_cap", "rs_in_group"),
        desc="the RS rating ranked only against stocks of the same size group"),
     _f("chart_patterns", "Chart patterns in place", "Technical", kind="text", aliases=("chart_pattern",),
-       desc="Darvas box / VCP setup / double bottom / ascending triangle / head and shoulders formed and not yet "
-            "triggered, with their levels (research/patterns.py)"),
+       desc="Darvas box / VCP setup / double bottom / ascending or descending triangle / head and shoulders or "
+            "its inverse / rising or falling channel or wedge formed and not yet triggered, with their levels "
+            "(research/patterns.py)"),
     _f("vcp_setup", "VCP setup", "Technical", "1/0", aliases=("vcp",),
        desc="a volatility contraction pattern below its pivot, volume drying up, in an up-trend"),
     _f("supertrend_dir_w", "Weekly Supertrend direction", "Technical", "+1/-1", aliases=("weekly_supertrend",)),
@@ -175,6 +199,17 @@ FIELDS = dict([
             "(the debt checks are not scored for banks and NBFCs)"),
     _f("dividend_checks", "Dividend checks (of 6)", "Scorecard", "0-6", aliases=("dividend_score",),
        desc="yield vs payers' quartiles, paid 2 years running, growing, covered by earnings and by FCF"),
+    _f("dvm_d", "DVM durability (0-100)", "DVM", "0-100", aliases=("durability", "dvm_durability"),
+       desc="share of the scorecard's financial-health and past-performance checks passed, of those that could be "
+            "made (research/dvm.py)"),
+    _f("dvm_v", "DVM valuation (0-100)", "DVM", "0-100", aliases=("dvm_valuation", "valuation_score"),
+       desc="60 % price vs the research fair value, 40 % P/E vs its industry's median (P/B for financials); "
+            "high = cheap"),
+    _f("dvm_m", "DVM momentum (0-100)", "DVM", "0-100", aliases=("dvm_momentum", "momentum_score"),
+       desc="half the daily technical rating, half the RS rating"),
+    _f("dvm_zone", "DVM zone", "DVM", kind="text", aliases=("dvm", "dvm_class"),
+       desc="STRONG_PERFORMER / VALUE_TRAP / MOMENTUM_TRAP / EXPENSIVE_PERFORMER / VALUE_UNDER_RADAR / WEAK / "
+            "MID_RANGE (55+ is high, below 35 low)"),
 ])
 
 from research.technicals import SCANS as _SCANS                     # noqa: E402  (one 1/0 field per scan)
@@ -194,13 +229,18 @@ TECH_COLUMNS = ["symbol", "industry", "price", "tech_rating_label", "tech_rating
                 "pct_from_sma200", "vol_ratio", "return_1m_pct", "signals"]
 COMBINED_COLUMNS = ["symbol", "industry", "price", "pe", "roce_pct", "research_rating", "research_upside_pct",
                     "tech_rating_label", "rs_rating", "rsi_14", "signals"]
+DVM_COLUMNS = ["symbol", "industry", "price", "dvm_d", "dvm_v", "dvm_m", "dvm_zone", "checks_passed",
+               "research_upside_pct", "tech_rating_label", "rs_rating"]
 _TECH_GROUPS = {"Technical", "Technical scans", "Order book"}
 _NEUTRAL_GROUPS = {"Company", "Price"}
 
 
 def default_columns(used: list) -> list:
-    """Columns that suit the query: technical ones for a chart screen, a mix for a combined one."""
+    """Columns that suit the query: technical ones for a chart screen, a mix for a combined one, the three DVM
+    scores with their inputs for a DVM screen."""
     groups = {FIELDS[f]["group"] for f in used if f in FIELDS}
+    if "DVM" in groups:
+        return DVM_COLUMNS
     tech, fund = bool(groups & _TECH_GROUPS), bool(groups - _TECH_GROUPS - _NEUTRAL_GROUPS)
     return COMBINED_COLUMNS if tech and fund else TECH_COLUMNS if tech else DEFAULT_COLUMNS
 
@@ -228,6 +268,10 @@ PRESETS = [
      "query": "from_52w_high_pct > -5 AND above_200dma = 1 AND roe_pct > 15", "sort": "from_52w_high_pct"},
     {"key": "turnaround", "name": "Turnaround", "description": "Profit jumped this quarter and is up on last year",
      "query": "qoq_profit_pct > 50 AND profit_growth_pct > 0 AND profit_cr > 0", "sort": "qoq_profit_pct"},
+    {"key": "earnings_surprise", "name": "Positive earnings surprise",
+     "description": "SUE of +2 or more on a result filed in the last 60 days: EPS beat the same quarter a year "
+                    "earlier by 2+ standard deviations of its usual change (ATIP's own history; no consensus estimates)",
+     "query": "sue >= 2 AND days_since_result <= 60", "sort": "sue"},
     {"key": "magic_formula", "name": "Magic formula (top 30)",
      "description": "Greenblatt's ranking (approximated with E/P and ROCE), market cap over ₹1,000 cr",
      "query": "magic_rank <= 30 AND market_cap_cr > 1000", "sort": "magic_rank", "desc": False},
@@ -282,10 +326,24 @@ PRESETS = [
      "description": "A 20-day or 52-week breakout while the daily and weekly ratings both point up",
      "query": '(scan_donchian_20_breakout = 1 OR scan_high_52w_breakout = 1) AND mtf_alignment = "BULL"',
      "sort": "rs_rating"},
+    {"key": "t_75m_daily_bull", "name": "75-minute and daily both bullish", "group": "technical",
+     "description": "The technical rating is BUY or STRONG BUY on completed 75-minute bars and on daily bars, as of "
+                    "the close",
+     "query": 'mtf_alignment_75 = "BULL"', "sort": "tech_rating_75"},
     {"key": "t_pattern_breakouts", "name": "Chart pattern breakouts", "group": "technical",
-     "description": "Closed above a Darvas box, VCP pivot, double-bottom neckline or ascending triangle today",
+     "description": ("Closed above a Darvas box, VCP pivot, double-bottom or inverse head-and-shoulders neckline, "
+                     "ascending triangle, falling wedge or a channel's upper line today"),
      "query": ("scan_darvas_breakout = 1 OR scan_vcp_breakout = 1 OR scan_double_bottom_breakout = 1 OR "
-               "scan_ascending_triangle_breakout = 1"), "sort": "rs_rating"},
+               "scan_ascending_triangle_breakout = 1 OR scan_inverse_head_shoulders_breakout = 1 OR "
+               "scan_falling_wedge_breakout = 1 OR scan_rising_channel_breakout = 1 OR "
+               "scan_falling_channel_breakout = 1"), "sort": "rs_rating"},
+    {"key": "t_pattern_breakdowns", "name": "Chart pattern breakdowns", "group": "technical",
+     "description": ("Closed below a Darvas box, head-and-shoulders neckline, descending triangle, rising wedge or "
+                     "a channel's lower line today"),
+     "query": ("scan_darvas_breakdown = 1 OR scan_head_shoulders_breakdown = 1 OR "
+               "scan_descending_triangle_breakdown = 1 OR scan_rising_wedge_breakdown = 1 OR "
+               "scan_rising_channel_breakdown = 1 OR scan_falling_channel_breakdown = 1"), "sort": "rs_rating",
+     "desc": False},
     {"key": "t_vcp_setups", "name": "VCP setups (not yet broken out)", "group": "technical",
      "description": "Volatility contraction below its pivot with volume drying up, strongest relative strength first",
      "query": "vcp_setup = 1", "sort": "rs_rating"},
@@ -324,6 +382,17 @@ PRESETS = [
      "description": "Research rating BUY / ADD, above the 200-DMA, technical rating positive",
      "query": 'research_rating IN ("BUY", "ADD") AND above_200dma = 1 AND tech_rating > 0.1',
      "sort": "research_upside_pct"},
+    # DVM view (research/dvm.py): durability, valuation and momentum, 0-100 each
+    {"key": "dvm_strong", "name": "DVM strong performers", "group": "combined",
+     "description": "Durability, valuation and momentum all 55 or more: a sound business, not expensive, in favour",
+     "query": 'dvm_zone = "STRONG_PERFORMER"', "sort": "dvm_m"},
+    {"key": "dvm_value_radar", "name": "Sound and cheap, not yet in favour", "group": "combined",
+     "description": "DVM durability and valuation 55+, momentum below 55: wait for the trend to turn",
+     "query": 'dvm_zone = "VALUE_UNDER_RADAR"', "sort": "dvm_v"},
+    {"key": "dvm_traps", "name": "DVM value and momentum traps", "group": "combined",
+     "description": "Cheap or rising, but durability below 35: a weak business behind the price (names to be careful "
+                    "with)",
+     "query": 'dvm_zone IN ("VALUE_TRAP", "MOMENTUM_TRAP")', "sort": "dvm_d", "desc": False},
 ]
 for _p in PRESETS:
     _p.setdefault("group", "fundamental")
@@ -646,7 +715,8 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
                   "pct_from_sma50", "pct_from_sma200", "bb_width_pct", "vol_ratio", "rs_63_pct", "return_1m_pct",
                   "return_3m_pct", "patterns", "signals", "bull_signals", "bear_signals", "tech_rating_w",
                   "tech_rating_w_label", "rsi_14_w", "supertrend_dir_w", "mtf_alignment", "chart_patterns", "vcp_setup",
-                  "rs_line_at_high", "cap_bucket", "rs_rating_cap", "delivery_pct", "delivery_ratio"):
+                  "rs_line_at_high", "cap_bucket", "rs_rating_cap", "delivery_pct", "delivery_ratio", "tech_rating_75",
+                  "tech_rating_75_label", "rsi_14_75", "supertrend_dir_75", "mtf_alignment_75"):
             row[k] = ts.get(k)
         for k in ("rsi_14", "above_200dma"):
             if ts.get(k) is not None:
@@ -655,6 +725,14 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
             row[f"scan_{key}"] = ts.get(f"scan_{key}", 0) if ts else None
         rows.append(row)
     _magic_rank(rows)
+    try:
+        from research import earnings_surprise
+        earnings_surprise.apply(conn, rows, as_of)
+    except Exception as e:                      # like the scorecard: never takes the screener down
+        log.warning(f"  Earnings surprise unavailable: {e}")
+        for r in rows:
+            for k in ("sue", "sue_revenue", "eps_trend", "days_since_result"):
+                r.setdefault(k, None)
     from research import scorecard
     try:
         scorecard.apply(conn, rows, as_of, uni.fund)
@@ -662,6 +740,14 @@ def build_snapshot(conn, as_of=None, industry_map=None) -> list:
         log.warning(f"  Scorecard unavailable: {e}")
         for r in rows:
             for k in scorecard.COUNT_FIELDS:
+                r.setdefault(k, None)
+    from research import dvm
+    try:
+        dvm.apply(rows)
+    except Exception as e:                      # nor must the DVM view
+        log.warning(f"  DVM unavailable: {e}")
+        for r in rows:
+            for k in dvm.FIELDS:
                 r.setdefault(k, None)
     return rows
 
@@ -837,8 +923,8 @@ def run_saved(conn, screen_id: str, use_cache=True, rows=None, record=True) -> d
 
 
 def run_saved_screens() -> dict:
-    """Daily job: store the day's fundamental scorecards (research/scorecard.py), then re-run every saved screen;
-    alert on new matches for screens with notify on."""
+    """Daily job: store the day's fundamental scorecards (research/scorecard.py, with each stock's DVM scores and
+    zone from research/dvm.py), then re-run every saved screen; alert on new matches for screens with notify on."""
     from db.schema import get_connection
     conn = get_connection()
     ran = alerted = 0

@@ -1,0 +1,297 @@
+{
+  "_about": "Razorpay REST v1 responses and webhook payloads, written from Razorpay's documented shapes (customers, plans, subscriptions, invoices, payments, refunds, the webhook envelope and the error envelope). Ids are made up; amounts are paise. Used by tests/test_w39b_razorpay.py through an injected transport -- no network.",
+  "api": {
+    "customer": {
+      "id": "cust_Q7u1ZkHKwXkF0e", "entity": "customer", "name": "Acme Research", "email": "billing@acme.example",
+      "contact": null, "gstin": null, "notes": {"atip_tenant_id": "acme"}, "created_at": 1759900000
+    },
+    "plan": {
+      "id": "plan_Q7u2bWv3xkHnAx", "entity": "plan", "interval": 1, "period": "monthly",
+      "item": {
+        "id": "item_Q7u2bXcd0Zz7aP", "active": true, "name": "ATIP Pro", "description": "ATIP PRO plan, 1 month(s) per cycle",
+        "amount": 99900, "unit_amount": 99900, "currency": "INR", "type": "plan", "unit": null, "tax_inclusive": false,
+        "hsn_code": null, "sac_code": null, "tax_rate": null, "tax_id": null, "tax_group_id": null,
+        "created_at": 1759900010, "updated_at": 1759900010
+      },
+      "notes": {"atip_plan_id": "PRO", "atip_price_key": "PRO|99900|INR|monthly|1"}, "created_at": 1759900010
+    },
+    "subscription_created": {
+      "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx", "customer_id": null,
+      "status": "created", "current_start": null, "current_end": null, "ended_at": null, "quantity": 1,
+      "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": null, "start_at": null, "end_at": null,
+      "auth_attempts": 0, "total_count": 120, "paid_count": 0, "customer_notify": true, "created_at": 1759900020,
+      "expire_by": 1760504820, "short_url": "https://rzp.io/i/AbC12dEf", "has_scheduled_changes": false,
+      "change_scheduled_at": null, "source": "api", "payment_method": null, "offer_id": null, "remaining_count": 120
+    },
+    "subscription_active": {
+      "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+      "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "active", "current_start": 1759900200, "current_end": 1762578600,
+      "ended_at": null, "quantity": 1, "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"},
+      "charge_at": 1762578600, "start_at": 1759900200, "end_at": 1791052200, "auth_attempts": 0, "total_count": 120,
+      "paid_count": 1, "customer_notify": true, "created_at": 1759900020, "expire_by": 1760504820,
+      "short_url": "https://rzp.io/i/AbC12dEf", "has_scheduled_changes": false, "change_scheduled_at": null,
+      "source": "api", "payment_method": "upi", "offer_id": null, "remaining_count": 119
+    },
+    "subscription_cancelled": {
+      "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+      "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "cancelled", "current_start": 1759900200,
+      "current_end": 1762578600, "ended_at": 1759990000, "quantity": 1,
+      "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": null, "start_at": 1759900200,
+      "end_at": 1791052200, "auth_attempts": 0, "total_count": 120, "paid_count": 1, "customer_notify": true,
+      "created_at": 1759900020, "expire_by": 1760504820, "short_url": "https://rzp.io/i/AbC12dEf",
+      "has_scheduled_changes": false, "change_scheduled_at": null, "source": "api", "payment_method": "upi",
+      "offer_id": null, "remaining_count": 119
+    },
+    "invoice_issued": {
+      "id": "inv_Q7u4Kp2Wm8sYtz", "entity": "invoice", "receipt": "INVA1B2C3D4E5-1", "invoice_number": "INVA1B2C3D4E5-1",
+      "customer_id": "cust_Q7u1ZkHKwXkF0e",
+      "customer_details": {
+        "id": "cust_Q7u1ZkHKwXkF0e", "name": "Acme Research", "email": "billing@acme.example", "contact": null,
+        "gstin": null, "billing_address": null, "shipping_address": null, "customer_name": "Acme Research",
+        "customer_email": "billing@acme.example", "customer_contact": null
+      },
+      "order_id": "order_Q7u4KqVd7hT3Ze",
+      "line_items": [{
+        "id": "li_Q7u4KqC9r6bW1x", "item_id": null, "ref_id": null, "ref_type": null, "name": "ATIP PRO plan",
+        "description": "2026-09-08 to 2026-10-08", "amount": 99900, "unit_amount": 99900, "gross_amount": 99900,
+        "tax_amount": 0, "taxable_amount": 99900, "net_amount": 99900, "currency": "INR", "type": "invoice",
+        "tax_inclusive": false, "hsn_code": null, "sac_code": null, "tax_rate": null, "unit": null, "quantity": 1,
+        "taxes": []
+      }],
+      "payment_id": null, "status": "issued", "expire_by": null, "issued_at": 1759900030, "paid_at": null,
+      "cancelled_at": null, "expired_at": null, "sms_status": "pending", "email_status": "pending", "date": 1759900030,
+      "terms": null, "partial_payment": false, "gross_amount": 99900, "tax_amount": 0, "taxable_amount": 99900,
+      "amount": 99900, "amount_paid": 0, "amount_due": 99900, "currency": "INR", "currency_symbol": "₹",
+      "description": "ATIP invoice INVA1B2C3D4E5", "notes": {"atip_invoice_id": "INVA1B2C3D4E5", "atip_tenant_id": "acme"},
+      "comment": null, "short_url": "https://rzp.io/i/Xy7Zq1Pa", "view_less": true, "billing_start": null,
+      "billing_end": null, "type": "invoice", "group_taxes_discounts": false, "created_at": 1759900030,
+      "idempotency_key": null
+    },
+    "invoice_paid": {
+      "id": "inv_Q7u4Kp2Wm8sYtz", "entity": "invoice", "receipt": "INVA1B2C3D4E5-1", "invoice_number": "INVA1B2C3D4E5-1",
+      "customer_id": "cust_Q7u1ZkHKwXkF0e", "order_id": "order_Q7u4KqVd7hT3Ze", "line_items": [],
+      "payment_id": "pay_Q7u5Lr3Xn9tZuA", "status": "paid", "expire_by": null, "issued_at": 1759900030,
+      "paid_at": 1759900100, "cancelled_at": null, "expired_at": null, "sms_status": "sent", "email_status": "sent",
+      "date": 1759900030, "terms": null, "partial_payment": false, "gross_amount": 99900, "tax_amount": 0,
+      "taxable_amount": 99900, "amount": 99900, "amount_paid": 99900, "amount_due": 0, "currency": "INR",
+      "currency_symbol": "₹", "description": "ATIP invoice INVA1B2C3D4E5", "notes": [], "comment": null,
+      "short_url": "https://rzp.io/i/Xy7Zq1Pa", "view_less": true, "billing_start": null, "billing_end": null,
+      "type": "invoice", "group_taxes_discounts": false, "created_at": 1759900030, "idempotency_key": null
+    },
+    "subscription_invoice_paid": {
+      "id": "inv_Q7u6SubCyc1Aaa", "entity": "invoice", "receipt": null, "invoice_number": null,
+      "customer_id": "cust_Q7u1ZkHKwXkF0e", "order_id": "order_Q7u6SubOrd1Bb", "subscription_id": "sub_Q7u3Gd1ShLrN9k",
+      "line_items": [], "payment_id": "pay_Q7u6SubPay1Cc", "status": "paid", "expire_by": null, "issued_at": 1759900200,
+      "paid_at": 1759900210, "cancelled_at": null, "expired_at": null, "date": 1759900200, "partial_payment": false,
+      "gross_amount": 99900, "tax_amount": 0, "taxable_amount": 99900, "amount": 99900, "amount_paid": 99900,
+      "amount_due": 0, "currency": "INR", "currency_symbol": "₹", "description": null, "notes": [],
+      "comment": null, "short_url": "https://rzp.io/i/SubCyc1x", "view_less": true, "billing_start": 1759900200,
+      "billing_end": 1762578600, "type": "invoice", "group_taxes_discounts": false, "created_at": 1759900200,
+      "idempotency_key": null
+    },
+    "collection_empty": {"entity": "collection", "count": 0, "items": []},
+    "error_bad_request": {
+      "error": {
+        "code": "BAD_REQUEST_ERROR", "description": "The amount must be atleast INR 1.00", "source": "business",
+        "step": "payment_initiation", "reason": "input_validation_failed", "metadata": {}, "field": "amount"
+      }
+    },
+    "error_auth": {
+      "error": {
+        "code": "BAD_REQUEST_ERROR", "description": "Authentication failed", "source": "NA", "step": "NA",
+        "reason": "NA", "metadata": {}
+      }
+    }
+  },
+  "webhooks": {
+    "payment.captured": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "payment.captured", "contains": ["payment"],
+      "payload": {"payment": {"entity": {
+        "id": "pay_Q7u5Lr3Xn9tZuA", "entity": "payment", "amount": 99900, "currency": "INR", "status": "captured",
+        "order_id": "order_Q7u4KqVd7hT3Ze", "invoice_id": "inv_Q7u4Kp2Wm8sYtz", "international": false, "method": "upi",
+        "amount_refunded": 0, "refund_status": null, "captured": true, "description": "ATIP invoice INVA1B2C3D4E5",
+        "card_id": null, "bank": null, "wallet": null, "vpa": "acme@okhdfcbank", "email": "billing@acme.example",
+        "contact": "+919000090000", "notes": [], "fee": 1998, "tax": 304, "error_code": null,
+        "error_description": null, "error_source": null, "error_step": null, "error_reason": null,
+        "acquirer_data": {"rrn": "528412345678", "upi_transaction_id": "AXI4c1a2b3c4d5e6f"}, "created_at": 1759900100
+      }}},
+      "created_at": 1759900105
+    },
+    "payment.failed": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "payment.failed", "contains": ["payment"],
+      "payload": {"payment": {"entity": {
+        "id": "pay_Q7u5F0aIl3dWsB", "entity": "payment", "amount": 99900, "currency": "INR", "status": "failed",
+        "order_id": "order_Q7u4KqVd7hT3Ze", "invoice_id": "inv_Q7u4Kp2Wm8sYtz", "international": false,
+        "method": "netbanking", "amount_refunded": 0, "refund_status": null, "captured": false,
+        "description": "ATIP invoice INVA1B2C3D4E5", "card_id": null, "bank": "HDFC", "wallet": null, "vpa": null,
+        "email": "billing@acme.example", "contact": "+919000090000", "notes": [], "fee": null, "tax": null,
+        "error_code": "BAD_REQUEST_ERROR",
+        "error_description": "Payment was unsuccessful as the payer's bank declined the transaction.",
+        "error_source": "bank", "error_step": "payment_authorization", "error_reason": "payment_declined",
+        "acquirer_data": {"bank_transaction_id": null}, "created_at": 1759900090
+      }}},
+      "created_at": 1759900092
+    },
+    "payment.authorized": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "payment.authorized", "contains": ["payment"],
+      "payload": {"payment": {"entity": {
+        "id": "pay_Q7u5Lr3Xn9tZuA", "entity": "payment", "amount": 99900, "currency": "INR", "status": "authorized",
+        "order_id": "order_Q7u4KqVd7hT3Ze", "invoice_id": "inv_Q7u4Kp2Wm8sYtz", "method": "upi", "captured": false,
+        "notes": [], "created_at": 1759900100
+      }}},
+      "created_at": 1759900101
+    },
+    "invoice.paid": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "invoice.paid",
+      "contains": ["payment", "order", "invoice"],
+      "payload": {
+        "payment": {"entity": {
+          "id": "pay_Q7u5Lr3Xn9tZuA", "entity": "payment", "amount": 99900, "currency": "INR", "status": "captured",
+          "order_id": "order_Q7u4KqVd7hT3Ze", "invoice_id": "inv_Q7u4Kp2Wm8sYtz", "method": "upi", "captured": true,
+          "notes": [], "created_at": 1759900100
+        }},
+        "order": {"entity": {
+          "id": "order_Q7u4KqVd7hT3Ze", "entity": "order", "amount": 99900, "amount_paid": 99900, "amount_due": 0,
+          "currency": "INR", "receipt": "INVA1B2C3D4E5-1", "offer_id": null, "status": "paid", "attempts": 1,
+          "notes": [], "created_at": 1759900030
+        }},
+        "invoice": {"entity": {
+          "id": "inv_Q7u4Kp2Wm8sYtz", "entity": "invoice", "receipt": "INVA1B2C3D4E5-1",
+          "customer_id": "cust_Q7u1ZkHKwXkF0e", "order_id": "order_Q7u4KqVd7hT3Ze", "subscription_id": null,
+          "payment_id": "pay_Q7u5Lr3Xn9tZuA", "status": "paid", "amount": 99900, "amount_paid": 99900,
+          "amount_due": 0, "currency": "INR", "paid_at": 1759900100, "notes": [], "short_url": "https://rzp.io/i/Xy7Zq1Pa",
+          "billing_start": null, "billing_end": null, "type": "invoice", "created_at": 1759900030
+        }}
+      },
+      "created_at": 1759900106
+    },
+    "invoice.paid.subscription": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "invoice.paid",
+      "contains": ["payment", "order", "invoice"],
+      "payload": {
+        "payment": {"entity": {
+          "id": "pay_Q7u6SubPay1Cc", "entity": "payment", "amount": 99900, "currency": "INR", "status": "captured",
+          "order_id": "order_Q7u6SubOrd1Bb", "invoice_id": "inv_Q7u6SubCyc1Aaa", "method": "upi", "captured": true,
+          "notes": [], "created_at": 1759900210
+        }},
+        "order": {"entity": {
+          "id": "order_Q7u6SubOrd1Bb", "entity": "order", "amount": 99900, "amount_paid": 99900, "amount_due": 0,
+          "currency": "INR", "receipt": null, "status": "paid", "attempts": 1, "notes": [], "created_at": 1759900200
+        }},
+        "invoice": {"entity": {
+          "id": "inv_Q7u6SubCyc1Aaa", "entity": "invoice", "receipt": null, "customer_id": "cust_Q7u1ZkHKwXkF0e",
+          "order_id": "order_Q7u6SubOrd1Bb", "subscription_id": "sub_Q7u3Gd1ShLrN9k", "payment_id": "pay_Q7u6SubPay1Cc",
+          "status": "paid", "amount": 99900, "amount_paid": 99900, "amount_due": 0, "currency": "INR",
+          "paid_at": 1759900210, "notes": [], "short_url": "https://rzp.io/i/SubCyc1x", "billing_start": 1759900200,
+          "billing_end": 1762578600, "type": "invoice", "created_at": 1759900200
+        }}
+      },
+      "created_at": 1759900212
+    },
+    "subscription.activated": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.activated", "contains": ["subscription"],
+      "payload": {"subscription": {"entity": {
+        "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+        "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "active", "current_start": 1759900200,
+        "current_end": 1762578600, "ended_at": null, "quantity": 1,
+        "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": 1762578600, "start_at": 1759900200,
+        "end_at": 1791052200, "auth_attempts": 0, "total_count": 120, "paid_count": 1, "customer_notify": true,
+        "created_at": 1759900020, "expire_by": 1760504820, "short_url": "https://rzp.io/i/AbC12dEf",
+        "has_scheduled_changes": false, "change_scheduled_at": null, "source": "api", "payment_method": "upi",
+        "offer_id": null, "remaining_count": 119
+      }}},
+      "created_at": 1759900205
+    },
+    "subscription.charged": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.charged",
+      "contains": ["subscription", "payment"],
+      "payload": {
+        "subscription": {"entity": {
+          "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+          "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "active", "current_start": 1759900200,
+          "current_end": 1762578600, "ended_at": null, "quantity": 1,
+          "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": 1762578600,
+          "start_at": 1759900200, "end_at": 1791052200, "auth_attempts": 0, "total_count": 120, "paid_count": 1,
+          "customer_notify": true, "created_at": 1759900020, "expire_by": 1760504820,
+          "short_url": "https://rzp.io/i/AbC12dEf", "has_scheduled_changes": false, "change_scheduled_at": null,
+          "source": "api", "payment_method": "upi", "offer_id": null, "remaining_count": 119
+        }},
+        "payment": {"entity": {
+          "id": "pay_Q7u6SubPay1Cc", "entity": "payment", "amount": 99900, "currency": "INR", "status": "captured",
+          "order_id": "order_Q7u6SubOrd1Bb", "invoice_id": "inv_Q7u6SubCyc1Aaa", "international": false,
+          "method": "upi", "amount_refunded": 0, "refund_status": null, "captured": true, "description": null,
+          "card_id": null, "bank": null, "wallet": null, "vpa": "acme@okhdfcbank", "email": "billing@acme.example",
+          "contact": "+919000090000", "customer_id": "cust_Q7u1ZkHKwXkF0e", "token_id": "token_Q7u6TokUpi1Dd",
+          "notes": [], "fee": 1998, "tax": 304, "error_code": null, "error_description": null,
+          "acquirer_data": {"rrn": "528412345999"}, "created_at": 1759900210
+        }}
+      },
+      "created_at": 1759900211
+    },
+    "subscription.pending": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.pending", "contains": ["subscription"],
+      "payload": {"subscription": {"entity": {
+        "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+        "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "pending", "current_start": 1759900200,
+        "current_end": 1762578600, "ended_at": null, "quantity": 1,
+        "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": 1762665000, "auth_attempts": 1,
+        "total_count": 120, "paid_count": 1, "created_at": 1759900020, "short_url": "https://rzp.io/i/AbC12dEf",
+        "payment_method": "upi", "remaining_count": 119
+      }}},
+      "created_at": 1762578700
+    },
+    "subscription.halted": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.halted", "contains": ["subscription"],
+      "payload": {"subscription": {"entity": {
+        "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+        "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "halted", "current_start": 1759900200,
+        "current_end": 1762578600, "ended_at": null, "quantity": 1,
+        "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": null, "auth_attempts": 4,
+        "total_count": 120, "paid_count": 1, "created_at": 1759900020, "short_url": "https://rzp.io/i/AbC12dEf",
+        "payment_method": "upi", "remaining_count": 119
+      }}},
+      "created_at": 1762924300
+    },
+    "subscription.cancelled": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.cancelled", "contains": ["subscription"],
+      "payload": {"subscription": {"entity": {
+        "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+        "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "cancelled", "current_start": 1759900200,
+        "current_end": 1762578600, "ended_at": 1762578600, "quantity": 1,
+        "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": null, "total_count": 120,
+        "paid_count": 1, "created_at": 1759900020, "short_url": "https://rzp.io/i/AbC12dEf",
+        "payment_method": "upi", "remaining_count": 119
+      }}},
+      "created_at": 1762578610
+    },
+    "subscription.completed": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "subscription.completed", "contains": ["subscription"],
+      "payload": {"subscription": {"entity": {
+        "id": "sub_Q7u3Gd1ShLrN9k", "entity": "subscription", "plan_id": "plan_Q7u2bWv3xkHnAx",
+        "customer_id": "cust_Q7u1ZkHKwXkF0e", "status": "completed", "current_start": 1788374600,
+        "current_end": 1791052200, "ended_at": 1791052200, "quantity": 1,
+        "notes": {"atip_tenant_id": "acme", "atip_plan_id": "PRO"}, "charge_at": null, "total_count": 120,
+        "paid_count": 120, "created_at": 1759900020, "short_url": "https://rzp.io/i/AbC12dEf",
+        "payment_method": "upi", "remaining_count": 0
+      }}},
+      "created_at": 1791052210
+    },
+    "refund.processed": {
+      "entity": "event", "account_id": "acc_BFQ7uQEaa7j2z7", "event": "refund.processed", "contains": ["refund", "payment"],
+      "payload": {
+        "refund": {"entity": {
+          "id": "rfnd_Q7u9Rf1Pq2Lm3N", "entity": "refund", "amount": 40000, "currency": "INR",
+          "payment_id": "pay_Q7u5Lr3Xn9tZuA", "notes": [], "receipt": null, "acquirer_data": {"arn": "74836382901234"},
+          "created_at": 1759990000, "batch_id": null, "status": "processed", "speed_processed": "normal",
+          "speed_requested": "normal"
+        }},
+        "payment": {"entity": {
+          "id": "pay_Q7u5Lr3Xn9tZuA", "entity": "payment", "amount": 99900, "currency": "INR", "status": "captured",
+          "order_id": "order_Q7u4KqVd7hT3Ze", "invoice_id": "inv_Q7u4Kp2Wm8sYtz", "method": "upi",
+          "amount_refunded": 40000, "refund_status": "partial", "captured": true, "notes": [], "created_at": 1759900100
+        }}
+      },
+      "created_at": 1759990005
+    }
+  }
+}

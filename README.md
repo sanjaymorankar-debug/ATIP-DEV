@@ -27,6 +27,8 @@
 | Fundamental data (ROE, EPS, D/E etc.) | **Alpha Vantage** | Weekly | Saturday 08:00 |
 | Accuracy audit (prediction vs actual) | **Computed** | Weekly | Saturday 09:00 |
 | Dhan security master list | **Dhan API** | Weekly | Saturday 08:30 |
+| Dhan access token renewal (RenewToken, else TOTP + PIN) | **Dhan auth** | Daily + at login (macOS LaunchAgent; Windows task 08:00) | 06:30 |
+| 7-year daily history backfill (`data/history_backfill.py`, 40 symbols a night) | **Dhan API** | Nightly until complete | 22:20 |
 
 ---
 
@@ -226,6 +228,8 @@ On the Mac, use `.venv/bin/python` wherever these say `python`, or run
 python main.py --init                    # Create database (first time)
 python main.py --dhan-securities         # Download Dhan security ID list (first time)
 python main.py --dhan-history            # Download 1-year historical prices
+python -m data.history_backfill run      # One budgeted pass of the 7-year history backfill
+python -m data.history_backfill status   # How far back each symbol reaches
 
 # Daily usage
 python main.py                           # Start scheduler + dashboard (default)
@@ -295,6 +299,25 @@ python main.py --dhan-history
 # 4. Start live feed (during market hours only)
 python main.py --live-feed
 ```
+
+### Token renewal (TOTP)
+Dhan access tokens last 24 hours. `tools/dhan_token_refresh.py` renews it: the macOS
+LaunchAgent runs it daily at 06:30 and at login (see *LaunchAgents* below), the Windows
+task `ATIP_DhanTokenRefresh` at 08:00. A valid token is renewed with `RenewToken`. An
+expired one can only be regenerated with your trading PIN and TOTP secret, so add both once:
+```json
+"dhan_pin":         "<6-digit Dhan PIN>",
+"dhan_totp_secret": "<base32 secret shown when you enable TOTP at web.dhan.co>"
+```
+It is better to move them into the encrypted vault with `python -m ops vault-migrate --apply`.
+To run it by hand: `python tools/dhan_token_refresh.py` (or `--check`).
+
+### Long history (7 years)
+`data/history_backfill.py` walks each tracked symbol back from its earliest stored bar to
+seven years ago, one 365-day window at a time, resumably (40 symbols a night at 22:20; the
+Nifty 500 completes in about two weeks). The weekly purge keeps `prices_daily` for seven
+years (the HISTORY tier in `db/purge.py`). Coverage: `GET /api/data/history/coverage` or
+`python -m data.history_backfill status`. Config: `"history": {"years", "symbols_per_run", ...}`.
 
 ### Dhan Rate Limits
 | API | Limit | ATIP Usage |
@@ -389,6 +412,15 @@ Open **http://localhost:8000** after starting ATIP.
 | Buy Zones | ZPI ≥ 75 stocks | Daily 5:00 PM |
 | CRI Risk | Crash-risk stocks (avoid) | Daily 5:00 PM |
 | News | AI-classified news with sentiment | 7:45 AM, 12:00 PM |
+
+Click any stock to open its history panel. It offers 1M to 5Y and All ranges, daily, weekly or monthly
+bars, SMA, EMA and Bollinger overlays, a log scale, and BUY / SELL signal markers.
+
+Other pages:
+- `/wealth`: the investor mode. A Simple / Detailed toggle sits in the header.
+- `/baskets`: basket orders and paper stock SIP plans.
+- `/trading`: orders and risk.
+- `/data-platform`: includes the long-history coverage.
 
 ---
 

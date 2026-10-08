@@ -105,7 +105,7 @@ Existing strategies were kept:
 | db/schema.py | `W3_TABLES`, created additively by `get_connection()` like W1/W2 |
 | backtest/strategies.py | `make_strategy(strategy_id, params, version=None)`: code strategy when no version is given and the id is in REGISTRY, else the stored version |
 | backtest/service.py | Request key `strategy_version`. Snapshot also records `strategy_definition_hash` and `strategy_kind`. A W3 strategy's position rules are sizing defaults; an explicit request wins |
-| backtest/engine.py | Refuses a run whose stored definition hash no longer matches its snapshot; warning that REDUCE/ADD are not simulated |
+| backtest/engine.py | Refuses a run whose stored definition hash no longer matches its snapshot. (W39, PF-06: ADD / REDUCE are now simulated; the warning lists only what still is not) |
 | dashboard/server.py | Registers the strategy routes; "Strategies" link in the top bar |
 | pipeline/scheduler.py | Post-market `strategy_decisions` and `strategy_health` jobs (skipped on backfill) |
 | docs/ATIP_MASTER_TRACKER.csv | W3 rows (SE-01..04, 06..09, 11) updated; validation pending |
@@ -267,7 +267,7 @@ The performance reference quotes a stored backtest; nothing is estimated.
 - **Running a stored version.** `backtest.strategies.make_strategy(id, params, version)` returns an `adapter.DefinitionStrategy`, a W2 `Strategy` built from the stored version.
   - W2 calls `on_bar(ctx)` with its point-in-time view, and the adapter evaluates the same `EvalEnv` the live engine uses.
   - BUY → W2 `Signal BUY` (with stop/target/max-hold); EXIT → `SELL`.
-  - REDUCE/ADD are not simulated, and the run's warnings say so.
+  - REDUCE/ADD were not simulated here. **W39 (PF-06):** they are now, as partial trades; see `backtest/engine.py`.
 - **Request.** `POST /api/backtests` or `POST /api/strategies/{id}/backtest` with `strategy_version` (defaults to the current one); `params` overrides are validated against the version's specs.
 - **Traceability.** The snapshot stores strategy_id, strategy_version, resolved params, `strategy_definition_hash` and `strategy_kind`. A re-run whose stored definition no longer hashes the same is refused ("would not reproduce").
 - **Sizing.** Defaults come from the definition's position rules (max_positions, target_position_pct, stop_pct); explicit request sizing wins.

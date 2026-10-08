@@ -52,6 +52,158 @@
           "string",
           "null"
         ]
+      },
+      "id": {
+        "type": "integer"
+      },
+      "date": {
+        "type": "string"
+      },
+      "spi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "msi": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "tech_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "fund_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "inst_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "news_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atip_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atip_rank": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "confidence": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "beta_1y": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "tod_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "is_tod": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "mh_score": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "regime": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_1": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_2": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "top_factor_3": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "created_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "cmp": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "close on the scored session"
+      },
+      "prev_close": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "close of the session before"
+      },
+      "rsi_14": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "adx_14": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "atr_pct": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "volume_ratio": {
+        "type": [
+          "number",
+          "null"
+        ]
       }
     }
   }

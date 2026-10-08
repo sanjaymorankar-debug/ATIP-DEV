@@ -61,7 +61,8 @@ KIND_KEYS = {
     "python": {"python_class"},
     "pairs": {"pairs", "allow_single_leg", "short_via_futures"},          # W30: short leg via stock futures
     "portfolio": {"score", "top_n", "bottom_n", "method", "vol_feature", "constraints", "long_short",
-                  "rebalance_every", "filter", "allow_long_only", "short_via_futures"},
+                  "rebalance_every", "filter", "allow_long_only", "short_via_futures",
+                  "reweight_band_pct"},                                    # W25 PF-06 (accepted from W39)
 }
 _SLUG = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
@@ -213,6 +214,10 @@ def validate(defn: dict) -> dict:
             _feature(vf); used.add(vf)
             if set(d.get("constraints") or {}) - {"max_weight", "sector_cap", "gross"}:
                 raise DefinitionError("constraints: max_weight, sector_cap, gross")
+            band = d.get("reweight_band_pct")
+            if band is not None and not (isinstance(band, dict) and set(band) == {"param"}) and (
+                    isinstance(band, bool) or not isinstance(band, (int, float)) or not 0 < band <= 100):
+                raise DefinitionError("reweight_band_pct: percentage points in (0, 100], or {\"param\": name}")
             if d.get("filter"):
                 used |= R.validate(d["filter"], declared, "filter")
             if d.get("long_short") == "beta":

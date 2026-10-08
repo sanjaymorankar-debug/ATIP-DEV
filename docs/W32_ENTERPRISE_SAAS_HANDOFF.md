@@ -82,6 +82,6 @@ None of these writes a pipeline_log row while `enterprise.enabled` is false.
 ## Owner actions
 
 - Decide on ENT-07 (TLS, exposure) before anyone outside this machine can use the web app.
-- Choose a payment gateway (ENT-04).
+- ~~Choose a payment gateway (ENT-04).~~ W39b: **Razorpay** (decision delegated by the owner) is built and inert until configured. The owner still provides the Razorpay account, KYC and the three secrets: see [BILLING_RAZORPAY.md](BILLING_RAZORPAY.md).
 - Set the SMTP settings (`channels.email`) to send real e-mail.
-- Set webhook secrets (`WEBHOOK_SECRET_PAYMENTS`, `WEBHOOK_SECRET_BROKER`) only when a provider is chosen.
+- Set webhook secrets (`WEBHOOK_SECRET_PAYMENTS`, `WEBHOOK_SECRET_BROKER`) only when a provider is chosen. Razorpay uses its own, `WEBHOOK_SECRET_RAZORPAY`.

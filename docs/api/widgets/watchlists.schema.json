@@ -25,6 +25,24 @@
           "boolean",
           "integer"
         ]
+      },
+      "tenant_id": {
+        "type": "string"
+      },
+      "user_id": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "updated_at": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     }
   }

@@ -32,6 +32,29 @@ when it is set, so an install that sets none behaves exactly as before:
                                             # 20-session average daily volume
                                             # (BUY and SELL; unmeasurable -> blocked)
 
+RK-21 (W39) GATEWAY. Two more keys in the same "risk_limits" section that, unlike
+the ones above, are ON by default (GATEWAY_DEFAULTS) -- they only stop what no
+sane order does. null disables one:
+
+      "max_price_band_pct":      20,      # the order's price (LIMIT / SL limit,
+                                          # SL / SL-M trigger) vs the reference:
+                                          # the freshest live_quotes LTP (<= 30 min
+                                          # old), else the last prices_daily close.
+                                          # 20 = NSE's widest circuit band: fat fingers
+      "max_gross_exposure_pct":  100,     # BUY: held value + paper futures notional
+                                          # + this order, % of equity (100 = no leverage)
+      "enforce_circuit_limits":  true     # the order's price vs today's NSE upper /
+                                          # lower circuit (live_quotes, Dhan REST quote);
+                                          # false switches it off. No circuit stored
+                                          # today -> skipped (circuit_check)
+
+The band applies to BUY and SELL; a MARKET order (no price) or a symbol with no
+reference price is recorded as skipped, never blocked. The gross limit is
+measured on the paper book; a LIVE BUY skips it (see _gross_exposure). Both are
+reported in pretrade_check()'s "gateway" list. The W4 risk engine runs the band
+itself and has its own gross limit (max_portfolio_exposure_pct), so it calls
+pretrade_check(gateway=False).
+
 The two loss limits are measured by portfolio/pnl.py (risk_state): today's P&L
 against the last pnl_daily row, the drawdown against the highest stored
 equity, both marked to the latest prices. They block new BUYs only -- a SELL
@@ -74,6 +97,11 @@ HALT_FLAG = Path("atip_data") / "TRADING_HALTED"
 LIMIT_KEYS = ("max_order_value", "max_orders_per_day", "max_open_positions",
               "max_symbol_exposure_value", "max_daily_loss_value", "max_drawdown_pct",
               "max_adv_participation_pct")
+# RK-21: on unless config.json sets them to null
+GATEWAY_DEFAULTS = {"max_price_band_pct": 20.0, "max_gross_exposure_pct": 100.0}
+# a live_quotes LTP at most this old is the price-band reference (the session
+# refreshes quotes every 15 minutes); older, the last close is used
+BAND_QUOTE_MAX_AGE_MIN = 30
 
 # RK-13 defaults -- the same figures scores/predictions.py has used for its
 # position_size_pct since the trade planner was written.
@@ -142,8 +170,26 @@ def limits() -> dict:
         elif v not in (None, ""):
             log.warning(f"  risk_limits.{k}={v!r} is not a positive number — not enforced")
     for k in raw:
-        if k not in LIMIT_KEYS:
+        if k not in LIMIT_KEYS and k not in GATEWAY_DEFAULTS:
             log.warning(f"  risk_limits.{k} is not a limit ATIP knows — ignored")
+    return out
+
+
+def gateway_limits() -> dict:
+    """RK-21: GATEWAY_DEFAULTS overlaid with config.json's risk_limits. null
+    disables a limit; any other non-positive value is reported and the default
+    kept -- a typo must not switch a fat-finger check off."""
+    raw = _config().get("risk_limits") or {}
+    out = {}
+    for k, default in GATEWAY_DEFAULTS.items():
+        v = raw.get(k, default)
+        if v is None:
+            continue
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            out[k] = v
+        else:
+            log.warning(f"  risk_limits.{k}={v!r} is not a positive number or null - default {default} kept")
+            out[k] = default
     return out
 
 
@@ -184,17 +230,30 @@ def _positions(conn, env) -> dict:
         conn, "SELECT symbol, quantity, avg_price FROM paper_position WHERE quantity>0", (), [])}
 
 
-def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None) -> dict:
+def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None, order_type=None,
+                   price=None, trigger_price=None, gateway=True) -> dict:
     """
-    {"ok", "blocked_by", "message", "checks"} for one order against the
-    configured limits. Every limit is reported in `checks` whether it bound or
-    not, so a block can be read back from the log without re-deriving it.
+    {"ok", "blocked_by", "message", "checks", "gateway"} for one order against
+    the configured limits. Every limit is reported in `checks` whether it bound
+    or not, so a block can be read back from the log without re-deriving it.
+
+    `gateway` lists the RK-21 checks (price band, gross exposure), on by
+    default; each entry is shaped like a `checks` one, or carries "skipped"
+    and a "reason" when it could not be measured. The band needs the order's
+    order_type / price / trigger_price -- a caller that passes none gets it
+    recorded as skipped.
     """
     env = env or broker_env()
     lim = limits()
-    checks, blocked = [], None
+    gate = _gateway(conn, symbol, transaction_type, est_value, env, order_type, price,
+                    trigger_price) if gateway else []
+    # a fat-fingered price or a leveraged book is named ahead of any configured limit
+    checks, blocked = [], next(((g["limit"], g["reason"]) for g in gate if g["breached"]), None)
     if not lim:
-        return {"ok": True, "blocked_by": None, "message": "no limits configured", "checks": []}
+        if blocked:
+            return {"ok": False, "blocked_by": blocked[0], "message": blocked[1], "checks": [], "gateway": gate}
+        return {"ok": True, "blocked_by": None, "message": "no limits configured" + _gate_note(gate),
+                "checks": [], "gateway": gate}
     held = None
 
     def check(name, value, cap, unit=""):
@@ -241,9 +300,192 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
                 blocked = (unmeasured[0]["limit"], unmeasured[0]["reason"])
 
     if blocked:
-        return {"ok": False, "blocked_by": blocked[0], "message": blocked[1], "checks": checks}
+        return {"ok": False, "blocked_by": blocked[0], "message": blocked[1], "checks": checks, "gateway": gate}
     return {"ok": True, "blocked_by": None,
-            "message": f"{len(checks)} limit(s) checked, none breached", "checks": checks}
+            "message": f"{len(checks)} limit(s) checked, none breached" + _gate_note(gate),
+            "checks": checks, "gateway": gate}
+
+
+# -- RK-21 (W39): the gateway checks -------------------------------------------
+
+def _gate_note(gate) -> str:
+    if not gate:
+        return ""
+    return "; gateway: " + ", ".join(f"{g['limit']} skipped" if g.get("skipped") else
+                                     f"{g['limit']} ok" if g.get("cap") is None else
+                                     f"{g['limit']} {g['value']:g}% (cap {g['cap']:g}%)" for g in gate)
+
+
+def _gateway(conn, symbol, transaction_type, est_value, env, order_type, price, trigger_price) -> list:
+    """The RK-21 entries for pretrade_check(). Never raises: a check that
+    cannot run is recorded as skipped."""
+    gl = gateway_limits()
+    out = []
+    if "max_price_band_pct" in gl:
+        try:
+            out.append(price_band(conn, symbol, order_type, price, trigger_price, gl["max_price_band_pct"]))
+        except Exception as e:
+            out.append({"limit": "max_price_band_pct", "value": None, "cap": gl["max_price_band_pct"],
+                        "breached": False, "skipped": True, "reason": f"price band not measured ({e})"})
+    if (_config().get("risk_limits") or {}).get("enforce_circuit_limits", True) is not False:
+        try:
+            out.append(circuit_check(conn, symbol, order_type, price, trigger_price))
+        except Exception as e:
+            out.append({"limit": "circuit_limit", "value": None, "cap": None, "breached": False, "skipped": True,
+                        "reason": f"circuit limits not checked ({e})"})
+    # as with the W1 exposure caps, a SELL reduces exposure: only a BUY is counted
+    if "max_gross_exposure_pct" in gl and transaction_type == "BUY":
+        out.append(_gross_exposure(conn, env, est_value, gl["max_gross_exposure_pct"]))
+    return out
+
+
+def reference_price(conn, symbol) -> tuple:
+    """(price, source) an order's price is banded against: the freshest
+    live_quotes LTP at most BAND_QUOTE_MAX_AGE_MIN old, else the last
+    prices_daily close; (None, None) when there is neither."""
+    try:
+        from execution.paper_matching import latest_prices
+        ltp = latest_prices(conn, [symbol], max_age_min=BAND_QUOTE_MAX_AGE_MIN).get(symbol)
+    except Exception as e:                       # no live_quotes table on a fresh install
+        log.debug(f"  live quote for the price band unavailable ({e})")
+        ltp = None
+    if ltp:
+        return ltp, "live LTP"
+    try:
+        from execution.positions import latest_close
+        close, on = latest_close(conn, symbol)
+    except Exception as e:
+        log.debug(f"  last close for the price band unavailable ({e})")
+        close, on = None, None
+    return (close, f"close {on}") if close else (None, None)
+
+
+def price_band(conn, symbol, order_type=None, price=None, trigger_price=None, cap=None) -> dict:
+    """
+    RK-21 fat-finger check, shared with the W4 risk engine: the order's price
+    furthest from reference_price() -- the limit price of a LIMIT / SL, the
+    trigger of an SL / SL-M -- as % of the reference; breached beyond `cap`.
+    A MARKET order, an order with no price, or a symbol with no reference is
+    "skipped" (never breached). {"limit", "value", "cap", "breached",
+    "skipped"?, "price"?, "reference"?, "reference_source"?, "reason"}.
+
+    NSE's own circuit limits are a separate check, circuit_check() (W39): the
+    band is the backstop for a mistyped price, the circuit what the exchange
+    itself would refuse.
+    """
+    out = {"limit": "max_price_band_pct", "value": None, "cap": cap, "breached": False}
+    t = str(order_type or "").upper()
+    if t == "MARKET":
+        return {**out, "skipped": True, "reason": "MARKET order: no price to band"}
+    priced = [float(p) for p in (price if t != "SL-M" else None, trigger_price if t != "LIMIT" else None)
+              if p and float(p) > 0]
+    if not priced:
+        return {**out, "skipped": True, "reason": "no order price given"}
+    ref, src = reference_price(conn, symbol)
+    if not ref:
+        return {**out, "skipped": True,
+                "reason": f"no reference price for {symbol} (no recent live quote, no close) - not checked"}
+    px = max(priced, key=lambda p: abs(p - ref))
+    off = round(abs(px - ref) / ref * 100, 4)
+    breached = cap is not None and off > cap
+    why = f"{t or 'order'} price {px:,.2f} is {off:.1f}% from the reference {ref:,.2f} ({src})"
+    return {**out, "value": off, "breached": breached, "price": px, "reference": ref, "reference_source": src,
+            "reason": f"max_price_band_pct: {why}, outside the {cap:g}% band" if breached else why}
+
+
+def circuit_limits(conn, symbol) -> dict | None:
+    """Today's NSE circuit limits for symbol, from the newest live_quotes row of today
+    that carries them (the Dhan REST quote stores upper_circuit / lower_circuit; the
+    websocket rows do not, so the newest row overall may have none). Circuits are set
+    per session, so an earlier day's limits are never used. None when unknown."""
+    try:
+        r = conn.execute("SELECT upper_circuit, lower_circuit, timestamp FROM live_quotes WHERE symbol=? AND "
+                         "substr(timestamp,1,10)=? AND (upper_circuit IS NOT NULL OR lower_circuit IS NOT NULL) "
+                         "ORDER BY timestamp DESC LIMIT 1", (symbol, str(date.today()))).fetchone()
+    except Exception as e:                     # no live_quotes table / columns on a fresh install
+        log.debug(f"  circuit limits unavailable ({e})")
+        return None
+    if not r:
+        return None
+    up, lo = (float(x) if x is not None and float(x) > 0 else None for x in (r[0], r[1]))
+    if up is None and lo is None:
+        return None
+    return {"upper": up, "lower": lo, "as_of": str(r[2])[:19]}
+
+
+def circuit_check(conn, symbol, order_type=None, price=None, trigger_price=None) -> dict:
+    """RK-21 (W39): an order whose limit price or trigger is outside today's circuit is
+    refused here rather than by the exchange. {"limit": "circuit_limit", "value": the
+    price furthest outside, "breached", "skipped"?, "upper", "lower", "reason"}.
+    A MARKET order, no price, or unknown limits: skipped (never breached)."""
+    out = {"limit": "circuit_limit", "value": None, "cap": None, "breached": False}
+    t = str(order_type or "").upper()
+    if t == "MARKET":
+        return {**out, "skipped": True, "reason": "MARKET order: no price to check"}
+    priced = [float(p) for p in (price if t != "SL-M" else None, trigger_price if t != "LIMIT" else None)
+              if p and float(p) > 0]
+    if not priced:
+        return {**out, "skipped": True, "reason": "no order price given"}
+    cl = circuit_limits(conn, symbol)
+    if not cl:
+        return {**out, "skipped": True, "reason": f"no circuit limits for {symbol} today (live quote) - not checked"}
+    up, lo = cl["upper"], cl["lower"]
+    above = [p for p in priced if up is not None and p > up + 1e-9]
+    below = [p for p in priced if lo is not None and p < lo - 1e-9]
+    out.update({"upper": up, "lower": lo, "as_of": cl["as_of"]})
+    rng = f"{lo:,.2f} - {up:,.2f}" if up is not None and lo is not None else \
+        (f"upper {up:,.2f}" if up is not None else f"lower {lo:,.2f}")
+    if above or below:
+        px = max(above) if above else min(below)
+        return {**out, "value": px, "breached": True,
+                "reason": f"circuit_limit: {t or 'order'} price {px:,.2f} is outside today's circuit {rng} "
+                          f"(quote {cl['as_of']}) - the exchange would reject it"}
+    return {**out, "value": max(priced), "reason": f"within today's circuit {rng}"}
+
+
+def _gross_exposure(conn, env, est_value, cap) -> dict:
+    """
+    RK-21 leverage: held value + open paper futures notional + this BUY, % of
+    equity, on the paper book (PAPER, and SANDBOX as _positions does). A
+    position with no mark counts at cost, in the held value and the equity
+    alike, so the two stay comparable.
+
+    A LIVE BUY is skipped, not blocked: the broker's available balance can
+    include collateral and margin (pledged holdings, MTF), so holdings + funds
+    is no reliable equity figure to cap leverage against -- the broker's own
+    margin check bounds a LIVE order, and asking for funds here would be a
+    second broker call on every BUY.
+    """
+    out = {"limit": "max_gross_exposure_pct", "value": None, "cap": cap, "breached": False}
+    if env == LIVE:
+        return {**out, "skipped": True, "reason": "LIVE: no reliable equity figure (broker funds include "
+                                                  "collateral / margin) - not checked"}
+    try:
+        from execution.futures_paper import gross_notional
+        from portfolio.pnl import portfolio_summary
+        s = portfolio_summary(conn, PAPER)
+        fut = gross_notional(conn)
+    except Exception as e:
+        return {**out, "skipped": True, "reason": f"paper book unreadable ({e}) - not checked"}
+    if s["cash"] is None:
+        return {**out, "skipped": True, "reason": "no paper account yet: equity unknown - not checked"}
+    held = sum(p["value"] if p["value"] is not None else p["cost"] for p in s["positions"])
+    equity = s["cash"] + held
+    if not fut and cap >= 100:
+        # a cash BUY with no futures open cannot lever the book: held + order <= equity
+        # exactly when order <= cash, which the funds check already enforces (as
+        # BLOCKED_INSUFFICIENT_FUNDS, without a risk alert)
+        return {**out, "skipped": True, "reason": f"no futures notional and a {cap:g}% cap: covered by the "
+                                                  f"funds check"}
+    if equity <= 0:
+        return {**out, "skipped": True, "reason": f"paper equity {equity:,.0f} - not checked"}
+    gross = held + fut + float(est_value or 0)
+    pct = round(gross / equity * 100, 4)
+    why = (f"held {held:,.0f} + futures notional {fut:,.0f} + order {float(est_value or 0):,.0f} "
+           f"= {pct:.1f}% of paper equity {equity:,.0f}")
+    return {**out, "value": pct, "breached": pct > cap, "gross": round(gross, 2), "equity": round(equity, 2),
+            "futures_notional": fut,
+            "reason": f"max_gross_exposure_pct: {why} would exceed the configured {cap:g}%" if pct > cap else why}
 
 
 def _pnl_env(env) -> str:
@@ -373,6 +615,7 @@ def describe_state(conn=None) -> str:
         lines = [f"broker_env      : {env}",
                  f"trading         : {'HALTED — ' + why if is_halted else 'allowed'}",
                  f"limits          : {lim or 'none configured (nothing enforced)'}",
+                 f"gateway (RK-21) : {gateway_limits() or 'disabled'}",
                  f"orders placed today: {_orders_today(conn)}",
                  f"open positions  : {len(_positions(conn, env))}",
                  f"position sizing : {sizing_config()}"]

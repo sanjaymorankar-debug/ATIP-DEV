@@ -112,6 +112,22 @@ def ensure_builtin(conn):
     return [save(conn, c) for c in BUILTIN]
 
 
+def _exposures(conn, as_of, spec) -> dict:
+    """W39 (PF-15): {name: {symbol: raw}} for a composite's numeric neutralize names -- the factors'
+    raw values stored for as_of (compute the factor first). A name with nothing stored is left
+    out, so normalize.apply refuses it."""
+    out = {}
+    for x in ((spec or {}).get("neutralize") or []):
+        if not isinstance(x, str) or x == "sector":
+            continue
+        fk = FX.get(x).key
+        vals = {s: r for s, r in conn.execute("SELECT symbol, raw FROM quant_factor_score WHERE as_of=? AND "
+                                              "factor_key=?", (str(as_of), fk))}
+        if vals:
+            out[x] = vals
+    return out
+
+
 def compute_composites(conn, as_of, names) -> dict:
     from quant.engine import _store, sectors
     out = {}
@@ -142,7 +158,11 @@ def compute_composites(conn, as_of, names) -> dict:
             _store(conn, as_of, [], [key])
             out[key] = {"rows": 0, "reason": "no symbol met min_coverage (missing factor data)"}
             continue
-        norm = NZ.apply(vals, c["normalization"], sec)
+        try:
+            norm = NZ.apply(vals, c["normalization"], sec, _exposures(conn, as_of, c["normalization"]))
+        except ValueError as e:                         # W39: a neutralize name with no stored raw values
+            out[key] = {"rows": 0, "error": f"normalization failed: {e}"}
+            continue
         pct = NZ.percentile(vals)
         rk = NZ.rank(pct)
         srank = {}

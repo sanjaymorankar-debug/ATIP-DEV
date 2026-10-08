@@ -62,6 +62,7 @@
 - `KITE_API_KEY`, `KITE_API_SECRET`
 - `ATIP_ENCRYPTION_KEY`
 - `WEBHOOK_SECRET_*`
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `WEBHOOK_SECRET_RAZORPAY` (W39b; no config.json location at all)
 
 **Never:** a value logged, stored in a W8 table, returned by an API, printed by the CLI, or written to the config version.
 
@@ -121,6 +122,7 @@ See `ops/webhooks.py`.
   - event ids dedupe;
   - 256 KB limit;
   - 503 when no secret is configured.
+- **Razorpay (W39b, `/api/webhooks/razorpay`):** `X-Razorpay-Signature` = HMAC-SHA256 of the raw body with `WEBHOOK_SECRET_RAZORPAY`, constant time; a bad one is 401, recorded REJECTED and logged; `X-Razorpay-Event-Id` dedupes, and so does the body digest (the id header is not signed); events older than 72 h are refused. See docs/BILLING_RAZORPAY.md.
 - **Outbound:** signed the same way, retried with backoff, DEAD letter, circuit breaker per host.
 
 ## Security scanning

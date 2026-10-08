@@ -115,7 +115,7 @@ def run_study(strategy_id, space=None, start=None, end=None, hypothesis=None, me
                        {k: space[k] for k in space if k in winner["params"]}, select_by, int(sensitivity_steps),
                        min_trades)
     link("backtest", sens["run_id"], "sensitivity around the chosen set (research)")
-    out["sensitivity"] = {"run_id": sens["run_id"], "knife_edges": sens["knife_edges"],
+    out["sensitivity"] = {"run_id": sens["run_id"], "knife_edges": sens["knife_edges"], "thin_edges": sens["thin_edges"],
                           "robust_share": sens["robust_share"]}
     rob = robustness({**base, "params": winner["params"], "start": per["research"][0], "end": per["validation"][1]},
                      n_subsamples=2, seed=seed)

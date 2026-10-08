@@ -56,10 +56,14 @@ def load_targets():
 
 
 def build_snapshot():
+    from dashboard.security import token
     from dashboard.server import build_html, generate_state, latest_scored_date
     state = generate_state(latest_scored_date())
+    # The local page embeds the dashboard's write token (X-ATIP-Token, which authorises the
+    # order-rule endpoints); a page sent to the internet must not carry it.
+    html = build_html(state).replace(token(), "")
     return {
-        "html": build_html(state),
+        "html": html,
         "generated_at": state.get("generated_at"),
         "trade_date": state.get("trade_date"),
     }

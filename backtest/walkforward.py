@@ -23,6 +23,30 @@ the test windows' daily returns, starting from initial_capital.
 Every window's runs are ordinary backtest runs (kinds wf_validation / wf_test)
 under one parent run (kind walk_forward), so each can be inspected on its own.
 This is selection among candidates you supply, not an optimiser.
+
+PURGE + EMBARGO (BT-18). Back-to-back windows leak: a trade opened on the
+last sessions of train / validation would, left to its exit rule, still be
+open when the next window starts (the run closes it out at its window's end,
+on the very prices the next window starts from), and the next window's first
+sessions trade on the same move. Inside each window's fixed slot of
+train + validation + test sessions:
+
+    |---- train ----|purge|embargo|-- validation --|purge|embargo|-- test --|
+
+  purge_sessions    dropped from the END of each in-sample window (train, and
+                    validation ahead of test). With purge >= the strategy's
+                    maximum holding period no in-sample trade's natural exit
+                    reaches the next window.
+  embargo_sessions  skipped at the START of each out-of-sample window
+                    (validation after train, test): history (warm-up) for the
+                    strategy, but no trade opens and no return counts there.
+With validation 0 there is one boundary (train -> test). Both default to 0,
+which gives exactly the back-to-back windows above. Recommended: purge = the
+maximum holding period (max_hold_sessions; reported as
+recommended_purge_sessions) and an embargo of 1-2 sessions (about 1% of the
+span). The slots, and so the step grid, never move -- the effective windows
+only shrink -- and the result reports them, with the dates and counts of the
+purged / embargoed sessions.
 """
 
 from __future__ import annotations
@@ -50,23 +74,58 @@ def trading_sessions(start, end) -> list:
     return out
 
 
-def build_windows(sessions: list, train: int, validation: int, test: int, step: int) -> list:
+def build_windows(sessions: list, train: int, validation: int, test: int, step: int, purge: int = 0,
+                  embargo: int = 0) -> list:
     if min(train, test, step) < 1 or validation < 0:
         raise ValueError("train, test and step must be >= 1 session; validation >= 0")
     if step < test:
         raise ValueError(f"step_sessions ({step}) < test_sessions ({test}): test windows would overlap")
+    if purge < 0 or embargo < 0:
+        raise ValueError("purge_sessions and embargo_sessions must be >= 0")
+    if train - purge < 1:
+        raise ValueError(f"purge_sessions ({purge}) leaves no train session (train_sessions {train})")
+    if test - embargo < 1:
+        raise ValueError(f"embargo_sessions ({embargo}) leaves no test session (test_sessions {test})")
+    if validation and validation - purge - embargo < 1:
+        raise ValueError(f"purge ({purge}) + embargo ({embargo}) leave no validation session "
+                         f"(validation_sessions {validation})")
     span = train + validation + test
     wins, i, k = [], 0, 0
     while i + span <= len(sessions):
-        tr = (sessions[i], sessions[i + train - 1])
-        va = (sessions[i + train], sessions[i + train + validation - 1]) if validation else None
-        te = (sessions[i + train + validation], sessions[i + span - 1])
-        wins.append({"index": k, "train": tr, "validation": va, "test": te})
+        v, t = i + train, i + train + validation           # first session of the validation / test slots
+        bounds = [v, t] if validation else [t]              # in-sample | out-of-sample boundaries
+        tr = (sessions[i], sessions[v - 1 - purge])
+        va = (sessions[v + embargo], sessions[t - 1 - purge]) if validation else None
+        te = (sessions[t + embargo], sessions[i + span - 1])
+        wins.append({"index": k, "train": tr, "validation": va, "test": te,
+                     "purged": [(sessions[b - purge], sessions[b - 1]) for b in bounds] if purge else [],
+                     "embargoed": [(sessions[b], sessions[b + embargo - 1]) for b in bounds] if embargo else [],
+                     "purged_sessions": purge * len(bounds), "embargoed_sessions": embargo * len(bounds)})
         i += step
         k += 1
     if not wins:
         raise ValueError(f"{len(sessions)} sessions cannot fit one window of {span}")
     return wins
+
+
+def max_holding_sessions(snap: dict) -> int | None:
+    """The strategy's maximum holding period in sessions (its max_hold_sessions
+    parameter, or a W3 definition's position.max_hold_sessions); None when it
+    declares none. The purge that keeps every in-sample trade inside its window."""
+    v = (snap.get("params") or {}).get("max_hold_sessions")
+    if v is None and snap.get("strategy_definition_hash"):
+        try:
+            from backtest.strategies import make_strategy
+            from strategy_engine.params import value as pval
+            strat = make_strategy(snap["strategy_id"], snap.get("params"), snap.get("strategy_version"))
+            v = pval(((getattr(strat, "defn", None) or {}).get("position") or {}).get("max_hold_sessions"),
+                     strat.params)
+        except Exception:                       # advisory only: never fails the walk-forward
+            v = None
+    try:
+        return int(v) if v else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _metric(run_result: dict, key: str):
@@ -75,8 +134,10 @@ def _metric(run_result: dict, key: str):
 
 
 def run_walk_forward(request: dict, train_sessions: int, validation_sessions: int, test_sessions: int,
-                     step_sessions: int, candidates: list | None = None, select_by: str = "sharpe") -> dict:
-    """request: a backtest request with start/end (the whole span) -- see backtest.service."""
+                     step_sessions: int, candidates: list | None = None, select_by: str = "sharpe",
+                     purge_sessions: int = 0, embargo_sessions: int = 0) -> dict:
+    """request: a backtest request with start/end (the whole span) -- see backtest.service.
+    purge_sessions / embargo_sessions: the gaps between windows (module docstring); 0 / 0 is no gap."""
     if select_by not in SELECT_BY:
         raise ValueError(f"select_by must be one of {SELECT_BY}")
     if not request.get("start") or not request.get("end") or request.get("periods"):
@@ -87,11 +148,15 @@ def run_walk_forward(request: dict, train_sessions: int, validation_sessions: in
         raise ValueError("several candidates need a validation window to choose between them")
 
     parent_snap = service.resolve_config(request)          # validates the base request
+    purge, embargo = int(purge_sessions or 0), int(embargo_sessions or 0)
+    recommended = max_holding_sessions(parent_snap)
     parent_snap["walk_forward"] = {"train_sessions": train_sessions, "validation_sessions": validation_sessions,
                                    "test_sessions": test_sessions, "step_sessions": step_sessions,
-                                   "candidates": cands, "select_by": select_by}
+                                   "candidates": cands, "select_by": select_by,
+                                   "purge_sessions": purge, "embargo_sessions": embargo,
+                                   "recommended_purge_sessions": recommended}
     wins = build_windows(trading_sessions(request["start"], request["end"]),
-                         train_sessions, validation_sessions, test_sessions, step_sessions)
+                         train_sessions, validation_sessions, test_sessions, step_sessions, purge, embargo)
     conn = get_connection()
     try:
         parent_id = store.create_run(conn, parent_snap, kind="walk_forward")
@@ -122,6 +187,8 @@ def run_walk_forward(request: dict, train_sessions: int, validation_sessions: in
                                  kind="wf_test", parent_run_id=parent_id, window_index=w["index"])
             res = service.execute(rid)
             summary.append({"index": w["index"], "train": w["train"], "validation": w["validation"], "test": w["test"],
+                            "purged": w["purged"], "embargoed": w["embargoed"],
+                            "purged_sessions": w["purged_sessions"], "embargoed_sessions": w["embargoed_sessions"],
                             "chosen_params": chosen, "validation_scores": val_scores, "test_run_id": rid,
                             "test_status": res["status"], "test_metrics": res.get("metrics")})
             if res["status"] == "COMPLETED":
@@ -138,19 +205,32 @@ def run_walk_forward(request: dict, train_sessions: int, validation_sessions: in
                     r = (p["equity"] / parent_snap["initial_capital"] - 1) if j == 0 else (p["daily_return"] or 0)
                     capital *= 1 + r
                     oos_dates.append(p["date"]); oos_equity.append(round(capital, 2))
+        # W39 (PF-06): a position's partial-exit rows count as one trade, as in each run's own metrics
+        if any(t.get("partial") for t in oos_trades):
+            from backtest.engine import round_trips_from_rows
+            oos_trades = round_trips_from_rows(oos_trades)
         stitched = M.summarize(oos_dates, oos_equity, [t["net_pnl"] for t in oos_trades],
                                [t["return_pct"] for t in oos_trades if t["return_pct"] is not None],
                                rf_annual=parent_snap["risk_free_rate_pct"] / 100) if len(oos_equity) > 1 else None
         status = "COMPLETED" if all(s["test_status"] == "COMPLETED" for s in summary) else "FAILED"
+        gaps = {"purge_sessions": purge, "embargo_sessions": embargo, "recommended_purge_sessions": recommended,
+                "sessions_purged": sum(s["purged_sessions"] for s in summary),
+                "sessions_embargoed": sum(s["embargoed_sessions"] for s in summary)}
+        leak = (f"{purge} session(s) purged from the end of each in-sample window, {embargo} embargoed at the "
+                f"start of each out-of-sample window" if purge or embargo else
+                "no purge / embargo: windows are back to back, so a trade opened late in a window holds into the "
+                "next" + (f" (recommended purge: {recommended} sessions, the maximum holding period)"
+                          if recommended else ""))
         conn = get_connection()
         try:
-            store.save_summary(conn, parent_id, status, {"windows": summary, "n_windows": len(summary)},
+            store.save_summary(conn, parent_id, status, {"windows": summary, "n_windows": len(summary), **gaps},
                                metrics=stitched,
                                bias={"out_of_sample": "stitched metrics use test windows only; parameters were "
-                                                      "chosen on validation windows that precede them"})
+                                                      "chosen on validation windows that precede them",
+                                     "purge_embargo": leak})
         finally:
             conn.close()
-        return {"run_id": parent_id, "status": status, "windows": summary, "oos_metrics": stitched}
+        return {"run_id": parent_id, "status": status, "windows": summary, "oos_metrics": stitched, **gaps}
     except Exception as e:
         conn = get_connection()
         try:

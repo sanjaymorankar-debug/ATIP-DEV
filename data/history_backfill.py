@@ -150,7 +150,8 @@ def backfill_symbol(conn, dhan, symbol, target, chunk_days, events=None, pause=0
             else:
                 exhausted = True              # nothing at all in the window: before the listing
             break
-        n, _held, _shifted = store_daily_bars(conn, symbol, df, start, end, events)
+        # basis as of today, the day of the fetch -- not the window's end, years ago (W39b merge fix)
+        n, _held, _shifted = store_daily_bars(conn, symbol, df, start, end, events, basis_date=date.today())
         conn.commit()
         added += n
         first = min(_d(x) for x in df["date"] if x is not None)

@@ -81,6 +81,158 @@
                 "string",
                 "null"
               ]
+            },
+            "id": {
+              "type": "integer"
+            },
+            "date": {
+              "type": "string"
+            },
+            "spi": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "msi": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "tech_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "fund_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "inst_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "news_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "atip_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "atip_rank": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "confidence": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "beta_1y": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "tod_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "is_tod": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "mh_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "regime": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "top_factor_1": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "top_factor_2": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "top_factor_3": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "created_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cmp": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "close on the scored session"
+            },
+            "prev_close": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "close of the session before"
+            },
+            "rsi_14": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "adx_14": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "atr_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "volume_ratio": {
+              "type": [
+                "number",
+                "null"
+              ]
             }
           }
         }
@@ -117,14 +269,338 @@
               "number",
               "null"
             ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "nifty_trend": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "banknifty": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "vix_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fii_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "dii_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "global_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sector_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "adv_decline": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "vix_level": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "advances": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "declines": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pct_advancing": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "new_highs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "new_lows": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "breadth_universe": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mh_coverage": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mh_inputs": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "backfilled": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "portfolio_health": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
-        }
+        },
+        "description": "The scored session's market_health row; {} when there is none."
       },
       "widget_top_of_day": {
         "type": [
           "array",
           "object"
-        ]
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "acs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "vpi": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mri": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rri": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "zpi": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cri": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "signal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "date": {
+            "type": "string"
+          },
+          "spi": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "msi": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "tech_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fund_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "inst_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "news_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "atip_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "atip_rank": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "beta_1y": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "tod_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "is_tod": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mh_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "regime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "top_factor_1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "top_factor_2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "top_factor_3": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cmp": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "close on the scored session"
+          },
+          "prev_close": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "close of the session before"
+          },
+          "atr_14": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "t1": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "t2": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "description": "The scored session's trade-of-the-day ai_scores row (an object; {} when there is none). sl / t1 / t2 = cmp -1.5 / +2.0 / +3.5 x atr_14, only when both are known."
       },
       "widget_alerts": {
         "type": "object",
@@ -133,10 +609,90 @@
             "type": [
               "array",
               "object"
-            ]
+            ],
+            "items": {
+              "type": "object",
+              "required": [
+                "label",
+                "kind",
+                "detail"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "alerts": {
-            "type": "array"
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "created_at": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "telegram_sent": {
+                  "type": "integer"
+                },
+                "telegram_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "recovered_today": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step": {
+                  "type": "string"
+                },
+                "what": {
+                  "type": "string"
+                },
+                "attempts": {
+                  "type": "integer"
+                },
+                "last_at": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "problems": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -163,6 +719,54 @@
             "rank": {
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "as_of": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "raw": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "norm": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "sector": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sector_rank": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "universe_size": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "created_at": {
+              "type": [
+                "string",
                 "null"
               ]
             }
@@ -241,9 +845,49 @@
                     "number",
                     "null"
                   ]
+                },
+                "cost": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
                 }
               }
             }
+          },
+          "env": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "n_positions": {
+            "type": "integer"
+          },
+          "unvalued": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unrealised": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "starting_cash": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "a tenant's own book only (absent on the owner's book)"
           }
         }
       },
@@ -290,6 +934,15 @@
                 "string",
                 "null"
               ]
+            },
+            "tenant_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "user_id": {
+              "type": "string"
             }
           }
         }
@@ -319,9 +972,1771 @@
                 "boolean",
                 "integer"
               ]
+            },
+            "tenant_id": {
+              "type": "string"
+            },
+            "user_id": {
+              "type": "string"
+            },
+            "created_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updated_at": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "description": "W1-W7 routes answer {\"error\": \"message\"}; newer failures the W8 envelope {\"error\": {code, message, request_id, retryable}} (codes in ops/errors.py).",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "Strategy": {
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "name",
+          "kind",
+          "status",
+          "latest_backtest",
+          "health",
+          "latest_run"
+        ],
+        "properties": {
+          "strategy_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_backtest": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "the newest backtest of the current version",
+            "required": [
+              "run_id",
+              "status"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              },
+              "period_label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "finished_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "metrics": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "health": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "the latest strategy_health row; null when none",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "as_of": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array"
+              },
+              "status_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "latest_run": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "the newest decision run of the current version",
+            "required": [
+              "status",
+              "counts",
+              "top"
+            ],
+            "properties": {
+              "as_of": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "counts": {
+                "type": "object"
+              },
+              "top": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "decision": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "StrategyDetail": {
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "name",
+          "kind",
+          "status",
+          "definition",
+          "versions",
+          "lifecycle",
+          "events",
+          "allowed_transitions",
+          "health",
+          "backtests"
+        ],
+        "properties": {
+          "strategy_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definition": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "version"
+              ],
+              "properties": {
+                "strategy_id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "definition_hash": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "lifecycle": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "event_type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "strategy_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "event_type": {
+                  "type": "string"
+                },
+                "from_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "to_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "details": {
+                  "type": "object"
+                },
+                "actor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "event_type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "strategy_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "event_type": {
+                  "type": "string"
+                },
+                "from_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "to_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "details": {
+                  "type": "object"
+                },
+                "actor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "allowed_transitions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "health": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "the latest strategy_health row; null when none",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "as_of": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array"
+              },
+              "status_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "backtests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "run_id",
+                "status"
+              ],
+              "properties": {
+                "run_id": {
+                  "type": "string"
+                },
+                "strategy_version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "period_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "start_date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "end_date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "metrics_json": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "the metrics as stored: JSON text (kept for compatibility; use metrics)"
+                },
+                "metrics": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "metrics_json decoded (W39)"
+                },
+                "created_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "StrategyDecision": {
+        "type": "object",
+        "required": [
+          "decision_id",
+          "strategy_id",
+          "version",
+          "as_of",
+          "symbol",
+          "decision",
+          "action"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "regime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "risk_requirement": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_position_pct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "stop_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "target_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_hold_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "blocked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signal_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasons": {
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "parameters": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "features": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "reason_codes": {
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        }
+      },
+      "BacktestRun": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "kind",
+          "strategy_id",
+          "status"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "parent_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "window_index": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": "string"
+          },
+          "strategy_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "period_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "initial_capital": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metrics": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "MlModel": {
+        "type": "object",
+        "required": [
+          "model_id",
+          "name",
+          "model_type",
+          "task",
+          "label_kind",
+          "feature_set",
+          "purpose",
+          "status"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_type": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          },
+          "label_kind": {
+            "type": "string"
+          },
+          "feature_set": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "active_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MlPrediction": {
+        "type": "object",
+        "required": [
+          "prediction_id",
+          "model_id",
+          "model_version",
+          "symbol",
+          "as_of"
+        ],
+        "properties": {
+          "prediction_id": {
+            "type": "string"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "version_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string"
+          },
+          "prediction": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prediction_value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "prob_up": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ml_score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "interval_low": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "interval_high": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "feature_set": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feature_set_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifact_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "probabilities": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "explanation": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "QuantFactor": {
+        "type": "object",
+        "required": [
+          "factor_id",
+          "version",
+          "name",
+          "category",
+          "lookback",
+          "status"
+        ],
+        "properties": {
+          "factor_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "formula": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lookback": {
+            "type": "integer"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "normalization": {
+            "type": "object"
+          },
+          "direction": {
+            "type": "integer"
+          },
+          "data_dependency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cross_sectional": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "description": "e.g. ACTIVE, DATA_PENDING (needs data_dependency)"
+          }
+        }
+      },
+      "RiskDecision": {
+        "type": "object",
+        "required": [
+          "risk_decision_id",
+          "intent_id",
+          "symbol",
+          "risk_status",
+          "risk_checks"
+        ],
+        "properties": {
+          "risk_decision_id": {
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string"
+          },
+          "decision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "side": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "book": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested_quantity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "approved_quantity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reference_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "est_value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "equity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "risk_status": {
+            "type": "string",
+            "description": "e.g. APPROVED, REJECTED, BLOCKED, REVIEW_REQUIRED"
+          },
+          "rejection_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "risk_checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "check",
+                "status"
+              ],
+              "properties": {
+                "check": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "e.g. PASS, WARN, FAIL, SKIP"
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "value": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "limit": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "OmsOrder": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "intent_id",
+          "risk_decision_id",
+          "symbol",
+          "side",
+          "quantity",
+          "order_type",
+          "mode",
+          "status",
+          "filled_quantity",
+          "fees"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string"
+          },
+          "risk_decision_id": {
+            "type": "string"
+          },
+          "decision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "order_type": {
+            "type": "string"
+          },
+          "limit_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "product_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "broker_order_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filled_quantity": {
+            "type": "integer"
+          },
+          "avg_fill_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fees": {
+            "type": "number"
+          },
+          "reference_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "parent_order_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modified_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "instrument": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "algo_parent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "algo_slice": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "OmsFill": {
+        "type": "object",
+        "required": [
+          "fill_id",
+          "order_id",
+          "symbol",
+          "side",
+          "quantity",
+          "price",
+          "fees"
+        ],
+        "properties": {
+          "fill_id": {
+            "type": "string"
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "price": {
+            "type": "number"
+          },
+          "fees": {
+            "type": "number"
+          },
+          "price_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filled_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Watchlist": {
+        "type": "object",
+        "properties": {
+          "watchlist_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shared": {
+            "type": [
+              "boolean",
+              "integer"
+            ]
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AlertRule": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "tenant_id",
+          "user_id"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "op": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "last_triggered_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "required": [
+          "report_id",
+          "tenant_id",
+          "user_id"
+        ],
+        "properties": {
+          "report_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "params": {
+            "description": "the params given when the report was saved (decoded JSON)"
+          },
+          "shared": {
+            "type": [
+              "boolean",
+              "integer"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schedule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "formats_json": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "the scheduled formats as stored: JSON text (kept for compatibility; use formats)"
+          },
+          "formats": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "formats_json decoded (W39)"
+          },
+          "last_run_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReportRun": {
+        "type": "object",
+        "required": [
+          "output_id",
+          "report_id",
+          "format",
+          "rows"
+        ],
+        "properties": {
+          "output_id": {
+            "type": "string"
+          },
+          "report_id": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          }
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     }
   },
@@ -353,13 +2768,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "dashboard:read",
@@ -407,13 +2863,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "dashboard:read",
@@ -461,13 +2958,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "dashboard:read",
@@ -515,13 +3053,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "dashboard:read",
@@ -562,18 +3141,64 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Strategy"
+                  }
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "strategy:read",
@@ -649,7 +3274,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyDetail"
+                }
               }
             }
           },
@@ -664,13 +3291,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "strategy:read"
@@ -758,7 +3426,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyDecision"
+                  }
+                }
               }
             }
           },
@@ -773,13 +3446,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "strategy:read"
@@ -839,7 +3553,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestRun"
+                  }
+                }
               }
             }
           },
@@ -854,13 +3573,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "research:read"
@@ -875,18 +3635,64 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MlModel"
+                  }
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "ml:read",
@@ -990,7 +3796,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MlPrediction"
+                  }
+                }
               }
             }
           },
@@ -1005,13 +3816,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "ml:read"
@@ -1061,7 +3913,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuantFactor"
+                  }
+                }
               }
             }
           },
@@ -1076,13 +3933,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "quant:read"
@@ -1177,13 +4075,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "quant:read"
@@ -1261,7 +4200,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RiskDecision"
+                  }
+                }
               }
             }
           },
@@ -1276,13 +4220,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "risk:read"
@@ -1360,7 +4345,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OmsOrder"
+                  }
+                }
               }
             }
           },
@@ -1375,13 +4365,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "execution:read"
@@ -1450,7 +4481,12 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OmsFill"
+                  }
+                }
               }
             }
           },
@@ -1465,13 +4501,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "execution:read"
@@ -1493,13 +4570,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "execution:read",
@@ -1593,13 +4711,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "notifications:read"
@@ -1621,13 +4780,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write",
@@ -1666,18 +4866,61 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Watchlist"
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write",
@@ -1703,18 +4946,64 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRule"
+                  }
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write",
@@ -1753,18 +5042,61 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRule"
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write",
@@ -1790,18 +5122,64 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Report"
+                  }
+                }
               }
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write",
@@ -1862,7 +5240,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRun"
+                }
               }
             }
           },
@@ -1877,13 +5257,54 @@
             }
           },
           "401": {
-            "description": "UNAUTHENTICATED"
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "403": {
-            "description": "PERMISSION_DENIED / scope missing"
+            "description": "PERMISSION_DENIED / scope missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "RATE_LIMITED (per key, per tenant plan)"
+            "description": "RATE_LIMITED (per key, per tenant plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "other client errors: 400 bad request / VALIDATION_FAILED, 404 not found, 409 CONFLICT, 413, 415",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "INTERNAL / DEPENDENCY_UNAVAILABLE / DEPENDENCY_TIMEOUT; 503 for the account resources while the enterprise layer is off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-atip-permission": "workspace:write"

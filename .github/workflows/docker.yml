@@ -1,0 +1,66 @@
+name: docker
+
+# W39b (OPS-04): build the container image on every PR and prove it starts.
+# Nothing is pushed to a registry: publishing an image (and where) is an owner decision,
+# and the image never carries credentials or state (see Dockerfile and docs/CONTAINER_DEPLOYMENT.md).
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # deploy/atip.env is the owner's (git-ignored); the committed example stands in for it
+      - name: Compose file is valid
+        run: |
+          cp deploy/atip.env.example deploy/atip.env
+          docker compose -f docker-compose.yml config --quiet
+
+      # mirror.gcr.io serves the same official python image; it avoids Docker Hub's
+      # anonymous pull limit on shared runners.
+      - name: Build
+        run: docker build --build-arg BASE_IMAGE=mirror.gcr.io/library/python:3.14-slim -t atip:ci .
+
+      - name: First run on an empty volume (the documented --init step)
+        run: |
+          docker volume create atip-ci-data
+          docker run --rm -v atip-ci-data:/app/atip_data atip:ci python main.py --init
+
+      - name: Start and wait for /health/ready
+        run: |
+          docker run -d --name atip-ci -p 127.0.0.1:8000:8000 -v atip-ci-data:/app/atip_data atip:ci
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/health/ready || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health/live
+          curl -fsS http://127.0.0.1:8000/health/ready
+
+      - name: Runs as the non-root user, on IST, with no credentials
+        run: |
+          test "$(docker exec atip-ci id -u)" = "10001"
+          test "$(docker exec atip-ci date +%z)" = "+0530"
+          # the image itself never holds a database, config or secrets
+          docker run --rm --entrypoint sh atip:ci -c 'test -z "$(ls -A /app/atip_data)"'
+          # nor git history, CI config or local tooling state (.dockerignore)
+          docker run --rm --entrypoint sh atip:ci -c 'for p in .git .github .claude .env; do test ! -e "/app/$p" || { echo "/app/$p is in the image"; exit 1; }; done'
+          # the image switches no live order path on: the app's own gate says so
+          docker exec atip-ci python -c "from execution.config import live_gate; ok, why = live_gate(); assert not ok, why; print('live gate closed:', why)"
+
+      - name: Logs
+        if: always()
+        run: docker logs atip-ci 2>&1 | tail -n 200 || true
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f atip-ci || true
+          docker volume rm atip-ci-data || true

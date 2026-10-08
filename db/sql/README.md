@@ -39,3 +39,14 @@ Verified: re-running `init_db()` on a database built from the SQLite file change
 nothing; the PostgreSQL file restores into PG 16 identically to what
 `tools/sqlite_to_postgres.py --execute` produced; the MySQL file imports
 into MariaDB 10.11 with 216 tables and 105 weight rows.
+
+**W39 (2026-10-07) is not in these files yet.** It adds six tables (`history_backfill_run`,
+`history_backfill_symbol`, `order_basket`, `order_basket_run`, `sip_plan`, `sip_execution`),
+plus columns on `perf_ledger` (`entry_seq`, `order_ref`, `signal_ref`, `fee_breakdown`),
+`ml_model_version` (`code_version`, `lineage_json`), `live_quotes` (`upper_circuit`,
+`lower_circuit`), `technical_ext` (sector RS and swing Fibonacci) and `backtest_trade`
+(`partial`, `adds`), and migration 0006. All of it is
+additive. On SQLite, `init_db()` and `ops.migrations.apply()` create it on the first start
+after the upgrade, including on a database built from `atip_schema.sqlite.sql`. For
+PostgreSQL or MySQL, the DDL is in `db/schema_w39.py`, and the `perf_ledger` CREATE in
+`db/schema.py` carries the new columns.

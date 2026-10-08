@@ -311,3 +311,42 @@ def test_reference_price_is_never_sent_to_a_real_broker(temp_db, cfg, monkeypatc
     place_sell_order("ACME", 50, confirm=True, tag="t", reference_price=103.0)
     assert "reference_price" not in seen
     assert "symbol" not in seen
+
+
+# ── W39b (EX-17): the enable flag and the crash-risk exit ───────────────────
+
+def test_disabled_flag_refuses_new_entries_but_keeps_managing_open_positions(pos, cfg, orders):
+    off = dict(cfg, aggressive_enabled=False)
+    r = L.enter("BETA", 10, cfg=off)
+    assert r["opened"] is False and "no new entries" in r["reason"]
+    assert not any(o["symbol"] == "BETA" for o in orders["sent"])
+    L.manage_position(pos, 96.9, off, initial_stop_pct=3.0)           # the open one still exits
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_cri_spike_exits_the_whole_position_only_when_configured(pos, cfg, orders, monkeypatch):
+    monkeypatch.setattr(L, "momentum_for", lambda s, conn=None: A.Momentum(cri=85.0))
+    L.manage_position(pos, 100.5, cfg)                                  # threshold off: nothing
+    assert not [o for o in orders["sent"] if o["side"] == "SELL"]
+    on = A.validate_config(dict(cfg, cri_exit_threshold=80))
+    L.manage_position(pos, 100.5, on)
+    sells = [o for o in orders["sent"] if o["side"] == "SELL"]
+    assert len(sells) == 1 and sells[0]["qty"] == 100
+    p = P.get_position(pos["id"])
+    assert p["status"] == A.ST_CLOSED and p["exit_reason"] == A.MARKET_RISK_EXIT
+    L.manage_position(P.get_position(pos["id"]), 100.5, on)             # idempotent
+    assert len([o for o in orders["sent"] if o["side"] == "SELL"]) == 1
+
+
+def test_cri_below_threshold_or_unknown_does_not_exit(pos, cfg, orders, monkeypatch):
+    on = A.validate_config(dict(cfg, cri_exit_threshold=80))
+    for m in (A.Momentum(cri=79.9), A.Momentum()):
+        monkeypatch.setattr(L, "momentum_for", lambda s, conn=None, m=m: m)
+        L.manage_position(pos, 100.5, on)
+    assert not [o for o in orders["sent"] if o["side"] == "SELL"]
+
+
+def test_cri_threshold_is_validated():
+    for bad in (0, 101, "80", True):
+        with pytest.raises(A.ConfigError, match="cri_exit_threshold"):
+            A.validate_config(dict(A.DEFAULTS, cri_exit_threshold=bad))

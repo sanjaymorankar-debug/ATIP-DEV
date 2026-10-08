@@ -15,7 +15,12 @@ Per parameter:
     stability      min(neighbour metric at +-1 step) / base metric (base > 0)
     knife_edge     a +-1 step neighbour loses more than half the base metric, or flips
                    its sign
-Overall: robust_share = parameters that are not knife edges / all parameters.
+    thin_neighbours  the +-1 step values with no metric (fewer than min_trades trades, or
+                   the run did not complete): "stops trading one step away". W39b decision:
+                   reported as a separate fragility flag, not as a knife edge, because there
+                   is no metric to compare -- robust_share keeps its meaning.
+Overall: robust_share = parameters that are not knife edges / all parameters;
+thin_edges = parameters with a thin neighbour (review these before trusting the plateau).
 pairwise=["a","b"] adds a 2-D grid (base +-steps on both) as a heat map.
 """
 
@@ -77,13 +82,14 @@ def sensitivity(request: dict, space: dict, select_by: str = "sharpe", steps: in
             curve = [{"value": v, "run_id": score({**base_params, k: v})[0],
                       select_by: score({**base_params, k: v})[1]} for v in vals]
             i = vals.index(base_params[k]) if base_params[k] in vals else None
-            nb = [curve[j][select_by] for j in (i - 1, i + 1) if i is not None and 0 <= j < len(curve) and j != i]
-            nb = [x for x in nb if x is not None]
+            near = [curve[j] for j in (i - 1, i + 1) if i is not None and 0 <= j < len(curve) and j != i]
+            nb = [pt[select_by] for pt in near if pt[select_by] is not None]
+            thin = [pt["value"] for pt in near if pt[select_by] is None]
             stab = (min(nb) / base_score) if (nb and base_score and base_score > 0) else None
             knife = bool(nb) and base_score is not None and (
                 any((x > 0) != (base_score > 0) for x in nb) or (base_score > 0 and min(nb) < 0.5 * base_score))
             out[k] = {"curve": curve, "base_value": base_params[k], "stability": round(stab, 3) if stab is not None
-                      else None, "knife_edge": knife}
+                      else None, "knife_edge": knife, "thin_neighbours": thin}
         heat = None
         if pairwise and len(pairwise) == 2 and all(p in space for p in pairwise):
             a, b = pairwise
@@ -94,7 +100,8 @@ def sensitivity(request: dict, space: dict, select_by: str = "sharpe", steps: in
         summary = {"base_params": base_params, "base_run_id": base_rid, "base_" + select_by: base_score,
                    "parameters": out, "heatmap": heat,
                    "robust_share": round(sum(not v["knife_edge"] for v in out.values()) / n, 3) if n else None,
-                   "knife_edges": [k for k, v in out.items() if v["knife_edge"]], "trials": idx[0]}
+                   "knife_edges": [k for k, v in out.items() if v["knife_edge"]],
+                   "thin_edges": [k for k, v in out.items() if v["thin_neighbours"]], "trials": idx[0]}
         _finish(pid, "COMPLETED", summary)
         return {"run_id": pid, "status": "COMPLETED", **summary}
     except Exception as e:

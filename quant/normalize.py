@@ -14,9 +14,16 @@ date (None = missing) and returns {symbol: normalized} (missing stays None).
     neutralize(v, exposures)     residual of an OLS of v on the exposure columns
                                  (+ intercept) -- factor / beta / sector neutralization
 
-apply(values, spec) runs a spec such as
+apply(values, spec, sectors, exposures) runs a spec such as
     {"method": "percentile", "winsorize": 1.0, "relative_to": "sector"}
-so every factor and composite states its own normalization.
+so every factor and composite states its own normalization. Steps, in order:
+winsorize -> neutralize -> relative_to -> method. W39 (PF-15) spec key
+    "neutralize": ["beta_250", "size_log", "sector"]
+residualizes on those exposures first (neutralize() above): each name is a column
+from exposures[name] ({symbol: value}, e.g. that date's raw factor values) except
+"sector", which expands to one-hot industry dummies from `sectors` (the residual is
+then demeaned within each industry). A symbol missing any exposure comes out None;
+a name with no exposures passed is an error, never silently skipped.
 """
 
 from __future__ import annotations
@@ -124,12 +131,41 @@ def neutralize(v, exposures: dict):
     return out
 
 
-def apply(values: dict, spec: dict | None, sectors: dict | None = None) -> dict:
+def exposure_rows(v, names, sectors=None, exposures=None) -> dict:
+    """{symbol: [e1, e2, ...]} for neutralize() over the present symbols of v: one column per name
+    from exposures[name], "sector" as one-hot dummies of the industries present (missing ->
+    UNKNOWN) less the first, which the intercept spans."""
+    exposures, sectors = exposures or {}, sectors or {}
+    keys = list(_present(v))
+    missing = [x for x in names if x != "sector" and x not in exposures]
+    if missing:
+        raise ValueError(f"neutralize: no exposures for {missing}; pass exposures={{name: {{symbol: value}}}}")
+    inds = sorted({sectors.get(k) or "UNKNOWN" for k in keys})[1:] if "sector" in names else []
+    rows = {}
+    for k in keys:
+        row = []
+        for x in names:
+            if x == "sector":
+                row += [1.0 if (sectors.get(k) or "UNKNOWN") == g else 0.0 for g in inds]
+            else:
+                e = exposures[x].get(k)
+                row.append(None if e is None or (isinstance(e, float) and math.isnan(e)) else float(e))
+        rows[k] = row
+    return rows
+
+
+def apply(values: dict, spec: dict | None, sectors: dict | None = None, exposures: dict | None = None) -> dict:
     spec = spec or {}
     method = spec.get("method", "percentile")
     if method not in METHODS:
         raise ValueError(f"normalization method must be one of {METHODS}")
     v = winsorize(values, spec.get("winsorize", 1.0)) if spec.get("winsorize", 1.0) else dict(values)
+    neu = spec.get("neutralize")
+    if neu:
+        neu = [neu] if isinstance(neu, str) else neu
+        if not isinstance(neu, (list, tuple)) or not all(isinstance(x, str) and x for x in neu):
+            raise ValueError("neutralize must be a list of exposure names, e.g. ['beta_250', 'size_log', 'sector']")
+        v = neutralize(v, exposure_rows(v, list(neu), sectors, exposures))
     rel = spec.get("relative_to")
     if rel == "market":
         v = market_relative(v)

@@ -21,7 +21,7 @@
 - **No credentials are handled by Claude.**
   - The bootstrap administrator's password is typed by the owner (`python -m enterprise bootstrap`, getpass).
   - There is no broker-credential vault (ENT-06 not built).
-- **No payment processing.** Plans have limits and features; prices are NULL until the owner sets them; invoices are DRAFT records.
+- **No payment processing.** Plans have limits and features; prices are NULL until the owner sets them; invoices are DRAFT records. *(Superseded in W39b: the payment provider is SANDBOX by default and Razorpay once the owner configures it -- docs/BILLING_RAZORPAY.md.)*
 
 ## Identity
 

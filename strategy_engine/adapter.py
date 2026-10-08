@@ -8,10 +8,19 @@ Signals back:
 
     BUY                       -> Signal BUY (stop / target / max hold from the intent)
     EXIT                      -> Signal SELL (W2 closes the whole position)
+    ADD    (held symbol)      -> Signal ADD (PF-06), quantity = the intent's quantity when the
+                                 decision carries one (features.rebalance_qty: the portfolio
+                                 kind's reweight, as strategy_engine.engine._quantity); else W2
+                                 sizes it like a BUY within max_position_pct, as the W4 risk
+                                 engine does. The decision's stop rides along for that sizing.
+    REDUCE (held symbol)      -> Signal REDUCE (PF-06), quantity = the intent's quantity as for
+                                 ADD; else W2 sells half the holding -- the W4 risk engine's
+                                 REDUCE default (an intent carries no other size for it)
     HOLD / NO_ACTION / SELL   -> nothing (SELL on a symbol not held opens nothing)
-    REDUCE / ADD              -> nothing: W2 trades whole positions, so a partial
-                                 change is not simulated (stated in the run's bias report)
     BLOCKED_BY_RISK           -> nothing
+    SHORT / COVER, or ADD / REDUCE of a symbol not held
+                              -> nothing; counted in not_simulated ({action: n}), which the
+                                 run's bias report states (the backtest has no short book)
 
 Regime and benchmark series are read once from the database and only ever
 consulted for dates on or before the session being decided, like prices.
@@ -25,7 +34,8 @@ from __future__ import annotations
 from datetime import date
 
 from backtest.strategy import Signal, Strategy
-from strategy_engine.decisions import A_BUY as BUY, A_EXIT as EXIT
+from strategy_engine.decisions import A_ADD as ADD, A_BUY as BUY, A_COVER as COVER, A_EXIT as EXIT
+from strategy_engine.decisions import A_REDUCE as REDUCE, A_SHORT as SHORT
 from strategy_engine.definition import definition_hash, specs
 from strategy_engine.kinds import EvalEnv, make_evaluator, session_ordinal
 from strategy_engine.params import resolve
@@ -46,6 +56,7 @@ class DefinitionStrategy(Strategy):
         self.warmup_bars = 260                          # enough for 250-bar features
         self._ev = None
         self._regime = self._bench = None
+        self.not_simulated = {}                         # action -> decisions W2 could not trade
 
     def _inputs(self) -> set:
         ins = set(self.defn.get("inputs") or [])
@@ -101,6 +112,13 @@ class DefinitionStrategy(Strategy):
                                   max_hold_sessions=it.max_hold_sessions, reason=it.reason[:200]))
             elif it.action == EXIT and it.symbol in held:
                 out.append(Signal(it.symbol, "SELL", reason=it.reason[:200]))
+            elif it.action in (ADD, REDUCE) and it.symbol in held:
+                rq = (it.features or {}).get("rebalance_qty")
+                out.append(Signal(it.symbol, it.action, stop_price=it.stop_price if it.action == ADD else None,
+                                  quantity=int(rq) if rq else None, reason=it.reason[:200]))
+            elif it.action in (ADD, REDUCE, SHORT, COVER):
+                key = it.action if it.action in (SHORT, COVER) else f"{it.action} (not held)"
+                self.not_simulated[key] = self.not_simulated.get(key, 0) + 1
         return out
 
     def describe(self) -> dict:
