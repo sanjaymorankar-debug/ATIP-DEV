@@ -7,9 +7,7 @@
   "_get_dhan":          "Login at https://web.dhanhq.com → My Profile → Apps → Create App. FREE for personal use.",
   "dhan_pin":           "",
   "dhan_totp_secret":   "",
-  "_dhan_totp":         "Token auto-renewal (W39): the scheduler renews the 24-hour Dhan token every day at dhan_token_refresh_time and at start-up if it expired. An EXPIRED token can only be regenerated with your 6-digit Dhan PIN and the base32 TOTP secret shown when you enable TOTP at web.dhan.co > Profile > DhanHQ Trading APIs. Better: move both into the encrypted vault (python -m ops vault-migrate --apply).",
-  "dhan_token_auto_refresh":  true,
-  "dhan_token_refresh_time":  "06:45",
+  "_dhan_totp":         "Token renewal: tools/dhan_token_refresh.py, run daily by the macOS LaunchAgent (deploy/launchd/install.sh) or the Windows task ATIP_DhanTokenRefresh. An EXPIRED token can only be regenerated with your 6-digit Dhan PIN and the base32 TOTP secret shown when you enable TOTP at web.dhan.co > Profile > DhanHQ Trading APIs. Better: move both into the encrypted vault (python -m ops vault-migrate --apply).",
 
   "_SECTION_2": "=== ANTHROPIC (Claude API — News AI sentiment) ===",
   "_get_anthropic":     "Set as environment variable: ANTHROPIC_API_KEY=sk-ant-... from console.anthropic.com",
@@ -34,10 +32,6 @@
   "universe":                 "nifty500",
   "max_stocks_to_score":      500,
   "min_data_days":            60,
-  "history_years":            7,
-  "_history_years":           "W39: years of daily price history to fetch (python main.py --backfill-history) and keep (the weekly purge keeps prices_daily this long). The scheduler tops up what is missing every Sunday at history_backfill_time.",
-  "history_backfill_weekly":  true,
-  "history_backfill_time":    "06:00",
 
   "_SECTION_7": "=== SCHEDULE TIMES (IST) ===",
   "schedule_premarket_time":  "07:00",
@@ -174,12 +168,14 @@
 
   "_SECTION_16": "W35 data platform (all off / safe by default)",
   "depth": {"enabled": false, "symbols": [], "max_symbols": 25, "interval_seconds": 60},
+  "depth20": {"enabled": false, "symbols": [], "max_symbols": 50, "sample_seconds": 15, "band_bp": 50, "decay": 0.5},
   "derivatives": {"option_chain_enabled": false, "chain_symbols": ["NIFTY", "BANKNIFTY"], "chain_minutes": 15, "nearest_expiries": 2},
   "altdata": {"enabled": ["news_attention", "announcement_intensity"], "max_entities": 500, "sources": {"wiki_pageviews": {"max_entities": 100, "map": {}}}},
   "multi_asset": {"add": {}},
   "_w35_note": "Tick capture: live_feed.capture_ticks true (needs live_feed.stocks_enabled). Lake files are Parquet when pyarrow is installed, else csv.gz; pip install pyarrow duckdb for Parquet + SQL queries.",
 
   "_SECTION_17": "W36 AI assistant (off by default)",
+  "screener_ai": {"enabled": false, "model": "claude-sonnet-5-5", "daily_cost_cap_usd": 0.5},
   "assistant": {"enabled": false, "model": "claude-opus-5-5", "effort": "medium", "daily_cost_cap_usd": 2.0, "max_tool_rounds": 6, "history_turns": 6},
   "_assistant_note": "enabled=true lets /assistant answer with Claude using read-only tools over ATIP data; needs ANTHROPIC_API_KEY. Own daily cap, separate from news AI. Off: rule-based answers.",
 

@@ -217,7 +217,8 @@ def _all_schema_ddl():
         if re.fullmatch(r"(W\d+\w*|WEALTH)_TABLES", name):
             for _t, ddls in getattr(S, name).items():
                 stmts.extend(ddls)
-    for mod in ("schema_w28b", "schema_w34", "schema_w35", "schema_w36", "schema_w37", "schema_w38", "schema_w39"):
+    for mod in ("schema_w28b", "schema_w34", "schema_w35", "schema_w36", "schema_w37", "schema_w38",
+                "schema_w39", "schema_w39b"):
         m = __import__(f"db.{mod}", fromlist=["x"])
         for n in dir(m):
             if n.endswith("_TABLES"):

@@ -1,10 +1,26 @@
-# W39 — Tracker reconciliation and remaining features: handoff
+# W39b — Tracker reconciliation and remaining features: handoff
 
 **Branch:** `claude/wizardly-curie-fbjeoa` (draft PR sanjaymorankar-debug/ATIP-DEV#5), based on master `1732829`.
 
 **Date:** 2026-10-07
 
 **Status:** developed, with automated tests; independent QA (ChatGPT) and owner UAT are pending. Not deployed.
+
+## Merged with W39 (PR #4), 2026-10-08
+
+PR #4 (W39: history, research and options, `docs/W39_RESEARCH_HISTORY_OPTIONS_HANDOFF.md`) reached master first and built two of the same features. On merging it, this branch keeps #4's versions and drops its own:
+
+| Feature | Kept (#4) | Dropped (W39b) |
+|---|---|---|
+| 7-year daily history | `data/history_backfill.py` (table `prices_daily_backfill`, nightly 22:20, `python -m data.history_backfill`, `GET /api/data/history/coverage`), the HISTORY retention tier in `db/purge.py` | W39b's backfill module and its two tables, `main.py --backfill-history`, `/api/data/history/status`, the weekly Sunday job, the `history_years` purge setting |
+| Dhan token renewal | `tools/dhan_token_refresh.py` with the fixed RenewToken header, run by the macOS LaunchAgent (06:30 and at login) or the Windows task | W39b's scheduler job (06:45 and at start-up); keeping both would renew twice a day |
+
+- **Bug fixed while merging.** #4's backfill stored old windows with the window's end as the corporate-action basis date. A stock with a recent unreconciled split therefore had its old bars written as Dhan sent them, on a basis that does not match the stored history. `store_daily_bars` now takes `basis_date`, and the backfill passes today (`tests/test_w39b_merge.py`).
+- **Renamed so both sides fit:**
+  - `db/schema_w39.py` is #4's; this branch's tables and columns are in `db/schema_w39b.py`.
+  - The baskets / SIP page and routes are `dashboard/w39_retail_page.py` and `dashboard/w39_retail_routes.py`.
+  - `docs/WAVE_STATUS.md` lists both rows: W39 (#4) and W39b (this branch).
+- **Tests:** 1,089 passed, 31 skipped after the merge.
 
 ## What was compared
 

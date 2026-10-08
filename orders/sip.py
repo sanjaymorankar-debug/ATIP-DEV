@@ -37,9 +37,9 @@ FINAL = ("PLACED", "SKIPPED_TOO_SMALL", "SKIPPED_NOT_PAPER", "MISSED")
 
 
 def ensure_tables(conn):
-    from db.schema_w39 import W39_TABLES
+    from db.schema_w39b import W39B_TABLES
     for t in ("sip_plan", "sip_execution"):
-        for ddl in W39_TABLES[t]:
+        for ddl in W39B_TABLES[t]:
             conn.execute(ddl)
 
 

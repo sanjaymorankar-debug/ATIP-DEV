@@ -1476,6 +1476,158 @@ def _schedule_w29_jobs():
     schedule.every().day.at("16:20").do(_w37_options_settle)           # W37 (ENT-15)
     schedule.every().day.at("08:10").do(_w37_vault_expiry)             # W37 (ENT-06)
     schedule.every().day.at("07:50").do(_w38_compliance)              # W38 (SEC-05)
+    _schedule_w39_jobs()
+
+
+def _schedule_w39_jobs():
+    """W39: order-book pressure every 15 minutes in the session (data/order_pressure.py); the pre-open
+    GIFT / global-cue estimate at 08:45 and 09:05 and its check against the open at 09:35, NSE
+    participant OI at 20:15 and the Nifty history at 23:20 (research/market_pulse.py); the
+    technical snapshot and signals (research/tech_signals.py), equity research reports after the
+    evening scoring (research/report.py), the day's fundamental scorecards and the saved
+    screens after them (research/scorecard.py, research/screener.py), intraday scans on the stored 15-minute
+    bars every 15 minutes in the session (research/intraday_signals.py), global snapshots at 15:31 and
+    08:42 for the synchronised gap model (research/global_sync.py), and the nightly, budgeted 7-year
+    price-history backfill (data/history_backfill.py)."""
+    schedule.every(15).minutes.do(_w39_order_pressure_tick)
+    schedule.every().day.at("08:45").do(_w39_gift)
+    schedule.every().day.at("09:05").do(_w39_gift)
+    schedule.every().day.at("09:35").do(_w39_gap_eval)
+    schedule.every().day.at("20:15").do(_w39_participant_oi)
+    schedule.every().day.at("23:20").do(_w39_nifty_history)
+    schedule.every().day.at("20:30").do(_w39_technical_signals)
+    schedule.every().day.at("20:40").do(_w39_research_reports)
+    schedule.every().day.at("20:50").do(_w39_saved_screens)
+    schedule.every().day.at("22:20").do(_w39_history_backfill)
+    schedule.every(15).minutes.do(_w39_intraday_tick)
+    schedule.every().day.at("15:31").do(_w39_global_sync, "close")
+    schedule.every().day.at("08:42").do(_w39_global_sync, "pre")
+
+
+def _w39_global_sync(label):
+    """Global futures, Asia and FX at India's close and before the open (research/global_sync.py)."""
+    if not is_market_day():
+        return
+    try:
+        from research.global_sync import run_capture
+        run_job(f"global_sync_{label}", run_capture, label)
+    except Exception as e:
+        log.warning(f"  Global snapshot ({label}): {e}")
+
+
+def _w39_intraday_tick():
+    """Intraday scans on the stored 15-minute bars, 09:45-15:50 on trading days; evaluates at the close
+    (research/intraday_signals.py)."""
+    from datetime import time as dtime
+    if not is_market_day():
+        return
+    now = datetime.now().time()
+    if not (dtime(9, 45) <= now <= dtime(15, 50)):
+        return
+    try:
+        from research.intraday_signals import run_job as intraday_job
+        run_job("intraday_signals", intraday_job)
+    except Exception as e:
+        log.warning(f"  Intraday signals: {e}")
+
+
+def _w39_order_pressure_tick():
+    """Pending buy / sell totals for the tracked universe (data/order_pressure.py), in market hours."""
+    try:
+        from data.order_pressure import settings as op_settings, snapshot
+        if op_settings()["enabled"] and is_market_hours():
+            run_job("order_pressure", snapshot)
+    except Exception as e:
+        log.warning(f"  Order pressure: {e}")
+
+
+def _w39_gift():
+    """Pre-open GIFT Nifty + global-model gap estimate (research/market_pulse.py)."""
+    if not is_market_day():
+        return
+    try:
+        from research.market_pulse import capture_gift
+        run_job("gift_preopen", capture_gift)
+    except Exception as e:
+        log.warning(f"  GIFT pre-open: {e}")
+
+
+def _w39_gap_eval():
+    if not is_market_day():
+        return
+    try:
+        from research.market_pulse import evaluate_gaps
+        run_job("gap_evaluation", evaluate_gaps)
+    except Exception as e:
+        log.warning(f"  Gap evaluation: {e}")
+
+
+def _w39_participant_oi():
+    if not is_market_day():
+        return
+    try:
+        from data.participant_oi import run as poi_run
+        run_job("participant_oi", poi_run)
+    except Exception as e:
+        log.warning(f"  Participant OI: {e}")
+
+
+def _w39_nifty_history():
+    """Keep the long Nifty close series the global-cue model regresses on (5 years the first time)."""
+    try:
+        from db.schema import get_connection
+        from research.market_pulse import nifty_history
+        c = get_connection()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM global_market_history WHERE series='nifty50'").fetchone()[0]
+        finally:
+            c.close()
+        run_job("nifty_history", nifty_history, "5y" if n < 300 else "1mo")
+    except Exception as e:
+        log.warning(f"  Nifty history: {e}")
+
+
+def _w39_technical_signals():
+    """Technical snapshot + scan signals for the tracked universe, outcomes of open signals, top-signal alert."""
+    if not is_market_day():
+        return
+    try:
+        from research.tech_signals import run_job as tech_job
+        run_job("technical_signals", tech_job)
+    except Exception as e:
+        log.warning(f"  Technical signals: {e}")
+
+
+def _w39_saved_screens():
+    """Store the day's fundamental scorecards, then re-run the saved screens after the research reports;
+    alert on new matches."""
+    if not is_market_day():
+        return
+    try:
+        from research.screener import run_saved_screens
+        run_job("saved_screens", run_saved_screens)
+    except Exception as e:
+        log.warning(f"  Saved screens: {e}")
+
+
+def _w39_research_reports():
+    if not is_market_day():
+        return
+    try:
+        from research.report import settings as rsettings, run_reports
+        if rsettings()["reports_enabled"]:
+            run_job("research_reports", run_reports)
+    except Exception as e:
+        log.warning(f"  Research reports: {e}")
+
+
+def _w39_history_backfill():
+    try:
+        from data.history_backfill import settings as hsettings, run_backfill
+        if hsettings()["backfill_enabled"]:
+            run_job("history_backfill", run_backfill)
+    except Exception as e:
+        log.warning(f"  History backfill: {e}")
 
 
 def _w38_compliance():
@@ -1800,14 +1952,13 @@ def start_scheduler():
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
 
-    # ── W39: Dhan token renewal (TOTP) and the weekly long-history top-up ───
+    # ── W39b: stock SIP (paper) ───
     try:
         from pipeline import w39_jobs
         for line in w39_jobs.schedule_jobs(schedule, run_job):
-            log.info(f"  W39 job: {line}")
-        w39_jobs.startup(run_job)            # a dead token is renewed before the catch-ups fetch
+            log.info(f"  W39b job: {line}")
     except Exception as e:
-        log.warning(f"  W39 jobs not scheduled: {e}")
+        log.warning(f"  W39b jobs not scheduled: {e}")
 
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):

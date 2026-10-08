@@ -338,7 +338,11 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
 
     except Exception as e:
         log.warning(f"  {symbol} daily: {e}")
-        return pd.DataFrame()
+        # Tagged like a refusal: an exception (breaker open, network) is not "no bars",
+        # and the W39 history backfill must not read it as the start of the listing.
+        bad = pd.DataFrame()
+        bad.attrs["dhan_error"] = f"exception:{type(e).__name__}"
+        return bad
 
 
 def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,
@@ -1009,9 +1013,60 @@ def get_tracked_symbols(conn=None) -> list:
     return sorted(symbols)
 
 
+def store_daily_bars(conn, sym, df, start_dt, end_dt, events=None, basis_date=None):
+    """
+    Write Dhan daily bars for one symbol into prices_daily, on the stored
+    corporate-action basis (data/corporate_actions.py): Dhan adjusts prices for
+    splits and bonuses itself, possibly days late, and never adjusts volume.
+    Returns (rows written, bars held for reconciliation, stored closes that moved >1%).
+    Shared by run_historical_pipeline and the W39 history backfill. No commit.
+    basis_date: the day Dhan's returned basis refers to -- the day of the fetch (Dhan
+    adjusts its whole history as of today). Defaults to end_dt, the same thing for
+    the daily pipeline; a backfill window ending years ago must pass today, or the
+    "recent unreconciled ex-date" rule would test the window's own old dates.
+    """
+    from data.corporate_actions import to_stored_basis
+    stored = {str(r[0]): (r[1], r[2]) for r in conn.execute(
+        "SELECT date, close, volume FROM prices_daily WHERE symbol=? AND date>=? AND date<=?",
+        (sym, str(start_dt), str(end_dt)))}
+    count = held = shifted = 0
+    for _, row in df.iterrows():
+        raw_date = row.get("date")
+        # Normalize to a plain YYYY-MM-DD string. Values can arrive as a
+        # datetime.date (fresh API fetch) OR a pandas Timestamp with a
+        # 00:00:00 time component (round-tripped through the JSON cache
+        # via pd.read_json). str()'ing a Timestamp directly yields
+        # "YYYY-MM-DD HH:MM:SS", which corrupts the DATE column and
+        # breaks sqlite3's PARSE_DECLTYPES date parsing on every later
+        # read (int() failing on the stray time fragment). Always route
+        # through pd.to_datetime(...).strftime(...) so the stored value
+        # is a clean date regardless of source.
+        date_str = pd.to_datetime(raw_date).strftime("%Y-%m-%d") if raw_date else ""
+        bar = (row.get("open"), row.get("high"), row.get("low"),
+               row.get("close"), row.get("volume"))
+        if events:
+            bar = to_stored_basis(date_str, bar, stored.get(date_str), events, basis_date or end_dt)
+            if bar is None:
+                held += 1
+                continue
+        old = stored.get(date_str)
+        if old and old[0] and bar[3] and abs(bar[3] / old[0] - 1) > 0.01:
+            shifted += 1
+        conn.execute("""
+            INSERT INTO prices_daily
+                (symbol,date,open,high,low,close,volume,source)
+            VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(symbol,date) DO UPDATE SET
+                open=excluded.open, high=excluded.high,
+                low=excluded.low,   close=excluded.close,
+                volume=excluded.volume
+        """, (sym, date_str) + tuple(bar) + ("dhan",))
+        count += 1
+    return count, held, shifted
+
+
 def run_historical_pipeline(symbols: list = None, days: int = 365,
-                             interval_min: int = 0, end_date: date = None,
-                             start_date: date = None, basis_date: date = None) -> dict:
+                             interval_min: int = 0, end_date: date = None) -> dict:
     """
     Download historical data for all symbols and store in prices_daily.
     interval_min=0 → daily data
@@ -1021,12 +1076,6 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
     post-market pipeline pass the resolved trading-day target so a run before
     4 PM IST (when today's EOD data isn't published yet) doesn't try to pull
     a partial/nonexistent "today".
-    start_date (W39, DP-23): an explicit window start instead of end - days, for the
-    long-history backfill (data/history_backfill.py), which fetches year by year.
-    basis_date: the date Dhan's returned basis refers to -- always the day of the
-    fetch (Dhan adjusts its whole history as of today). Defaults to end_date, which
-    is the same thing for every ordinary run; a backfill window ending years ago must
-    pass today, or the "recent unreconciled ex-date" rule would test old events.
     """
     if not HAS_DHAN:
         return {"status": "FAILED", "error": "pip install dhanhq"}
@@ -1037,8 +1086,7 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
         log.error(str(e)); return {"status": "FAILED", "error": str(e)}
 
     end_dt   = end_date or date.today()
-    start_dt = start_date or (end_dt - timedelta(days=days))
-    basis_dt = basis_date or end_dt
+    start_dt = end_dt - timedelta(days=days)
 
     if not symbols:
         # Use the curated tracked universe, NOT "every symbol currently in
@@ -1046,7 +1094,7 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
         # dump and would otherwise balloon this into thousands of symbols.
         symbols = get_tracked_symbols()
 
-    log.info(f"📥 Dhan historical ({interval_min or 'daily'}): {len(symbols)} symbols, {start_dt} -> {end_dt}")
+    log.info(f"📥 Dhan historical ({interval_min or 'daily'}): {len(symbols)} symbols, {days} days")
     conn  = get_connection()
     count = 0
     errors= 0
@@ -1081,47 +1129,9 @@ def run_historical_pipeline(symbols: list = None, days: int = 365,
                 continue
 
             if interval_min == 0:
-                # Store in prices_daily, on the stored corporate-action basis
-                # (data/corporate_actions.py): Dhan adjusts prices for splits
-                # and bonuses itself, possibly days late, and never adjusts volume.
-                from data.corporate_actions import to_stored_basis
-                events = basis.get(sym)
-                stored = {str(r[0]): (r[1], r[2]) for r in conn.execute(
-                    "SELECT date, close, volume FROM prices_daily WHERE symbol=? AND date>=?",
-                    (sym, str(start_dt)))}
-                shifted = 0
-                for _, row in df.iterrows():
-                    raw_date = row.get("date")
-                    # Normalize to a plain YYYY-MM-DD string. Values can arrive as a
-                    # datetime.date (fresh API fetch) OR a pandas Timestamp with a
-                    # 00:00:00 time component (round-tripped through the JSON cache
-                    # via pd.read_json). str()'ing a Timestamp directly yields
-                    # "YYYY-MM-DD HH:MM:SS", which corrupts the DATE column and
-                    # breaks sqlite3's PARSE_DECLTYPES date parsing on every later
-                    # read (int() failing on the stray time fragment). Always route
-                    # through pd.to_datetime(...).strftime(...) so the stored value
-                    # is a clean date regardless of source.
-                    date_str = pd.to_datetime(raw_date).strftime("%Y-%m-%d") if raw_date else ""
-                    bar = (row.get("open"), row.get("high"), row.get("low"),
-                           row.get("close"), row.get("volume"))
-                    if events:
-                        bar = to_stored_basis(date_str, bar, stored.get(date_str), events, basis_dt)
-                        if bar is None:
-                            held += 1
-                            continue
-                    old = stored.get(date_str)
-                    if old and old[0] and bar[3] and abs(bar[3] / old[0] - 1) > 0.01:
-                        shifted += 1
-                    conn.execute("""
-                        INSERT INTO prices_daily
-                            (symbol,date,open,high,low,close,volume,source)
-                        VALUES(?,?,?,?,?,?,?,?)
-                        ON CONFLICT(symbol,date) DO UPDATE SET
-                            open=excluded.open, high=excluded.high,
-                            low=excluded.low,   close=excluded.close,
-                            volume=excluded.volume
-                    """, (sym, date_str) + tuple(bar) + ("dhan",))
-                    count += 1
+                n, h, shifted = store_daily_bars(conn, sym, df, start_dt, end_dt, basis.get(sym))
+                count += n
+                held += h
                 if shifted >= 2:
                     # Dhan re-based this stock's history for an event NSE's
                     # calendar did not give us (or gave us late). Only the

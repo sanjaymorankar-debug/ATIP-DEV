@@ -38,9 +38,9 @@ CLEAN = ("DRY_RUN_OK",)
 
 
 def ensure_tables(conn):
-    from db.schema_w39 import W39_TABLES
+    from db.schema_w39b import W39B_TABLES
     for t in ("order_basket", "order_basket_run"):
-        for ddl in W39_TABLES[t]:
+        for ddl in W39B_TABLES[t]:
             conn.execute(ddl)
 
 

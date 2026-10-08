@@ -1636,6 +1636,8 @@ if HAS_FASTAPI:
     _register_w38_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w39_routes import register as _register_w39_routes                   # W39
     _register_w39_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w39_retail_routes import register as _register_w39b_routes           # W39b: baskets, SIP
+    _register_w39b_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

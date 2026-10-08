@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running application (517 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-08 06:33 by `python -m ops api-docs` from the running application (571 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -180,6 +180,7 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/brokers` | portfolio:read |  |  | supported brokers, credential fields, live status |
 | GET | `/api/brokers/consolidated` | portfolio:read |  |  | holdings across the caller's brokers |
+| GET | `/api/brokers/open-orders` | portfolio:read |  |  | -> portfolio:read; other GETs -> dashboard:read. |
 | POST | `/api/brokers/payload-preview` | portfolio:manage | token |  | {order_id, broker} |
 | GET | `/api/brokers/{broker}/snapshot` | portfolio:read |  | `broker` | holdings + positions at one broker (read-only) |
 
@@ -211,8 +212,8 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 | POST | `/api/data/fo/chain/snapshot` | research:run | token |  | {symbol} |
 | GET | `/api/data/fo/contracts` | dashboard:read |  | `symbol`, `date`, `expiry` | ?symbol&date&expiry                               DP-08 |
 | GET | `/api/data/fo/surface` | dashboard:read |  | `symbol`, `date` | ?symbol&date  W39 (AF-10): IV surface, term structure, skew, |
-| POST | `/api/data/history/backfill` | research:run | token |  | The plan by default; {"dry_run": false} runs it (long: minutes per year of history). |
-| GET | `/api/data/history/status` | dashboard:read |  |  | W39 (DP-23): long-history coverage + backfill runs |
+| POST | `/api/data/history/backfill` | research:run | token |  | {symbols?, max?, years?} one budgeted backfill pass |
+| GET | `/api/data/history/coverage` | dashboard:read |  |  | how much of the universe reaches back 7 years |
 | GET | `/api/data/lake` | dashboard:read |  |  | datasets, partitions, rows, bytes, write format   DP-22 |
 | POST | `/api/data/lake/archive` | research:run | token |  | {table, date_col, start?, end?, knowledge_col?} |
 | POST | `/api/data/lake/verify` | research:run | token |  | re-hash every file against the manifest |
@@ -310,6 +311,30 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 | GET | `/api/market/ownership/{symbol}` | dashboard:read |  | `symbol` | shareholding history, insider trades, SAST, features |
 | GET | `/api/market/preopen` | dashboard:read |  |  | GIFT Nifty now + implied gap vs Nifty's last close, |
 | POST | `/api/market/refresh/{job}` | system:operate | token | `job` | (token) job = fundamentals \| institutional \| fo \| |
+
+## `/api/market-pulse`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/market-pulse` | dashboard:read |  |  | everything + the overall context and its reasons |
+| GET | `/api/market-pulse/events` | dashboard:read |  | `days`=30 | FOMC / US CPI / payrolls / RBI dates, the session each hits, today's band |
+| POST | `/api/market-pulse/events` | research:run | token |  | {date, kind, title?} add an event; POST .../events/delete {date, kind} |
+| POST | `/api/market-pulse/events/delete` | research:run | token |  |  |
+| GET | `/api/market-pulse/fii` | dashboard:read |  |  |  |
+| POST | `/api/market-pulse/gift` | research:run | token |  | capture the GIFT Nifty / global-model gap estimate now |
+| GET | `/api/market-pulse/global` | dashboard:read |  |  | \| /fii \| /positioning   the parts |
+| GET | `/api/market-pulse/global-sync` | dashboard:read |  |  | the 15:30 -> 08:45 synchronised model: record and today's estimate |
+| POST | `/api/market-pulse/global-sync/capture` | research:run | token |  | {label: close \| pre} take the global snapshot now |
+| GET | `/api/market-pulse/positioning` | dashboard:read |  |  |  |
+| POST | `/api/market-pulse/refresh` | research:run | token |  | fetch NSE participant OI (7 days) and the Nifty history now |
+
+## `/api/market-regime`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/market-regime` | dashboard:read |  |  | the market gate today: status, distribution days, 200-DMA, changes |
+| GET | `/api/market-regime/history` | dashboard:read |  | `days`=250 | one row per session (Nifty, DMAs, distribution days, gate) |
+| POST | `/api/market-regime/run` | research:run | token |  | recompute the gate now |
 
 ## `/api/mh`
 
@@ -434,6 +459,25 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 | POST | `/api/ops/webhooks` | system:operate | token |  |  |
 | POST | `/api/ops/webhooks/deliveries/{delivery_id}/requeue` | system:operate | token | `delivery_id` |  |
 
+## `/api/options`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/options/analyse` | research:run | token |  | {symbol?, spot, legs, lot_size?, target_date?} |
+| POST | `/api/options/build` | research:run | token |  | {template, symbol, expiry, spot?, width_steps?, lot_size?, target_date?} |
+| GET | `/api/options/chain/{symbol}` | dashboard:read |  | `symbol` | spot, lot size, expiries and strikes ATIP has stored |
+| GET | `/api/options/templates` | dashboard:read |  |  |  |
+
+## `/api/orderbook`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/orderbook/depth20` | dashboard:read |  |  | 20-level depth: latest DWI per watchlist stock, persistent flags, feed |
+| GET | `/api/orderbook/depth20/validation` | dashboard:read |  | `horizon`=1 | does DWI / best-level / 20-level imbalance predict the next 1 / 5 minutes? |
+| GET | `/api/orderbook/pressure` | dashboard:read |  | `side`, `limit`=100 | latest pending buy / sell totals per stock today |
+| GET | `/api/orderbook/pressure/{symbol}` | dashboard:read |  | `symbol` | today's polls for one stock |
+| POST | `/api/orderbook/snapshot` | research:run | token |  | poll the whole universe now |
+
 ## `/api/orders`
 
 | Method | Path | Permission | Token | Parameters | Summary |
@@ -553,6 +597,14 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
+| GET | `/api/research/equity` | research:read |  | `rating`, `limit`=500 | latest rating per symbol |
+| POST | `/api/research/equity/run` | research:run | token |  | {symbols?} build and store reports for the universe |
+| GET | `/api/research/equity/{symbol}` | research:read |  | `symbol`, `fresh`=0 | today's stored report, else built now (?fresh=1 rebuilds) |
+| GET | `/api/research/equity/{symbol}/history` | research:read |  | `symbol` | rating / target calls and their outcomes |
+| POST | `/api/research/equity/{symbol}/refresh` | research:run | token | `symbol` | build and store today's report |
+| GET | `/api/research/hit-rate` | research:read |  |  | closed calls by rating |
+| GET | `/api/research/scorecard-record` | research:read |  | `horizon`=60 | return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed |
+| GET | `/api/research/scorecard/{symbol}` | research:read |  | `symbol` | the fundamental scorecard: 5 axes x 6 checks, each with its numbers |
 | GET | `/api/research/studies` | research:read |  | `status` | ?status ; POST (token) {title, hypothesis, method, tags, supersedes} |
 | POST | `/api/research/studies` | research:run | token |  |  |
 | GET | `/api/research/studies/{sid}` | research:read |  | `sid` |  |
@@ -604,6 +656,33 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/api/scores` | dashboard:read |  |  |  |
 | GET | `/api/scores/components/{symbol}` | strategy:read |  | `symbol`, `date` | the sub-factors behind each ATIP index |
+
+## `/api/screener`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/screener/ask` | workspace:write | token |  | {text} English -> a screener query (Claude when enabled, else rules); not run |
+| GET | `/api/screener/fields` | dashboard:read |  |  | field catalogue (groups, units, aliases), presets, operators |
+| GET | `/api/screener/run` | dashboard:read |  | `query`, `sort`, `desc`=1, `limit`=200, `columns` | run a screen (read-only) |
+| GET | `/api/screener/run.csv` | dashboard:read |  | `query`, `sort`, `desc`=1, `limit`=2000, `columns` | the same, as CSV |
+| GET | `/api/screener/saved` | dashboard:read |  |  | saved screens; POST {name, query, sort?, desc?, columns?, notify?, screen_id?} |
+| POST | `/api/screener/saved` | workspace:write | token |  |  |
+| POST | `/api/screener/saved/{screen_id}/delete` | workspace:write | token | `screen_id` |  |
+| GET | `/api/screener/saved/{screen_id}/run` | dashboard:read |  | `screen_id` |  |
+
+## `/api/signals`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/signals/intraday` | dashboard:read |  | `date` | intraday scan hits on 15-minute bars (ORB, open = low / high, squeeze) |
+| POST | `/api/signals/intraday/run` | research:run | token |  | scan today's stored 15-minute bars now |
+| GET | `/api/signals/intraday/stats` | dashboard:read |  |  | their record: return to the close and vs the Nifty, alert status |
+| GET | `/api/signals/technical` | dashboard:read |  | `date`, `direction`, `min_confluence`=0, `limit`=300, `alignment` | signals with levels, confluence, market gate |
+| GET | `/api/signals/technical/forward` | dashboard:read |  | `horizon`=20, `min_confluence`=0 | vs the Nifty after 5 / 20 / 60 sessions, by scan x |
+| GET | `/api/signals/technical/gate-effect` | dashboard:read |  | `min_confluence`=0 | closed signals WITH / MIXED / AGAINST the market gate |
+| POST | `/api/signals/technical/run` | research:run | token |  | {symbols?} compute today's snapshot and signals now |
+| GET | `/api/signals/technical/stats` | dashboard:read |  | `min_confluence`=0, `alignment` | track record per scan: win rate, average R |
+| GET | `/api/signals/technical/symbol/{symbol}` | dashboard:read |  | `symbol` | latest technical snapshot + recent signals for one stock |
 
 ## `/api/stock`
 
@@ -790,7 +869,7 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
-| GET | `/baskets` | dashboard:read |  |  | the page (dashboard/w39_page.py) |
+| GET | `/baskets` | dashboard:read |  |  | the page (dashboard/w39_retail_page.py) |
 
 ## `/brokers`
 
@@ -855,11 +934,23 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 |---|---|---|---|---|---|
 | GET | `/market` | dashboard:read |  |  | the page |
 
+## `/market-pulse`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/market-pulse` | dashboard:read |  |  | global cues, FII flows, positioning, order book, your orders |
+
 ## `/ml`
 
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/ml` | dashboard:read |  |  | page |
+
+## `/options-builder`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/options-builder` | dashboard:read |  |  | the strategy builder page |
 
 ## `/privacy`
 
@@ -872,6 +963,24 @@ Generated 2026-10-07 20:48 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/quant` | dashboard:read |  |  | page |
+
+## `/research`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/research` | dashboard:read |  |  | the research page (dashboard/w39_page.py) |
+
+## `/screener`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/screener` | dashboard:read |  |  | the stock screener page (fundamental + technical) |
+
+## `/signals`
+
+| Method | Path | Permission | Token | Parameters | Summary |
+|---|---|---|---|---|---|
+| GET | `/signals` | dashboard:read |  |  | technical signals page (today, track record) |
 
 ## `/strategies`
 

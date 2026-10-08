@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Renews the Dhan access token every morning, as a macOS LaunchAgent.
+
+  Replaces the Windows scheduled task "ATIP_DhanTokenRefresh" (daily 08:00),
+  which did not come across in the move to macOS: without it the 24-hour token
+  ran out and every Dhan call failed until it was pasted in by hand.
+
+    * StartCalendarInterval 06:30 = before the 07:00 pre-market pipeline, the
+      day's first Dhan call. launchd reads this in the Mac's own time zone
+      (System Settings > General > Date & Time), not the TZ below, so the Mac
+      must be on IST for 06:30 to mean 06:30 IST. A Mac asleep at 06:30 runs
+      the job when it wakes.
+    * RunAtLoad = also at login, so a Mac that was switched off at 06:30 still
+      gets a fresh token before ATIP needs one.
+
+  Paths are rewritten by deploy/launchd/install.sh.
+  Log: atip_data/dhan_token_refresh.log (written by the script itself).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.atip.dhan-token-refresh</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__ATIP_DIR__/tools/dhan_token_refresh.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__ATIP_DIR__</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- A short-lived job: never keep it alive, just run it again tomorrow. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__ATIP_DIR__/atip_data/dhan_token_refresh.launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>__ATIP_DIR__/atip_data/dhan_token_refresh.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TZ</key>
+        <string>Asia/Kolkata</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <!-- launchd's default PATH has no Homebrew, so a python3 installed with
+             brew is otherwise not found when there is no .venv. -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

@@ -1,68 +1,58 @@
 """
-Tables and additive columns added in W39 (tracker reconciliation 2026-10-07: the owner's
-Wave 1-20 deployment tracker, the PERF-001 detail sheet and the owner notes), applied by
-db/schema.py.
+Tables added in W39 (history, research & options tooling), applied by db/schema.py.
 
-    perf_ledger (+ columns)   PERF-001-01  entry_seq (portable entry order: MySQL has no rowid),
-                                           order_ref / signal_ref (exact order and signal links),
-                                           fee_breakdown (JSON: brokerage / stt / exchange / sebi /
-                                           stamp / gst / dp / other, when the source gives it)
-    history_backfill_run      DP-23  every long-history backfill run (data/history_backfill.py)
-    history_backfill_symbol   DP-23  the date before which the broker has no bar for a symbol
-    order_basket / order_basket_run  EX-18  named multi-leg baskets and every preview / placement
-    sip_plan / sip_execution         EX-20  stock SIP plans and one row per due date (idempotent)
-    live_quotes (+ columns)          RK-21  upper_circuit / lower_circuit from the quote (price band)
-    technical_ext (+ columns)        TA-08b / TA-05  sector-relative strength, swing-anchored Fibonacci
-    ml_model_version (+ columns)  ML-18  code_version (git commit, +dirty) and lineage_json (dataset /
-                                         feature set / config / backtest links) of every trained version
+    prices_daily_backfill   DP-11  per-symbol progress of the 7-year daily history backfill
+    research_report         RS-06  one equity research report per symbol per day; calls and their outcomes
+    research_screen         SC-20  saved fundamental screens (query, sort, columns, notify, last matches)
+    technical_snapshot      TA-05  per-symbol daily technical rating, indicators, patterns, scan hits
+    technical_signal        TA-06  every scan hit with entry / stop / target, confluence and its outcome
+    order_book_pressure     OB-01  total pending buy / sell quantity and imbalance per stock, every 15 minutes
+    fo_participant_oi       MP-04  NSE participant-wise open interest (Client / DII / FII / Pro)
+    market_cue              MP-02  pre-open GIFT Nifty and global-model gap estimates, with the actual open
+    market_regime_gate      RG-01  the Nifty market gate per session: distribution days, status, OPEN / CAUTION / CLOSED
+    fundamental_scorecard   FS-03  each stock's scorecard per day: checks passed of 30, per axis, pass / fail flags
+    macro_event             EV-01  FOMC, US CPI, US payrolls and RBI policy dates (seeded; config and API add more)
+    intraday_signal         IN-01  intraday scan hits on 15-minute bars, the price seen, the record at the close
+    depth20_snapshot        DP-01  20-level depth per watchlist stock every 15 s: mid, spread, DWI, imbalances
+    global_snapshot         GS-01  global futures, Asia and FX at 15:30 and 08:45 IST (the synchronised model)
+
+Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE ADD COLUMN):
+    technical_signal        RG-03  market_gate, alignment (the gate each signal was born under)
+    market_cue              EV-02  events, band_pct (the macro events behind a morning and the band given);
+                            GS-03  sync_expected_pct (the synchronised model's estimate)
 """
 
+from data.history_backfill import DDL as _BACKFILL
+from research.report import DDL as _REPORT
+from research.screener import DDL as _SCREEN
+from research.tech_signals import DDL as _TECH
+from data.order_pressure import DDL as _BOOK
+from data.participant_oi import DDL as _POI
+from research.market_pulse import DDL as _CUE
+from research.market_pulse import ADDED_COLUMNS as _CUE_COLS
+from research.event_calendar import DDL as _EVENTS
+from research.intraday_signals import DDL as _INTRA
+from data.depth20 import DDL as _DEPTH20
+from research.global_sync import DDL as _GSYNC
+from research.regime_gate import DDL as _GATE
+from research.scorecard import DDL as _SCORE
+from research.tech_signals import ADDED_COLUMNS as _TECH_COLS
+
 W39_TABLES = {
-    "history_backfill_run": (
-        """CREATE TABLE IF NOT EXISTS history_backfill_run (
-            run_id TEXT PRIMARY KEY, started_at TIMESTAMP, finished_at TIMESTAMP, years INTEGER, target_start DATE,
-            symbols INTEGER, windows INTEGER, rows_stored INTEGER, status TEXT, detail_json TEXT)""",
-    ),
-    "history_backfill_symbol": (
-        """CREATE TABLE IF NOT EXISTS history_backfill_symbol (
-            symbol TEXT PRIMARY KEY, exhausted_before DATE, checked_at TIMESTAMP, note TEXT)""",
-    ),
-    "order_basket": (
-        """CREATE TABLE IF NOT EXISTS order_basket (
-            basket_id TEXT PRIMARY KEY, name TEXT NOT NULL, legs_json TEXT NOT NULL, note TEXT,
-            archived INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP, updated_at TIMESTAMP)""",
-    ),
-    "order_basket_run": (
-        """CREATE TABLE IF NOT EXISTS order_basket_run (
-            run_id TEXT PRIMARY KEY, basket_id TEXT NOT NULL, at TIMESTAMP, env TEXT, confirm INTEGER,
-            status TEXT, buy_value REAL, sell_value REAL, available REAL, results_json TEXT)""",
-        "CREATE INDEX IF NOT EXISTS idx_order_basket_run ON order_basket_run(basket_id, at)",
-    ),
-    "sip_plan": (
-        """CREATE TABLE IF NOT EXISTS sip_plan (
-            plan_id TEXT PRIMARY KEY, symbol TEXT NOT NULL, amount REAL, quantity INTEGER, frequency TEXT NOT NULL,
-            day INTEGER NOT NULL, start_date DATE NOT NULL, end_date DATE, status TEXT NOT NULL, next_due DATE,
-            last_run_date DATE, note TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)""",
-    ),
-    "sip_execution": (
-        """CREATE TABLE IF NOT EXISTS sip_execution (
-            plan_id TEXT NOT NULL, due_date DATE NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_attempt_at
-            TIMESTAMP, symbol TEXT, quantity INTEGER, price_ref REAL, status TEXT, order_status TEXT, order_id TEXT,
-            detail TEXT, PRIMARY KEY (plan_id, due_date))""",
-    ),
+    "prices_daily_backfill": (_BACKFILL,),
+    "research_report": _REPORT,
+    "research_screen": _SCREEN,
+    "technical_snapshot": (_TECH[0], _TECH[1]),
+    "technical_signal": (_TECH[2], _TECH[3], _TECH[4]),
+    "order_book_pressure": _BOOK,
+    "fo_participant_oi": _POI,
+    "market_cue": _CUE,
+    "market_regime_gate": _GATE,
+    "fundamental_scorecard": _SCORE,
+    "macro_event": _EVENTS,
+    "intraday_signal": _INTRA,
+    "depth20_snapshot": _DEPTH20,
+    "global_snapshot": _GSYNC,
 }
 
-W39_COLUMNS = {
-    "perf_ledger": {"entry_seq": "INTEGER", "order_ref": "TEXT", "signal_ref": "TEXT", "fee_breakdown": "TEXT"},
-    # ML-18 research-to-production lineage: the code a model version was trained with
-    "ml_model_version": {"code_version": "TEXT", "lineage_json": "TEXT"},
-    # RK-21 the exchange price band (NSE circuit limits) when the quote carries it
-    "live_quotes": {"upper_circuit": "REAL", "lower_circuit": "REAL"},
-    # TA-08b sector-relative strength, TA-05 swing-anchored Fibonacci (stored, not scored)
-    "technical_ext": {"rs_sector_index": "TEXT", "rs_sector_63": "REAL", "rs_sector_126": "REAL",
-                      "rs_sector_pctile": "REAL", "fib_swing_high": "REAL", "fib_swing_low": "REAL",
-                      "fib_swing_dir": "TEXT", "fib_382": "REAL", "fib_500": "REAL", "fib_618": "REAL",
-                      "fib_nearest": "TEXT", "fib_nearest_dist_pct": "REAL"},
-    # PF-06 partial position changes: a REDUCE row (1), the ADD fills into its position
-    "backtest_trade": {"partial": "INTEGER", "adds": "INTEGER"},
-}
+W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS}

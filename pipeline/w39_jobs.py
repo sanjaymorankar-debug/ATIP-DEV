@@ -1,31 +1,20 @@
 """
-W39 scheduled jobs (owner notes, 2026-10-07).
+W39b scheduled jobs (tracker reconciliation, 2026-10-07).
 
-    dhan_token_refresh   OPS-12  the Dhan access token is renewed every day before the
-                         pre-market jobs (config "dhan_token_refresh_time", default 06:45
-                         IST) and once at start-up when it no longer works -- RenewToken
-                         while it is valid, else TOTP + PIN (tools/dhan_token_refresh.py).
-                         Until W39 only a Windows scheduled task did this, so on the macOS
-                         machine the token simply expired every 24 hours.
     sip_run              EX-20   due stock-SIP plans at config "sip_time" (default 09:30) on
                          market days, PAPER only (orders/sip.py); a no-op without plans.
-    history_backfill     DP-23   weekly top-up of the long daily history (Sunday,
-                         config "history_backfill_time", default 06:00): only what is
-                         missing, so after the first run it is a few calls for new symbols.
+
+The Dhan token renewal and the 7-year history backfill are W39's (PR #4): the LaunchAgent /
+Windows task running tools/dhan_token_refresh.py, and data/history_backfill.py scheduled by
+pipeline/scheduler.py _schedule_w39_jobs. (W39b had built both too; on merging #4 its own
+versions were dropped so there is one of each.)
 
 Switches (atip_data/config.json):
-    "dhan_token_auto_refresh": true      (default true; needs dhan_pin + dhan_totp_secret
-                                          for an expired token)
-    "dhan_token_refresh_time": "06:45"
-    "history_backfill_weekly": true      (default true)
-    "history_backfill_time": "06:00"
-    "history_years": 7
     "sip_enabled": true, "sip_time": "09:30"
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 from pathlib import Path
@@ -54,37 +43,8 @@ def _hhmm(v, default):
     return default
 
 
-def _refresher():
-    spec = importlib.util.spec_from_file_location("atip_dhan_token_refresh", ROOT / "tools" / "dhan_token_refresh.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
-def dhan_token_refresh(only_if_invalid: bool = False) -> dict:
-    cfg = config()
-    if not cfg.get("dhan_client_id") and not _vaulted_client_id():
-        return {"status": "SKIPPED", "reason": "no Dhan client id configured"}
-    code = _refresher().run(only_if_invalid=only_if_invalid)
-    return {"status": "SUCCESS" if code == 0 else "FAILED",
-            "error": None if code == 0 else "token could not be renewed: see atip_data/dhan_token_refresh.log "
-                                            "(an expired token needs dhan_pin + dhan_totp_secret)"}
-
-
-def _vaulted_client_id() -> bool:
-    try:
-        from ops.secrets import get
-        return bool(get("DHAN_CLIENT_ID", log_access=False))
-    except Exception:
-        return False
-
-
-def history_backfill() -> dict:
-    from data.history_backfill import backfill
-    r = backfill()
-    return {"status": r.get("status"), "rows": r.get("rows"),
-            "error": None if r.get("status") in ("SUCCESS", "NO_NEW") else
-            f"{sum(1 for x in r.get('results', []) if x.get('status') == 'FAILED')} window(s) failed"}
 
 
 def sip_run() -> dict:
@@ -98,29 +58,11 @@ def sip_run() -> dict:
 
 
 def schedule_jobs(schedule, run_job) -> list:
-    """Register the W39 jobs; returns what was registered (for the start-up log)."""
+    """Register the W39b jobs; returns what was registered (for the start-up log)."""
     cfg = config()
     out = []
-    if cfg.get("dhan_token_auto_refresh", True):
-        t = _hhmm(cfg.get("dhan_token_refresh_time"), "06:45")
-        schedule.every().day.at(t).do(run_job, "dhan_token_refresh", dhan_token_refresh)
-        out.append(f"dhan_token_refresh daily {t}")
     if cfg.get("sip_enabled", True):
         t = _hhmm(cfg.get("sip_time"), "09:30")
         schedule.every().day.at(t).do(run_job, "sip_run", sip_run)
         out.append(f"sip_run daily {t} (market days, PAPER)")
-    if cfg.get("history_backfill_weekly", True):
-        t = _hhmm(cfg.get("history_backfill_time"), "06:00")
-        schedule.every().sunday.at(t).do(run_job, "history_backfill", history_backfill)
-        out.append(f"history_backfill Sunday {t}")
     return out
-
-
-def startup(run_job) -> None:
-    """At scheduler start: a token that stopped working (the machine was off at 06:45) is
-    renewed before the catch-up jobs fetch anything."""
-    if config().get("dhan_token_auto_refresh", True):
-        try:
-            run_job("dhan_token_refresh", dhan_token_refresh, only_if_invalid=True)
-        except Exception as e:
-            log.warning(f"  Dhan token start-up check: {e}")

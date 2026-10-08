@@ -27,8 +27,6 @@ Authz: GET /api/data -> dashboard:read; POST /api/data -> research:run (enterpri
     POST /api/data/assets/refresh
     GET  /api/data/alt                               sources, health                                   AD-01/02
     GET  /api/data/alt/{source_id}/{metric}          ?entity&start&end&as_of
-    GET  /api/data/history/status                    W39 (DP-23): long-history coverage + backfill runs
-    POST /api/data/history/backfill                  W39: {years?, dry_run?} -- dry_run=true by default
     POST /api/data/alt/{source_id}/run               {as_of?}
 """
 
@@ -79,20 +77,6 @@ def register(app, guard, Req, get_connection, json_safe):
         return HTMLResponse(render(token()))
 
     # ── DP-22 lake ──
-    @app.get("/api/data/history/status")
-    async def api_data_history_status():
-        from data.history_backfill import status
-        return await run(lambda conn: status(conn))
-
-    @app.post("/api/data/history/backfill", dependencies=guard)
-    async def api_data_history_backfill(request: Req):
-        """The plan by default; {"dry_run": false} runs it (long: minutes per year of history)."""
-        b = await body(request)
-        from data.history_backfill import backfill
-        years = b.get("years")
-        dry = b.get("dry_run", True) is not False
-        return await run(lambda conn: backfill(years=int(years) if years else None, dry_run=dry))
-
     @app.get("/api/data/lake")
     async def lake_stats():
         from data.lake import stats

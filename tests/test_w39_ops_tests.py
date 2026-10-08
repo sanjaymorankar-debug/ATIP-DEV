@@ -786,17 +786,18 @@ def test_purge_dry_run_reports_and_apply_deletes_per_retention_tier(ops_env):
                   [("OLD", 1.0, _ago(200) + " 10:00:00"), ("NEW", 2.0, _ago(0) + " 10:00:00")])
     c.commit()
     c.close()
-    # cut-offs: price history 1000 d (beyond the 600 d long tier), long 600 d, short 90 d.
-    # prices: OLD (1100 d) goes, MID (800 d) is kept by the history tier. ai_scores: OLD (700 d)
-    # goes, EDGE sits ON the cut-off and stays. pipeline_log / live_quotes: the 120 / 200 d rows go.
-    want = {"prices_daily": 1, "ai_scores": 1, "pipeline_log": 1, "live_quotes": 1}
+    # cut-offs: HISTORY tier 1000 d (beyond the 600 d long tier), long 600 d, short 90 d.
+    # prices_daily and ai_scores are both HISTORY tables (W39, db/purge.py): prices OLD (1100 d)
+    # goes, MID (800 d) stays; every ai_scores row (<= 700 d) stays. pipeline_log / live_quotes:
+    # the 120 / 200 d rows go.
+    want = {"prices_daily": 1, "ai_scores": 0, "pipeline_log": 1, "live_quotes": 1}
 
     def rest(conn):
         return {t: sorted(r[0] for r in conn.execute(f"SELECT {col} FROM {t}"))
                 for t, col in (("prices_daily", "symbol"), ("ai_scores", "symbol"), ("pipeline_log", "job_name"),
                                ("live_quotes", "symbol"))}
 
-    res = P.purge_old_data(long_days=600, short_days=90, dry_run=True, history_days_=1000)
+    res = P.purge_old_data(long_days=600, short_days=90, dry_run=True, history_days=1000)
     assert {t: res[t] for t in want} == want
     assert all(v == 0 or str(v).startswith("error:") for t, v in res.items() if t not in want)
     c = _conn()
@@ -804,32 +805,17 @@ def test_purge_dry_run_reports_and_apply_deletes_per_retention_tier(ops_env):
         assert rest(c) == {"prices_daily": ["MID", "NEW", "OLD"], "ai_scores": ["EDGE", "NEW", "OLD"],
                            "pipeline_log": ["db_purge", "new_job", "old_job"], "live_quotes": ["NEW", "OLD"]}
         assert [tuple(r) for r in c.execute("SELECT status, rows_processed FROM pipeline_log WHERE "
-                                            "job_name='db_purge'")] == [("DRY_RUN", 4)]
+                                            "job_name='db_purge'")] == [("DRY_RUN", 3)]
     finally:
         c.close()
-    res = P.purge_old_data(long_days=600, short_days=90, dry_run=False, history_days_=1000)
+    res = P.purge_old_data(long_days=600, short_days=90, dry_run=False, history_days=1000)
     assert {t: res[t] for t in want} == want
     c = _conn()
     try:
-        assert rest(c) == {"prices_daily": ["MID", "NEW"], "ai_scores": ["EDGE", "NEW"],
+        assert rest(c) == {"prices_daily": ["MID", "NEW"], "ai_scores": ["EDGE", "NEW", "OLD"],
                            "pipeline_log": ["db_purge", "db_purge", "new_job"], "live_quotes": ["NEW"]}
         assert [tuple(r) for r in c.execute("SELECT status, rows_processed FROM pipeline_log WHERE "
-                                            "job_name='db_purge' ORDER BY id")] == [("DRY_RUN", 4), ("SUCCESS", 4)]
+                                            "job_name='db_purge' ORDER BY id")] == [("DRY_RUN", 3), ("SUCCESS", 3)]
     finally:
         c.close()
 
-
-def test_price_history_follows_history_years_and_is_never_shorter_than_the_long_tier(ops_env):
-    from db import purge as P
-    assert P.history_days() == round(7 * 365.25) + 7 == 2564          # default history_years 7
-    _config(history_years=3)
-    assert P.history_days() == round(3 * 365.25) + 7 == 1103
-    c = _conn()
-    c.executemany("INSERT INTO prices_daily (symbol, date, close) VALUES (?,?,?)",
-                  [("A", _ago(700), 1.0), ("B", _ago(500), 1.0)])
-    c.commit()
-    c.close()
-    # an explicit 100-day history is raised to the 600-day long tier: only A (700 d) would go
-    assert P.purge_old_data(long_days=600, dry_run=True, history_days_=100)["prices_daily"] == 1
-    # the configured 3 years (1103 d) keep both
-    assert P.purge_old_data(long_days=600, dry_run=True)["prices_daily"] == 0

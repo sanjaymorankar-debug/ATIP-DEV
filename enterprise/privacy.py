@@ -65,7 +65,15 @@ INVENTORY = {
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),
     "oms_order": ("financial", False, "kept (trade audit)"),
     "strategy": ("research", False, "tenant lifetime"),
-    "prices_daily": ("market", False, "600 days (W1 purge)"),
+    "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
+    "order_book_pressure": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
+    "depth20_snapshot": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
+    "global_snapshot": ("market", False, "kept: two rows per series a day, the synchronised model's history"),
+    "market_cue": ("research", False, "kept: the record of pre-open gap estimates"),
+    "market_regime_gate": ("research", False, "kept: recomputed nightly from prices (W39 regime gate)"),
+    "fundamental_scorecard": ("research", False, "kept: the scorecard's own track record (W39)"),
+    "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
+    "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables
@@ -310,7 +318,7 @@ RULES = [
      "derived research: kept"),
     (r"^(ops_|pipeline_log|alert_log|job_recovery|compliance_|regulatory_|schema_migrations|ai_usage_log|"
      r"broker_health_check|"
-     r"live_feed_status|tick_capture_status|latency_rollup|audit_export|history_backfill_)", "operational", False,
+     r"live_feed_status|tick_capture_status|latency_rollup|audit_export)", "operational", False,
      "operational logs: kept / rotated by ops jobs"),
 ]
 DSR_SLA_DAYS = 30

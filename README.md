@@ -27,8 +27,8 @@
 | Fundamental data (ROE, EPS, D/E etc.) | **Alpha Vantage** | Weekly | Saturday 08:00 |
 | Accuracy audit (prediction vs actual) | **Computed** | Weekly | Saturday 09:00 |
 | Dhan security master list | **Dhan API** | Weekly | Saturday 08:30 |
-| Dhan access token renewal (RenewToken, else TOTP + PIN) | **Dhan auth** | Daily + at start-up if expired | 06:45 |
-| Long price history top-up (`history_years`, default 7) | **Dhan API** | Weekly (only what is missing) | Sunday 06:00 |
+| Dhan access token renewal (RenewToken, else TOTP + PIN) | **Dhan auth** | Daily + at login (macOS LaunchAgent; Windows task 08:00) | 06:30 |
+| 7-year daily history backfill (`data/history_backfill.py`, 40 symbols a night) | **Dhan API** | Nightly until complete | 22:20 |
 
 ---
 
@@ -45,7 +45,7 @@
 │   macOS / Linux launchers
 ├── start_atip.sh                   ← Start ATIP
 ├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
-├── deploy/launchd/                 ← LaunchAgents: auto-start + 5-min snapshot
+├── deploy/launchd/                 ← LaunchAgents: auto-start, 5-min snapshot, Dhan token
 │
 │   Windows launchers (kept for the old machine)
 ├── install.bat                     ← Install all packages
@@ -228,8 +228,8 @@ On the Mac, use `.venv/bin/python` wherever these say `python`, or run
 python main.py --init                    # Create database (first time)
 python main.py --dhan-securities         # Download Dhan security ID list (first time)
 python main.py --dhan-history            # Download 1-year historical prices
-python main.py --backfill-history        # Fetch the missing years of daily history (7 by default)
-python main.py --backfill-history --history-years 7 --backfill-dry-run   # just the plan
+python -m data.history_backfill run      # One budgeted pass of the 7-year history backfill
+python -m data.history_backfill status   # How far back each symbol reaches
 
 # Daily usage
 python main.py                           # Start scheduler + dashboard (default)
@@ -301,24 +301,23 @@ python main.py --live-feed
 ```
 
 ### Token renewal (TOTP)
-Dhan access tokens last 24 hours. The scheduler renews the token every day at
-`dhan_token_refresh_time` (06:45 IST, before the pre-market jobs) and at start-up if
-it has expired. A valid token is renewed with `RenewToken`. An expired one can only be
-regenerated with your trading PIN and TOTP secret, so add both once:
+Dhan access tokens last 24 hours. `tools/dhan_token_refresh.py` renews it: the macOS
+LaunchAgent runs it daily at 06:30 and at login (see *LaunchAgents* below), the Windows
+task `ATIP_DhanTokenRefresh` at 08:00. A valid token is renewed with `RenewToken`. An
+expired one can only be regenerated with your trading PIN and TOTP secret, so add both once:
 ```json
 "dhan_pin":         "<6-digit Dhan PIN>",
 "dhan_totp_secret": "<base32 secret shown when you enable TOTP at web.dhan.co>"
 ```
 It is better to move them into the encrypted vault with `python -m ops vault-migrate --apply`.
-Set `"dhan_token_auto_refresh": false` to turn renewal off. To run it by hand:
-`python tools/dhan_token_refresh.py` (or `--check`).
+To run it by hand: `python tools/dhan_token_refresh.py` (or `--check`).
 
 ### Long history (7 years)
-`python main.py --backfill-history` fetches the missing years of daily OHLCV for the
-tracked universe and the benchmark / sector indices. It works one year-window at a time,
-can be resumed, and asks only for what is missing. The weekly purge keeps `prices_daily`
-for `history_years`, while the other tables keep their 600-day window. Progress is
-shown at `GET /api/data/history/status`.
+`data/history_backfill.py` walks each tracked symbol back from its earliest stored bar to
+seven years ago, one 365-day window at a time, resumably (40 symbols a night at 22:20; the
+Nifty 500 completes in about two weeks). The weekly purge keeps `prices_daily` for seven
+years (the HISTORY tier in `db/purge.py`). Coverage: `GET /api/data/history/coverage` or
+`python -m data.history_backfill status`. Config: `"history": {"years", "symbols_per_run", ...}`.
 
 ### Dhan Rate Limits
 | API | Limit | ATIP Usage |
@@ -335,9 +334,10 @@ shown at `GET /api/data/history/status`.
 ### macOS — LaunchAgents (current machine)
 
 ```bash
-deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload
+deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot upload + Dhan token refresh
 deploy/launchd/install.sh platform   # just the scheduler/dashboard
 deploy/launchd/install.sh snapshot   # just the snapshot upload
+deploy/launchd/install.sh token      # just the daily Dhan token refresh
 deploy/launchd/install.sh --uninstall
 ```
 
@@ -351,15 +351,28 @@ either agent.
 |---|---|
 | `com.atip.platform` | Starts ATIP at login and restarts it if it exits non-zero (`KeepAlive`), which is what the Windows Task Scheduler task provided and the Startup folder could not. |
 | `com.atip.publish-snapshot` | Runs `publish_snapshot.sh` every 5 minutes. Needs `atip_data/publish.json`. |
+| `com.atip.dhan-token-refresh` | Runs `tools/dhan_token_refresh.sh` daily at 06:30 and at login: renews the 24-hour Dhan token before the 07:00 pre-market run, and saves it where ATIP reads it (`config.json`, or the vault once migrated). Replaces the Windows `ATIP_DhanTokenRefresh` task. |
 
-Both set `TZ=Asia/Kolkata` so scheduled job times match the market session
-regardless of the machine's locale.
+All set `TZ=Asia/Kolkata` so scheduled job times match the market session
+regardless of the machine's locale. The token agent's 06:30 is the exception:
+launchd reads a calendar time in the Mac's own time zone, so keep the Mac on IST.
+
+The token agent renews a token that is still valid with no extra setup. To get
+a new one after it has **expired** (the Mac was off for over a day), it logs in
+with your Dhan PIN and TOTP. Add them once to `atip_data/config.json` (or as
+`DHAN_PIN` / `DHAN_TOTP_SECRET` in ATIP's secret store):
+```json
+"dhan_pin":         "<your 6-digit Dhan PIN>",
+"dhan_totp_secret": "<the base32 secret shown when you enable TOTP at web.dhan.co>"
+```
 
 **Verify:**
 ```bash
 launchctl list | grep com.atip          # a 0 in the second column = last run exited cleanly
 tail -f atip_data/launchd.err           # ATIP's own output
 tail -f atip_data/publish.log           # snapshot uploads
+tail atip_data/dhan_token_refresh.log   # "OK: new Dhan token saved" each morning
+tools/dhan_token_refresh.sh --check     # is the current token valid?
 ```
 
 **Stop:**
@@ -420,6 +433,7 @@ Other pages:
 | LaunchAgent won't stay up; `launchd.err` says `Operation not permitted` | macOS privacy protection on `~/Documents`; see [Mac checks](#mac-checks) |
 | Anthropic key works from Terminal but not at login | It's exported in `~/.zshrc`; move it to `.env` in the project folder |
 | `Dhan credentials not set` | Add `dhan_client_id` + `dhan_access_token` to `atip_data/config.json` |
+| Dhan token expired / `401` from Dhan | Run `tools/dhan_token_refresh.sh` and read `atip_data/dhan_token_refresh.log`; make sure `deploy/launchd/install.sh token` was run |
 | `security_id not found` | Run `python main.py --dhan-securities` first |
 | `pandas-ta` fails on Python 3.14 | Not needed — ATIP uses `ta` (`pip install ta`); see docs/DEV_SETUP.md |
 | Dashboard empty | Run `python main.py --run postmarket` first to populate data |

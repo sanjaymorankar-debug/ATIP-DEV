@@ -259,10 +259,6 @@ def main():
     ap.add_argument("--live-feed",        action="store_true", help="Start Dhan WebSocket live tick feed (market hours only)")
     ap.add_argument("--dhan-securities",  action="store_true", help="Download Dhan security master list (run once after setup)")
     ap.add_argument("--dhan-history",     action="store_true", help="Download 600 days of historical data from Dhan")
-    ap.add_argument("--backfill-history", action="store_true", help="W39: fetch the missing years of daily history "
-                                                                      "(config history_years, default 7); resumable")
-    ap.add_argument("--history-years",    type=int, default=None, help="With --backfill-history: years to cover")
-    ap.add_argument("--backfill-dry-run", action="store_true", help="With --backfill-history: print the plan only")
     ap.add_argument("--dhan-quote",       nargs="+", metavar="SYM", help="Get live Dhan quotes e.g. --dhan-quote RELIANCE TCS")
     ap.add_argument("--purge-db",         action="store_true", help="Purge old data past retention window (600d core tables / 90d operational tables)")
     ap.add_argument("--purge-dry-run",    action="store_true", help="With --purge-db: report what would be deleted, without deleting")
@@ -322,14 +318,6 @@ def main():
         for key in INDEX_SERIES_SYMBOLS:
             ri = sync_index_benchmark_history(days=600, index_key=key)
             print(f"{'✅' if ri['status']=='SUCCESS' else '❌'}  {key}: {ri}")
-        return
-
-    if args.backfill_history:
-        from data.history_backfill import backfill
-        r = backfill(years=args.history_years, dry_run=args.backfill_dry_run)
-        print(f"\n{'✅' if r['status'] in ('SUCCESS', 'NO_NEW', 'DRY_RUN') else '❌'}  {r['status']}: "
-              f"{r['years']} years from {r['target_start']}, {len(r['windows'])} window(s), "
-              f"{r['calls_planned']} call(s) planned, {r.get('rows', 0)} rows stored")
         return
 
     # ── DATABASE PURGE ────────────────────────────────────────────────────────
@@ -478,6 +466,12 @@ def _start_index_feed():
         start_stock_feed()
     except Exception as e:
         log.warning(f"  Stock live feed did not start ({e})")
+    # W39 (DP-01): Dhan's 20-level depth for the watchlist -- only when config.json depth20.enabled
+    try:
+        from data.depth20 import start_depth20
+        start_depth20()
+    except Exception as e:
+        log.warning(f"  20-level depth feed did not start ({e})")
 
 
 def _start_dashboard(port: int = 8000):

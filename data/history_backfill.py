@@ -1,288 +1,280 @@
 """
-Long price history (W39, DP-23): the owner's note "last 7 years of data to be pulled and
-stored".
+W39 — seven years of daily price history (DP-11).
 
-Daily history used to stop at what the first `--dhan-history` run fetched (600 days) and,
-worse, the weekly retention purge (db/purge.py) deleted every prices_daily row older than
-600 days, so a longer history could not have been kept even if fetched. This module
-fetches the missing years and db/purge.py now keeps prices_daily for history_years.
+ATIP's prices_daily began on 2025-01-27 and run_historical_pipeline only ever asks
+Dhan for a recent window, so there was no multi-year history for the stock view,
+backtests, valuation bands or factor research. This fills it in, backwards from each
+symbol's earliest stored bar to "today minus N years", one window at a time:
 
-    history_years(cfg=None)        config "history_years" (default 7, bounded 1..25)
-    coverage(conn, symbols, end)   earliest stored bar per symbol and what is missing
-    plan(conn, symbols, years, end)   the yearly windows still to fetch, walking back from
-                                   each symbol's earliest stored bar to end - years
-    backfill(years, symbols, end_date, include_indices, dry_run)   fetch + store, resumable
-    status(conn)                   last runs and the coverage summary
+    * resumable    each run picks up where the last stopped (the earliest stored bar is
+                   the cursor), so a budget of N symbols a night finishes the Nifty 500
+                   in a couple of weeks without a long burst against Dhan
+    * listing-aware  a window that comes back empty, or starts well inside itself, is
+                   where the stock's history begins: the symbol is marked exhausted
+                   and never asked again for that window
+    * same basis   bars go through data.dhan.store_daily_bars, the corporate-action
+                   basis the daily pipeline uses
+    * kept         db/purge.py keeps prices_daily for 7 years (HISTORY tier), the
+                   window this fills
 
-HOW. One Dhan daily-history call per symbol per window of at most 365 days (Dhan serves
-long ranges, but a year at a time keeps every call small, cacheable and restartable),
-stored by data.dhan.run_historical_pipeline -- the same code path, corporate-action basis
-and upsert as the nightly sync, with basis_date = today because Dhan returns its whole
-history adjusted as of the day of the fetch. Benchmark / sector indices go through
-data.dhan.sync_index_benchmark_history window by window.
+Table: prices_daily_backfill (one row per symbol: target, earliest bar, exhausted,
+consecutive failures, last error).
 
-RESUMABLE. A run only asks for what is missing. A symbol whose window came back empty
-(listed later than the window) is remembered in history_backfill_symbol and not asked
-again for that window; a window the broker REFUSED (e.g. DH-902) is not remembered, so
-the next run retries it.
+Config, atip_data/config.json:
+    "history": {"backfill_enabled": true, "years": 7, "symbols_per_run": 40,
+                "chunk_days": 365, "pause_seconds": 0.4}
 
-    python -m data.history_backfill --years 7            # or: python main.py --backfill-history
-    python -m data.history_backfill --years 7 --dry-run  # the plan only, no API call
+CLI:
+    python -m data.history_backfill status
+    python -m data.history_backfill run [--symbols RELIANCE TCS] [--max 40] [--years 7]
+Scheduled nightly at 22:20 by pipeline/scheduler.py (_schedule_w39_jobs).
 """
 
 from __future__ import annotations
 
-import json
+import argparse
 import logging
-import uuid
+import time
 from datetime import date, datetime, timedelta
 
-log = logging.getLogger("atip.history")
+log = logging.getLogger(__name__)
 
-DEFAULT_YEARS = 7
-WINDOW_DAYS = 365
-TOLERANCE_DAYS = 7          # a first bar within a week of the target start counts as covered
-MIN_STUB_DAYS = 30          # a final window shorter than this is merged into the one before
+DEFAULTS = {"backfill_enabled": True, "years": 7, "symbols_per_run": 40, "chunk_days": 365,
+            "pause_seconds": 0.4}
+LISTING_TOLERANCE_DAYS = 10     # longer than any NSE closure: a gap this big at a window's start is the listing
+MAX_FAILURES = 3                # consecutive refusals for one symbol before it is parked
+
+DDL = """CREATE TABLE IF NOT EXISTS prices_daily_backfill (
+    symbol       TEXT PRIMARY KEY,
+    target_start TEXT NOT NULL,
+    earliest     TEXT,
+    exhausted    INTEGER NOT NULL DEFAULT 0,
+    failures     INTEGER NOT NULL DEFAULT 0,
+    rows_added   INTEGER NOT NULL DEFAULT 0,
+    last_error   TEXT,
+    updated_at   TIMESTAMP
+)"""
 
 
-def history_years(cfg: dict | None = None) -> int:
-    if cfg is None:
-        try:
-            from pathlib import Path
-            cfg = json.loads((Path("atip_data") / "config.json").read_text(encoding="utf-8"))
-        except Exception:
-            cfg = {}
+def settings() -> dict:
     try:
-        y = int(cfg.get("history_years") or DEFAULT_YEARS)
+        from ops.config import load
+        raw = load().get("history") or {}
+    except Exception:
+        raw = {}
+    out = {**DEFAULTS, **{k: v for k, v in raw.items() if k in DEFAULTS}}
+    out["backfill_enabled"] = out.get("backfill_enabled") is not False
+    for k in ("years", "symbols_per_run", "chunk_days"):
+        try:
+            out[k] = max(1, int(out[k]))
+        except (TypeError, ValueError):
+            out[k] = DEFAULTS[k]
+    try:
+        out["pause_seconds"] = max(0.0, float(out["pause_seconds"]))
     except (TypeError, ValueError):
-        y = DEFAULT_YEARS
-    return max(1, min(25, y))
-
-
-def target_start(years: int, end: date) -> date:
-    return end - timedelta(days=int(round(years * 365.25)))
+        out["pause_seconds"] = DEFAULTS["pause_seconds"]
+    return out
 
 
 def ensure_tables(conn):
-    from db.schema_w39 import W39_TABLES
-    for name in ("history_backfill_run", "history_backfill_symbol"):
-        for ddl in W39_TABLES[name]:
-            conn.execute(ddl)
+    conn.execute(DDL)
 
 
-def coverage(conn, symbols: list, end: date, years: int) -> list:
-    t0 = target_start(years, end)
-    first = {}
-    ph = ",".join("?" * len(symbols)) if symbols else "''"
-    for s, d, n in conn.execute(f"SELECT symbol, MIN(date), COUNT(*) FROM prices_daily WHERE symbol IN ({ph}) "
-                                f"GROUP BY symbol", list(symbols)):
-        first[s] = (str(d)[:10], n)
-    ex = _exhausted(conn)
-    out = []
-    for s in symbols:
-        d, n = first.get(s, (None, 0))
-        fd = date.fromisoformat(d) if d else None
-        covered = fd is not None and (fd - t0).days <= TOLERANCE_DAYS
-        no_older = s in ex and fd is not None and ex[s] >= fd - timedelta(days=TOLERANCE_DAYS)
-        out.append({"symbol": s, "first_date": d, "rows": n, "target_start": str(t0),
-                    "covered": covered or no_older,
-                    "missing_days": 0 if (covered or no_older or fd is None) else (fd - t0).days,
-                    "listed_later": bool(no_older and not covered)})
+def target_start(years: int, today: date | None = None) -> date:
+    return (today or date.today()) - timedelta(days=round(years * 365.25))
+
+
+def _d(v) -> date | None:
+    if v in (None, ""):
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+
+
+def _earliest(conn, symbol) -> date | None:
+    row = conn.execute("SELECT MIN(date) FROM prices_daily WHERE symbol=?", (symbol,)).fetchone()
+    return _d(row[0]) if row else None
+
+
+def _state(conn) -> dict:
+    out = {}
+    for r in conn.execute("SELECT symbol, target_start, earliest, exhausted, failures, rows_added, last_error "
+                          "FROM prices_daily_backfill"):
+        out[r[0]] = {"target_start": _d(r[1]), "earliest": _d(r[2]), "exhausted": bool(r[3]),
+                     "failures": int(r[4] or 0), "rows_added": int(r[5] or 0), "last_error": r[6]}
     return out
 
 
-def _exhausted(conn) -> dict:
+def needs_backfill(earliest: date | None, state: dict | None, target: date) -> bool:
+    """True while the symbol's stored history does not reach `target` and nothing says it cannot."""
+    if earliest is not None and earliest <= target + timedelta(days=LISTING_TOLERANCE_DAYS):
+        return False
+    if state:
+        if state["exhausted"] and state["target_start"] and state["target_start"] <= target:
+            return False                      # already walked back to an older target: listed later
+        if state["failures"] >= MAX_FAILURES:
+            return False                      # parked; `status` shows the error, `run --symbols` retries
+    return True
+
+
+def _save(conn, symbol, target, earliest, exhausted, failures, added, error):
+    conn.execute("""INSERT INTO prices_daily_backfill
+                        (symbol, target_start, earliest, exhausted, failures, rows_added, last_error, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON CONFLICT(symbol) DO UPDATE SET target_start=excluded.target_start,
+                        earliest=excluded.earliest, exhausted=excluded.exhausted, failures=excluded.failures,
+                        rows_added=prices_daily_backfill.rows_added + excluded.rows_added,
+                        last_error=excluded.last_error, updated_at=excluded.updated_at""",
+                 (symbol, str(target), str(earliest) if earliest else None, int(exhausted), failures, added,
+                  error, datetime.now()))
+
+
+def backfill_symbol(conn, dhan, symbol, target, chunk_days, events=None, pause=0.0, prior_failures=0) -> dict:
+    """Walk one symbol back to `target`, a window at a time. Commits after each window."""
+    from data.dhan import fetch_historical_daily, store_daily_bars
+    earliest = _earliest(conn, symbol)
+    end = (earliest - timedelta(days=1)) if earliest else date.today()
+    added = windows = 0
+    exhausted = False
+    error = None
+    while end >= target:
+        start = max(target, end - timedelta(days=chunk_days - 1))
+        df = fetch_historical_daily(symbol, start, end, dhan)
+        windows += 1
+        if df.empty:
+            if df.attrs.get("dhan_error"):
+                error = str(df.attrs["dhan_error"])
+            else:
+                exhausted = True              # nothing at all in the window: before the listing
+            break
+        # basis as of today, the day of the fetch -- not the window's end, years ago (W39b merge fix)
+        n, _held, _shifted = store_daily_bars(conn, symbol, df, start, end, events, basis_date=date.today())
+        conn.commit()
+        added += n
+        first = min(_d(x) for x in df["date"] if x is not None)
+        if first > start + timedelta(days=LISTING_TOLERANCE_DAYS):
+            exhausted = True                  # the history starts inside this window
+            break
+        end = start - timedelta(days=1)
+        if pause:
+            time.sleep(pause)
+    earliest = _earliest(conn, symbol)
+    failures = prior_failures + 1 if error else 0
+    _save(conn, symbol, target, earliest, exhausted, failures, added, error)
+    conn.commit()
+    return {"symbol": symbol, "rows": added, "windows": windows, "earliest": str(earliest) if earliest else None,
+            "exhausted": exhausted, "error": error}
+
+
+def run_backfill(symbols: list | None = None, years: int | None = None, max_symbols: int | None = None) -> dict:
+    """One budgeted pass. Explicit `symbols` are retried even when parked after failures."""
+    from db.schema import get_connection
+    cfg = settings()
+    years = years or cfg["years"]
+    target = target_start(years)
     try:
-        return {r[0]: date.fromisoformat(str(r[1])[:10]) for r in conn.execute(
-            "SELECT symbol, exhausted_before FROM history_backfill_symbol WHERE exhausted_before IS NOT NULL")}
-    except Exception:
-        return {}
+        from data import dhan as D
+        if not D.HAS_DHAN:
+            return {"status": "FAILED", "error": "pip install dhanhq"}
+        client, _ = D.get_dhan_client()
+    except RuntimeError as e:
+        return {"status": "FAILED", "error": str(e)}
 
-
-def plan(conn, symbols: list, years: int, end: date) -> list:
-    """[(window_start, window_end, [symbols])], newest window first. Windows are fixed year
-    blocks counted back from `end` (so symbols share calls); a symbol joins every block that
-    overlaps what it is missing: from the day before its first stored bar (or `end` when it
-    has none) back to end - years, or to the date before which it is known to have none."""
-    t0 = target_start(years, end)
-    ex = _exhausted(conn)
-    blocks = []
-    k = 0
-    while True:
-        be = end - timedelta(days=k * WINDOW_DAYS)
-        if be < t0:
-            break
-        bs = max(t0, be - timedelta(days=WINDOW_DAYS - 1))
-        if (bs - t0).days < MIN_STUB_DAYS:       # a few days left over: fold them into this window
-            bs = t0
-        blocks.append((bs, be))
-        if bs == t0:
-            break
-        k += 1
-    need = {}
-    for c in coverage(conn, symbols, end, years):
-        if c["covered"]:
-            continue
-        top = date.fromisoformat(c["first_date"]) - timedelta(days=1) if c["first_date"] else end
-        floor = max(t0, ex[c["symbol"]]) if c["symbol"] in ex else t0
-        if top < floor:
-            continue
-        for bs, be in blocks:
-            if bs <= top and be >= floor:
-                need.setdefault((bs, be), []).append(c["symbol"])
-    return [(bs, be, sorted(need[(bs, be)])) for bs, be in blocks if (bs, be) in need]
-
-
-def backfill(years: int | None = None, symbols: list | None = None, end_date: date | None = None,
-             include_indices: bool = True, dry_run: bool = False, fetch=None, index_fetch=None) -> dict:
-    """Fetch every missing window. fetch / index_fetch default to data.dhan's
-    run_historical_pipeline / sync_index_benchmark_history (injectable for tests)."""
-    from db.schema import get_connection, log_job
-    years = int(years or history_years())
-    end = end_date or date.today()
     conn = get_connection()
+    results, errors, todo = [], 0, []
     try:
         ensure_tables(conn)
-        if symbols is None:
+        forced = bool(symbols)
+        universe = sorted(set(symbols or D.get_tracked_symbols(conn)))
+        state = _state(conn)
+        if forced:
+            todo = [s for s in universe if needs_backfill(_earliest(conn, s), None, target)]
+        else:
+            todo = [s for s in universe if needs_backfill(_earliest(conn, s), state.get(s), target)]
+        budget = max_symbols or cfg["symbols_per_run"]
+        basis = {}
+        try:
+            from data.corporate_actions import basis_events
+            basis = basis_events(conn)
+        except Exception as e:
+            log.warning(f"  Corporate-action basis unavailable, storing Dhan's bars as-is: {e}")
+        log.info(f"📜 History backfill to {target} ({years}y): {len(todo)} of {len(universe)} symbols short, "
+                 f"doing {min(budget, len(todo))}")
+        for sym in todo[:budget]:
+            prior = (state.get(sym) or {}).get("failures", 0) if not forced else 0
+            r = backfill_symbol(conn, client, sym, target, cfg["chunk_days"], basis.get(sym),
+                                cfg["pause_seconds"], prior)
+            results.append(r)
+            errors += bool(r["error"])
+    finally:
+        conn.close()
+    rows = sum(r["rows"] for r in results)
+    if not todo:
+        return {"status": "SKIPPED", "reason": f"history complete back to {target}", "rows": 0,
+                "target": str(target), "symbols": 0, "errors": 0, "remaining": 0, "results": []}
+    status = "FAILED" if results and errors == len(results) else "PARTIAL" if errors else "SUCCESS"
+    return {"status": status, "target": str(target), "symbols": len(results), "rows": rows, "errors": errors,
+            "remaining": max(0, len(todo) - len(results)), "results": results,
+            "error": f"{errors}/{len(results)} symbols refused" if errors else None}
+
+
+def coverage(conn, years: int | None = None, symbols: list | None = None) -> dict:
+    """How much of the tracked universe already reaches back `years`."""
+    years = years or settings()["years"]
+    target = target_start(years)
+    ensure_tables(conn)
+    if symbols is None:
+        try:
             from data.dhan import get_tracked_symbols
             symbols = get_tracked_symbols(conn)
-        symbols = sorted(set(symbols))
-        windows = plan(conn, symbols, years, end)
-        idx = _index_plan(conn, years, end) if include_indices else []
-        out = {"years": years, "target_start": str(target_start(years, end)), "symbols": len(symbols),
-               "windows": [{"start": str(a), "end": str(b), "symbols": len(s)} for a, b, s in windows],
-               "index_windows": [{"index": k, "start": str(a), "end": str(b)} for k, a, b in idx],
-               "calls_planned": sum(len(s) for _, _, s in windows) + len(idx)}
-        if dry_run:
-            out["status"] = "DRY_RUN"
-            return out
-        run_id = f"hist_{uuid.uuid4().hex[:12]}"
-        conn.execute("INSERT INTO history_backfill_run (run_id,started_at,years,target_start,symbols,windows,status) "
-                     "VALUES (?,?,?,?,?,?,?)", (run_id, datetime.now(), years, out["target_start"], len(symbols),
-                                                len(windows), "RUNNING"))
-        conn.commit()
-    finally:
-        conn.close()
-
-    if fetch is None or index_fetch is None:
-        from data import dhan as DH
-        fetch = fetch or DH.run_historical_pipeline
-        index_fetch = index_fetch or DH.sync_index_benchmark_history
-    rows, refused, results = 0, 0, []
-    today = date.today()
-    for ws, we, syms in windows:
-        before = _first_dates(syms)
-        r = fetch(symbols=syms, interval_min=0, start_date=ws, end_date=we, basis_date=today) or {}
-        rows += int(r.get("rows") or 0)
-        refused += int(r.get("refused") or 0)
-        after = _first_dates(syms)
-        # nothing older arrived and the broker refused nothing: the symbol has no history in
-        # this window (listed later) -- remember it so later runs do not ask again
-        if not int(r.get("refused") or 0) and r.get("status") != "FAILED":
-            _mark_exhausted({s: (before.get(s) or str(we)) for s in syms if after.get(s) == before.get(s)})
-        results.append({"start": str(ws), "end": str(we), "symbols": len(syms), "status": r.get("status"),
-                        "rows": r.get("rows"), "refused": r.get("refused")})
-    for key, ws, we in idx:
-        r = index_fetch(days=(we - ws).days, end_date=we, index_key=key) or {}
-        rows += int(r.get("rows") or 0)
-        results.append({"index": key, "start": str(ws), "end": str(we), "status": r.get("status"),
-                        "rows": r.get("rows")})
-    bad = [x for x in results if x.get("status") == "FAILED"]
-    status = "SUCCESS" if not bad else ("FAILED" if len(bad) == len(results) else "PARTIAL")
-    if not results:
-        status = "NO_NEW"
-    conn = get_connection()
-    try:
-        conn.execute("UPDATE history_backfill_run SET finished_at=?, rows_stored=?, status=?, detail_json=? WHERE run_id=?",
-                     (datetime.now(), rows, status, json.dumps({"windows": results, "refused": refused}), run_id))
-        conn.commit()
-    finally:
-        conn.close()
-    log_job("history_backfill", status, rows, error=f"{len(bad)} window(s) failed" if bad else None)
-    out.update({"run_id": run_id, "status": status, "rows": rows, "refused": refused, "results": results})
-    return out
-
-
-def _index_plan(conn, years, end) -> list:
-    from data.dhan import INDEX_SERIES_SYMBOLS
-    t0 = target_start(years, end)
-    out = []
-    for key, sym in INDEX_SERIES_SYMBOLS.items():
-        r = conn.execute("SELECT MIN(date) FROM prices_daily WHERE symbol=?", (sym,)).fetchone()
-        first = date.fromisoformat(str(r[0])[:10]) if r and r[0] else end
-        we = first - timedelta(days=1)
-        while (we - t0).days > TOLERANCE_DAYS:
-            ws = max(t0, we - timedelta(days=WINDOW_DAYS - 1))
-            if (ws - t0).days < MIN_STUB_DAYS:
-                ws = t0
-            out.append((key, ws, we))
-            we = ws - timedelta(days=1)
-    return out
-
-
-def _first_dates(symbols) -> dict:
-    from db.schema import get_connection
-    conn = get_connection()
-    try:
-        ph = ",".join("?" * len(symbols))
-        return {s: str(d)[:10] for s, d in conn.execute(
-            f"SELECT symbol, MIN(date) FROM prices_daily WHERE symbol IN ({ph}) GROUP BY symbol", list(symbols))}
-    finally:
-        conn.close()
-
-
-def _mark_exhausted(first_by_symbol: dict):
-    """{symbol: date}: the broker has no bar for the symbol before that date (it returned
-    nothing older for a window that ended there)."""
-    if not first_by_symbol:
-        return
-    from db.schema import get_connection
-    conn = get_connection()
-    try:
-        for s, d in first_by_symbol.items():
-            conn.execute("INSERT INTO history_backfill_symbol (symbol, exhausted_before, checked_at, note) VALUES "
-                         "(?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET exhausted_before=excluded.exhausted_before, "
-                         "checked_at=excluded.checked_at, note=excluded.note",
-                         (s, str(d)[:10], datetime.now(), "the broker returned no bar before this date"))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def status(conn=None) -> dict:
-    from db.schema import get_connection
-    own = conn is None
-    conn = conn or get_connection()
-    try:
-        ensure_tables(conn)
-        years = history_years()
-        from data.dhan import get_tracked_symbols
-        try:
-            syms = get_tracked_symbols(conn)
         except Exception:
-            syms = []
-        cov = coverage(conn, syms, date.today(), years) if syms else []
-        runs = [dict(r) for r in conn.execute(
-            "SELECT run_id, started_at, finished_at, years, target_start, symbols, windows, rows_stored, status "
-            "FROM history_backfill_run ORDER BY started_at DESC LIMIT 10")]
-        return {"history_years": years, "target_start": str(target_start(years, date.today())),
-                "symbols": len(cov), "covered": sum(1 for c in cov if c["covered"]),
-                "listed_later": sum(1 for c in cov if c["listed_later"]),
-                "missing": [c for c in cov if not c["covered"]][:50], "runs": runs}
-    finally:
-        if own:
+            symbols = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM prices_daily_backfill")]
+    state = _state(conn)
+    complete = listed_later = parked = pending = 0
+    oldest = None
+    for s in symbols:
+        e = _earliest(conn, s)
+        st = state.get(s)
+        if e and (oldest is None or e < oldest):
+            oldest = e
+        if e is not None and e <= target + timedelta(days=LISTING_TOLERANCE_DAYS):
+            complete += 1
+        elif st and st["exhausted"] and st["target_start"] and st["target_start"] <= target:
+            listed_later += 1
+        elif st and st["failures"] >= MAX_FAILURES:
+            parked += 1
+        else:
+            pending += 1
+    return {"years": years, "target": str(target), "symbols": len(symbols), "complete": complete,
+            "listed_later": listed_later, "parked": parked, "pending": pending,
+            "oldest_bar": str(oldest) if oldest else None,
+            "parked_errors": {s: st["last_error"] for s, st in state.items() if st["failures"] >= MAX_FAILURES}}
+
+
+def main(argv=None):
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    ap = argparse.ArgumentParser(description="Seven-year daily price history backfill (W39)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+    r = sub.add_parser("run")
+    r.add_argument("--symbols", nargs="+")
+    r.add_argument("--max", type=int)
+    r.add_argument("--years", type=int)
+    a = ap.parse_args(argv)
+    if a.cmd == "status":
+        from db.schema import get_connection
+        conn = get_connection()
+        try:
+            print(coverage(conn))
+        finally:
             conn.close()
+    else:
+        out = run_backfill(a.symbols, a.years, a.max)
+        print({k: v for k, v in out.items() if k != "results"})
 
 
 if __name__ == "__main__":
-    import argparse
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
-    ap = argparse.ArgumentParser(description="ATIP long price-history backfill (DP-23)")
-    ap.add_argument("--years", type=int, default=None, help=f"years of daily history (default: config history_years "
-                                                            f"or {DEFAULT_YEARS})")
-    ap.add_argument("--symbols", nargs="+", help="only these symbols (default: the tracked universe)")
-    ap.add_argument("--no-indices", action="store_true", help="skip the benchmark / sector indices")
-    ap.add_argument("--dry-run", action="store_true", help="print the plan; no API call")
-    a = ap.parse_args()
-    print(json.dumps(backfill(a.years, a.symbols, include_indices=not a.no_indices, dry_run=a.dry_run),
-                     indent=2, default=str))
+    main()
