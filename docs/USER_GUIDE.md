@@ -92,6 +92,8 @@ Secrets do not belong in config.json any more. Use these:
 | Rollback drill (safe) | `python -m ops rollback-drill --to <tag>`: a scratch clone on port 8078, never production |
 | Key rotation | `python -m ops rotate-key` (dry run), then `--apply`. Take a backup afterwards, then delete `ATIP_ENCRYPTION_KEY.previous` |
 | Regenerate the API reference | `python -m ops api-docs` |
+| Search a strategy's parameters | `python -m backtest optimize --strategy S --start D --end D --space '{...}' --method bayes` (Bayesian search, seeded; `grid`, `random`, `adaptive` also exist). Never on the test window |
+| Check a search for overfitting | `python -m backtest pbo OPTIMIZATION_RUN_ID`: the probability of backtest overfitting, and whether the in-sample choice beats a random choice out of sample (`stochastic_dominance`: first / second order). `python -m backtest cpcv ...` gives a distribution of out-of-sample paths; add `--engine event_driven` to run it through the event-driven engine (fills against bar volume, impact) |
 
 ## 6. Troubleshooting
 

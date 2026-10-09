@@ -850,12 +850,23 @@ def test_event_driven_strategy_version_reduces_and_stores_partial_rows(db):
 
 # Full-result digests of the event-driven engine BEFORE it traded ADD / REDUCE (same data, same
 # requests): BUY / SELL-only runs must not change at all.
+#
+# Re-pinned for the close-out return fix (BT-14, CPCV on this engine chains each group run's daily
+# returns): with close_out_at_end (the default) the positions closed at the end of the window used to
+# change the last equity row's cash / equity but not its daily_return, so the stored daily returns
+# chained to more than the final equity (by the close-out costs). The full result dicts were diffed
+# before / after: in each of dip, dip_sliced_capped and buy_and_hold exactly ONE leaf changed,
+# equity[186].daily_return -- dip 0.00238654 -> 0.00227962 (was 8cdc049a...), dip_sliced_capped
+# 0.0023861 -> 0.0022792 (was 4417c980...), buy_and_hold 1.029e-05 -> -2.991e-05 (was 3d044510...).
+# Trades, equity, metrics, events and the bias report are identical; the skipped-decision reporting
+# added at the same time (outside-universe events, a version's not_simulated decisions) adds nothing
+# here. dip_short_hold_open_end (close_out_at_end false) is untouched.
 ED_LEGACY_RUNS = {
     "dip": ({"strategy_id": "dip", "universe": list(WAVES)}, {},
-            30, "8cdc049abe10fa008c0db753e713af13d86f9890daefeb324b6bba7d99645caf"),
+            30, "5d38d6ec7d7ffb2952aaf19ceba0b2027b5df3c986404d6eed82f76d70e17ef9"),
     "dip_sliced_capped": ({"strategy_id": "dip", "universe": list(WAVES)},
                           {"slices": 3, "latency_bars": 2, "ttl_bars": 5, "participation_cap": 0.001},
-                          30, "4417c9808ef7e6da6b5c97d453dfdc583cdaab301c0e91646e49e5d35a5cb44a"),
+                          30, "dda38ec626a96195e9a94a2cd2b5cb965ca3bdcc17b851ef237ec0bfe1654ddf"),
     "dip_short_hold_open_end": ({"strategy_id": "dip", "universe": list(WAVES), "close_out_at_end": False,
                                  "params": {"max_hold_sessions": 2, "target_pct": 2, "stop_pct": 1.5}},
                                 {"slices": 2, "participation_cap": 0.0003, "ttl_bars": 2, "impact": "none"},
@@ -865,7 +876,7 @@ ED_LEGACY_RUNS = {
                                 # changed (same 117 trades, same events). The other three pins are untouched.
                                 117, "41ab6884b4a0651e0b7363b37131d8d6a905850da74381e16bcd344f3a219ea1"),
     "buy_and_hold": ({"strategy_id": "buy_and_hold", "universe": ["UPP", "DWN", "RUN"], "cost_model": "flat"},
-                     {"impact": "none"}, 3, "3d04451056c6ca555c9e6943d0d1142936a180a47d3b2bde22143e5bf908ae25"),
+                     {"impact": "none"}, 3, "e66b3dcc9e0ef12e560529005a18f19cf618f3e3beab6ce691e181290bc08394"),
 }
 
 

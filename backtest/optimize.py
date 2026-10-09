@@ -1,14 +1,14 @@
 """
 Parameter optimisation (W23, BT-04).
 
-    optimize(request, space, method="grid"|"random"|"adaptive", select_by="sharpe",
+    optimize(request, space, method="grid"|"random"|"adaptive"|"bayes", select_by="sharpe",
              max_trials=60, seed=42, min_trades=10) -> parent run_id + trials
 
 SPACE: {param: spec} with spec one of
     {"values": [..]}                      explicit candidates
     {"min": a, "max": b, "step": s}       a numeric grid (inclusive)
-    {"min": a, "max": b}                  continuous (random / adaptive only); integers when
-                                          both bounds are integers
+    {"min": a, "max": b}                  continuous (random / adaptive / bayes only); integers
+                                          when both bounds are integers
 Parameters not in the space keep the request's params (or the strategy defaults).
 
 METHODS
@@ -17,9 +17,34 @@ METHODS
     adaptive   half the budget random, the rest local search: each step perturbs the best
                set so far by one grid step (or 10% of the range) in one parameter; a
                cheap, transparent coarse-to-fine search -- not Bayesian optimisation
+    bayes      Bayesian optimisation by a Tree-structured Parzen Estimator (Bergstra,
+               Bardenet, Bengio & Kegl 2011, "Algorithms for hyper-parameter optimization"),
+               numpy only:
+                 start    the first max(5, max_trials // 5) trials (at most max_trials) are the
+                          random method's draws for the same seed
+                 split    then, before each trial, the trials so far are split: GOOD = the best
+                          ceil(25%) of them by the select_by score (at most 25; ties -> the
+                          earlier trial), BAD = the rest -- a trial with no score (failed, or
+                          under min_trades) is always BAD
+                 model    per parameter, independently, a density of GOOD, l(x), and of BAD,
+                          g(x): numeric parameters a Parzen mixture -- one Gaussian per trial
+                          plus a prior N(mid, range), equal weights, each bandwidth the larger
+                          gap to its sorted neighbours clipped to [range / min(100, n + 1),
+                          range], every component truncated to the bounds; categorical ones
+                          (non-numeric values) (count + 1/k) / (n + 1)
+                 choose   24 candidates drawn from l (rejection-sampled inside the bounds) and
+                          the one maximising l(x) / g(x) -- the expected-improvement criterion
+                          of the paper -- that has not run yet is the next trial
+               Parameter kinds: a {"values"} list of numbers or a {min, max, step} grid is
+               ordinal (the index of the sorted values, -0.5 .. k - 0.5, rounded; each value's
+               probability is its unit bin's mass), other values are categorical, integer
+               bounds give integers (bins [v - 0.5, v + 0.5]), other bounds a continuous
+               value (rounded to 6 decimals like random). The same seed gives the same
+               trials. A space whose every combination has run ends the search early.
 Every trial is an ordinary backtest run (kind opt_trial) under one parent run (kind
 optimization), so each can be inspected, and the whole search is reproducible from
-the parent's snapshot.
+the parent's snapshot. Whatever the method, every trial that ran counts in the deflated
+Sharpe's number of trials.
 
 OUT-OF-SAMPLE PROTECTION: optimisation is refused on the test window (period_label
 "test" / allow_test). Optimise on research (or validation), then evaluate the chosen
@@ -43,12 +68,17 @@ import math
 import random
 from statistics import NormalDist
 
+import numpy as np
+
 from backtest import service, store
 from db.schema import get_connection
 
-METHODS = ("grid", "random", "adaptive")
+METHODS = ("grid", "random", "adaptive", "bayes")
 MAX_TRIALS = 400
 _N = NormalDist()
+TPE_GAMMA = 0.25            # the best quarter of the trials so far model l(x) ...
+TPE_GOOD_MAX = 25           # ... at most 25 of them
+TPE_CANDIDATES = 24         # draws from l(x) per trial
 
 
 def _grid_values(spec):
@@ -106,6 +136,189 @@ def _neighbour(spec, value, rng):
     d = (hi - lo) * 0.1 * rng.choice((-1, 1))
     v = min(hi, max(lo, value + d))
     return int(round(v)) if isinstance(lo, int) and isinstance(hi, int) else round(v, 6)
+
+
+# ── bayes: Tree-structured Parzen Estimator ────────────────────────────────
+
+def tpe_startup(max_trials: int) -> int:
+    """Random trials before the model takes over."""
+    return min(int(max_trials), max(5, int(max_trials) // 5))
+
+
+def _sf(x):
+    """P(N(0, 1) > x), numpy, relative error < 1.2e-7 in either tail (Numerical Recipes erfc)."""
+    z = np.abs(x) / math.sqrt(2)
+    t = 1.0 / (1.0 + 0.5 * z)
+    r = t * np.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (
+        -0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))))
+    return np.where(x >= 0, 0.5 * r, 1.0 - 0.5 * r)
+
+
+def _tails(x):
+    """(P(N(0, 1) <= x), P(N(0, 1) > x)): each point's two tails, the small one computed directly."""
+    s = _sf(np.abs(x))
+    return np.where(x < 0, s, 1.0 - s), np.where(x < 0, 1.0 - s, s)
+
+
+def _mass(a, b):
+    """P(a < N(0, 1) <= b) for a <= b, as a difference of upper tails when a >= 0, else of lower
+    tails (no cancellation; adjacent bins telescope to the whole interval's mass); a bin far
+    narrower than the unit takes its width x the density at its middle."""
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    (lo_a, up_a), (lo_b, up_b) = _tails(a), _tails(b)
+    cdf = np.where(a >= 0, up_a - up_b, lo_b - lo_a)
+    mid = (a + b) / 2
+    narrow = (b - a) * np.exp(-mid * mid / 2) / math.sqrt(2 * math.pi)
+    return np.maximum(np.where(b - a < 1e-3, narrow, cdf), 0.0)
+
+
+class _Dim:
+    """One parameter of the space as the estimator sees it (optimize's module docstring):
+    cat (a category index), ord (an index into the sorted numeric values), int, float."""
+
+    def __init__(self, spec: dict):
+        if "values" in spec or spec.get("step"):
+            vals = _grid_values(spec)
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+                self.kind, self.values = "ord", sorted(set(vals))
+                self.lo, self.hi = -0.5, len(self.values) - 0.5
+            else:
+                self.kind, self.values = "cat", []
+                for v in vals:
+                    if v not in self.values:
+                        self.values.append(v)
+            return
+        lo, hi = spec["min"], spec["max"]
+        if isinstance(lo, int) and isinstance(hi, int) and not isinstance(lo, bool) and not isinstance(hi, bool):
+            self.kind, self.vmin, self.vmax = "int", lo, hi
+            self.lo, self.hi = lo - 0.5, hi + 0.5
+        elif float(lo) == float(hi):
+            self.kind, self.value = "const", lo                     # min == max: nothing to model
+        else:
+            self.kind, self.lo, self.hi = "float", float(lo), float(hi)
+
+    def size(self):
+        """How many distinct values (None: continuous)."""
+        if self.kind in ("cat", "ord"):
+            return len(self.values)
+        if self.kind == "int":
+            return self.vmax - self.vmin + 1
+        return 1 if self.kind == "const" else None
+
+    def encode(self, value) -> float:
+        if self.kind == "const":
+            return 0.0
+        if self.kind == "cat":
+            return float(self.values.index(value))
+        if self.kind == "ord":
+            if value in self.values:
+                return float(self.values.index(value))
+            return float(min(range(len(self.values)), key=lambda i: abs(self.values[i] - value)))
+        return float(value)
+
+    def decode(self, x: float):
+        if self.kind == "const":
+            return self.value
+        if self.kind == "cat":
+            return self.values[int(x)]
+        if self.kind == "ord":
+            return self.values[int(min(len(self.values) - 1, max(0, math.floor(x + 0.5))))]
+        if self.kind == "int":
+            return int(min(self.vmax, max(self.vmin, math.floor(x + 0.5))))
+        return round(float(min(self.hi, max(self.lo, x))), 6)
+
+    # numeric: an adaptive Parzen estimator; categorical: smoothed frequencies
+    def model(self, xs: np.ndarray):
+        if self.kind == "const":
+            return None
+        if self.kind == "cat":
+            k = len(self.values)
+            counts = np.bincount(xs.astype(int), minlength=k) if len(xs) else np.zeros(k)
+            return (counts + 1.0 / k) / (len(xs) + 1.0)
+        width = self.hi - self.lo
+        mus = np.append(xs, (self.lo + self.hi) / 2)               # the trials, then the prior
+        order = np.argsort(mus, kind="stable")
+        srt = mus[order]
+        gaps = np.maximum(np.diff(np.concatenate([[self.lo], srt])), np.diff(np.concatenate([srt, [self.hi]])))
+        sig = np.empty_like(mus)
+        sig[order] = gaps
+        sig = np.clip(sig, width / min(100.0, len(mus)), width)
+        sig[-1] = width
+        z = _mass((self.lo - mus) / sig, (self.hi - mus) / sig)     # truncation to the bounds
+        return mus, sig, np.full(len(mus), 1.0 / len(mus)) / np.maximum(z, 1e-300)
+
+    def draw(self, model, rng, n: int) -> np.ndarray:
+        if self.kind == "const":
+            return np.zeros(n)
+        if self.kind == "cat":
+            return rng.choice(len(self.values), size=n, p=model).astype(float)
+        mus, sig, _w = model
+        comp = rng.integers(0, len(mus), size=n)                    # equal weights
+        x = rng.normal(mus[comp], sig[comp])
+        for _ in range(25):                                         # truncated normals, by rejection
+            out = (x < self.lo) | (x > self.hi)
+            if not out.any():
+                break
+            x[out] = rng.normal(mus[comp[out]], sig[comp[out]])
+        x = np.clip(x, self.lo, self.hi)
+        if self.kind in ("ord", "int"):
+            x = np.floor(x + 0.5)                                    # the value whose bin it fell in
+            x = np.clip(x, self.lo + 0.5, self.hi - 0.5)
+        return x
+
+    def log_density(self, model, x: np.ndarray) -> np.ndarray:
+        if self.kind == "const":
+            return np.zeros(len(x))
+        if self.kind == "cat":
+            return np.log(model[x.astype(int)])
+        mus, sig, wz = model
+        if self.kind == "float":
+            u = (x[:, None] - mus[None, :]) / sig[None, :]
+            p = (np.exp(-u * u / 2) / (math.sqrt(2 * math.pi) * sig[None, :]) * wz[None, :]).sum(axis=1)
+        else:                                                       # the mass of the value's unit bin
+            a = (np.maximum(x - 0.5, self.lo)[:, None] - mus[None, :]) / sig[None, :]
+            b = (np.minimum(x + 0.5, self.hi)[:, None] - mus[None, :]) / sig[None, :]
+            p = (_mass(a, b) * wz[None, :]).sum(axis=1)
+        return np.log(np.maximum(p, 1e-300))
+
+
+class TPE:
+    """Suggests the next parameter set from the trials so far (optimize's module docstring)."""
+
+    def __init__(self, space: dict, seed: int):
+        self.keys = list(space)
+        self.dims = [_Dim(space[k]) for k in self.keys]
+        self.rng = np.random.default_rng(seed)
+        sizes = [d.size() for d in self.dims]
+        self.size = None if any(s is None for s in sizes) else math.prod(sizes)
+
+    def split(self, trials: list) -> tuple:
+        """(GOOD, BAD) trials: the best ceil(gamma x n) scored (at most TPE_GOOD_MAX), the rest."""
+        scored = sorted((t for t in trials if t["score"] is not None), key=lambda t: (-t["score"], t["index"]))
+        n_good = min(len(scored), TPE_GOOD_MAX, max(1, math.ceil(TPE_GAMMA * len(trials))))
+        good = scored[:n_good]
+        ids = {t["index"] for t in good}
+        return good, [t for t in trials if t["index"] not in ids]
+
+    def suggest(self, trials: list, is_new) -> dict | None:
+        """The candidate with the largest l(x) / g(x) among TPE_CANDIDATES draws from l that
+        is_new(params) accepts; up to 4 rounds of draws, then None."""
+        good, bad = self.split(trials)
+        if not good:
+            return None
+        models = []
+        for k, d in zip(self.keys, self.dims):
+            xg = np.array([d.encode(t["params"][k]) for t in good])
+            xb = np.array([d.encode(t["params"][k]) for t in bad])
+            models.append((d.model(xg), d.model(xb)))
+        for _ in range(4):
+            xs = [d.draw(lm, self.rng, TPE_CANDIDATES) for d, (lm, _gm) in zip(self.dims, models)]
+            score = sum(d.log_density(lm, x) - d.log_density(gm, x) for d, (lm, gm), x in zip(self.dims, models, xs))
+            for i in np.argsort(-score, kind="stable"):
+                params = {k: d.decode(x[i]) for k, d, x in zip(self.keys, self.dims, xs)}
+                if is_new(params):
+                    return params
+        return None
 
 
 def metric_of(res: dict, key: str, min_trades: int):
@@ -206,7 +419,7 @@ def prepare(request: dict, space: dict, method: str, max_trials: int):
             n *= len(_grid_values(s))
         if n > max_trials:
             raise ValueError(f"grid has {n} combinations > max_trials {max_trials}: narrow the space, raise "
-                             f"max_trials, or use random / adaptive")
+                             f"max_trials, or use random / adaptive / bayes")
     service.resolve_config(request)                 # validates the base request
 
 
@@ -242,11 +455,12 @@ def optimize(request: dict, space: dict, method: str = "grid", select_by: str = 
                 run({**base_params, **dict(zip(keys, combo))})
         else:
             budget = int(max_trials)
-            n_random = budget if method == "random" else max(1, budget // 2)
+            n_random = {"random": budget, "bayes": tpe_startup(budget)}.get(method, max(1, budget // 2))
             attempts = 0
             while len(trials) < n_random and attempts < n_random * 20:
                 attempts += 1
                 run({**base_params, **{k: _sample(s, rng) for k, s in space.items()}})
+            n_start = len(trials)
             attempts = 0
             while method == "adaptive" and len(trials) < budget and attempts < budget * 20:
                 attempts += 1
@@ -257,6 +471,13 @@ def optimize(request: dict, space: dict, method: str = "grid", select_by: str = 
                 best = max(scored, key=lambda t: t["score"])
                 k = rng.choice(list(space))
                 run({**best["params"], k: _neighbour(space[k], best["params"].get(k), rng)})
+            if method == "bayes":
+                tpe = TPE(space, seed)
+                attempts = 0
+                while len(trials) < budget and attempts < budget * 20 and (tpe.size is None or len(trials) < tpe.size):
+                    attempts += 1
+                    params = tpe.suggest(trials, lambda p: json.dumps({**base_params, **p}, sort_keys=True) not in seen)
+                    run({**base_params, **(params or {k: _sample(s, rng) for k, s in space.items()})})
         scored = sorted([t for t in trials if t["score"] is not None], key=lambda t: -t["score"])
         best = scored[0] if scored else None
         vals = [t["score"] for t in scored]
@@ -272,6 +493,10 @@ def optimize(request: dict, space: dict, method: str = "grid", select_by: str = 
         summary = {"method": method, "select_by": select_by, "space": space, "best": best,
                    "trials": sorted(trials, key=lambda t: (t["score"] is None, -(t["score"] or 0))),
                    "diagnostics": diag}
+        if method == "bayes":
+            summary["search"] = {"estimator": "TPE (Bergstra et al. 2011)", "startup_trials": n_start,
+                                 "gamma": TPE_GAMMA, "good_max": TPE_GOOD_MAX, "candidates": TPE_CANDIDATES,
+                                 "seed": seed}
         _finish(pid, "COMPLETED" if best else "FAILED", summary, metrics=best["metrics"] if best else None,
                 bias={"selection": f"best {select_by} over {len(trials)} trials on {request.get('period_label') or 'full'}"
                                    f" window; in-sample -- confirm out of sample (walk-forward / test)"})

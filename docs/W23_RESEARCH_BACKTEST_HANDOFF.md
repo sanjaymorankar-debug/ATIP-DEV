@@ -7,7 +7,7 @@
 
 | ID | Feature | Where |
 |---|---|---|
-| BT-04 | Parameter optimisation | `backtest/optimize.py`. Grid, random (seeded) or adaptive (random then local refinement; stated as not Bayesian) search over a space `{param: {values} \| {min,max,step} \| {min,max}}`. Every trial is an ordinary run (kind `opt_trial`) under a parent (kind `optimization`). A grid larger than `max_trials` is refused (no silent truncation). Trials under `min_trades` score None. **Refused on the test window.** Overfitting diagnostics: Deflated Sharpe Ratio (Bailey & López de Prado), best vs median, share of positive trials, `overfit_warning` |
+| BT-04 | Parameter optimisation | `backtest/optimize.py`. Grid, random (seeded), adaptive (random then local refinement; not Bayesian) or bayes (a Tree-structured Parzen Estimator after a seeded random start, added later for BT-04) search over a space `{param: {values} \| {min,max,step} \| {min,max}}`. Every trial is an ordinary run (kind `opt_trial`) under a parent (kind `optimization`). A grid larger than `max_trials` is refused (no silent truncation). Trials under `min_trades` score None. **Refused on the test window.** Overfitting diagnostics: Deflated Sharpe Ratio (Bailey & López de Prado), best vs median, share of positive trials, `overfit_warning` |
 | QR-11 | Parameter sensitivity | `backtest/sensitivity.py`. One-at-a-time ±steps around the chosen set: a curve per parameter, a stability ratio, and a `knife_edge` flag (a ±1 step loses more than half the metric or flips its sign), plus an optional 2-D heat map. `robust_share` |
 | BT-14 | Robustness | `backtest/robustness.py`. Baseline, all percentage costs doubled, slippage tripled, seeded universe halves, first / second half of the period, per-regime returns (market_health), trade-shuffle Monte Carlo P(loss). Six PASS / FAIL checks → score, verdict ROBUST / FRAGILE / NOT_ROBUST |
 | BT-12 | VaR / CVaR in backtests | `backtest/metrics.py tail_risk()`, now in every run's metrics: `var_95`, `cvar_95`, `var_99`, `cvar_99` (historical), `var_95_param`, `skew`, `excess_kurtosis`, `worst_day`, `best_day` |
@@ -43,4 +43,4 @@
 ## Notes for QA
 
 - A full-universe study (~500 symbols) is much slower than the 12-stock smoke run. Run studies off-hours.
-- The adaptive search is transparent local refinement, not Bayesian optimisation.
+- The adaptive search is transparent local refinement, not Bayesian optimisation. The Bayesian search is `--method bayes` (TPE, numpy only; the same trial storage, deflated-Sharpe trial count and test-window refusal).

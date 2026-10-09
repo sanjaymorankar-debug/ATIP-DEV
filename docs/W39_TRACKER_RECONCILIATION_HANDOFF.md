@@ -226,7 +226,7 @@ An audit found none of the 14 requirements missing outright, but most were only 
   - Tested on recorded response shapes only.
   - Check these in test mode: the `receipt` / `subscription_id` invoice filters, the cancel-at-cycle-end response, and that autopay charges carry the invoice id.
   - GST tax lines are not built.
-- **CPCV:** runs on the W2 engine only. The stochastic-dominance test is not implemented.
+- **CPCV / PBO:** CPCV runs on either engine (`engine="event_driven"` for BT-17), and PBO and CPCV report first- and second-order stochastic dominance of the in-sample choice over random selection. The dominance check is exact up to 250,000 reference values (combinations x trials) and on a grid above that. An intraday event-driven CPCV needs intraday bars in every group, which DP-03 retention rarely allows.
 
 ## Blocked (needs the owner) — the work moved on
 
