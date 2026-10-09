@@ -46,6 +46,12 @@ actually work on Indian stocks.
                          research/earnings_surprise.py) is written into technical_signal with the same levels,
                          confluence and gate, a 60-session horizon, and is evaluated and recorded here; it is
                          held like the chart patterns (HELD_SCANS) and alerted by its own module
+    todays_signals       the day's signals with the snapshot's daily, weekly and (W39B-TF75) 75-minute ratings:
+                         tech_rating_75_label, mtf_alignment_75 (the daily / 75-minute agreement) and
+                         bar_75_end -- shown, not counted in confluence
+    rating_75_now        (W39B-TF75) the 75-minute rating computed on demand from the stored 15-minute bars as
+                         of any moment (default now), completed 75-minute bars only (technicals.rating_75), with
+                         its votes and the daily rating known at that moment: GET /api/stock/{symbol}/rating-75
 
 Benchmark for relative strength: the Nifty 50 daily close from market_health, else index_levels,
 else NIFTYBEES from prices_daily, else none.
@@ -181,20 +187,118 @@ def load_bars(conn, symbols, as_of, lookback_days=LOOKBACK_DAYS) -> dict:
     return out
 
 
-def load_15m(conn, symbols, as_of, sessions: int = TF75_SESSIONS) -> dict:
-    """{symbol: 15-minute bars} of the last `sessions` trading days up to as_of's close, through
-    research/intraday_signals.py's loader (interval_min 15 only, so 1-minute tick bars never mix in; each bar
-    counted once done). {} when intraday_bars is missing or empty."""
+def load_15m(conn, symbols, as_of, sessions: int = TF75_SESSIONS, now: datetime | None = None) -> dict:
+    """{symbol: 15-minute bars} of the last `sessions` trading days up to as_of's close (or `now`, a moment
+    on as_of), through research/intraday_signals.py's loader (interval_min 15 only, so 1-minute tick bars
+    never mix in; each bar counted once done). {} when intraday_bars is missing or empty."""
     from research.intraday_signals import SESSION_CLOSE, load_bars as load_intraday
     out, d = {}, _d(as_of)
+    upto = now or datetime.combine(d, SESSION_CLOSE)
     syms = sorted(set(symbols))
     for i in range(0, len(syms), 400):
         try:
-            out.update(load_intraday(conn, d, datetime.combine(d, SESSION_CLOSE), syms[i:i + 400], sessions))
+            out.update(load_intraday(conn, d, upto, syms[i:i + 400], sessions))
         except Exception as e:                      # no intraday_bars table (a fresh or trimmed database)
             log.debug(f"15-minute bars for the 75-minute rating: {e}")
             break
     return out
+
+
+# ── the 75-minute rating on demand (during the session) ──────────────────────
+
+BAR_75_ENDS = ("10:30", "11:45", "13:00", "14:15", "15:30")
+METHOD_75 = ("The technical rating (research/technicals.py: moving-average and oscillator votes, -1..+1) on 75-minute "
+             "bars (09:15-10:30, 10:30-11:45, 11:45-13:00, 13:00-14:15, 14:15-15:30) built from the stored 15-minute "
+             "bars, completed bars only: a 75-minute bar counts once its end has passed and its closing 15-minute bar "
+             "is stored, or the session is over; 35 completed bars (7 sessions) are needed. The same rule as the "
+             "20:30 run, which stores it in technical_snapshot. A description of the chart, not advice.")
+
+
+def _instant(as_of) -> datetime:
+    """The moment a rating is taken: None -> now (the server's clock, IST); a date -> that day's session close
+    (15:30, as the 20:30 run takes it); 'YYYY-MM-DD HH:MM[:SS]' (or with a T) -> that moment."""
+    from research.intraday_signals import SESSION_CLOSE
+    if as_of is None or as_of == "":
+        return datetime.now().replace(second=0, microsecond=0)
+    if isinstance(as_of, datetime):
+        return as_of
+    if isinstance(as_of, date):
+        return datetime.combine(as_of, SESSION_CLOSE)
+    s = str(as_of).strip().replace("T", " ")
+    try:
+        at = datetime.combine(date.fromisoformat(s), SESSION_CLOSE) if len(s) == 10 else datetime.fromisoformat(s)
+    except ValueError:
+        raise ValueError("as_of must be YYYY-MM-DD or YYYY-MM-DD HH:MM (IST)") from None
+    if at.tzinfo is not None:
+        raise ValueError("as_of must be an IST time without an offset, e.g. 2026-10-09 11:50")
+    return at
+
+
+def rating_75_now(conn, symbol: str, as_of=None) -> dict:
+    """The 75-minute rating computed now from the stored 15-minute bars, as of a moment (default now): the
+    rating, RSI and Supertrend on the latest COMPLETED 75-minute bar (technicals.rating_75 itself, so the bars
+    are exactly the ones the 20:30 run would use), its votes, how many 75-minute bars of that day are done and
+    when the next one completes, and the agreement with the daily rating known at that moment (the newest
+    technical_snapshot of an earlier day, or of that day once its session is over). stored_75: what the 20:30
+    run stored with that daily snapshot, to compare. LookupError for a symbol with neither 15-minute bars nor
+    prices."""
+    from research.intraday_signals import SESSION_CLOSE, SESSION_OPEN
+    from utils.trading_calendar import is_trading_day
+    sym = str(symbol).strip().upper()
+    at = _instant(as_of)
+    day = at.date()
+    bars = load_15m(conn, [sym], day, now=at).get(sym)
+    if bars is None or bars.empty:
+        try:
+            known = conn.execute("SELECT 1 FROM prices_daily WHERE symbol=? LIMIT 1", (sym,)).fetchone()
+        except Exception:
+            known = None
+        if not known:
+            raise LookupError(f"no prices or 15-minute bars stored for {sym}")
+    r = T.rating_75(bars, now=at)                  # no `day`: the latest completed bar, whichever session
+    b = T.bars_75(bars, now=at)
+    votes = {}
+    if r["tech_rating_75"] is not None:
+        _score, _label, votes = T.rating(T.indicators(b[["open", "high", "low", "close", "volume"]]))
+    session = is_trading_day(day)
+    ends = [datetime.combine(day, datetime.strptime(e, "%H:%M").time()) for e in BAR_75_ENDS]
+    on_day = int(sum(1 for t in b.index if t.date() == day))
+    nxt = warning = None
+    if session and datetime.combine(day, SESSION_OPEN) <= at < datetime.combine(day, SESSION_CLOSE):
+        nxt = next(e for e in ends if e > at).strftime("%Y-%m-%d %H:%M")
+    if session and len(b) and not on_day and at >= ends[0]:
+        warning = (f"no 75-minute bar of {day} is complete in the stored 15-minute bars (the feed may be behind): the "
+                   f"last completed bar ended {(b.index[-1] + pd.Timedelta(minutes=T.BAR_75)):%Y-%m-%d %H:%M}")
+    cutoff = day if at >= datetime.combine(day, SESSION_CLOSE) else day - timedelta(days=1)
+    try:
+        cur = conn.execute("SELECT date, tech_rating, tech_rating_label, tech_rating_75, tech_rating_75_label, "
+                           "bar_75_end FROM technical_snapshot WHERE symbol=? AND date<=? ORDER BY date DESC LIMIT 1",
+                           (sym, str(cutoff)))
+        snap = cur.fetchone()
+        snap = dict(zip([c[0] for c in cur.description], snap)) if snap else None
+    except Exception:                               # no technical_snapshot yet
+        snap = None
+    daily = ({"date": str(snap["date"])[:10], "tech_rating": snap["tech_rating"],
+              "tech_rating_label": snap["tech_rating_label"]} if snap else None)
+    if r["tech_rating_75"] is not None:
+        reason = None
+    elif bars is None or bars.empty:
+        reason = f"no 15-minute bars stored for {sym} in the {TF75_SESSIONS} sessions up to {at:%Y-%m-%d %H:%M}"
+    else:
+        reason = (f"{r['bars_75']} completed 75-minute bars; {T.MIN_BARS_75} are needed (7 full sessions of "
+                  f"15-minute bars)")
+    return {"symbol": sym, "as_of": at.strftime("%Y-%m-%d %H:%M"),
+            **{k: r[k] for k in ("tech_rating_75", "tech_rating_75_label", "rsi_14_75", "supertrend_dir_75",
+                                 "bar_75_end", "bars_75")},
+            "bars_75_on_day": on_day,
+            "latest_15m_end": ((bars.index[-1] + pd.Timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M")
+                               if bars is not None and not bars.empty else None),
+            "next_bar_75_end": nxt, "votes_75": votes, "daily": daily,
+            "mtf_alignment_75": T.mtf_alignment(daily and daily["tech_rating_label"], r["tech_rating_75_label"]),
+            "stored_75": ({"date": daily["date"], "tech_rating_75": snap["tech_rating_75"],
+                           "tech_rating_75_label": snap["tech_rating_75_label"], "bar_75_end": snap["bar_75_end"]}
+                          if snap else None),
+            "min_bars": T.MIN_BARS_75, "reason": reason, "warning": warning, "method": METHOD_75}
 
 
 def benchmark(conn, as_of) -> pd.Series | None:
@@ -691,7 +795,8 @@ def todays_signals(conn, as_of=None, direction=None, min_confluence=0, limit=300
         return []
     sql = ("SELECT s.symbol, s.date, s.scan, s.name, s.direction, s.reason, s.entry, s.stop, s.target, s.confluence, "
            "s.evidence_json, s.status, s.market_gate, s.alignment, s.market_status, s.weekly_agrees, t.tech_rating_label, "
-           "t.tech_rating_w_label, t.mtf_alignment, t.patterns "
+           "t.tech_rating_w_label, t.mtf_alignment, t.patterns, "
+           "t.tech_rating_75_label, t.mtf_alignment_75, t.bar_75_end "          # the 75-minute rating (W39B-TF75)
            "FROM technical_signal s "
            "LEFT JOIN technical_snapshot t ON t.symbol=s.symbol AND t.date=s.date WHERE s.date=? AND s.confluence>=?")
     args = [str(d)[:10], int(min_confluence)]

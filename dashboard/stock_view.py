@@ -18,6 +18,13 @@ Stock detail view + table filtering for the main dashboard (W26).
         intraday scan hits of those days as marks (research/intraday_signals.py's intraday_signal and
         strategy/intraday_scan.py's intraday_scan_hit); `message` says why when there are no bars. Read-only;
         dashboard:read like /history (enterprise/authz.py: GET ^/api/).
+    GET /api/stock/{symbol}/rating-75?as_of=        (W39B-TF75)
+        the 75-minute technical rating computed on demand from the stored 15-minute bars
+        (research/tech_signals.py rating_75_now: completed 75-minute bars only, exactly as
+        research/technicals.py rating_75 defines them), as of now or ?as_of=YYYY-MM-DD (that day's
+        close) / YYYY-MM-DD HH:MM (IST), with its votes and the agreement with the daily rating
+        known at that moment. 400 bad symbol / as_of; 404 a symbol with no prices or bars.
+        The panel's Technicals tab shows it.
 
     ASSETS (CSS + HTML + JS, injected before </body> by dashboard/server.py)
         * clicking any row / card that carries data-sym opens the stock panel:
@@ -427,6 +434,26 @@ def register(app, get_connection, json_safe):
                 conn.close()
         return await run_in_threadpool(go)
 
+    @app.get("/api/stock/{symbol}/rating-75")
+    async def api_stock_rating_75(symbol: str, as_of: str = None):
+        from starlette.concurrency import run_in_threadpool
+
+        def go():
+            sym = (symbol or "").strip().upper()
+            if not SYMBOL_RE.match(sym):
+                return JSONResponse({"error": "invalid symbol"}, status_code=400)
+            conn = get_connection()
+            try:
+                from research.tech_signals import rating_75_now
+                return JSONResponse(json_safe(rating_75_now(conn, sym, as_of)))
+            except LookupError as e:
+                return JSONResponse({"error": str(e)}, status_code=404)
+            except (ValueError, TypeError) as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            finally:
+                conn.close()
+        return await run_in_threadpool(go)
+
 
 ASSETS = r"""
 <style>
@@ -534,8 +561,24 @@ function restore(){
 }
 
 /* ---------- stock panel ---------- */
+/* W39B-TF75: the 75-minute rating computed now from the stored 15-minute bars, on the Technicals tab */
+function r75Html(r){if(!r||typeof r!=='object')return '';
+  if(r.error)return '<span class="mut">75-minute rating: '+esc(r.error)+'</span>';
+  if(!('tech_rating_75' in r))return '';
+  var lb=function(x){return x?esc(String(x).replace('_',' ')):'—'},dl=r.daily||{},al=r.mtf_alignment_75;
+  if(r.tech_rating_75==null)return '<span class="mut">75-minute rating (as of '+esc(r.as_of)+'): '+esc(r.reason||'not available')+'</span>';
+  var ag=(al==='BULL'||al==='BEAR')?'<span class="up">agrees with the daily rating</span>':al==='MIXED'?'<span class="mut">mixed with the daily rating</span>':'<span class="mut">no daily rating to compare</span>';
+  return '75-minute rating (as of '+esc(r.as_of)+'): <b>'+lb(r.tech_rating_75_label)+'</b> '+n(r.tech_rating_75)+' on the bar to '+esc(r.bar_75_end)+
+    ' · RSI '+n(r.rsi_14_75)+' · Supertrend '+(r.supertrend_dir_75===1?'up':r.supertrend_dir_75===-1?'down':'—')+
+    ' · daily '+lb(dl.tech_rating_label)+(dl.date?' ('+esc(dl.date)+')':'')+': '+ag+
+    (r.next_bar_75_end?' <span class="mut">· next 75-minute bar completes at '+esc(String(r.next_bar_75_end).slice(11))+'</span>':'')+
+    (r.warning?'<br><span class="dn">'+esc(r.warning)+'</span>':'')}
+function loadR75(sym){S.r75=null;
+  fetch('/api/stock/'+encodeURIComponent(sym)+'/rating-75').then(function(r){return r.json().then(function(j){return r.ok?j:{error:j.error||String(r.status)}})})
+   .then(function(j){if(S.sym!==sym)return;S.r75=j;var el=document.getElementById('sv-r75');if(el)el.innerHTML=r75Html(j)})
+   .catch(function(){})}
 window.openStock=function(sym){
-  S.sym=sym;S.data=null;S.intra=null;S.intraFor=null;S.ierr=null;
+  S.sym=sym;S.data=null;S.intra=null;S.intraFor=null;S.ierr=null;loadR75(sym);
   var b=document.getElementById('sv-back'),p=document.getElementById('sv');
   p.innerHTML='<div class="hd"><div><div class="sym">'+esc(sym)+'</div><div class="nm">loading history…</div></div><div class="btns"><button class="b-x" onclick="svClose()">✕</button></div></div>';
   b.classList.add('on');document.body.style.overflow='hidden';
@@ -629,7 +672,7 @@ function render(){
   h+='<div id="svc"></div><div class="tip" id="svtip">'+(S.ix?'':'Hover the chart for prices. ▲ BUY / ▼ SELL signals from the signal log.')+'</div><div class="tip" id="svpl"></div>';
   var tabs=[['sc','Score history ('+d.scores.length+')'],['sg','Signals ('+d.signals.length+')'],['te','Technicals'],['po','Position & orders']];
   h+='<div class="tabs2">'+tabs.map(function(t,i){return '<div class="'+(i===0?'on':'')+'" onclick="svTab(\''+t[0]+'\',this)">'+t[1]+'</div>'}).join('')+'</div>';
-  h+='<div class="pane on" id="sv-sc">'+scoresTable(d)+'</div><div class="pane" id="sv-sg">'+signalsTable(d)+'</div><div class="pane" id="sv-te">'+techTable(d)+'</div><div class="pane" id="sv-po">'+posTable(d)+'</div>';
+  h+='<div class="pane on" id="sv-sc">'+scoresTable(d)+'</div><div class="pane" id="sv-sg">'+signalsTable(d)+'</div><div class="pane" id="sv-te"><div class="tip" id="sv-r75">'+r75Html(S.r75)+'</div>'+techTable(d)+'</div><div class="pane" id="sv-po">'+posTable(d)+'</div>';
   p.innerHTML=h; chart();
 }
 window.svRange=function(r){S.range=r;S.ix=0;render()};

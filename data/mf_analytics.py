@@ -11,8 +11,13 @@ Exclusions sheet, W11-W20).
     analytics(conn, scheme_code, ...)         point-to-point and since-first-NAV returns, rolling returns,
                                               risk (volatility, drawdown with dates, Sharpe, Sortino), beta /
                                               alpha / tracking error against a stored index, category rank
-    sip(conn, scheme_code, amount, day, start, end=None, lump_sum=None)
-                                              a monthly SIP and a lump sum on the real NAV history, with XIRR
+    sip(conn, scheme_code, amount, day, start, end=None, lump_sum=None, step_up_pct=None, stamp_duty=True,
+        round_units=True, exit_load_pct=None, exit_load_days=None)
+                                              a monthly SIP (optionally stepping up each year) and a lump sum
+                                              on the real NAV history, with XIRR
+    purchase(amount, nav, stamp_duty, round_units)   the units one purchase is allotted, and its stamp duty
+    periods_per_year(intervals)               NAV observations a year, from the calendar days each return used
+                                              spans (annualises the risk figures)
     category_rank(conn, scheme_code, ...)     the scheme against the others ATIP stores in its AMFI category
     compare(conn, codes, as_of=None)          two to ten schemes side by side, on a common as-of date
 
@@ -38,9 +43,18 @@ CONVENTIONS (stated, not invented)
   Risk            daily returns between consecutive NAVs over the trailing risk window (default 3 years,
                   the whole stored history when shorter -- said so). A return across a gap of more than
                   MAX_STALE_DAYS is left out (it covers weeks, not a session) and counted. Volatility,
-                  Sharpe and Sortino as backtest/metrics.py: 252 sessions, sample stdev, the risk-free rate
-                  compounded down to a session, target downside deviation over all sessions. Risk-free =
-                  wealth.risk_free_pct (6.5 % by default; ?rf= overrides). At least MIN_OBS (60) returns.
+                  Sharpe and Sortino as backtest/metrics.py (sample stdev, the risk-free rate compounded
+                  down to one NAV interval, target downside deviation over all intervals), but annualised
+                  with the window's ACTUAL number of NAV observations a year, not a fixed 252:
+                      periods_per_year = returns used x 365 / the calendar days those returns span
+                  (a return left out across a gap takes its days out too, so a hole in ATIP's history does
+                  not make the fund look less frequent). Why not 252: an equity fund's NAVs follow NSE
+                  sessions (~248-250 a year, close to 252), but liquid and overnight funds publish a NAV
+                  for every calendar day (365 a year) -- with 252 their volatility would read sqrt(252/365)
+                  = 0.83x of the truth -- and a NAV every weekday is ~261. Alpha, tracking error and the
+                  information ratio use the same figure (risk.periods_per_year); beta does not depend on
+                  it. Risk-free = wealth.risk_free_pct (6.5 % by default; ?rf= overrides). At least MIN_OBS
+                  (60) returns. The category rank's 1Y volatility is annualised the same way.
   Max drawdown    NAV / running peak - 1, with the peak, trough and recovery dates (recovery = the first
                   NAV back at or above the peak; None = not recovered yet), over the risk window and over
                   the whole stored history.
@@ -51,13 +65,29 @@ CONVENTIONS (stated, not invented)
                   dividends and a price index does not, so alpha is flattered by about the index's dividend
                   yield (~1-1.5 % a year for the NIFTY 50).
   SIP             an instalment on day D of every month (clamped to month end) from start to end; a date
-                  with no NAV (holiday, weekend) buys at the NEXT stored NAV. units = amount / NAV
-                  (unrounded: RTAs round to 3 decimals; the 0.005 % stamp duty and exit loads are not
-                  modelled). Value = units x the last NAV on or before end. XIRR on [(allotment date,
-                  -amount)..., (valuation date, +value)] with wealth.perf.metrics.xirr. The lump sum puts
-                  the same total (or ?lump_sum=) in at the first NAV on or after start. A start more than
-                  MAX_STALE_DAYS before the first stored NAV is refused (INSUFFICIENT + reason): ATIP does
-                  not have the NAVs those instalments would have bought at. No start: the last 3 years.
+                  with no NAV (holiday, weekend) buys at the NEXT stored NAV. Value = units x the last NAV
+                  on or before end. XIRR on [(allotment date, -amount paid)..., (valuation date, +value
+                  after any exit load)] with wealth.perf.metrics.xirr. The lump sum puts the same total (or
+                  ?lump_sum=) in at the first NAV on or after start, bought and redeemed by the same rules.
+                  A start more than MAX_STALE_DAYS before the first stored NAV is refused (INSUFFICIENT +
+                  reason): ATIP does not have the NAVs those instalments would have bought at. No start: the
+                  last 3 years.
+    step-up       ?step_up_pct= (0 by default): the instalment rises by that % a year on each anniversary
+                  of the FIRST instalment (every 12th month from it, not the calendar year), compounding:
+                  amount x (1 + p) ** k after k anniversaries, rounded to the paisa.
+    stamp duty    ON by default (?stamp_duty=0 turns it off): 0.005 % of every purchase (Indian Stamp Act,
+                  on mutual fund purchases since 1 July 2020), taken out of the amount before units are
+                  allotted: units = amount x (1 - 0.00005) / NAV. The amount paid (the XIRR outflow) is the
+                  full instalment.
+    unit rounding ON by default (?round_units=0 turns it off): units are allotted to 3 decimals, rounded
+                  DOWN, as the RTAs (CAMS, KFintech) do -- computed in decimal arithmetic, so 99.995 stays
+                  99.995 rather than a float's 99.99499... The few paise this leaves out are lost, as they
+                  are for an investor.
+    exit load     OFF by default: ?exit_load_pct=1&exit_load_days=365 charges that flat % of the
+                  redemption value of each instalment's units still held for FEWER than N days at the
+                  valuation date (held N days or more: free), per instalment as AMCs apply it (first in,
+                  first out). Value stays the market value; value_after_exit_load (= value when off) is
+                  what gain, the absolute return and XIRR are measured on.
   Category        the AMFI category stored with the scheme's latest NAVAll row. Peers = schemes ATIP stores
                   in the same category with a NAV within MAX_STALE_DAYS of the as-of date and, by default,
                   the same plan (Direct / Regular) and option (Growth / IDCW) parsed from the name -- a
@@ -76,8 +106,12 @@ import statistics
 from bisect import bisect_left, bisect_right
 from calendar import monthrange
 from datetime import date, datetime, timedelta
+from decimal import ROUND_DOWN, Decimal
 
 MAX_STALE_DAYS = 7
+STAMP_DUTY_RATE = 0.00005                      # 0.005 % of every purchase (since 1 July 2020)
+UNIT_DECIMALS = 3                              # units allotted to 3 decimals, rounded down
+DAYS_A_YEAR = 365                              # the module's day count (Actual/365)
 MIN_OBS = 60
 MIN_WINDOWS = 10
 ABOVE_EPS = 1e-9                              # a billionth: float noise is not a return above the hurdle
@@ -135,6 +169,20 @@ def _num(v, lo, hi, name):
     if x != x or not lo <= x <= hi:
         raise ValueError(f"{name} must be {lo}..{hi}")
     return x
+
+
+def _flag(v, default: bool, name: str) -> bool:
+    """True / False, 1 / 0, "on" / "off" ... (a query string's flag); None or "" -> the default."""
+    if v is None or v == "":
+        return default
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("1", "true", "yes", "on"):
+        return True
+    if s in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{name} must be 1 / 0 (true / false)")
 
 
 def _code(v) -> str:
@@ -397,15 +445,20 @@ def risk(conn, s: Navs, rf_pct: float, years: int, benchmark: str | None = None)
     i0 = 0 if whole else max(0, bisect_right(s.dates, target) - 1)
     window = {"start": s.dates[i0], "end": last, "years": years,
               "note": (f"stored history is shorter than {years}Y: the whole history is used" if whole else None)}
-    dates, rets, skipped = [], [], 0
+    dates, rets, spans, skipped = [], [], [], 0
     for i in range(i0 + 1, len(s)):
         if (s.dates[i] - s.dates[i - 1]).days > MAX_STALE_DAYS:
             skipped += 1
             continue
         dates.append(s.dates[i])
         rets.append(s.navs[i] / s.navs[i - 1] - 1)
-    window.update({"returns": len(rets), "excluded_gap_returns": skipped})
-    out = {"window": window, "risk_free_pct": rf_pct, "periods_per_year": 252,
+        spans.append((s.dates[i] - s.dates[i - 1]).days)
+    ppy = periods_per_year(spans)
+    window.update({"returns": len(rets), "excluded_gap_returns": skipped, "days_spanned": sum(spans)})
+    out = {"window": window, "risk_free_pct": rf_pct,
+           "periods_per_year": round(ppy, 4) if ppy else None,
+           "periods_basis": "NAV observations a year in the window: returns used x 365 / the calendar days they "
+                            "span (not a fixed 252)",
            "max_drawdown": drawdown(s.dates[i0:], s.navs[i0:]),
            "max_drawdown_full_history": drawdown(s.dates, s.navs)}
     if len(rets) < MIN_OBS:
@@ -413,14 +466,22 @@ def risk(conn, s: Navs, rf_pct: float, years: int, benchmark: str | None = None)
                     "reason": f"{len(rets)} daily returns in the window; at least {MIN_OBS} are needed"})
         out["benchmark"] = {"symbol": benchmark, "status": "INSUFFICIENT", "reason": out["reason"]}
         return out
-    m = M.series_metrics(dates, rets, None, rf_pct)
+    m = M.series_metrics(dates, rets, None, rf_pct, periods_per_year=ppy)
     out.update({"volatility_pct": m.get("volatility_pct"), "sharpe": m.get("sharpe"), "sortino": m.get("sortino"),
                 "reason": None})
-    out["benchmark"] = _vs_benchmark(conn, s, i0, dates, rets, rf_pct, benchmark)
+    out["benchmark"] = _vs_benchmark(conn, s, i0, dates, rets, rf_pct, benchmark, ppy)
     return out
 
 
-def _vs_benchmark(conn, s, i0, dates, rets, rf_pct, symbol):
+def periods_per_year(intervals: list) -> float | None:
+    """NAV observations a year: the number of returns x 365 / the calendar days they span (each return's
+    interval in days). 365 for a NAV every calendar day (a liquid fund), ~261 for every weekday, ~248-250 on
+    NSE sessions. None without a return."""
+    days = sum(intervals)
+    return len(intervals) * DAYS_A_YEAR / days if days > 0 else None
+
+
+def _vs_benchmark(conn, s, i0, dates, rets, rf_pct, symbol, ppy=None):
     from wealth.perf import metrics as M
     if not symbol:
         return {"symbol": None, "status": "UNAVAILABLE", "reason": "no benchmark"}
@@ -440,7 +501,7 @@ def _vs_benchmark(conn, s, i0, dates, rets, rf_pct, symbol):
     if matched < MIN_OBS:
         return {**base, "status": "INSUFFICIENT", "beta": None, "alpha_annual_pct": None, "tracking_error_pct": None,
                 "reason": f"{matched} NAV intervals with an index close on both dates; at least {MIN_OBS} needed"}
-    m = M.series_metrics(dates, rets, bench, rf_pct)
+    m = M.series_metrics(dates, rets, bench, rf_pct, periods_per_year=ppy or M.PERIODS)
     return {**base, "status": "OK", "beta": m.get("beta"), "alpha_annual_pct": m.get("alpha_annual_pct"),
             "tracking_error_pct": m.get("tracking_error_pct"), "information_ratio": m.get("information_ratio"),
             "excess_return_pct": m.get("excess_return_pct"), "reason": None}
@@ -481,7 +542,8 @@ def analytics(conn, scheme_code, *, hurdle_pct=None, rf_pct=None, benchmark=None
                            "day_count": "Actual/365 (as wealth.perf.metrics.xirr)",
                            "point_to_point": "1M-1Y absolute; 3Y, 5Y also CAGR",
                            "rolling": "each window annualised over its actual days",
-                           "risk": "252 sessions; rf compounded per session; gap returns excluded",
+                           "risk": "annualised with the window's NAV observations a year (risk.periods_per_year), "
+                                   "not a fixed 252; rf compounded per NAV interval; gap returns excluded",
                            "hurdle_pct": hurdle, "risk_free_pct": rf}}
     if peers:
         try:
@@ -492,7 +554,33 @@ def analytics(conn, scheme_code, *, hurdle_pct=None, rf_pct=None, benchmark=None
 
 
 # ── SIP and lump sum ──────────────────────────────────────────────────────
-def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None) -> dict:
+_UNIT_STEP = Decimal(1).scaleb(-UNIT_DECIMALS)                     # 0.001
+
+
+def purchase(amount: float, nav: float, stamp_duty: bool = True, round_units: bool = True) -> tuple:
+    """(units allotted, stamp duty) for one purchase of `amount` at `nav`:
+    units = amount x (1 - 0.00005) / NAV with the stamp duty (amount / NAV without), rounded DOWN to 3
+    decimals with round_units -- in decimal arithmetic, so an exact 99.995 is not floored to 99.994 by a
+    float's 99.99499999..."""
+    duty = amount * STAMP_DUTY_RATE if stamp_duty else 0.0
+    if not round_units:
+        return (amount - duty) / nav, duty
+    net = Decimal(repr(float(amount)))
+    if stamp_duty:
+        net *= 1 - Decimal(repr(STAMP_DUTY_RATE))
+    units = (net / Decimal(repr(float(nav)))).quantize(_UNIT_STEP, rounding=ROUND_DOWN)
+    return float(units), duty
+
+
+def _step_up(a: float, pct: float, first: date, sched: date) -> tuple:
+    """(the instalment on `sched`, anniversaries passed): a x (1 + pct) ** k, k = the anniversaries of the
+    first instalment on or before sched (every 12th month from it; the schedule keeps one day of the month)."""
+    k = ((sched.year - first.year) * 12 + sched.month - first.month) // 12
+    return (round(a * (1 + pct / 100.0) ** k, 2) if k and pct else a), k
+
+
+def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None, step_up_pct=None,
+        stamp_duty=True, round_units=True, exit_load_pct=None, exit_load_days=None) -> dict:
     from wealth.perf.metrics import xirr
     if amount in (None, ""):
         raise ValueError("amount is required")
@@ -502,6 +590,18 @@ def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None) -
         raise ValueError("day must be a whole day of the month 1..31")
     dom = int(dd)
     lump = None if lump_sum in (None, "") else _num(lump_sum, 1, 1e11, "lump_sum")
+    step = 0.0 if step_up_pct in (None, "") else _num(step_up_pct, 0, 100, "step_up_pct")
+    duty_on = _flag(stamp_duty, True, "stamp_duty")
+    round_on = _flag(round_units, True, "round_units")
+    load_pct = 0.0 if exit_load_pct in (None, "") else _num(exit_load_pct, 0, 10, "exit_load_pct")
+    if exit_load_days not in (None, "") and not load_pct:
+        raise ValueError("exit_load_days needs exit_load_pct")
+    load_days = None
+    if load_pct:
+        ld = _num(365 if exit_load_days in (None, "") else exit_load_days, 1, 3650, "exit_load_days")
+        if ld != int(ld):
+            raise ValueError("exit_load_days must be a whole number of days")
+        load_days = int(ld)
     s = load(conn, scheme_code)
     f = facts(conn, s.code)
     st = _date_arg(start, "start")
@@ -512,10 +612,17 @@ def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None) -
     if st >= en:
         raise ValueError("start must be before end")
     inputs = {"amount": a, "day": dom, "start": st, "end": en, "lump_sum": lump,
-              "start_defaulted": defaulted}
+              "start_defaulted": defaulted, "step_up_pct": step, "stamp_duty": duty_on, "round_units": round_on,
+              "exit_load_pct": load_pct or None, "exit_load_days": load_days}
     base = {"scheme": f, "inputs": inputs, "note": NOTE,
-            "conventions": "holiday -> next NAV; units unrounded; no stamp duty / exit load; XIRR Actual/365 on "
-                           "allotment dates"}
+            "conventions": "holiday -> next NAV; "
+                           + ("0.005 % stamp duty off each purchase; " if duty_on else "no stamp duty; ")
+                           + ("units rounded down to 3 decimals; " if round_on else "units unrounded; ")
+                           + (f"step-up {step:g} % a year on each anniversary of the first instalment; " if step
+                              else "")
+                           + (f"exit load {load_pct:g} % on units held under {load_days} days at the valuation "
+                              f"date; " if load_pct else "no exit load; ")
+                           + "XIRR Actual/365 on allotment dates"}
     # a start up to MAX_STALE_DAYS before the first stored NAV is a holiday start (buys at that first NAV);
     # earlier than that, ATIP does not have the NAVs the instalments would have bought at
     if (s.dates[0] - st).days > MAX_STALE_DAYS or en < s.dates[0]:
@@ -527,7 +634,9 @@ def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None) -
     warnings = []
     if (en - val_d).days > MAX_STALE_DAYS:
         warnings.append(f"no NAV within {MAX_STALE_DAYS} days of {en}: valued at the last stored NAV, {val_d}")
-    schedule, skipped, units, flows = [], [], 0.0, []
+    nd = UNIT_DECIMALS if round_on else 6
+    schedule, skipped, units, flows, first = [], [], 0.0, [], None
+    duty_paid = load_total = 0.0
     y, m = st.year, st.month
     while (y, m) <= (en.year, en.month):
         sched = date(y, m, min(dom, monthrange(y, m)[1]))
@@ -542,37 +651,56 @@ def sip(conn, scheme_code, amount, day=1, start=None, end=None, lump_sum=None) -
         if late > MAX_STALE_DAYS:
             warnings.append(f"the {sched} instalment was allotted {late} days later, on {s.dates[k]} "
                             f"(a gap in the stored NAVs)")
-        u = a / s.navs[k]
+        first = first or sched
+        amt, years_in = _step_up(a, step, first, sched)
+        u, duty = purchase(amt, s.navs[k], duty_on, round_on)
         units += u
-        flows.append((s.dates[k], -a))
-        schedule.append({"scheduled": sched, "nav_date": s.dates[k], "nav": s.navs[k], "amount": a,
-                         "units": round(u, 6), "cumulative_units": round(units, 6), "days_late": late})
+        duty_paid += duty
+        flows.append((s.dates[k], -amt))
+        held = (val_d - s.dates[k]).days
+        row = {"scheduled": sched, "nav_date": s.dates[k], "nav": s.navs[k], "amount": amt,
+               "stamp_duty": round(duty, 4), "units": round(u, nd), "cumulative_units": round(units, nd),
+               "days_late": late, "step_ups": years_in, "days_held": held}
+        if load_pct:
+            ld = u * val_nav * load_pct / 100.0 if held < load_days else 0.0
+            load_total += ld
+            row["exit_load"] = round(ld, 4)
+        schedule.append(row)
     if not schedule:
         return {**base, "status": "INSUFFICIENT", "skipped": skipped, "warnings": warnings,
                 "reason": f"no instalment date from {st} to {en} has a stored NAV"}
-    invested = a * len(schedule)
+    invested = sum(-x for _, x in flows)
+    if round_on:
+        units = round(units, nd)              # 3-decimal allotments add up to 3 decimals (no float dust)
     value = units * val_nav
+    after = value - load_total
     span = (val_d - flows[0][0]).days
-    x = xirr(flows + [(val_d, value)])
+    x = xirr(flows + [(val_d, after)])
     if span < 365:
         warnings.append(f"the period is {span} days: XIRR is annualised from under a year, read it with care")
-    sip_out = {"instalments": len(schedule), "invested": round(invested, 2), "units": round(units, 6),
-               "value": round(value, 2), "gain": round(value - invested, 2),
-               "absolute_return_pct": _pct(value / invested - 1), "xirr_pct": _pct(x),
-               "first_allotment": flows[0][0], "last_allotment": flows[-1][0]}
+    sip_out = {"instalments": len(schedule), "invested": round(invested, 2), "stamp_duty": round(duty_paid, 2),
+               "units": round(units, nd), "value": round(value, 2),
+               "exit_load": round(load_total, 2) if load_pct else None,
+               "value_after_exit_load": round(after, 2), "gain": round(after - invested, 2),
+               "absolute_return_pct": _pct(after / invested - 1), "xirr_pct": _pct(x),
+               "first_allotment": flows[0][0], "last_allotment": flows[-1][0],
+               "first_instalment": schedule[0]["amount"], "last_instalment": schedule[-1]["amount"]}
     total = lump if lump is not None else invested
     k0 = s.next_on_or_after(st)
     if (s.dates[k0] - st).days > MAX_STALE_DAYS:
         warnings.append(f"the lump sum was allotted on {s.dates[k0]}, {(s.dates[k0] - st).days} days after the start "
                         f"(a gap in the stored NAVs)")
-    l_units = total / s.navs[k0]
+    l_units, l_duty = purchase(total, s.navs[k0], duty_on, round_on)
     l_value = l_units * val_nav
     l_days = (val_d - s.dates[k0]).days
-    lump_out = {"invested": round(total, 2), "date": s.dates[k0], "nav": s.navs[k0], "units": round(l_units, 6),
-                "value": round(l_value, 2), "gain": round(l_value - total, 2),
-                "absolute_return_pct": _pct(l_value / total - 1),
-                "xirr_pct": _pct(xirr([(s.dates[k0], -total), (val_d, l_value)])) if l_days > 0 else None,
-                "cagr_pct": _pct(_cagr(l_value / total, l_days)) if l_days >= 365 else None,
+    l_load = l_value * load_pct / 100.0 if load_pct and l_days < load_days else 0.0
+    l_after = l_value - l_load
+    lump_out = {"invested": round(total, 2), "date": s.dates[k0], "nav": s.navs[k0], "stamp_duty": round(l_duty, 2),
+                "units": round(l_units, nd), "value": round(l_value, 2), "exit_load": round(l_load, 2) if load_pct else None,
+                "value_after_exit_load": round(l_after, 2), "gain": round(l_after - total, 2),
+                "absolute_return_pct": _pct(l_after / total - 1),
+                "xirr_pct": _pct(xirr([(s.dates[k0], -total), (val_d, l_after)])) if l_days > 0 else None,
+                "cagr_pct": _pct(_cagr(l_after / total, l_days)) if l_days >= 365 else None,
                 "basis": "the same total as the SIP" if lump is None else "the lump_sum given"}
     return {**base, "status": "OK", "valuation": {"date": val_d, "nav": val_nav}, "sip": sip_out,
             "lump_sum": lump_out, "schedule": schedule, "skipped": skipped, "warnings": warnings}
@@ -590,12 +718,12 @@ def _quick(s: Navs, end_idx: int) -> dict:
         why = "under a year of NAVs"
     else:
         i0 = max(0, bisect_right(s.dates, t) - 1)
-        rs = [s.navs[i] / s.navs[i - 1] - 1 for i in range(i0 + 1, end_idx + 1)
-              if (s.dates[i] - s.dates[i - 1]).days <= MAX_STALE_DAYS]
+        used = [i for i in range(i0 + 1, end_idx + 1) if (s.dates[i] - s.dates[i - 1]).days <= MAX_STALE_DAYS]
+        rs = [s.navs[i] / s.navs[i - 1] - 1 for i in used]
         if len(rs) < MIN_OBS:
             why = f"{len(rs)} daily returns in the last year (at least {MIN_OBS})"
         else:
-            vol = BM.volatility(rs)
+            vol = BM.volatility(rs, periods_per_year([(s.dates[i] - s.dates[i - 1]).days for i in used]))
     return {"return_1y_pct": r1["absolute_pct"], "return_1y_reason": r1["reason"],
             "cagr_3y_pct": r3["cagr_pct"], "cagr_3y_reason": r3["reason"],
             "volatility_1y_pct": _pct(vol), "volatility_1y_reason": why}

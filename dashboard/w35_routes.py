@@ -26,7 +26,8 @@ Authz: GET /api/data -> dashboard:read; POST /api/data -> research:run (enterpri
     GET  /api/data/mf                                ?q=&limit=50  latest NAVs, name search
     GET  /api/data/mf/compare                        ?schemes=a,b,...&as_of | ?category_of=<code>&same_plan=1   W39b
     GET  /api/data/mf/{scheme}/analytics             ?hurdle&rf&benchmark&risk_years&as_of&peers=1
-    GET  /api/data/mf/{scheme}/sip                   ?amount&day=1&start&end&lump_sum
+    GET  /api/data/mf/{scheme}/sip                   ?amount&day=1&start&end&lump_sum&step_up_pct&stamp_duty=1
+                                                     &round_units=1&exit_load_pct&exit_load_days=365
                                                      (data/mf_analytics.py; read-only, no MF in the wealth ledger)
     POST /api/data/assets/refresh
     GET  /api/data/alt                               sources, health                                   AD-01/02
@@ -242,9 +243,12 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/api/data/mf/{scheme}/sip")
     async def mf_sip(scheme: str, amount: str = None, day: str = "1", start: str = None, end: str = None,
-                     lump_sum: str = None):
+                     lump_sum: str = None, step_up_pct: str = None, stamp_duty: str = None, round_units: str = None,
+                     exit_load_pct: str = None, exit_load_days: str = None):
         from data import mf_analytics as MA
-        return await run(lambda c: MA.sip(c, scheme, amount, day, start, end, lump_sum))
+        return await run(lambda c: MA.sip(c, scheme, amount, day, start, end, lump_sum, step_up_pct=step_up_pct,
+                                          stamp_duty=stamp_duty, round_units=round_units,
+                                          exit_load_pct=exit_load_pct, exit_load_days=exit_load_days))
 
     @app.post("/api/data/assets/refresh", dependencies=guard)
     async def assets_refresh():
