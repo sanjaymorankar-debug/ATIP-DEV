@@ -36,6 +36,7 @@ This guide is for the owner running ATIP day to day: what runs when, what each p
 | 19:30 | Audit export (off-box copy if configured) |
 | 20:30 | Technical snapshot and signals (`/signals`), then post-earnings drift (20:35) |
 | 20:45 | **Meta-label scoring** of the day's signals (only with `meta_label.enabled` and an adopted model; §8) |
+| 21:45 | **Factor risk model** (W40): exposures, factor returns, covariance and specific risk for the new session(s); see section 9 |
 | Saturday 08:00 | **Weekly:** NSE fundamentals and ownership, deal / event studies, accuracy, security list, purge |
 | Saturday 09:30 | **Meta-label retraining** (only with `meta_label.enabled`; §8) |
 | Sunday 10:00 | **Restore drill:** proves the newest backup actually restores |
@@ -47,9 +48,9 @@ This guide is for the owner running ATIP day to day: what runs when, what each p
 | `/` | Scores, portfolio, top lists. **News** tab: market brief at the top. **Lists & scans** tab: crash-risk 25, top SPI, MSI, intraday scan hits. Click any symbol for its history panel (its chart marks the stored technical signals, chart-pattern breakouts and candle patterns and draws the lines of the chart patterns in place; **Patterns** hides them; **RSI 14** / **MACD** add indicator panels under the chart; **1D 15m** / **5D 15m** show the stored 15-minute bars with the session VWAP, the previous close and the intraday scan hits, when the Dhan Data API has stored them) |
 | `/market` | Pre-open (GIFT Nifty, implied gap, US yields, PCR / max pain), global history, F&O table, fundamentals and ownership lookup per symbol, the bulk-deal study, feed status |
 | `/strategies` | Strategy registry, backtests, the **Performance** panel (health, backtest, decisions, PAPER / LIVE / FUTURES book P&L) |
-| `/trading` | Risk decisions, orders, fills, portfolio risk, **Live P&L**, **Execution operations** (broker health, reconciliation, resting orders with Modify, execution analytics, Zerodha session) |
+| `/trading` | Risk decisions, orders, fills, portfolio risk (with the **factor risk model** card, W40), **Live P&L**, **Execution operations** (broker health, reconciliation, resting orders with Modify, execution analytics, Zerodha session) |
 | `/ml` | Models, predictions, **AI-driven strategy gates**, model-monitoring charts |
-| `/quant` | Factors, composites, pairs, experiments |
+| `/quant` | Factors, composites, pairs, experiments, the risk model's factors (returns, volatilities, R², bias test) |
 | `/backtests` | Backtest runs and studies |
 | `/wealth` | Investor DNA, goals, allocation, rebalancing, performance. Benchmarks include **Nifty 50 TR** (W40: the Nifty 50 with dividends reinvested, `nifty50tr`), so the book is not flattered by the ~1.3 % a year a price index leaves out. It is rebuilt nightly at 21:10 (`python -m data.total_return`): the price index is exact, its dividends are estimated from the top 50 stored stocks by market cap (`GET /api/data/total-return` shows both returns and the implied dividend yield) |
 | `/research` | **W39** equity research report per stock (DCF with bull / base / bear cases, peer and own-history multiples, 12-month target, rating, thesis / risks / catalysts, peers, ownership, disclosures), the **fundamental scorecard** (value, growth, past performance, financial health and dividend, 6 pass / fail checks each, every check with the numbers it used, drawn as a five-axis chart), the **earnings surprise** card (W39b: SUE and revenue SUE against the same quarter a year earlier, the EPS-trend revisions proxy, post-earnings-drift signals; no consensus estimates), latest ratings, hit rate of past calls, "Does the scorecard pay?" (return vs the Nifty by checks passed), 7-year history coverage |
@@ -80,6 +81,7 @@ Everything new since W27 is **off or read-only by default**. Flip a switch only 
 | `ops.restore_drill_enabled` | true | Sunday restore drill |
 | `audit.offbox_dir` | unset | Folder for audit-log segments |
 | `meta_label.enabled` | false | Saturday retraining and nightly scoring of the technical signals by the adopted meta-label model (§8) |
+| `risk_model.enabled` / `.time` | true / 21:45 | The nightly factor risk model (research only; every other parameter is in `quant/risk_model.py` DEFAULTS and can be set here too) |
 
 **Backtesting short legs (W40).** A backtest (`/backtests`, `python -m backtest run`) now simulates a strategy's SHORT / COVER decisions -- pairs and long/short portfolios with `"short_via_futures": true` -- as **near-month stock futures**, read from the stored F&O bhavcopy (`fo_underlying_daily`, `fo_contract_daily`): whole lots rounded down, `margin_pct` of the notional blocked from cash, profit and loss settled through cash every day, NSE F&O charges (STT 0.02% on the sell side, exchange 0.00173%, SEBI fee, stamp 0.002% on the buy side, GST, brokerage), and a roll into the next month `roll_days_before_expiry` sessions before expiry (`null` = settle at expiry). A futures leg fills at the session's end-of-day futures close, the stock leg at its open. A stock with no stored futures history cannot be shorted in the backtest: the leg is refused and the bias report names it. A roll needs the next month's close, which only `fo_contract_daily` holds; without it the leg is settled at expiry and the bias report says so. To fill both tables run `python -m data.derivatives --backfill N --recompute`. Runs without SHORT decisions give exactly the results they gave before. This is research and paper only: there are no live futures orders.
 
@@ -140,3 +142,19 @@ The signal engine (`/signals`) decides the side, entry, stop and target. A secon
 | Score now | `python -m ml.meta_label score [--date YYYY-MM-DD]` (needs the switch and an adopted model) |
 
 **Limits.** The labels use daily bars, so a bar touching both levels counts as a stop. Entry is assumed at the signal's close, not the next open. A few hundred closed signals (months of history) are needed before any verdict means much. A model that was ADOPTABLE can decay: watch the weekly runs' verdicts in the report.
+
+## 9. The factor risk model (W40)
+
+A Barra-style risk model of ATIP's universe (`quant/risk_model.py`; the formulas are in its docstring). It explains each day's stock returns with a **market** factor, the **NSE industries** (an industry with fewer than 8 stocks is pooled with the other small ones of its NSE macro sector, else into "Other") and eight **styles**: size (log market cap), beta to the Nifty, 12-1 momentum, residual volatility, book-to-price, earnings yield, quality (ROE) and liquidity (share turnover). Exposures are point in time: a filing counts only from its broadcast time, the same rule the factor engine uses. Each style is clipped at the 1st / 99th percentile and scaled to a cap-weighted mean of 0 and a standard deviation of 1; a missing value gets the median of its industry and is **flagged** (the `filled` column, shown on the card).
+
+Every night it regresses the next day's returns on the exposures (weighted by √market cap, industry returns constrained to sum to zero by cap so the market factor is the cap-weighted market), stores the factor returns and the R², and forecasts risk: factor covariance by EWMA (volatilities: 90-session half-life, correlations: 180) with a Newey–West correction for serial correlation, and each stock's specific risk by EWMA of its residuals shrunk toward its size bucket (large / mid / small cap). The first run builds about two years (500 sessions; ~30 s for the Nifty 500); after that each night adds the new session only, and running it twice changes nothing.
+
+| Where | What you see |
+|---|---|
+| `/trading` → Portfolio risk → **Factor risk model** | For the PAPER or LIVE book: total volatility split into factor and specific risk, each factor's share of the variance, each position's marginal contribution to risk, beta and active risk against a **Nifty 50 proxy** (the 50 largest stocks by filed market cap, cap-weighted: ATIP stores no index weights, so this is a proxy, and the card says so; with too few market caps it uses the NIFTY50 index itself), a model 1-day VaR, and the **bias statistic** of the book |
+| `/quant` → Factor risk model | Latest factor returns with t statistics, 20-session returns, volatilities, R² and the model's bias test |
+| API | `GET /api/quant/risk-model/status`, `GET /api/quant/risk-model/factors`, `GET /api/portfolio/risk-model?portfolio=PAPER\|LIVE`, `POST /api/quant/risk-model/run` (rebuild or catch up now) |
+
+**Reading the bias statistic.** It is the standard deviation of (realised return ÷ forecast volatility) over the last 250 sessions: about **1** when the forecasts were right, **above 1** when risk was under-forecast, **below 1** when over-forecast. The band shown is the 95% range for a correct model (about ±0.09 at 250 sessions); fat-tailed markets push it out more often than 5% of the time. The book's figure uses today's weights over the whole window.
+
+**Not modelled:** the universe is today's Nifty 500 (survivorship), industries are today's classification, prices are not adjusted for corporate actions (a daily move above 35% is left out of that day's regression instead), and there is no volatility-regime or eigenfactor adjustment. A position the model does not cover (no exposures yet) is listed on the card, never silently dropped.

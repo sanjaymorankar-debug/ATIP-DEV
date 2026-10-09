@@ -77,6 +77,8 @@ _G += " earnings_surprise"                     # W39b: SUE / EPS trend per store
 _G += " index_total_return"                    # W40: estimated Nifty total-return index (reference data)
 _G += " ml_meta_label"                         # W40: triple-barrier labels of the (shared) technical signals
 _O += " ml_meta_label_run ml_meta_label_score"  # W40: the owner's meta-label model runs and its nightly scores
+# W40: the factor risk model -- derived from prices and filings, the same for every tenant
+_G += " quant_risk_exposure quant_risk_factor_return quant_risk_regression quant_risk_covariance quant_risk_state"
 _O += " research_screen"                       # the owner's saved screens
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")

@@ -80,6 +80,12 @@ INVENTORY = {
     "ml_meta_label": ("research", False, "kept: recomputed from prices at each training run (W40 meta-labelling)"),
     "ml_meta_label_run": ("research", False, "kept: every meta-label training run and its verdict (W40)"),
     "ml_meta_label_score": ("research", False, "kept: the meta-label model's score of each day's signals (W40)"),
+    # W40: the factor risk model (quant/risk_model.py), rebuilt from prices and filings on demand
+    "quant_risk_exposure": ("research", False, "the last risk_model.history_sessions (500) sessions"),
+    "quant_risk_factor_return": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_regression": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_covariance": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_state": ("research", False, "the model definition and its latest bias test (W40)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

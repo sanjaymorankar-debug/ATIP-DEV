@@ -513,10 +513,30 @@ def sync(conn) -> int:
     return len(FACTORS)
 
 
+def knowledge_date(d: dict):
+    """The date a fundamental_data row became known (W40: shared with quant/risk_model.py): the
+    filing's broadcast time (available_from, W27 NSE filings) when stored, else report_date +
+    FUNDAMENTAL_LAG_DAYS, else created_at; None when the row carries none of them."""
+    known = None
+    if d.get("available_from"):
+        try:
+            known = datetime.fromisoformat(str(d["available_from"])[:19].replace(" ", "T")).date()
+        except ValueError:
+            known = None
+    if known is None and d.get("report_date"):
+        try:
+            known = datetime.fromisoformat(str(d["report_date"])[:10]).date() + timedelta(days=FUNDAMENTAL_LAG_DAYS)
+        except ValueError:
+            known = None
+    if known is None and d.get("created_at"):
+        known = datetime.fromisoformat(str(d["created_at"])[:10]).date()
+    return known
+
+
 def fundamentals_as_of(conn, symbols, as_of) -> dict:
     """{symbol: [rows known by as_of, oldest first]} -- knowledge date = the filing's
     broadcast time (available_from, W27 NSE filings) when stored, else
-    report_date + FUNDAMENTAL_LAG_DAYS, else created_at."""
+    report_date + FUNDAMENTAL_LAG_DAYS, else created_at (knowledge_date)."""
     out = {s: [] for s in symbols}
     try:
         rows = conn.execute("SELECT * FROM fundamental_data ORDER BY COALESCE(period_end, report_date), "
@@ -527,19 +547,7 @@ def fundamentals_as_of(conn, symbols, as_of) -> dict:
         d = dict(r)
         if d["symbol"] not in out:
             continue
-        known = None
-        if d.get("available_from"):
-            try:
-                known = datetime.fromisoformat(str(d["available_from"])[:19].replace(" ", "T")).date()
-            except ValueError:
-                known = None
-        if known is None and d.get("report_date"):
-            try:
-                known = datetime.fromisoformat(str(d["report_date"])[:10]).date() + timedelta(days=FUNDAMENTAL_LAG_DAYS)
-            except ValueError:
-                known = None
-        if known is None and d.get("created_at"):
-            known = datetime.fromisoformat(str(d["created_at"])[:10]).date()
+        known = knowledge_date(d)
         if known is not None and known <= as_of:
             out[d["symbol"]].append(d)
     return out

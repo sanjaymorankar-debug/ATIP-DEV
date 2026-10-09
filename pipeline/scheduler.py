@@ -1968,7 +1968,7 @@ def start_scheduler():
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
 
-    # ── W39b: stock SIP (paper) ───
+    # ── W39b: stock SIP (paper); W40: the nightly factor risk model (after post-market) ───
     try:
         from pipeline import w39_jobs
         for line in w39_jobs.schedule_jobs(schedule, run_job):

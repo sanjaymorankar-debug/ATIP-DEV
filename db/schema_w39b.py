@@ -22,9 +22,17 @@ The 7-year history backfill is #4's data/history_backfill.py (table prices_daily
                                          leg / rolled / calendar_spread / roll_cost per trade row,
                                          futures_margin / futures_notional per equity point (DDL in
                                          backtest/futures.py)
+    quant_risk_exposure       W40  the factor risk model (quant/risk_model.py): per stock per session the
+                                   style exposures, model industry, market cap, filled-descriptor flags,
+                                   the next session's return and specific return, the specific-risk forecast
+    quant_risk_factor_return  W40  daily factor returns (constrained WLS) with t statistics
+    quant_risk_regression     W40  one row per regression: stocks, excluded, R^2
+    quant_risk_covariance     W40  the EWMA / Newey-West factor covariance as of each session
+    quant_risk_state          W40  the model definition (factors, merged industries, hash) and the bias test
 """
 
 from data.total_return import DDL as _TRI
+from quant.risk_model import TABLES as _RISK_MODEL
 
 W39B_TABLES = {
     "order_basket": (
@@ -51,6 +59,12 @@ W39B_TABLES = {
             detail TEXT, PRIMARY KEY (plan_id, due_date))""",
     ),
     "index_total_return": _TRI,                                     # W40 PERF-001-05
+    # W40: the fundamental factor risk model (quant/risk_model.py owns the DDL)
+    "quant_risk_exposure": _RISK_MODEL["quant_risk_exposure"],
+    "quant_risk_factor_return": _RISK_MODEL["quant_risk_factor_return"],
+    "quant_risk_regression": _RISK_MODEL["quant_risk_regression"],
+    "quant_risk_covariance": _RISK_MODEL["quant_risk_covariance"],
+    "quant_risk_state": _RISK_MODEL["quant_risk_state"],
 }
 
 W39B_COLUMNS = {

@@ -1646,6 +1646,8 @@ if HAS_FASTAPI:
     _register_execution_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.portfolio_risk_routes import register as _register_portfolio_risk     # W25
     _register_portfolio_risk(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.risk_model_routes import register as _register_risk_model            # W40 factor risk model
+    _register_risk_model(app, _guard, _Req, get_connection, json_safe)
     from dashboard.stock_view import register as _register_stock_view                   # W26
     _register_stock_view(app, get_connection, json_safe)
     from dashboard.market_routes import register as _register_market_routes             # W27

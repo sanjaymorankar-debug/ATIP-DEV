@@ -24,6 +24,10 @@ Portfolio risk analytics (W25): one read-only view of a book's risk.
     returns_analytics(conn, book)    PF-11  CAGR from the stored daily equity (pnl_daily),
                                             per-position XIRR from the PAPER order history
     analyse(conn, book)              everything above in one dict (the API and the snapshot)
+    factor_risk(conn, book)          W40  the book through the factor risk model (quant/risk_model.py):
+                                            factor + specific risk, per-factor contributions, marginal
+                                            contribution per position, beta / active risk vs the Nifty 50
+                                            proxy, the book's bias statistic (GET /api/portfolio/risk-model)
 
 Returns are simple daily close-to-close returns over `lookback` sessions on the NIFTY50
 calendar. A symbol with less than 80% of the window is excluded from the return-based
@@ -449,6 +453,41 @@ def analyse(conn, book: str = "PAPER", lookback: int = 250, attribution_days: in
             out["returns"] = returns_analytics(conn, snap["book"], as_of)
         except Exception as e:
             out["returns"] = {"error": str(e)}
+    return out
+
+
+def factor_risk(conn, book: str = "PAPER") -> dict:
+    """W40: the factor risk model's view of the PAPER or LIVE book (quant/risk_model.py): total risk =
+    factor + specific, each factor's contribution x_k (F X'w)_k, each position's marginal contribution
+    to risk, beta and active risk against the Nifty 50 proxy (or the index), and the bias statistic of
+    today's weights over the stored forecasts. Weights are of the positions' value, as book_snapshot;
+    positions the model does not cover are listed in coverage, not dropped silently."""
+    from quant import risk_model as RMOD
+    book = str(book or "PAPER").upper()
+    if book not in BOOKS:
+        raise ValueError(f"book must be one of {BOOKS}")
+    snap = book_snapshot(conn, book)
+    base = {"portfolio": book, "weights_as_of": snap["as_of"], "positions_value": snap["positions_value"],
+            "equity": snap["equity"], "unvalued": snap.get("unvalued", [])}
+    if not snap["positions"]:
+        return {"status": "EMPTY", **base, "note": f"the {book} book holds nothing"}
+    weights = {p["symbol"]: p["weight"] for p in snap["positions"]}
+    cfg = RMOD.settings()
+    out = {**RMOD.decompose_weights(conn, weights, cfg=cfg, label=book), **base}
+    if out.get("status") != "OK":
+        return out
+    covered_value = snap["positions_value"] * (out["coverage"]["value_share"] or 0.0)
+    r = out["risk"]
+    out["risk_value"] = {"covered_value": round(covered_value, 2),
+                         "vol_1d_value": round((r["total_vol_pct_daily"] or 0) / 100 * covered_value, 2),
+                         "var95_1d_value": round((r["var95_1d_pct"] or 0) / 100 * covered_value, 2),
+                         "note": "normal 1-day 95% VaR from the factor model forecast (RK-12's historical / "
+                                 "Monte Carlo VaR is beside it)"}
+    try:
+        out["bias"] = RMOD.bias_test(conn, cfg, weights=weights, label=book)
+    except Exception as e:                           # the decomposition stands without its back-test
+        out["bias"] = {"error": str(e)}
+    out["bias_test"] = (RMOD.get_state(conn, "bias") or {}).get("summary")
     return out
 
 

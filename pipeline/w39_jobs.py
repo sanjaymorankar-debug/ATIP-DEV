@@ -5,6 +5,13 @@ W39b scheduled jobs (tracker reconciliation, 2026-10-07).
                          market days, PAPER only (orders/sip.py); a no-op without plans.
     total_return         W40 PERF-001-05  rebuild the estimated Nifty total-return index
                          (data/total_return.py) at 21:10 on market days; reads only stored data.
+    risk_model           W40     the factor risk model (quant/risk_model.py) nightly at config
+                         "risk_model.time" (default 21:45, after the post-market pipeline, its
+                         18:30 catch-up and the 19:30 EOD-late run): exposures for new sessions,
+                         regressions whose next session arrived, covariance and specific risk.
+                         Incremental and idempotent -- a night it missed is caught up by the next
+                         run, a second run the same night finds nothing (NO_NEW). Every day, not
+                         only market days: on a holiday it simply has nothing new.
 
 The Dhan token renewal and the 7-year history backfill are W39's (PR #4): the LaunchAgent /
 Windows task running tools/dhan_token_refresh.py, and data/history_backfill.py scheduled by
@@ -13,6 +20,7 @@ versions were dropped so there is one of each.)
 
 Switches (atip_data/config.json):
     "sip_enabled": true, "sip_time": "09:30"
+    "risk_model": {"enabled": true, "time": "21:45", ...}   (quant/risk_model.py DEFAULTS)
 """
 
 from __future__ import annotations
@@ -69,6 +77,12 @@ def total_return_run() -> dict:
     return run()
 
 
+def risk_model_run() -> dict:
+    """W40: bring the factor risk model up to the latest session (quant/risk_model.py)."""
+    from quant.risk_model import run_scheduled
+    return run_scheduled()
+
+
 def schedule_jobs(schedule, run_job) -> list:
     """Register the W39b jobs; returns what was registered (for the start-up log)."""
     cfg = config()
@@ -79,4 +93,10 @@ def schedule_jobs(schedule, run_job) -> list:
         out.append(f"sip_run daily {t} (market days, PAPER)")
     schedule.every().day.at("21:10").do(run_job, "total_return", total_return_run)
     out.append("total_return daily 21:10 (market days)")
+    from quant.risk_model import settings as rm_settings
+    rm = rm_settings()
+    if rm["enabled"]:
+        t = _hhmm(rm["time"], "21:45")
+        schedule.every().day.at(t).do(run_job, "risk_model", risk_model_run)
+        out.append(f"risk_model daily {t} (factor risk model, incremental)")
     return out
