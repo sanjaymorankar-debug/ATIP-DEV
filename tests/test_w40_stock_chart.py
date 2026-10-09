@@ -334,9 +334,17 @@ def test_panel_draws_rsi_macd_and_the_intraday_chart_without_js_errors(api):
     if not os.path.exists(CHROME):
         pytest.skip("Chromium is not installed")
     from dashboard import stock_view as SV
+    from db.schema import get_connection
+    c = get_connection()      # EMPTY has a daily chart in this page (canned below) but no 15-minute bars:
+    c.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume) VALUES "   # give it a price so
+              "('EMPTY','2026-10-01',10,10,10,10,100)")                                    # /rating-75 says why
+    c.commit()
+    c.close()
     canned = {}
     for path in ("/api/stock/ACME/history?sessions=2500", "/api/stock/ACME/intraday?days=5&interval=15",
-                 "/api/stock/EMPTY/intraday?days=5&interval=15"):
+                 "/api/stock/EMPTY/intraday?days=5&interval=15",
+                 # the panel also asks for the on-demand 75-minute rating (W39B-TF75) when it opens
+                 "/api/stock/ACME/rating-75", "/api/stock/EMPTY/rating-75"):
         r = api.get(path)
         canned[path] = (r.status_code, r.text)
     hist = json.loads(canned["/api/stock/ACME/history?sessions=2500"][1])
