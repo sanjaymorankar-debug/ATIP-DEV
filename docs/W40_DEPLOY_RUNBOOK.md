@@ -1,5 +1,7 @@
 # W40 deployment runbook (owner, macOS)
 
+> **2026-10-09 plan change:** PostgreSQL is now ATIP's final server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Release:** `ATIP-W40` = the `master` commit that merges PR #9. After `git pull`, `git log -1 --format='%h %s'` shows it: a merge of `claude/wizardly-curie-fbjeoa`, or a commit titled "W40: ...".
 **Rollback target:** `d01705e` (`master` before W40: W39b, PR #5, plus the MySQL runtime, PR #8).
 **Haven't deployed W39b (`ATIP-W39B`) yet?** Then skip it and follow only this runbook: this release includes it. `docs/W39B_DEPLOY_RUNBOOK.md` is kept for reference.
@@ -141,7 +143,7 @@ Each job reads only data ATIP already stores.
 | ENT-04 Razorpay | A KYC-activated business account with Invoices and Subscriptions; keys in the vault | Billing uses the sandbox provider |
 | ENT-07 / ENT-08 exposure | How ATIP is reached from the internet (tunnel / VPN / reverse proxy), the domain and TLS | Local only; Razorpay settles by polling, not webhooks |
 | ENT-14 regulatory | Sign-off by a qualified professional (SEBI RA / IA; payments tax) | Reports carry disclosures; nothing is published |
-| ENT-16 HA | Move the runtime to PostgreSQL and choose a host | SQLite on the Mac; the container image is ready |
+| ENT-16 HA | Move the runtime to PostgreSQL (the final server database; MySQL is no longer supported) and choose a host: a VPS or managed PostgreSQL, since Hostinger shared hosting offers no PostgreSQL | SQLite on the Mac; the container image is ready |
 | Consensus estimates | A licensed estimates feed | PEAD and research use ATIP's own history |
 | SE-05 AI strategies | Evidence: a model that passes validation after more history (DP-23 backfill) | No ML strategy is activated |
 | UAT-001 | You run the UAT journeys and record acceptance | Independent QA pending |
