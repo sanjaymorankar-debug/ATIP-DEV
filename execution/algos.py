@@ -93,8 +93,8 @@ def select(conn, risk_decision_id: str) -> dict | None:
     if not rd:
         return None
     rd = dict(rd)
-    if rd.get("mode") == "LIVE" or rd.get("action") in ("SHORT", "COVER"):
-        return None                                   # LIVE is not built; futures legs fill at EOD
+    if rd.get("mode") == "LIVE" or rd.get("action") in ("SHORT", "COVER", "OPTION_OPEN", "OPTION_CLOSE"):
+        return None                                   # LIVE is not built; futures / option legs fill at once
     qty, px = int(rd["approved_quantity"] or 0), float(rd["reference_price"] or 0)
     if qty <= 1:
         return None

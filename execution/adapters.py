@@ -170,6 +170,36 @@ class FuturesPaperAdapter(BrokerAdapter):
                             order.get("avg_fill_price"), order.get("fees") or 0, "EOD futures close")
 
 
+class OptionsPaperAdapter(BrokerAdapter):
+    """W40 (ENT-15): an option-overlay strategy's multi-leg OPT order on the paper options book
+    (execution/options_paper.fill_strategy_order). Every leg is priced from the latest stored chain
+    (mid moved against the order by slippage_bps) and the order fills ALL legs or none. PAPER only:
+    get_adapter never returns it for LIVE."""
+    name, mode = "paper_opt", PAPER
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def submit(self, order: dict) -> BrokerResult:
+        from execution.options_paper import fill_strategy_order
+        try:
+            r = fill_strategy_order(self.conn, order)
+        except Exception as e:
+            raise BrokerError(f"paper options book raised: {e}") from e
+        if r["status"] != "FILLED":
+            return BrokerResult("REJECTED", None, message=r.get("message"), raw=r)
+        return BrokerResult("FILLED", r["position_id"], int(r["filled_qty"]), r["price"], r["fees"],
+                            "option chain mid -/+ slippage (net premium per unit)", message=r.get("message"),
+                            raw={k: v for k, v in r.items() if k != "metrics"})
+
+    def cancel(self, order: dict) -> BrokerResult:
+        return BrokerResult("ERROR", order.get("broker_order_id"), message="option paper orders fill at once")
+
+    def status(self, order: dict) -> BrokerResult:
+        return BrokerResult("FILLED", order.get("broker_order_id"), int(order.get("filled_quantity") or 0),
+                            order.get("avg_fill_price"), order.get("fees") or 0, "option chain mid -/+ slippage")
+
+
 class TenantPaperAdapter(BrokerAdapter):
     """W9: a non-owner tenant's own simulated book (execution/tenant_books.py).
     Fills immediately at the reference price (else the latest close) or rejects;
@@ -238,9 +268,13 @@ def get_adapter(conn, mode: str, instrument: str | None = None, tenant_id: str |
     if not is_default(tenant_id):
         if mode != PAPER:
             raise LiveTradingDisabled(f"tenant {tenant_id}: only PAPER execution exists for tenants")
-        if (instrument or "CASH") == "FUT":
-            raise BrokerError(f"tenant {tenant_id}: futures short legs are owner-book only")
+        if (instrument or "CASH") in ("FUT", "OPT"):
+            raise BrokerError(f"tenant {tenant_id}: futures / option strategy legs are owner-book only")
         return TenantPaperAdapter(conn, tenant_id)
+    if (instrument or "CASH") == "OPT":                       # W40: option strategies are PAPER only
+        if mode != PAPER:
+            raise LiveTradingDisabled("LIVE options are not built: OPT orders exist only on the paper options book")
+        return OptionsPaperAdapter(conn)
     if mode == PAPER and (instrument or "CASH") == "FUT":
         return FuturesPaperAdapter(conn)
     if mode == PAPER:

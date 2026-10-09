@@ -2,7 +2,8 @@
 The /strategies page (W3): the minimum UI over the Strategy Engine API --
 strategy list (version, status, latest backtest, health), regime mapping,
 strategy detail (definition, parameters, lifecycle, versions, backtest
-history, decisions, position intents, health), lifecycle transitions,
+history, decisions, position intents, health; W40: an option overlay's option
+positions and a dry run of today's legs and risk check), lifecycle transitions,
 "generate decisions" and "submit backtest".
 Everything is read from /api/strategies*; nothing here computes a result.
 """
@@ -37,7 +38,7 @@ pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;bord
 <h2>Strategies</h2>
 <div class="scroll"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Latest signals (score)</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
 <h2>Performance <span class="muted">(W28 DB-16: W4 fills per strategy, average cost; decisions last <select id="pdays" onchange="loadPerf()"><option>7</option><option selected>30</option><option>90</option></select> days)</span></h2>
-<div class="scroll"><table><thead><tr><th>Strategy</th><th>Status</th><th>Health</th><th>Backtest (current version)</th><th>Decisions</th><th>PAPER book</th><th>LIVE book</th></tr></thead><tbody id="perf"></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Strategy</th><th>Status</th><th>Health</th><th>Backtest (current version)</th><th>Decisions</th><th>PAPER book</th><th>LIVE book</th><th>Derivatives (paper)</th></tr></thead><tbody id="perf"></tbody></table></div>
 <h2>Regime mapping <span class="muted">(Market Health regime → strategies in play; edit via PUT /api/strategies/regime-mapping/{regime})</span></h2>
 <div id="regimes"></div>
 <div id="detail"></div>
@@ -75,7 +76,9 @@ async function show(id){
   h+=`<h2>Backtests</h2><table><thead><tr><th>Run</th><th>Version</th><th>Kind</th><th>Period</th><th>Window</th><th>Status</th><th>Return</th><th>Sharpe</th><th>Max DD</th></tr></thead><tbody>${s.backtests.map(b=>{const m=b.metrics_json?JSON.parse(b.metrics_json):{};return `<tr><td><a style="color:var(--accent)" href="/backtests">${b.run_id}</a></td><td>${b.strategy_version}</td><td>${b.kind}</td><td>${b.period_label||''}</td><td>${b.start_date} → ${b.end_date}</td><td>${b.status}</td><td>${pct(m.total_return)}</td><td>${num(m.sharpe)}</td><td class="neg">${pct(m.max_drawdown)}</td></tr>`}).join('')||'<tr><td colspan=9 class="muted">none</td></tr>'}</tbody></table>`;
   h+=`<h2>Versions</h2><table><thead><tr><th>Version</th><th>Hash</th><th>Created</th><th>Notes</th></tr></thead><tbody>${s.versions.map(v=>`<tr><td>${v.version}</td><td class="muted">${v.definition_hash.slice(0,16)}…</td><td>${v.created_at}</td><td>${esc(v.notes)}</td></tr>`).join('')}</tbody></table>`;
   h+=`<h2>Lifecycle history</h2><table><thead><tr><th>When</th><th>Version</th><th>From</th><th>To</th><th>Reason</th><th>Evidence</th><th>By</th></tr></thead><tbody>${s.lifecycle.map(e=>`<tr><td>${e.at}</td><td>${e.version||''}</td><td>${e.from_state||''}</td><td>${e.to_state}</td><td>${esc(e.message)}</td><td class="muted">${esc(JSON.stringify(e.details))}</td><td>${esc(e.actor)}</td></tr>`).join('')}</tbody></table>`;
-  document.getElementById('detail').innerHTML=h; loadDecisions(id);
+  if(s.kind==='option_overlay')h+=`<h2>Option positions <span class="muted">(W40 paper options book: multi-leg, marked daily at the chain mid)</span></h2><div id="optpos" class="scroll"></div>
+   <div class="row"><button onclick="optDry('${id}')">Dry run today: legs + risk check</button><span class="muted">nothing is stored or placed</span></div><div id="optdry"></div>`;
+  document.getElementById('detail').innerHTML=h; loadDecisions(id); if(s.kind==='option_overlay')loadOptions(id);
 }
 function healthHtml(x){const m=x.metrics;let h=`<span class="pill ${x.status}">${x.status}</span> <span class="muted">${x.as_of||''} · ${esc(x.status_reason||'')}</span>`;
   if(m){const le=m.last_execution,ls=m.last_signal,da=m.data_availability,pr=m.performance_ref;
@@ -95,6 +98,18 @@ async function health(id){try{const r=await j(`/api/strategies/${id}/health`);do
 async function bt(id){const m=document.getElementById('msg');m.textContent='';
   const b={start:document.getElementById('bs').value,end:document.getElementById('be').value};const c=document.getElementById('bc').value;if(c)b.initial_capital=Number(c);
   try{const r=await post(`/api/strategies/${id}/backtest`,b);m.textContent='started '+r.run_id+' (see Backtests)'}catch(e){m.textContent=e.message}}
+function deriv(b){const f=b.FUTURES,o=b.OPTIONS;if(!f&&!o)return '<span class="muted">none</span>';
+  return (f?'<span class="muted">futures</span> '+book(f):'')+(f&&o?'<br>':'')+(o?'<span class="muted">options</span> '+book(o):'')}
+const legTxt=L=>(L||[]).map(l=>`${l.side} ${num(l.strike,0)} ${l.option_type}${l.entry_price!=null?' @ '+num(l.entry_price):(l.mid!=null?' ~'+num(l.mid):'')}${l.exit_price!=null?' → '+num(l.exit_price):''}`).join('<br>');
+async function loadOptions(id){try{const r=await j(`/api/strategies/${id}/options`);
+  document.getElementById('optpos').innerHTML=`<table><thead><tr><th>Position</th><th>Status</th><th>Template</th><th>Expiry</th><th>Lots</th><th>Legs</th><th>Net premium</th><th>Max loss (risk)</th><th>Margin</th><th>Unrealised</th><th>Realised</th><th>Last mark</th><th>Exit</th></tr></thead><tbody>${r.positions.map(p=>`<tr><td class="muted">${esc(p.position_id)}<br>${esc(p.symbol)}</td><td>${p.status}</td><td>${esc(p.template)}</td><td>${p.expiry}</td><td>${p.lots} × ${p.lot_size}</td><td>${legTxt(p.legs)}</td><td>${num(p.net_premium,0)}</td><td>${num(p.risk_amount,0)}</td><td>${num(p.margin_blocked,0)}</td><td>${num(p.unrealized,0)}</td><td>${num(p.realized_pnl,0)}</td><td>${p.last_mark_date||'—'}${(p.marks||[])[0]&&p.marks[0].exit_signal?'<br><span class="note">'+esc(p.marks[0].exit_signal)+'</span>':''}</td><td>${esc(p.exit_reason||'')}</td></tr>`).join('')||'<tr><td colspan=13 class="muted">no option positions</td></tr>'}</tbody></table>`}
+  catch(e){document.getElementById('optpos').innerHTML=`<span class="neg">${esc(e.message)}</span>`}}
+async function optDry(id){const el=document.getElementById('optdry');el.textContent='…';try{const r=await j(`/api/strategies/${id}/options/dry-run`);
+  el.innerHTML=`<p class="muted">${esc(r.note)} (as of ${r.as_of}, strategy ${r.status})</p>`+(r.decisions.map(d=>{const rk=d.risk||{},oc=d.option_checks;
+   const ck=c=>`<table><thead><tr><th>Check</th><th>Status</th><th>Message</th></tr></thead><tbody>${(c.checks||[]).map(x=>`<tr><td>${x.check}</td><td>${x.status}</td><td class="muted">${esc(x.message)}</td></tr>`).join('')}</tbody></table>`;
+   return `<h2>${esc(d.symbol)} — ${d.action}${d.template?' · '+esc(d.template)+' '+(d.expiry||''):''}</h2><p>${esc((d.reasons||[]).join('; '))}</p>${d.legs?'<p>'+legTxt(d.legs)+'</p>':''}`
+    +(d.risk?`<p><b>Risk: ${rk.status}</b> ${rk.approved_lots??0} lot(s) ${esc(rk.reason||'')}</p>`+ck(rk):'')+(oc?`<p><b>Option checks alone: ${oc.status}</b> ${oc.approved_lots??0} lot(s) ${esc(oc.reason||'')}</p>`+ck(oc):'')}).join('')||'<p class="muted">no option decisions today</p>')}
+  catch(e){el.innerHTML=`<span class="neg">${esc(e.message)}</span>`}}
 function book(b){if(!b)return '<span class="muted">no fills</span>';const t=(b.realized||0)+(b.unrealized||0);
   return `<span class="${t>=0?'pos':'neg'}">₹${num(t,0)}</span><br><span class="muted">real ${num(b.realized,0)} · unreal ${num(b.unrealized,0)} · ${b.open_positions} open · ${b.fills} fills</span>`}
 async function loadPerf(){try{const d=document.getElementById('pdays').value;const P=await j('/api/strategy-performance?days='+d);
@@ -103,8 +118,8 @@ async function loadPerf(){try{const d=document.getElementById('pdays').value;con
    return `<tr><td><b>${esc(p.strategy_id)}</b> <span class="muted">${esc(p.version)}</span></td><td>${p.status}</td>
    <td>${h?`<span class="pill ${h.status}">${h.status}</span> <span class="muted">${esc((h.issues||[]).join(', '))}</span>`:'—'}</td>
    <td>${bt?`${pct(bt.total_return)} · Sharpe ${num(bt.sharpe)} · DD ${pct(bt.max_drawdown)} · win ${pct(bt.win_rate)} · ${bt.trades??'—'} trades<br><span class="muted">${esc(bt.period)}</span>`:'<span class="muted">never backtested</span>'}</td>
-   <td>${acts}${dc.blocked?` <span class="neg">(${dc.blocked} blocked)</span>`:''}</td><td>${book(p.books.PAPER)}</td><td>${book(p.books.LIVE)}</td></tr>`}).join('')}
-  catch(e){document.getElementById('perf').innerHTML=`<tr><td colspan=7 class="neg">${esc(e.message)}</td></tr>`}}
+   <td>${acts}${dc.blocked?` <span class="neg">(${dc.blocked} blocked)</span>`:''}</td><td>${book(p.books.PAPER)}</td><td>${book(p.books.LIVE)}</td><td>${deriv(p.books)}</td></tr>`}).join('')}
+  catch(e){document.getElementById('perf').innerHTML=`<tr><td colspan=8 class="neg">${esc(e.message)}</td></tr>`}}
 load();loadRegimes();loadPerf();
 </script></body></html>"""
 

@@ -737,3 +737,7 @@ def make_evaluator(defn: dict, params: dict, loader=None, depth: int = 0) -> Eva
     if cls is CompositeEvaluator:
         return cls(defn, params, loader, depth)
     return cls(defn, params, loader, depth)
+
+
+# W40 (ENT-15): option overlays live in their own module, which adds itself to EVALUATORS on import
+import strategy_engine.option_overlay  # noqa: E402,F401

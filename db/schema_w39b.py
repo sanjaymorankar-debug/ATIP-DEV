@@ -29,6 +29,9 @@ The 7-year history backfill is #4's data/history_backfill.py (table prices_daily
     quant_risk_regression     W40  one row per regression: stocks, excluded, R^2
     quant_risk_covariance     W40  the EWMA / Newey-West factor covariance as of each session
     quant_risk_state          W40  the model definition (factors, merged industries, hash) and the bias test
+    paper_option_strategy_*  W40 / ENT-15  option-overlay strategies' multi-leg paper positions, legs,
+                                           fills and daily marks (DDL: execution/options_paper.py)
+    oms_order (+ legs_json)  W40 / ENT-15  the legs of a multi-leg OPT order
 """
 
 from data.total_return import DDL as _TRI
@@ -95,3 +98,11 @@ from backtest.futures import EQUITY_COLUMNS as _FUT_EQUITY, TRADE_COLUMNS as _FU
 
 W39B_COLUMNS["backtest_trade"] = {**W39B_COLUMNS["backtest_trade"], **_FUT_TRADE}
 W39B_COLUMNS["backtest_equity"] = {**W39B_COLUMNS.get("backtest_equity", {}), **_FUT_EQUITY}
+
+# W40 (ENT-15): option-overlay strategies' multi-leg paper positions (paper_option_strategy_position /
+# _leg / _trade / _mark) -- the DDL lives with the book, execution/options_paper.py STRATEGY_TABLES --
+# and oms_order.legs_json, the legs of a multi-leg OPT order (execution/option_intents.order_plan)
+from execution.options_paper import STRATEGY_TABLES as _W40_OPTION_DDL  # noqa: E402
+
+W39B_TABLES.update(_W40_OPTION_DDL)
+W39B_COLUMNS.setdefault("oms_order", {})["legs_json"] = "TEXT"

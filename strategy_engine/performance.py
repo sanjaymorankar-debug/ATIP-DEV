@@ -9,6 +9,8 @@ Strategy performance (DB-16), W28 -- one row per strategy, from what ATIP record
     book (PAPER / LIVE separately)  from W4 fills (oms_fill), average-cost per symbol:
                    realised P&L, open quantity, cost basis, unrealised P&L at the latest close,
                    number of fills, fees
+    FUTURES / OPTIONS  the paper futures short legs (W30) and the option overlays' multi-leg
+                   positions (W40): realised, unrealised (the last daily mark), open positions, fills
 
 Only fills the W4 OMS made carry a strategy; positions opened outside it (order rules,
 manual paper orders) belong to no strategy (KNOWN_ISSUES W4-R7).
@@ -31,7 +33,7 @@ def book_pnl(conn, strategy_id) -> dict:
     pos = {}
     for mode, sym, side, qty, px, fees in conn.execute(
             "SELECT mode, symbol, side, quantity, price, COALESCE(fees,0) FROM oms_fill WHERE strategy_id=? AND "
-            "order_id NOT IN (SELECT order_id FROM oms_order WHERE COALESCE(instrument,'CASH')='FUT') "
+            "order_id NOT IN (SELECT order_id FROM oms_order WHERE COALESCE(instrument,'CASH') IN ('FUT','OPT')) "
             "ORDER BY filled_at", (strategy_id,)):
         b = out.setdefault(mode or "PAPER", {"realized": 0.0, "fees": 0.0, "fills": 0, "unrealized": 0.0,
                                              "open_positions": 0, "cost_basis": 0.0})
@@ -85,6 +87,16 @@ def _futures(conn, sid) -> dict:
                                               (sid,)).fetchone()[0], "fees": None, "cost_basis": None}}
 
 
+def _options(conn, sid) -> dict:
+    """W40: the strategy's multi-leg paper option positions (option overlays), as an OPTIONS book."""
+    try:
+        from execution.options_paper import strategy_book
+        b = strategy_book(conn, sid)
+    except Exception:
+        return {}
+    return {"OPTIONS": b} if b else {}
+
+
 def performance(conn, days: int = 30) -> list:
     since = str(date.today() - timedelta(days=int(days)))
     rows = []
@@ -109,5 +121,5 @@ def performance(conn, days: int = 30) -> list:
                          **{k: m.get(k) for k in ("total_return", "cagr", "sharpe", "max_drawdown", "win_rate",
                                                   "profit_factor", "trades")}} if bt else None,
             "decisions": {"days": int(days), "by_action": dec, "blocked": blocked},
-            "books": {**book_pnl(conn, sid), **_futures(conn, sid)}})
+            "books": {**book_pnl(conn, sid), **_futures(conn, sid), **_options(conn, sid)}})
     return rows

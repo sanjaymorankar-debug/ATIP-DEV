@@ -16,6 +16,8 @@ changes something needs the X-ATIP-Token header.
     POST /api/strategies/{id}/activate | pause | disable | retire | archive
     POST /api/strategies/{id}/lifecycle        any allowed transition {to_state}
     GET  /api/strategies/{id}/health
+    GET  /api/strategies/{id}/options          (W40) the paper option positions of an option overlay
+    GET  /api/strategies/{id}/options/dry-run  (W40) today's legs + risk check; nothing stored or placed
     GET  /api/strategies/{id}/decisions        stored decisions + intents + runs
     POST /api/strategies/{id}/decisions        generate decisions now
     POST /api/strategies/{id}/backtest         W2 backtest of a stored version
@@ -351,6 +353,37 @@ def register(app, guard, Req, get_connection, json_safe):
             runs = [dict(r) for r in conn.execute("SELECT * FROM strategy_decision_run WHERE strategy_id=? "
                                                   "ORDER BY as_of DESC, created_at DESC LIMIT 20", (sid,))]
             return JSONResponse(json_safe({"decisions": rows, "intents": intents, "runs": runs}))
+        finally:
+            conn.close()
+
+    @app.get("/api/strategies/{sid}/options")
+    async def api_strategy_options(sid: str, status: str = None, limit: int = 50):
+        """W40 (ENT-15): the strategy's paper option positions (option overlays) with legs and daily marks."""
+        from execution.options_paper import strategy_book, strategy_positions
+        conn = conn_synced()
+        try:
+            if not REG.get_strategy(conn, sid):
+                return not_found(sid)
+            st = (status or "").upper() or None
+            if st and st not in ("OPEN", "CLOSED", "SETTLED"):
+                return err("status must be OPEN, CLOSED or SETTLED")
+            return JSONResponse(json_safe({"strategy_id": sid, "book": strategy_book(conn, sid),
+                                           "positions": strategy_positions(conn, sid, st, max(1, min(int(limit), 500)))}))
+        finally:
+            conn.close()
+
+    @app.get("/api/strategies/{sid}/options/dry-run")
+    async def api_strategy_options_dry_run(sid: str, as_of: str = None, version: str = None):
+        """W40 (ENT-15): an option overlay's legs and risk check for today (or as_of) -- nothing stored,
+        nothing placed (strategy_engine/option_overlay.dry_run)."""
+        from strategy_engine.option_overlay import dry_run
+        conn = conn_synced()
+        try:
+            if not REG.get_strategy(conn, sid):
+                return not_found(sid)
+            return JSONResponse(json_safe(dry_run(conn, sid, as_of, version)))
+        except BAD as e:
+            return err_for(e)
         finally:
             conn.close()
 

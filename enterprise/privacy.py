@@ -65,6 +65,11 @@ INVENTORY = {
     "tenant_paper_position": ("financial", False, "tenant lifetime"),
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),
     "oms_order": ("financial", False, "kept (trade audit)"),
+    # W40 (ENT-15): option-overlay strategies' paper option positions (the paper_ rule would match too)
+    "paper_option_strategy_position": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_leg": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_trade": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_mark": ("financial", False, "kept with its position (daily marks)"),
     "strategy": ("research", False, "tenant lifetime"),
     "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
     "order_book_pressure": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),

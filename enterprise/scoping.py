@@ -80,6 +80,9 @@ _O += " ml_meta_label_run ml_meta_label_score"  # W40: the owner's meta-label mo
 # W40: the factor risk model -- derived from prices and filings, the same for every tenant
 _G += " quant_risk_exposure quant_risk_factor_return quant_risk_regression quant_risk_covariance quant_risk_state"
 _O += " research_screen"                       # the owner's saved screens
+# W40 (ENT-15): option-overlay strategies' paper option positions -- the owner's book, like the futures legs
+_O += (" paper_option_strategy_position paper_option_strategy_leg paper_option_strategy_trade "
+       "paper_option_strategy_mark")
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")
 # child -> (parent table, child column, parent column)

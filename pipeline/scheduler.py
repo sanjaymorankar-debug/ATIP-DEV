@@ -1656,13 +1656,16 @@ def _w38_compliance():
 
 
 def _w37_options_settle():
-    """Settle paper options that expired today (intrinsic value). No-op without open positions."""
+    """Settle paper options that expired today (intrinsic value) -- the owner's and (W40) the option-overlay
+    strategies' positions -- then mark the strategies' open positions at today's chain. No-op without
+    open positions."""
     if not is_market_day():
         return
     try:
-        from execution.options_paper import settings as opt_settings, settle_expired
+        from execution.options_paper import mark_strategy_positions, settings as opt_settings, settle_expired
         if opt_settings()["enabled"]:
             run_job("options_expiry", settle_expired)
+            run_job("options_strategy_marks", mark_strategy_positions)
     except Exception as e:
         log.warning(f"  Options expiry: {e}")
 
