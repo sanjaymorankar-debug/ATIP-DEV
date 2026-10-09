@@ -15,6 +15,7 @@ Tables added in W39 (history, research & options tooling), applied by db/schema.
     intraday_signal         IN-01  intraday scan hits on 15-minute bars, the price seen, the record at the close
     depth20_snapshot        DP-01  20-level depth per watchlist stock every 15 s: mid, spread, DWI, imbalances
     global_snapshot         GS-01  global futures, Asia and FX at 15:30 and 08:45 IST (the synchronised model)
+    preopen_snapshot        PO-01  NSE pre-open auction per stock (IEP, total buy / sell, imbalance) and its outcome
     earnings_surprise       W39b   SUE, revenue SUE and the EPS-trend proxy per stored quarter (research/earnings_surprise.py)
 
 Columns added after a table first shipped (W39_COLUMNS, applied with ALTER TABLE ADD COLUMN):
@@ -47,6 +48,7 @@ from research.scorecard import DDL as _SCORE
 from research.scorecard import ADDED_COLUMNS as _SCORE_COLS
 from research.tech_signals import ADDED_COLUMNS as _TECH_COLS
 from research.earnings_surprise import DDL as _EARN
+from data.preopen import DDL as _PREOPEN
 
 W39_TABLES = {
     "prices_daily_backfill": (_BACKFILL,),
@@ -64,6 +66,7 @@ W39_TABLES = {
     "depth20_snapshot": _DEPTH20,
     "global_snapshot": _GSYNC,
     "earnings_surprise": _EARN,
+    "preopen_snapshot": _PREOPEN,
 }
 
 W39_COLUMNS = {**_TECH_COLS, **_CUE_COLS, **_SCORE_COLS, **_DEPTH20_COLS}

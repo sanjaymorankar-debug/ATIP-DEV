@@ -1489,7 +1489,8 @@ def _schedule_w39_jobs():
     screens after them (research/scorecard.py, research/screener.py), intraday scans on the stored 15-minute
     bars every 15 minutes in the session (research/intraday_signals.py), global snapshots at 15:31 and
     08:42 for the synchronised gap model (research/global_sync.py), and the nightly, budgeted 7-year
-    price-history backfill (data/history_backfill.py)."""
+    price-history backfill (data/history_backfill.py); the NSE pre-open auction at 09:09, once order entry
+    has closed, and its outcome after the post-market prices at 17:10 (data/preopen.py)."""
     schedule.every(15).minutes.do(_w39_order_pressure_tick)
     schedule.every().day.at("08:45").do(_w39_gift)
     schedule.every().day.at("09:05").do(_w39_gift)
@@ -1504,6 +1505,8 @@ def _schedule_w39_jobs():
     schedule.every(15).minutes.do(_w39_intraday_tick)
     schedule.every().day.at("15:31").do(_w39_global_sync, "close")
     schedule.every().day.at("08:42").do(_w39_global_sync, "pre")
+    schedule.every().day.at("09:09").do(_w39_preopen_capture)
+    schedule.every().day.at("17:10").do(_w39_preopen_evaluate)
 
 
 def _w39_global_sync(label):
@@ -1531,6 +1534,30 @@ def _w39_intraday_tick():
         run_job("intraday_signals", intraday_job)
     except Exception as e:
         log.warning(f"  Intraday signals: {e}")
+
+
+def _w39_preopen_capture():
+    """The NSE pre-open auction's final picture: IEP and total buy / sell per stock (data/preopen.py). Order
+    entry closes at a random second between 09:07 and 09:08; 09:09 reads the closed book."""
+    if not is_market_day():
+        return
+    try:
+        from data.preopen import capture, settings as po_settings
+        if po_settings()["enabled"]:
+            run_job("preopen_capture", capture)
+    except Exception as e:
+        log.warning(f"  Pre-open capture: {e}")
+
+
+def _w39_preopen_evaluate():
+    """The pre-open rows' outcome (open, first 15 minutes, close) once post-market has stored the day's prices."""
+    if not is_market_day():
+        return
+    try:
+        from data.preopen import evaluate
+        run_job("preopen_evaluate", evaluate)
+    except Exception as e:
+        log.warning(f"  Pre-open evaluation: {e}")
 
 
 def _w39_order_pressure_tick():

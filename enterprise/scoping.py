@@ -79,6 +79,7 @@ _G += " ml_meta_label"                         # W40: triple-barrier labels of t
 _O += " ml_meta_label_run ml_meta_label_score"  # W40: the owner's meta-label model runs and its nightly scores
 # W40: the factor risk model -- derived from prices and filings, the same for every tenant
 _G += " quant_risk_exposure quant_risk_factor_return quant_risk_regression quant_risk_covariance quant_risk_state"
+_G += " preopen_snapshot"                      # NSE pre-open auction per stock (market data)
 _O += " research_screen"                       # the owner's saved screens
 # W40 (ENT-15): option-overlay strategies' paper option positions -- the owner's book, like the futures legs
 _O += (" paper_option_strategy_position paper_option_strategy_leg paper_option_strategy_trade "
