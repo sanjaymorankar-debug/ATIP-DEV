@@ -41,7 +41,7 @@ This guide is for the owner running ATIP day to day: what runs when, what each p
 
 | Page | What it is for |
 |---|---|
-| `/` | Scores, portfolio, top lists. **News** tab: market brief at the top. **Lists & scans** tab: crash-risk 25, top SPI, MSI, intraday scan hits. Click any symbol for its history panel (its chart marks the stored technical signals, chart-pattern breakouts and candle patterns and draws the lines of the chart patterns in place; **Patterns** hides them) |
+| `/` | Scores, portfolio, top lists. **News** tab: market brief at the top. **Lists & scans** tab: crash-risk 25, top SPI, MSI, intraday scan hits. Click any symbol for its history panel (its chart marks the stored technical signals, chart-pattern breakouts and candle patterns and draws the lines of the chart patterns in place; **Patterns** hides them; **RSI 14** / **MACD** add indicator panels under the chart; **1D 15m** / **5D 15m** show the stored 15-minute bars with the session VWAP, the previous close and the intraday scan hits, when the Dhan Data API has stored them) |
 | `/market` | Pre-open (GIFT Nifty, implied gap, US yields, PCR / max pain), global history, F&O table, fundamentals and ownership lookup per symbol, the bulk-deal study, feed status |
 | `/strategies` | Strategy registry, backtests, the **Performance** panel (health, backtest, decisions, PAPER / LIVE / FUTURES book P&L) |
 | `/trading` | Risk decisions, orders, fills, portfolio risk, **Live P&L**, **Execution operations** (broker health, reconciliation, resting orders with Modify, execution analytics, Zerodha session) |
