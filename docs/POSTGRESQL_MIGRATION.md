@@ -13,7 +13,7 @@ W38 added everything needed to move to PostgreSQL in steps, and proved it on a c
 | `db/dialect_scan.py` | Scans every SQL statement in the code (via the AST) and lists what does not translate automatically. |
 | `tools/sqlite_to_postgres.py` | Migrates a **copy** of the database: upgrade it to the release schema, translate the schema, copy the data, reset identity sequences, then verify row counts per table. |
 | `db/schema.pg_runtime_url()` | The opt-in runtime switch (below). |
-| `db/sql/atip_schema.postgresql.sql` | A fresh, empty database, built natively on PostgreSQL and dumped (239 tables). |
+| `db/sql/atip_schema.postgresql.sql` | A fresh, empty database, built natively on PostgreSQL and dumped (240 tables). |
 | `docker-compose.yml` profile `postgres` | PostgreSQL 16 in a container, on the host's 127.0.0.1 only. |
 
 ## What `translate()` handles
@@ -54,7 +54,7 @@ Run `python -m db.dialect_scan --details` to see the current list.
 ## Verified (2026-10-09, native build)
 
 The test used a throwaway PostgreSQL 16 and a database built from nothing with `init_db()` + `ops.migrations.apply()`, with the runtime switched over the normal way:
-- 239 tables.
+- 240 tables.
 - Migrations 0001-0006 all apply, and a second run finds nothing pending. Before the fix every one failed at `BEGIN IMMEDIATE`, so a database built this way had no append-only guards.
 - Every GET route without a path parameter was called. 0 server errors are specific to PostgreSQL. The 2 remaining 500s (`/api/schemas/check-all`, `/api/ml/regime`) fail the same way on an empty SQLite database.
 - `db/sql/atip_schema.postgresql.sql` restores cleanly. `init_db()` on top of it changes nothing, and `ops.migrations.validate()` is clean.
