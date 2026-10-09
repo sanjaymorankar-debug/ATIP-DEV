@@ -14,6 +14,8 @@ StrategyDecision -- what a strategy concluded about one symbol on one date.
                NO_ACTION  nothing to do                          -> decision WAIT
                BLOCKED_BY_RISK  wanted BUY/ADD, a risk
                       requirement or the regime said no          -> decision NO_TRADE
+               OPTION_OPEN / OPTION_CLOSE (W40) open / close an option
+                      overlay's multi-leg option position        -> decision BUY / EXIT
     confidence 0..1 -- how strongly the strategy's rules held
     score      0..100 -- the standardised strategy score (confidence x 100;
                for multi-factor strategies this is the composite itself)
@@ -61,6 +63,15 @@ BASE_REASON_CODE = {A_BUY: "ENTRY_RULES_MET", A_ADD: "ADD_THRESHOLD_MET", A_HOLD
                     A_COVER: "COVER_SHORT"}
 INTENT_ACTIONS = (A_BUY, A_ADD, A_REDUCE, A_EXIT, A_SHORT, A_COVER)
 SIGNAL_ENGINE_EQUIVALENT = {"BUY": BUY, "SELL": SELL, "HOLD": HOLD, "WAIT": WAIT}
+# W40 (ENT-15): an option overlay's multi-leg OPTION intent (strategy_engine/option_overlay.py). The
+# legs travel in the decision's features ("option_plan"); the W4 risk engine sizes them in lots
+# (execution/option_intents.py) and the OMS sends one OPT order to the paper options book.
+A_OPTION_OPEN, A_OPTION_CLOSE = "OPTION_OPEN", "OPTION_CLOSE"
+OPTION_ACTIONS = (A_OPTION_OPEN, A_OPTION_CLOSE)
+ACTIONS = ACTIONS + OPTION_ACTIONS
+ACTION_TO_DECISION.update({A_OPTION_OPEN: BUY, A_OPTION_CLOSE: EXIT})
+BASE_REASON_CODE.update({A_OPTION_OPEN: "OPTION_ENTRY", A_OPTION_CLOSE: "OPTION_EXIT"})
+INTENT_ACTIONS = INTENT_ACTIONS + OPTION_ACTIONS
 
 RISK_REQUIREMENTS = ("STANDARD", "REDUCED", "STRICT")
 NOT_AUTHORIZED = "NOT_AUTHORIZED"
@@ -168,7 +179,7 @@ def intent_for(dec: StrategyDecision, quantity: int | None = None) -> PositionIn
     """The PositionIntent for a decision that changes a position, else None."""
     if dec.action not in INTENT_ACTIONS:
         return None
-    side = "BUY" if dec.action in (A_BUY, A_ADD, A_COVER) else "SELL"
+    side = "BUY" if dec.action in (A_BUY, A_ADD, A_COVER, A_OPTION_OPEN) else "SELL"   # opening option risk is a BUY
     target = 0.0 if dec.action in (A_EXIT, A_COVER) else dec.target_position_pct
     return PositionIntent(symbol=dec.symbol, side=side, target_position_pct=target, quantity=quantity,
                           strategy_id=dec.strategy_id, strategy_version=dec.strategy_version,

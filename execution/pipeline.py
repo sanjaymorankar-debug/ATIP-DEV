@@ -84,7 +84,8 @@ def run_execution_cycle(trade_date=None, execute: bool | None = None, as_of=None
                     o = execute_approved(conn, rd.risk_decision_id)
                     orders.append({"order_id": o["order_id"], "symbol": o["symbol"], "side": o["side"],
                                    "status": o["status"], "filled": o["filled_quantity"]})
-                    if s.get("protective_stops") and o["side"] == "BUY" and o["filled_quantity"]:
+                    if (s.get("protective_stops") and o["side"] == "BUY" and o["filled_quantity"]
+                            and (o.get("instrument") or "CASH") == "CASH"):        # not FUT / OPT (W40)
                         try:                        # W29 (EX-02)
                             st = OM.place_protective_stop(conn, o["order_id"],
                                                           limit_offset_pct=s.get("protective_stop_limit_offset_pct"))

@@ -23,11 +23,32 @@ LEDGER  paper_futures_position (one row per strategy x underlying x expiry; lots
             released on close; realised P&L is credited / debited on close.
 
 EXPIRY  settle_expired(as_of) (post-market) closes every position whose expiry has passed at
-        that expiry's final futures close (reason EXPIRY). There is no automatic roll: the
-        strategy re-enters on its next decision if its signal still holds.
+        that expiry's final futures close (reason EXPIRY). With futures.auto_roll false (the
+        default) there is no automatic roll: the strategy re-enters on its next decision if its
+        signal still holds.
+
+AUTO-ROLL (W40, QR-06; PAPER only, off by default)
+        futures.auto_roll true: the same post-market settle_expired(as_of) first ROLLS every
+        short with futures.roll_days_before_expiry (default 2) or fewer NSE sessions left to
+        its expiry (utils.trading_calendar.sessions_until; 0 = on the expiry day): the held
+        contract is bought back at as_of's close of THAT contract (fo_contract_daily, else the
+        summary's near-month close when it is that contract) and the next month sold at its
+        as_of close (fo_contract_daily: the first listed futures expiry after it), each moved
+        by slippage_bps against the order and charged brokerage_per_lot x lots; the same lot
+        count (re-derived for the same shares if NSE changed the lot size); the old margin is
+        released and the new one blocked at futures.margin_pct of the new notional. Both fills
+        are paper_futures_trade rows with reason ROLL. A roll that cannot be priced (no close
+        for either contract that session) or paid for (cash for the new margin) is skipped
+        and reported in "roll_skipped"; it is retried the next session, and a contract that
+        reaches expiry unrolled is settled at expiry as before. After a roll the near-month
+        contract in fo_underlying_daily is still the expiring one for a session or two: a
+        COVER then prices off the held (later) contract's latest stored close, and book() /
+        gross_notional() mark it the same way. The backtest (backtest/futures.py) rolls by the
+        same rule.
 
 config.json "futures": {"enabled": false, "margin_pct": 20, "min_days_to_expiry": 3,
-                        "slippage_bps": 5, "brokerage_per_lot": 20}
+                        "slippage_bps": 5, "brokerage_per_lot": 20,
+                        "auto_roll": false, "roll_days_before_expiry": 2}
 """
 
 from __future__ import annotations
@@ -41,7 +62,7 @@ from pathlib import Path
 log = logging.getLogger("atip.execution")
 
 DEFAULTS = {"enabled": False, "margin_pct": 20.0, "min_days_to_expiry": 3, "slippage_bps": 5.0,
-            "brokerage_per_lot": 20.0}
+            "brokerage_per_lot": 20.0, "auto_roll": False, "roll_days_before_expiry": 2}
 ALIAS = {"NIFTY50": "NIFTY"}           # ATIP index symbol -> NSE F&O underlying
 
 
@@ -52,6 +73,13 @@ def settings() -> dict:
     except Exception:
         out = dict(DEFAULTS)
     out["enabled"] = out.get("enabled") is True
+    out["auto_roll"] = out.get("auto_roll") is True                 # W40: strictly opt-in
+    rd = out.get("roll_days_before_expiry")
+    if isinstance(rd, bool) or not isinstance(rd, int) or rd < 0:
+        if rd != DEFAULTS["roll_days_before_expiry"]:
+            log.warning(f"  futures.roll_days_before_expiry {rd!r} is not a whole number >= 0 -- "
+                        f"{DEFAULTS['roll_days_before_expiry']} used")
+        out["roll_days_before_expiry"] = DEFAULTS["roll_days_before_expiry"]
     return out
 
 
@@ -73,6 +101,60 @@ def contract(conn, symbol: str, as_of=None) -> dict | None:
         return None
     return {"underlying": und, "session": str(r[0])[:10], "price": float(r[1]), "expiry": str(r[2])[:10] if r[2]
             else None, "lot_size": int(r[3]), "spot": r[4]}
+
+
+def _contract_close(conn, underlying, expiry, as_of=None) -> float | None:
+    """One contract's close: on session as_of, or (as_of None) its latest stored one.
+    fo_contract_daily (every listed futures expiry), else the summary's near-month close
+    when the summary's near contract is that expiry."""
+    import sqlite3
+    e = str(expiry)[:10]
+    sql = ("SELECT close FROM fo_contract_daily WHERE symbol=? AND instrument IN ('STF','IDF') AND expiry=? "
+           "AND close IS NOT NULL")
+    args = [underlying, e]
+    if as_of is not None:
+        sql += " AND date=?"
+        args.append(str(as_of)[:10])
+    try:
+        r = conn.execute(sql + " ORDER BY date DESC LIMIT 1", args).fetchone()
+    except sqlite3.OperationalError:
+        r = None
+    if r and r[0]:
+        return float(r[0])
+    sql = "SELECT fut_close FROM fo_underlying_daily WHERE symbol=? AND near_expiry=? AND fut_close IS NOT NULL"
+    args = [underlying, e]
+    if as_of is not None:
+        sql += " AND date=?"
+        args.append(str(as_of)[:10])
+    r = conn.execute(sql + " ORDER BY date DESC LIMIT 1", args).fetchone()
+    return float(r[0]) if r and r[0] else None
+
+
+def _next_contract(conn, underlying, as_of, after) -> dict | None:
+    """The first futures contract listed on session as_of expiring after `after`, with its close."""
+    import sqlite3
+    try:
+        r = conn.execute("SELECT expiry, close, lot_size FROM fo_contract_daily WHERE symbol=? AND date=? AND "
+                         "instrument IN ('STF','IDF') AND expiry>? AND close IS NOT NULL ORDER BY expiry LIMIT 1",
+                         (underlying, str(as_of)[:10], str(after)[:10])).fetchone()
+    except sqlite3.OperationalError:
+        r = None
+    if not r or not r[1]:
+        return None
+    return {"underlying": underlying, "expiry": str(r[0])[:10], "price": float(r[1]),
+            "lot_size": int(r[2]) if r[2] else None, "session": str(as_of)[:10]}
+
+
+def _mark(conn, underlying, expiry, near=None):
+    """A held contract's mark: the near-month close when the held contract is the near month (as
+    before W40); after an auto-roll -- held contract later than the near one -- that
+    contract's own latest close when stored."""
+    c = near if near is not None else contract(conn, underlying)
+    if c and expiry and c.get("expiry") and str(expiry)[:10] > str(c["expiry"])[:10]:
+        px = _contract_close(conn, underlying, expiry)
+        if px:
+            return px
+    return c["price"] if c else None
 
 
 def shortable(conn, symbol: str, as_of=None) -> tuple:
@@ -133,6 +215,16 @@ def fill(conn, order: dict) -> dict:
     c = contract(conn, order["symbol"])
     if not c:
         return {"status": "REJECTED", "message": f"no futures contract for {order['symbol']}"}
+    if order["side"] != "SELL":
+        # W40: after an auto-roll the held short is the NEXT month while the stored near contract is
+        # still the expiring one -- cover it at the held contract's own latest close
+        held = conn.execute("SELECT expiry, lot_size FROM paper_futures_position WHERE strategy_id=? AND "
+                            "underlying=? AND lots<0 ORDER BY expiry LIMIT 1",
+                            (order.get("strategy_id") or "", c["underlying"])).fetchone()
+        if held and str(held[0])[:10] > str(c["expiry"])[:10]:
+            px = _contract_close(conn, c["underlying"], held[0])
+            if px:
+                c = {**c, "expiry": str(held[0])[:10], "price": px, "lot_size": int(held[1])}
     lots = int(order["quantity"]) // c["lot_size"]
     if lots <= 0 or lots * c["lot_size"] != int(order["quantity"]):
         return {"status": "REJECTED", "message": f"quantity {order['quantity']} is not a whole number of lots "
@@ -191,12 +283,86 @@ def fill(conn, order: dict) -> dict:
     return {"status": "FILLED", "filled_qty": lots * c["lot_size"], "price": px, "fees": fees, "message": msg}
 
 
+def _auto_roll(conn, as_of, s) -> tuple[list, list]:
+    """W40: roll every short within roll_days_before_expiry sessions of its expiry into the next
+    month at as_of's closes (module docstring). Returns (rolled, skipped)."""
+    from utils.trading_calendar import sessions_until
+    rd = int(s["roll_days_before_expiry"])
+    slip = float(s["slippage_bps"]) / 1e4
+    per_lot = float(s["brokerage_per_lot"])
+    rolled, skipped = [], []
+    rows = [dict(x) for x in conn.execute("SELECT * FROM paper_futures_position WHERE lots<0 AND expiry>=? "
+                                          "ORDER BY strategy_id, underlying, expiry", (str(as_of),)).fetchall()]
+    for r in rows:
+        und, exp, sid = r["underlying"], str(r["expiry"])[:10], r["strategy_id"]
+        if sessions_until(as_of, _d(exp)) > rd:
+            continue
+        old = _contract_close(conn, und, exp, as_of)
+        nxt = _next_contract(conn, und, as_of, exp)
+        why = (f"no {exp} close on {as_of}" if old is None else
+               f"no next-month close stored for {as_of}" if nxt is None else None)
+        lots, lot_size = -int(r["lots"]), int(r["lot_size"])
+        new_lot = (nxt or {}).get("lot_size") or lot_size
+        new_lots = lots if new_lot == lot_size else (lots * lot_size) // new_lot
+        if why is None and new_lots < 1:
+            why = f"{lots * lot_size} shares are less than one {nxt['expiry']} lot ({new_lot})"
+        if why is None:
+            buy_px = round(old * (1 + slip), 2)
+            sell_px = round(nxt["price"] * (1 - slip), 2)
+            fee_old, fee_new = round(per_lot * lots, 2), round(per_lot * new_lots, 2)
+            pnl = (r["avg_price"] - buy_px) * lots * lot_size
+            margin = sell_px * new_lots * new_lot * float(s["margin_pct"]) / 100
+            bal = conn.execute("SELECT balance FROM paper_account WHERE id=1").fetchone()[0]
+            if bal + r["margin_blocked"] + pnl - fee_old < margin + fee_new:
+                why = f"paper cash does not cover the {nxt['expiry']} margin {margin:,.0f}"
+        if why:
+            skipped.append({"strategy_id": sid, "underlying": und, "expiry": exp, "reason": why})
+            continue
+        now = datetime.now()
+        _cash(conn, r["margin_blocked"] + pnl - fee_old)
+        conn.execute("UPDATE paper_futures_position SET lots=0, realized_pnl=realized_pnl+?, margin_blocked=0, "
+                     "updated_at=? WHERE id=?", (pnl - fee_old, now, r["id"]))
+        _trade(conn, None, sid, {"underlying": und, "expiry": exp, "lot_size": lot_size}, "BUY", lots, buy_px,
+               fee_old, "ROLL")
+        _cash(conn, -(margin + fee_new))
+        cur = conn.execute("SELECT * FROM paper_futures_position WHERE strategy_id=? AND underlying=? AND expiry=?",
+                           (sid, und, nxt["expiry"])).fetchone()
+        cur = dict(cur) if cur else None
+        if cur and cur["lots"] < 0:                  # already short that month: add to it
+            n = cur["lots"] - new_lots
+            avg = (cur["avg_price"] * -cur["lots"] + sell_px * new_lots) / -n
+            conn.execute("UPDATE paper_futures_position SET lots=?, avg_price=?, margin_blocked=margin_blocked+?, "
+                         "realized_pnl=realized_pnl-?, updated_at=? WHERE id=?",
+                         (n, avg, margin, fee_new, now, cur["id"]))
+        elif cur:                                    # a flat row of that month: reuse it
+            conn.execute("UPDATE paper_futures_position SET lots=?, lot_size=?, avg_price=?, margin_blocked=?, "
+                         "realized_pnl=realized_pnl-?, updated_at=? WHERE id=?",
+                         (-new_lots, new_lot, sell_px, margin, fee_new, now, cur["id"]))
+        else:
+            conn.execute("INSERT INTO paper_futures_position (strategy_id,underlying,expiry,lots,lot_size,avg_price,"
+                         "realized_pnl,margin_blocked,opened_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                         (sid, und, nxt["expiry"], -new_lots, new_lot, sell_px, -fee_new, margin, now, now))
+        _trade(conn, None, sid, {"underlying": und, "expiry": nxt["expiry"], "lot_size": new_lot}, "SELL",
+               new_lots, sell_px, fee_new, "ROLL")
+        rolled.append({"strategy_id": sid, "underlying": und, "from_expiry": exp, "to_expiry": nxt["expiry"],
+                       "lots": lots, "to_lots": new_lots, "close_price": buy_px, "open_price": sell_px,
+                       "calendar_spread": round(nxt["price"] - old, 4), "fees": round(fee_old + fee_new, 2),
+                       "pnl": round(pnl - fee_old, 2)})
+    return rolled, skipped
+
+
 def settle_expired(as_of=None) -> dict:
-    """Close every position whose expiry is before `as_of` at that expiry's final futures close."""
+    """Close every position whose expiry is before `as_of` at that expiry's final futures close.
+    W40: with futures.auto_roll on, shorts inside the roll window are first rolled into the
+    next month instead (paper only; module docstring)."""
     from db.schema import get_connection
     as_of = _d(as_of or date.today())
+    s = settings()
     conn = get_connection()
     try:
+        rolled = skipped = None
+        if s["auto_roll"]:
+            rolled, skipped = _auto_roll(conn, as_of, s)
         done = []
         for r in [dict(x) for x in conn.execute("SELECT * FROM paper_futures_position WHERE lots<>0 AND expiry<?",
                                                 (str(as_of),)).fetchall()]:
@@ -215,7 +381,10 @@ def settle_expired(as_of=None) -> dict:
             done.append({"underlying": r["underlying"], "expiry": r["expiry"], "lots": lots, "price": px,
                          "pnl": round(pnl, 2)})
         conn.commit()
-        return {"status": "SUCCESS", "rows": len(done), "settled": done}
+        if rolled is None:
+            return {"status": "SUCCESS", "rows": len(done), "settled": done}
+        return {"status": "SUCCESS", "rows": len(done) + len(rolled), "settled": done, "rolled": rolled,
+                "roll_skipped": skipped}
     finally:
         conn.close()
 
@@ -226,14 +395,14 @@ def gross_notional(conn) -> float:
     position's average price). 0.0 before the futures tables exist."""
     import sqlite3
     try:
-        rows = conn.execute("SELECT underlying, lots, lot_size, avg_price FROM paper_futures_position "
+        rows = conn.execute("SELECT underlying, lots, lot_size, avg_price, expiry FROM paper_futures_position "
                             "WHERE lots<>0").fetchall()
     except sqlite3.OperationalError:
         return 0.0
     total = 0.0
-    for und, lots, lot_size, avg in rows:
-        c = contract(conn, und)
-        total += abs(int(lots)) * int(lot_size) * (c["price"] if c else float(avg))
+    for und, lots, lot_size, avg, exp in rows:
+        m = _mark(conn, und, exp)                    # W40: a rolled leg marks at its own contract
+        total += abs(int(lots)) * int(lot_size) * (m if m else float(avg))
     return round(total, 2)
 
 
@@ -241,8 +410,7 @@ def book(conn) -> dict:
     rows = []
     for r in conn.execute("SELECT * FROM paper_futures_position WHERE lots<>0 ORDER BY strategy_id, underlying"):
         r = dict(r)
-        c = contract(conn, r["underlying"])
-        mark = c["price"] if c else None
+        mark = _mark(conn, r["underlying"], r["expiry"])
         r["mark"] = mark
         r["unrealized"] = round((r["avg_price"] - mark) * -r["lots"] * r["lot_size"], 2) if mark else None
         rows.append(r)

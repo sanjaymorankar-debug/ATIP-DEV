@@ -12,7 +12,8 @@
     python -m backtest list
     python -m backtest show RUN_ID
     python -m backtest optimize --strategy dip --start D --end D --space '{"stop_pct":{"values":[3,5]}}'
-                           [--method grid|random|adaptive] [--trials 60] [--select-by sharpe]
+                           [--method grid|random|adaptive|bayes] [--trials 60] [--select-by sharpe] [--seed 42]
+                           (bayes: Tree-structured Parzen Estimator after a seeded random start)
     python -m backtest sensitivity --strategy dip --start D --end D --space '{...}' [--steps 2] [--pairwise a,b]
     python -m backtest robustness --strategy dip --start D --end D [--subsamples 3]
     python -m backtest costsweep --strategy dip --start D --end D [--multipliers 0,0.5,1,1.5,2,3,5]
@@ -22,9 +23,12 @@
     python -m backtest cpcv --strategy dip --start D --end D --groups 6 --test-groups 2
                            [--candidates '[{"stop_pct":3},{"stop_pct":5}]'] [--select-by sharpe]
                            [--purge 10 --embargo 1]   (CPCV: distribution of phi out-of-sample paths)
+                           [--engine w2|event_driven] [--event-driven '{"slices":2,"impact":"none"}']
+                           (event_driven: every group run through backtest/event_driven.py, BT-17)
     python -m backtest pbo OPTIMIZATION_RUN_ID [--partitions 16] [--metric sharpe|mean|total_return]
     python -m backtest pbo --matrix returns.csv|returns.json [--partitions 16]
-                           (PBO by CSCV on trial returns -- backtest/cpcv.py)
+                           (PBO by CSCV on trial returns, with the stochastic-dominance test of the
+                           selection against random selection -- backtest/cpcv.py)
 """
 
 import argparse
@@ -68,7 +72,9 @@ def main(argv=None):
 
     o = sub.add_parser("optimize"); common(o)
     o.add_argument("--start", required=True); o.add_argument("--end", required=True)
-    o.add_argument("--space", type=json.loads, required=True); o.add_argument("--method", default="grid")
+    o.add_argument("--space", type=json.loads, required=True)
+    o.add_argument("--method", default="grid", help="grid | random | adaptive | bayes (TPE after a seeded random "
+                                                     "start)")
     o.add_argument("--trials", type=int, default=60); o.add_argument("--select-by", default="sharpe")
     o.add_argument("--seed", type=int, default=42); o.add_argument("--min-trades", type=int, default=10)
     se = sub.add_parser("sensitivity"); common(se)
@@ -98,6 +104,11 @@ def main(argv=None):
                                                          "before a test group")
     cv.add_argument("--embargo", type=int, default=0, help="sessions dropped from the start of a training group "
                                                            "after a test group")
+    cv.add_argument("--engine", default="w2", choices=("w2", "event_driven"),
+                    help="the engine every group runs on: w2 (backtest/engine.py) or event_driven (BT-17)")
+    cv.add_argument("--event-driven", type=json.loads, default=None,
+                    help='JSON event_driven settings (engine event_driven): {"timeframe":"1d","latency_bars":1,'
+                         '"participation_cap":0.1,"slices":1,"ttl_bars":26,"impact":"sqrt","impact_y":null}')
     pb = sub.add_parser("pbo"); pb.add_argument("run_id", nargs="?", default=None,
                                                 help="a parent run whose trials share its window (an optimisation)")
     pb.add_argument("--matrix", default=None, help="CSV / JSON of returns: rows = sessions, columns = trials")
@@ -164,10 +175,12 @@ def main(argv=None):
     elif a.cmd == "cpcv":
         from backtest.cpcv import run_cpcv
         req = request(); req.update({"start": a.start, "end": a.end})
-        out = run_cpcv(req, a.groups, a.test_groups, a.candidates, a.select_by, a.purge, a.embargo)
-        print(json.dumps({k: out.get(k) for k in ("run_id", "status", "n_groups", "k_test", "n_splits", "n_paths",
-                                                  "distribution", "selection_frequency", "pbo", "notes")},
-                         indent=2, default=str))
+        if a.event_driven is not None:
+            req["event_driven"] = a.event_driven
+        out = run_cpcv(req, a.groups, a.test_groups, a.candidates, a.select_by, a.purge, a.embargo, a.engine)
+        keys = ("run_id", "status", "engine") + (("event_driven",) if out.get("event_driven") else ()) + (
+            "n_groups", "k_test", "n_splits", "n_paths", "distribution", "selection_frequency", "pbo", "notes")
+        print(json.dumps({k: out.get(k) for k in keys}, indent=2, default=str))
     elif a.cmd == "pbo":
         from backtest import cpcv as CV
         if bool(a.run_id) == bool(a.matrix):

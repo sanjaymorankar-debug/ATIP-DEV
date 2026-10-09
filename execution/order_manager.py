@@ -2,7 +2,11 @@
 The order manager (W4): APPROVED risk decision -> order -> execution -> fills.
 
     create_order(risk_decision_id)   CREATED. Only from an APPROVED risk decision;
-                                     one order per intent (DuplicateOrderError)
+                                     one order per intent (DuplicateOrderError). W40: an OPTION_OPEN /
+                                     OPTION_CLOSE decision becomes ONE order, instrument OPT, adapter
+                                     paper_opt, quantity = structure lots, its legs in legs_json; filled
+                                     all-or-nothing by the paper options book (LIVE refused). Its legs
+                                     are the fills (paper_option_strategy_trade), so no oms_fill row
     validate_order(order_id)         VALIDATED, or REJECTED (kill switch on,
                                      live gate closed, bad quantity)
     submit_order(order_id)           SUBMITTED -> adapter -> ACKNOWLEDGED /
@@ -107,26 +111,34 @@ def create_order(conn, risk_decision_id: str, actor: str = "oms", order_type: st
         raise DuplicateOrderError(f"intent {rd['intent_id']} already has order {ex[0]}")
     s = execution_settings()
     instrument = "FUT" if rd.get("action") in ("SHORT", "COVER") else "CASH"     # W30: futures short legs
-    if instrument == "FUT":
+    legs_json = None
+    if rd.get("action") in ("OPTION_OPEN", "OPTION_CLOSE"):                    # W40: multi-leg option orders
+        if s["mode"] == LIVE or rd.get("book") == LIVE:
+            raise InvalidIntentError("LIVE options are not built")
+        from execution.option_intents import order_plan
+        instrument, legs_json = "OPT", json.dumps(order_plan(conn, rd), default=str)
+    if instrument in ("FUT", "OPT"):
         if s["mode"] == LIVE:
             raise InvalidIntentError("LIVE futures are not built")
-        order_type, limit_price, trigger_price = "MARKET", None, None           # filled at the EOD futures close
+        # FUT: filled at the EOD futures close; OPT: every leg at the chain mid -/+ slippage, all-or-nothing
+        order_type, limit_price, trigger_price = "MARKET", None, None
     otype = (order_type or s["order_type"]).upper()
     if otype == "LIMIT" and limit_price is None:
         limit_price = rd["reference_price"]
     otype = check_order_type(otype, rd["side"], limit_price, trigger_price)
     oid = "OMS" + uuid.uuid4().hex[:14].upper()
     now = _now()
+    adapter = {"FUT": "paper_fut", "OPT": "paper_opt"}.get(instrument, "paper") if s["mode"] != LIVE else "dhan"
     conn.execute("INSERT INTO oms_order (order_id,intent_id,risk_decision_id,decision_id,strategy_id,strategy_version,"
                  "symbol,side,quantity,order_type,limit_price,trigger_price,product_type,mode,adapter,status,"
-                 "reference_price,instrument,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                 "reference_price,instrument,created_at,updated_at" + (",legs_json" if legs_json else "") + ") VALUES "
+                 "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (",?" if legs_json else "") + ")",
                  (oid, rd["intent_id"], risk_decision_id, rd["decision_id"], rd["strategy_id"], rd["strategy_version"],
                   rd["symbol"], rd["side"], int(rd["approved_quantity"]), otype,
                   limit_price if otype in ("LIMIT", "SL") else None,
                   trigger_price if otype in ("SL", "SL-M") else None,
-                  "NRML" if instrument == "FUT" else s["product_type"], s["mode"],
-                  ("paper_fut" if instrument == "FUT" else "paper") if s["mode"] != LIVE else "dhan", CREATED,
-                  rd["reference_price"], instrument, now, now))
+                  "NRML" if instrument in ("FUT", "OPT") else s["product_type"], s["mode"],
+                  adapter, CREATED, rd["reference_price"], instrument, now, now) + ((legs_json,) if legs_json else ()))
     conn.execute("INSERT INTO oms_order_event (order_id,from_status,to_status,message,details_json,actor,at) "
                  "VALUES (?,?,?,?,?,?,?)", (oid, None, CREATED, f"from risk decision {risk_decision_id}",
                                             json.dumps({"risk_decision_id": risk_decision_id}), actor, now))
@@ -174,6 +186,11 @@ def _record_execution(conn, o, action, request, result=None, error=None):
 
 def _record_fill(conn, o, eid, qty, price, fees, source):
     if not qty or price is None:
+        return
+    if o.get("instrument") == "OPT":
+        # W40: a multi-leg option order's fills are its legs, recorded by the paper options book
+        # (paper_option_strategy_trade). One oms_fill row (one symbol, one price) would be read as a
+        # cash position in the underlying by positions.py, reconcile.py and the wealth ledger.
         return
     conn.execute("INSERT INTO oms_fill (fill_id,order_id,execution_id,strategy_id,strategy_version,symbol,side,"
                  "quantity,price,fees,price_source,mode,filled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -317,8 +334,8 @@ def modify_order(conn, order_id: str, quantity: int | None = None, limit_price: 
         conn.commit()
         return get_order(conn, order_id)
     try:
-        if o.get("instrument") == "FUT":
-            raise ExecutionError("futures paper orders fill at once; nothing to modify")
+        if o.get("instrument") in ("FUT", "OPT"):
+            raise ExecutionError("futures / option paper orders fill at once; nothing to modify")
         r = _adapter(conn, o).modify(o, new)
     except Exception as e:
         eid = _record_execution(conn, o, "modify", {"order_id": order_id, **new}, error=str(e))
@@ -343,6 +360,9 @@ def place_protective_stop(conn, order_id: str, stop_price: float | None = None, 
     """EX-02: a protective SELL stop for a filled BUY entry, as a child order. SL-M by
     default; with limit_offset_pct an SL whose limit sits that far below the trigger."""
     o = get_order(conn, order_id)
+    if (o.get("instrument") or "CASH") != "CASH":
+        # a futures COVER or an option order is not a cash entry: an SL SELL of the underlying would be wrong
+        raise ExecutionError(f"protective stops are for cash entries, not {o.get('instrument')} orders")
     if o["side"] != "BUY" or o["status"] not in (FILLED, PARTIALLY_FILLED):
         raise ExecutionError("a protective stop needs a filled (or partly filled) BUY entry")
     if o["mode"] == LIVE:

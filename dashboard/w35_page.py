@@ -5,7 +5,9 @@ data sources (AD-01/02). Read from /api/data/*.
 
 W39b: a scheme picked from the MF NAV search opens a detail card on the Multi-asset tab -- returns, rolling
 returns (chart + min / median / max / % above 0 and the hurdle), risk and benchmark figures, the AMFI-category
-rank with its coverage, and a SIP / lump-sum calculator (/api/data/mf/{scheme}/analytics and /sip).
+rank with its coverage, and a SIP / lump-sum calculator (/api/data/mf/{scheme}/analytics and /sip) with an
+annual step-up, the 0.005 % stamp duty and 3-decimal unit allotment (both on by default, each a checkbox) and an
+optional exit load.
 
 Charts are single-series lines (one hue, #3987e5 -- validated for this dark surface), 2px, crosshair tooltip;
 reference levels (0, the hurdle) are dashed muted lines. Every charted value is also listed in a table, except
@@ -60,7 +62,8 @@ select,input{background:var(--bg);color:var(--text);border:1px solid var(--line)
 <div class="chart" id="mfrchart"></div><div id="mfrs"></div></div></div>
 <h2>Category rank</h2><div id="mfcat"></div>
 <h2>SIP calculator <span class="muted">(on the stored NAVs; a holiday buys at the next NAV)</span></h2>
-<label>₹ a month <input id="sipa" size="7" value="5000"></label><label>day <input id="sipd" size="2" value="5"></label><label>start <input id="sips" size="10" placeholder="3Y back"></label><label>end <input id="sipe" size="10" placeholder="last NAV"></label><label>lump sum ₹ <input id="sipl" size="9" placeholder="same total"></label><button onclick="mfSip()">Calculate</button>
+<label>₹ a month <input id="sipa" size="7" value="5000"></label><label>day <input id="sipd" size="2" value="5"></label><label>start <input id="sips" size="10" placeholder="3Y back"></label><label>end <input id="sipe" size="10" placeholder="last NAV"></label><label>lump sum ₹ <input id="sipl" size="9" placeholder="same total"></label><label>step-up % a year <input id="sipsu" size="3" placeholder="0" title="the instalment rises by this % on each anniversary of the first one"></label><button onclick="mfSip()">Calculate</button><br>
+<label title="0.005 % of every purchase, taken before units are allotted"><input type="checkbox" id="sipsd" checked> stamp duty 0.005 %</label><label title="RTAs allot units to 3 decimals, rounded down"><input type="checkbox" id="sipru" checked> units to 3 decimals</label><label>exit load % <input id="sipel" size="3" placeholder="none"></label><label>on units held under <input id="sipeld" size="4" value="365"> days</label>
 <div id="sipout" style="margin-top:6px"></div><p class="muted" id="mfnote" style="margin-top:8px"></p></div></div>
 
 <div class="pane" id="p-alt"><div class="card"><div id="alt"></div></div><div class="card"><b id="altt">Observations — pick a source metric</b><div id="altobs" class="scroll"></div></div></div>
@@ -152,14 +155,19 @@ function mfCat(){const C=MF.category||{},el=document.getElementById('mfcat');if(
   el.innerHTML=`<div class="muted">${esc((C.category_parsed||{}).label||C.category)} · ${esc(C.peer_filter)} · ${cv.compared} compared of ${cv.in_category_stored} stored in the category (${cv.with_1y} with 1Y, ${cv.with_3y} with 3Y)${cv.truncated_to?' · first '+cv.truncated_to+' only':''}. ${esc(cv.note)}</div>`+
     table(['1Y return','3Y CAGR','1Y volatility'],[`<tr><td>${rk(C.rank.return_1y)}</td><td>${rk(C.rank.cagr_3y)}</td><td>${rk(C.rank.volatility_1y)}</td></tr>`])+
     `<div class="scroll" style="max-height:220px;margin-top:6px">`+table(['Scheme','1Y','3Y CAGR','1Y volatility'],C.peers.map(p=>`<tr${p.is_target?' style="outline:1px solid var(--accent)"':''}><td><a href="#" style="color:var(--accent)" onclick="mfOpen('${esc(p.scheme_code)}');return false">${esc(p.scheme_name||p.scheme_code)}</a></td><td>${pct(p.return_1y_pct)}</td><td>${pct(p.cagr_3y_pct)}</td><td>${pct(p.volatility_1y_pct)}</td></tr>`))+'</div>'}
-async function mfSip(){if(!MF)return;const q=new URLSearchParams({amount:val('sipa'),day:val('sipd')});[['start','sips'],['end','sipe'],['lump_sum','sipl']].forEach(([k,id])=>{if(val(id))q.set(k,val(id))});
+async function mfSip(){if(!MF)return;const q=new URLSearchParams({amount:val('sipa'),day:val('sipd')});[['start','sips'],['end','sipe'],['lump_sum','sipl'],['step_up_pct','sipsu'],['exit_load_pct','sipel']].forEach(([k,id])=>{if(val(id))q.set(k,val(id))});
+  if(val('sipel')&&val('sipeld'))q.set('exit_load_days',val('sipeld'));
+  q.set('stamp_duty',document.getElementById('sipsd').checked?'1':'0');q.set('round_units',document.getElementById('sipru').checked?'1':'0');
   const el=document.getElementById('sipout');el.textContent='Calculating …';
   try{const R=await j(`/api/data/mf/${encodeURIComponent(MF.scheme.scheme_code)}/sip?${q}`);if(R.status!=='OK'){el.innerHTML=`<p class="note">${esc(R.reason)}</p>`;return}
-    const S=R.sip,L=R.lump_sum,I=R.inputs;
-    el.innerHTML=`<div class="muted">${esc(I.start)} → ${esc(I.end)} · valued at NAV ${num(R.valuation.nav,4)} on ${esc(R.valuation.date)}</div>`+(R.warnings.length?`<div class="note">${R.warnings.map(esc).join('<br>')}</div>`:'')+
-      table(['','Invested','Units','Value','Gain','Absolute','XIRR'],[`<tr><td><b>SIP</b> ${S.instalments} × ${inr(I.amount)} on day ${I.day}</td><td>${inr(S.invested)}</td><td>${num(S.units,3)}</td><td>${inr(S.value)}</td><td>${inr(S.gain)}</td><td>${pct(S.absolute_return_pct)}</td><td><b>${pct(S.xirr_pct)}</b></td></tr>`,
-        `<tr><td><b>Lump sum</b> on ${esc(L.date)} <span class="muted">(${esc(L.basis)})</span></td><td>${inr(L.invested)}</td><td>${num(L.units,3)}</td><td>${inr(L.value)}</td><td>${inr(L.gain)}</td><td>${pct(L.absolute_return_pct)}</td><td><b>${pct(L.xirr_pct)}</b></td></tr>`])+
-      `<div class="scroll" style="max-height:200px;margin-top:6px">`+table(['Scheduled','Allotted','NAV','Units','Total units'],R.schedule.map(x=>`<tr><td>${esc(x.scheduled)}</td><td>${esc(x.nav_date)}${x.days_late?` <span class="muted">+${x.days_late}d</span>`:''}</td><td>${num(x.nav,4)}</td><td>${num(x.units,3)}</td><td>${num(x.cumulative_units,3)}</td></tr>`))+'</div>'+
+    const S=R.sip,L=R.lump_sum,I=R.inputs,EL=I.exit_load_pct!=null,dp=I.round_units?3:6;
+    const ld=x=>EL?inr(x.exit_load):'<span class="muted">—</span>';
+    const su=I.step_up_pct?` <span class="muted">stepping up ${num(I.step_up_pct,2)}% a year: last ${inr(S.last_instalment)}</span>`:'';
+    el.innerHTML=`<div class="muted">${esc(I.start)} → ${esc(I.end)} · valued at NAV ${num(R.valuation.nav,4)} on ${esc(R.valuation.date)} · ${esc(R.conventions)}</div>`+(R.warnings.length?`<div class="note">${R.warnings.map(esc).join('<br>')}</div>`:'')+
+      table(['','Invested','Stamp duty','Units','Value','Exit load','Gain','Absolute','XIRR'],[`<tr><td><b>SIP</b> ${S.instalments} × ${inr(I.amount)} on day ${I.day}${su}</td><td>${inr(S.invested)}</td><td>${inr(S.stamp_duty)}</td><td>${num(S.units,dp)}</td><td>${inr(S.value)}</td><td>${ld(S)}</td><td>${inr(S.gain)}</td><td>${pct(S.absolute_return_pct)}</td><td><b>${pct(S.xirr_pct)}</b></td></tr>`,
+        `<tr><td><b>Lump sum</b> on ${esc(L.date)} <span class="muted">(${esc(L.basis)})</span></td><td>${inr(L.invested)}</td><td>${inr(L.stamp_duty)}</td><td>${num(L.units,dp)}</td><td>${inr(L.value)}</td><td>${ld(L)}</td><td>${inr(L.gain)}</td><td>${pct(L.absolute_return_pct)}</td><td><b>${pct(L.xirr_pct)}</b></td></tr>`])+
+      (EL?`<div class="muted">Gain, absolute return and XIRR are after the exit load (${num(I.exit_load_pct,2)}% on units held under ${I.exit_load_days} days on ${esc(R.valuation.date)}).</div>`:'')+
+      `<div class="scroll" style="max-height:200px;margin-top:6px">`+table(['Scheduled','Allotted','Amount','NAV','Units','Total units'].concat(EL?['Held','Exit load']:[]),R.schedule.map(x=>`<tr><td>${esc(x.scheduled)}</td><td>${esc(x.nav_date)}${x.days_late?` <span class="muted">+${x.days_late}d</span>`:''}</td><td>${inr(x.amount)}</td><td>${num(x.nav,4)}</td><td>${num(x.units,dp)}</td><td>${num(x.cumulative_units,dp)}</td>${EL?`<td>${x.days_held}d</td><td>${inr(x.exit_load)}</td>`:''}</tr>`))+'</div>'+
       (R.skipped.length?`<div class="muted">${R.skipped.length} instalments skipped: ${esc(R.skipped[0].reason)}</div>`:'')}
   catch(e){el.innerHTML=`<p class="note">${esc(e.message)}</p>`}}
 

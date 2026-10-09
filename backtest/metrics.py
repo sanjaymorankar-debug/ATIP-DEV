@@ -70,31 +70,34 @@ def cagr(equity: list, dates: list) -> float | None:
     return (equity[-1] / equity[0]) ** (365.25 / days) - 1
 
 
-def _rf_daily(rf_annual: float) -> float:
-    return (1 + rf_annual) ** (1 / PERIODS_PER_YEAR) - 1
+def _rf_daily(rf_annual: float, periods_per_year: float = PERIODS_PER_YEAR) -> float:
+    return (1 + rf_annual) ** (1 / periods_per_year) - 1
 
 
-def volatility(returns: list) -> float | None:
+# periods_per_year: 252 sessions unless the caller measured its own series' frequency (data/mf_analytics.py
+# annualises NAV returns with the window's actual number of NAV observations a year)
+
+def volatility(returns: list, periods_per_year: float = PERIODS_PER_YEAR) -> float | None:
     sd = _stdev(returns)
-    return sd * math.sqrt(PERIODS_PER_YEAR) if sd is not None else None
+    return sd * math.sqrt(periods_per_year) if sd is not None else None
 
 
-def sharpe(returns: list, rf_annual: float = 0.0) -> float | None:
+def sharpe(returns: list, rf_annual: float = 0.0, periods_per_year: float = PERIODS_PER_YEAR) -> float | None:
     sd = _stdev(returns)
     if not sd:
         return None
-    rf = _rf_daily(rf_annual)
-    return _mean([r - rf for r in returns]) / sd * math.sqrt(PERIODS_PER_YEAR)
+    rf = _rf_daily(rf_annual, periods_per_year)
+    return _mean([r - rf for r in returns]) / sd * math.sqrt(periods_per_year)
 
 
-def sortino(returns: list, rf_annual: float = 0.0) -> float | None:
+def sortino(returns: list, rf_annual: float = 0.0, periods_per_year: float = PERIODS_PER_YEAR) -> float | None:
     if len(returns) < 2:
         return None
-    rf = _rf_daily(rf_annual)
+    rf = _rf_daily(rf_annual, periods_per_year)
     dd = math.sqrt(sum(min(0.0, r - rf) ** 2 for r in returns) / len(returns))
     if not dd:
         return None
-    return _mean([r - rf for r in returns]) / dd * math.sqrt(PERIODS_PER_YEAR)
+    return _mean([r - rf for r in returns]) / dd * math.sqrt(periods_per_year)
 
 
 def drawdown_series(equity: list) -> list:

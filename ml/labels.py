@@ -23,6 +23,9 @@ Kinds (LabelSpec.kind):
                        signals, asked for every row                         (classification)
     return_rank        cross-sectional percentile (0..100) of the forward return among
                        all rows of the same date -- a ranking target        (regression)
+    meta_label         W40: 1 when a stored technical signal reached its target before its
+                       stop / horizon (triple barrier), else 0. Built per SIGNAL by
+                       ml/meta_label.py, not per bar: label_for refuses it    (classification)
 
 forward return = close[t+h] / close[t] - 1, in %. Entry at the close of t is
 the convention of the post-market decision cycle (decide after the close).
@@ -38,12 +41,12 @@ from datetime import datetime
 
 KINDS = {"direction": "classification", "binary_return": "classification", "forward_return": "regression",
          "volatility_regime": "classification", "market_regime": "classification",
-         "signal_outcome": "classification", "return_rank": "regression"}
+         "signal_outcome": "classification", "return_rank": "regression", "meta_label": "classification"}
 CROSS_SECTIONAL_LABELS = ("return_rank",)       # finished per date by the dataset builder
 CLASSES = {"direction": ["DOWN", "NEUTRAL", "UP"], "binary_return": [0, 1],
            "volatility_regime": ["LOW", "NORMAL", "HIGH"],
            "market_regime": ["STRONG_BULL", "BULL", "NEUTRAL", "BEAR", "HIGH_RISK"],
-           "signal_outcome": ["LOSS", "TIMEOUT", "WIN"]}
+           "signal_outcome": ["LOSS", "TIMEOUT", "WIN"], "meta_label": [0, 1]}
 
 
 @dataclass
@@ -89,6 +92,8 @@ def label_for(bars: list, i: int, spec: LabelSpec, regimes: dict | None = None, 
     """(value, label_date) for the row at bars[i], or (None, None) when the
     horizon has not elapsed in the data. Uses bars[i+1 .. i+h] only."""
     h = spec.horizon
+    if spec.kind == "meta_label":
+        raise ValueError("meta_label labels are built per stored signal by ml/meta_label.py, not per bar")
     if spec.kind == "market_regime":
         if sessions is None or regimes is None:
             return None, None

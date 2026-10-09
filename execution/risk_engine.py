@@ -38,6 +38,11 @@ value and limit, so a decision can be read back without re-deriving it.
     circuit_limit        (W39, RK-21) that price against today's NSE upper / lower circuit
                          (live_quotes, from the Dhan REST quote); REJECTED outside it. MARKET,
                          or no circuit stored today: SKIP
+  OPTION_OPEN / OPTION_CLOSE  (W40, ENT-15) multi-leg option intents of option-overlay strategies:
+                         execution/option_intents.py -- PAPER and the owner's book only (LIVE is
+                         BLOCKED), legs priced from the stored chain, naked short calls refused
+                         unless the definition allows them, lots capped by the strategy's max loss,
+                         premium, margin and cash limits
   SELL / EXIT / REDUCE   reduce risk: only the gates and a held position are
                          required. EXIT sells everything held; REDUCE the
                          intent's quantity (else half), capped at what is held.
@@ -112,8 +117,13 @@ def _orders_today(conn) -> int:
                         "(SELECT COUNT(*) FROM exec_algo_parent WHERE DATE(created_at)=?)", (d, d)).fetchone()[0]
 
 
-def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = True) -> RiskDecision:
-    it = load_intent(conn, intent_id)
+def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = True,
+             intent: dict | None = None) -> RiskDecision:
+    """`intent` (W40): evaluate an in-memory intent row instead of loading `intent_id` -- the option
+    dry run's way to see today's risk decision without storing anything (store must then be False)."""
+    if intent is not None and store:
+        raise InvalidIntentError("an in-memory intent can only be evaluated with store=False")
+    it = dict(intent) if intent is not None else load_intent(conn, intent_id)
     if store and it["authorization_status"] != "NOT_AUTHORIZED":
         raise DuplicateDecisionError(f"intent {intent_id} is already {it['authorization_status']} "
                                      f"(risk decision {it.get('risk_decision_id')})")
@@ -254,6 +264,11 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
     # -- W30 (QR-05 / QR-06): short legs through the paper stock-futures book --------
     if it.get("action") in ("SHORT", "COVER"):
         return _futures_leg(conn, it, rd, settings, add, finish)
+
+    # -- W40 (ENT-15): multi-leg OPTION intents of option-overlay strategies (PAPER options book) -----
+    if it.get("action") in ("OPTION_OPEN", "OPTION_CLOSE"):
+        from execution.option_intents import evaluate_option
+        return evaluate_option(conn, it, rd, settings, lim, add, finish, _review)
 
     # -- W39 (RK-21): the order's price against the market, before it is sized or sent
     blocked = _price_band(conn, it, rd, settings, lim, add)

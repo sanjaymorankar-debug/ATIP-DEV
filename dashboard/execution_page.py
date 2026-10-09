@@ -12,6 +12,10 @@ The /trading page (W4): the minimum UI over the W4 API.
     Portfolio risk (W25, DB-17)  PAPER / LIVE book: VaR / ES (historical, parametric,
                Monte Carlo; 1 and 10 days), concentration, risk contribution,
                correlation heatmap, performance attribution, emergency exit
+    Factor risk model (W40)  the same book through quant/risk_model.py: total = factor +
+               specific risk, variance by factor, marginal contribution per position, beta and
+               active risk vs the Nifty 50 proxy, the book's bias statistic and the model's
+               bias test (GET /api/portfolio/risk-model)
 
 Everything is read from /api/*; nothing here computes a result.
 """
@@ -60,6 +64,7 @@ button.danger{background:var(--bad)}
 <div class="grid2"><div><h3>Value at risk / expected shortfall</h3><div id="pvar"></div></div>
 <div><h3>Concentration</h3><div id="pconc"></div></div></div>
 <h3>Risk contribution by position</h3><div id="prc" class="scroll"></div>
+<h3 id="pfrmh">Factor risk model (W40) <span class="muted">market + NSE industries + 8 styles, Barra-style</span></h3><div id="pfrm"></div>
 <h3>Correlation</h3><div id="pcorr" class="scroll"></div>
 <h3>Performance attribution</h3><div id="pperf" class="scroll"></div>
 <h3>Emergency exit</h3><div id="pemx"></div>
@@ -114,8 +119,25 @@ async function run(ex){const m=document.getElementById('msg');m.textContent='run
 async function approve(id){try{await send('POST',`/api/risk/decisions/${id}/approve`);load()}catch(e){alert(e.message)}}
 async function order(id){if(!confirm('Create and submit a PAPER order for this approved decision?'))return;try{await send('POST','/api/oms/orders',{risk_decision_id:id},`order-${id}`);load()}catch(e){alert(e.message)}}
 async function cancel(id){try{await send('POST',`/api/oms/orders/${id}/cancel`,{},`cancel-${id}`);load()}catch(e){alert(e.message)}}
+async function loadFrm(b){const el=document.getElementById('pfrm');
+  let A;try{A=await j('/api/portfolio/risk-model?book='+b)}catch(e){el.textContent=e.message;return}
+  const pc=v=>v==null?'—':num(v*100,1)+'%';
+  if(A.status!=='OK'){el.innerHTML=`<p class="muted">${esc(A.note||A.status)}</p>`+(A.status==='NOT_BUILT'?`<button class="ghost" onclick="frmRun()">Build / update the risk model now</button><span id="frmmsg" class="muted"></span>`:'')+((A.coverage||{}).uncovered||[]).map(u=>`<div class="muted">${esc(u.symbol)}: ${esc(u.reason)}</div>`).join('');return}
+  const R=A.risk||{},B=A.beta||{},AC=A.active||{},G=A.groups||{},BT=A.bias_test||{},CV=A.coverage||{};
+  const bp=((A.bias||{}).portfolios||[])[0]||{};
+  const k=(t,v)=>`<div class="kpi"><span>${t}</span><b>${v}</b></div>`;
+  el.innerHTML=`<p class="muted">model as of ${esc(A.as_of)} · ${A.model.factors} factors · ${A.model.covariance_sessions} sessions of factor returns · covers ${pc(CV.value_share)} of the book</p>`+
+   `<div class="kpis">${k('Total vol (ann.)',num(R.total_vol_pct_annual)+'%')}${k('Factor / specific',pc(R.factor_share)+' / '+pc(R.specific_share))}${k('Beta vs '+esc(B.benchmark||'—'),num(B.value))}${k('Active risk (ann.)',AC.active_vol_pct_annual==null?'—':num(AC.active_vol_pct_annual)+'%')}${k('1-day VaR 95% (model)',num((A.risk_value||{}).var95_1d_value,0)+' <span>'+num(R.var95_1d_pct)+'%</span>')}${k('Bias (this book)',bp.bias==null?'—':num(bp.bias,3)+' <span>'+(bp.in_band?'inside':'OUTSIDE')+' '+(bp.band||[]).map(x=>num(x)).join('–')+', '+bp.sessions+' sessions</span>')}</div>`+
+   `<p class="muted">Share of variance: market ${pc(G.market)} · industries ${pc(G.industry)} · styles ${pc(G.style)} · specific ${pc(G.specific)}</p>`+
+   `<div class="grid2"><div>`+table(['Factor','Kind','Exposure','Vol (ann.)','Share of variance'],(A.factors||[]).slice(0,12).map(f=>`<tr><td>${esc(f.factor)}</td><td class="muted">${f.kind}</td><td>${num(f.exposure,3)}</td><td>${num(f.factor_vol_pct_annual,1)}%</td><td><b>${pc(f.share_of_variance)}</b></td></tr>`))+`</div><div>`+
+   table(['Symbol','Weight','MCR (ann.)','Risk share','of which specific','Specific vol','Filled'],(A.stocks||[]).map(s=>`<tr><td>${esc(s.symbol)}</td><td>${pc(s.weight)}</td><td>${num(s.mcr_pct_annual)}%</td><td><b>${pc(s.risk_share)}</b></td><td>${pc(s.risk_share_specific)}</td><td>${num(s.specific_vol_pct_annual,1)}%</td><td class="muted">${esc((s.filled||[]).join(', '))}${s.specific_from_bucket?' specific from size bucket':''}</td></tr>`))+`</div></div>`+
+   `<p class="muted">Benchmark: ${esc((A.benchmark||{}).description||'')}${(CV.uncovered||[]).length?' · not covered: '+CV.uncovered.map(u=>esc(u.symbol)).join(', '):''}</p>`+
+   (BT.portfolios?`<p class="muted">Model bias test ${esc(BT.from)} → ${esc(BT.to)} (${BT.sessions} sessions): ${BT.in_band} of ${BT.portfolios} test portfolios inside the 95% band, median bias ${num(BT.median_bias,3)} (1 = forecasts right; above 1 = risk under-forecast)</p>`:'');
+}
+async function frmRun(){const m=document.getElementById('frmmsg');try{const r=await send('POST','/api/quant/risk-model/run',{});m.textContent=r.started?' started: refresh in a minute':' '+(r.reason||'')}catch(e){m.textContent=' '+e.message}}
 async function loadRisk(){
   const b=document.getElementById('pbook').value, m=document.getElementById('pmsg');m.textContent=' computing…';
+  loadFrm(b);
   let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent=' '+e.message;return}
   m.textContent=' as of '+A.as_of+(A.coverage?` · risk covers ${num(A.coverage.value_share*100,1)}% of the book (${A.coverage.sessions} sessions)`:'');
   const X=A.exposure||{}, V=A.var||{}, C=A.concentration||{}, RA=A.risk_attribution||{}, CO=A.correlation||{};

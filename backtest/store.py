@@ -80,18 +80,24 @@ def save_result(conn, run_id: str, result: dict, bias_extra: dict | None = None,
     conn.executemany(
         "INSERT INTO backtest_trade (run_id,seq,symbol,entry_date,entry_price,entry_ref_price,qty,exit_date,"
         "exit_price,exit_ref_price,exit_reason,gross_pnl,costs,net_pnl,return_pct,holding_sessions,entry_reason,"
-        "partial,adds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "partial,adds,instrument,direction,expiry,lots,lot_size,leg,rolled,calendar_spread,roll_cost) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(run_id, i, t["symbol"], str(t["entry_date"]), t["entry_price"], t["entry_ref_price"], t["qty"],
           str(t["exit_date"]), t["exit_price"], t["exit_ref_price"], t["exit_reason"], t["gross_pnl"],
           t["costs"], t["net_pnl"], t["return_pct"], t["holding_sessions"], t.get("entry_reason"),
-          1 if t.get("partial") else None, t.get("adds"))      # W39 (PF-06): partial rows / ADD fills
+          1 if t.get("partial") else None, t.get("adds"),       # W39 (PF-06): partial rows / ADD fills
+          t.get("instrument"), t.get("direction"),                # W40: futures short legs
+          str(t["expiry"]) if t.get("expiry") else None, t.get("lots"), t.get("lot_size"), t.get("leg"),
+          1 if t.get("rolled") else None, t.get("calendar_spread"), t.get("roll_cost"))
          for i, t in enumerate(result["trades"], 1)])
     conn.executemany(
         "INSERT INTO backtest_equity (run_id,date,cash,positions_value,equity,exposure_pct,n_positions,"
-        "realized_cum,unrealized,daily_return,peak_equity,drawdown_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "realized_cum,unrealized,daily_return,peak_equity,drawdown_pct,futures_margin,futures_notional) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(run_id, str(p["date"]), p["cash"], p["positions_value"], p["equity"], p["exposure_pct"],
           p["n_positions"], p["realized_cum"], p["unrealized"], p["daily_return"], p.get("peak_equity"),
-          p.get("drawdown_pct")) for p in result["equity"]])
+          p.get("drawdown_pct"), p.get("futures_margin"), p.get("futures_notional"))
+         for p in result["equity"]])
     conn.executemany(
         "INSERT INTO backtest_drawdown (run_id,seq,peak_date,trough_date,recovery_date,peak_equity,"
         "trough_equity,depth_pct,duration_sessions,recovery_sessions) VALUES (?,?,?,?,?,?,?,?,?,?)",

@@ -16,6 +16,8 @@ engine change:
     rules.py      condition language: all / any / not / min-of    (SE-03)
     regime.py     regime providers: Market Health + VIX           (SE-08)
     kinds.py      rule, multi_factor, quant_rank, composite, python (SE-03/04/06/07/08)
+    option_overlay.py  (W40, ENT-15) option_overlay: multi-leg OPTION intents on the paper options book,
+                  plus its dry run and a replay on stored daily option prices
     decisions.py  decision states, PositionIntent, advisory risk gate
     registry.py   strategies, immutable versions, library sync    (SE-01)
     lifecycle.py  states, allowed transitions, audit trail        (SE-09)

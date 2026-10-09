@@ -188,5 +188,9 @@
   "_SECTION_19": "W38 database backend (SQLite unless all three switches are set)",
   "database": {"backend": "sqlite", "allow_experimental": false},
   "_database_note": "PostgreSQL runtime: backend=postgresql AND allow_experimental=true AND env ATIP_DATABASE_URL=postgresql://... Migrate a COPY first: python tools/sqlite_to_postgres.py (docs/POSTGRESQL_MIGRATION.md). python -m db.dialect_scan lists what still needs a hand change.",
-  "_privacy_note": "W38 (ENT-17) saas keys: company_name, privacy_contact, grievance_officer, dsr_sla_days (30), privacy_policy_approved (false = /privacy shows DRAFT). Compliance checks run daily 07:50 (/compliance)."
+  "_privacy_note": "W38 (ENT-17) saas keys: company_name, privacy_contact, grievance_officer, dsr_sla_days (30), privacy_policy_approved (false = /privacy shows DRAFT). Compliance checks run daily 07:50 (/compliance).",
+
+  "_SECTION_20": "W40 meta-labelling of the technical signals (off by default; research only, never sizes an order)",
+  "meta_label": {"enabled": false, "model_type": "native_gbm", "threshold": 0.5, "n_splits": 5, "embargo_sessions": 5, "weighting": "uniqueness", "min_oos": 200, "min_group": 30, "min_t": 2.0, "size_step": 0.1},
+  "_meta_label_note": "enabled: Saturday 09:30 retraining and 20:45 scoring of the day's signals (shown on /signals) with the ADOPTED model: an ACTIVE meta-label version whose out-of-fold run was ADOPTABLE (python -m ml.meta_label train | score | report; docs/USER_GUIDE.md). Activation is always the owner's, through /ml or python -m ml lifecycle."
 }

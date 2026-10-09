@@ -25,6 +25,23 @@ window IC is positive with t >= 2; WEAK when it beats the baseline but IC is not
 significant; NO_EDGE otherwise. Stored in ml_validation_report.
 
 ML-07 (feature selection) reads the permutation importances: see selection.py.
+
+W40 -- purged k-fold with embargo on label SPANS (Lopez de Prado, AFML 7.4), for labels whose
+life is known per row (the meta-label model, ml/meta_label.py: t0 = the signal's close, t1 = the
+session its first barrier was touched):
+
+    purged_kfold(t0, t1, n_splits=5, embargo=0, calendar=None) -> [(train_idx, test_idx), ...]
+
+  FOLDS    the rows' t0 dates, sorted, cut into n_splits contiguous blocks of nearly equal row
+           counts; every row of one date lands in the same fold.
+  PURGE    for a test fold spanning [start, end] = [min t0, max t1] of its rows, a training row
+           whose own [t0, t1] overlaps it leaves the training set: kept only if t1 < start (its
+           label was known before the test's first decision) or t0 > end.
+  EMBARGO  rows starting within `embargo` sessions after `end` leave it too (serial
+           correlation right after the test labels resolved): kept only if t0 > calendar[pos(end)
+           + embargo]. calendar: the trading sessions (default: the sorted t0 / t1 dates).
+  Unlike walk_forward, training rows may come after the test fold (k-fold): every row is
+  predicted out of sample exactly once.
 """
 
 from __future__ import annotations
@@ -245,3 +262,55 @@ def list_reports(conn, limit=50) -> list:
     return [dict(zip(("report_id", "model_type", "dataset_id", "verdict", "created_at"), r)) for r in conn.execute(
         "SELECT report_id, model_type, dataset_id, verdict, created_at FROM ml_validation_report ORDER BY created_at "
         "DESC LIMIT ?", (int(limit),))]
+
+
+# ── W40: purged k-fold with embargo on label spans (AFML 7.4) ─────────────────────────────
+
+def _days(v) -> np.ndarray:
+    return np.array([str(x)[:10] for x in v], dtype="datetime64[D]")
+
+
+def purged_kfold(t0, t1, n_splits: int = 5, embargo: int = 0, calendar=None) -> list:
+    """[(train_idx, test_idx)] per fold, row indices into t0 / t1 (see the module docstring). Raises
+    ValueError when there are fewer distinct t0 dates than folds, or a row ends before it starts."""
+    a, b = _days(t0), _days(t1)
+    n = len(a)
+    if n != len(b) or n == 0:
+        raise ValueError("t0 and t1 need one date per row")
+    if (b < a).any():
+        raise ValueError("a label cannot end (t1) before it starts (t0)")
+    k = int(n_splits)
+    days, counts = np.unique(a, return_counts=True)
+    if k < 2 or len(days) < k:
+        raise ValueError(f"{len(days)} distinct dates: too few for {k} folds (needs >= 2 folds)")
+    before = np.cumsum(counts) - counts                     # rows on earlier dates
+    fold_of_day = np.minimum(k - 1, (before * k) // n)
+    fold = fold_of_day[np.searchsorted(days, a)]
+    cal = np.unique(np.concatenate([a, b]) if calendar is None else _days(calendar))
+    emb = max(0, int(embargo))
+    out = []
+    for f in range(k):
+        test = np.where(fold == f)[0]
+        if not len(test):
+            continue
+        start, end = a[test].min(), b[test].max()
+        j = int(np.searchsorted(cal, end, side="left"))
+        emb_end = cal[min(len(cal) - 1, j + emb)] if j < len(cal) else end
+        emb_end = max(emb_end, end)
+        train = np.where((b < start) | (a > emb_end))[0]
+        out.append((train, test))
+    return out
+
+
+def purge_report(t0, t1, folds) -> list:
+    """Per fold: rows tested, trained on, and removed by the purge / the embargo (for the record)."""
+    a, b = _days(t0), _days(t1)
+    rep = []
+    for f, (train, test) in enumerate(folds):
+        start, end = a[test].min(), b[test].max()
+        others = np.setdiff1d(np.arange(len(a)), np.union1d(train, test))
+        overl = int(((b[others] >= start) & (a[others] <= end)).sum())
+        rep.append({"fold": f, "test_rows": int(len(test)), "train_rows": int(len(train)),
+                    "test_start": str(start), "test_end": str(end), "purged": overl,
+                    "embargoed": int(len(others) - overl)})
+    return rep

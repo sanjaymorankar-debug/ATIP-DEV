@@ -205,9 +205,10 @@ def run_walk_forward(request: dict, train_sessions: int, validation_sessions: in
                     r = (p["equity"] / parent_snap["initial_capital"] - 1) if j == 0 else (p["daily_return"] or 0)
                     capital *= 1 + r
                     oos_dates.append(p["date"]); oos_equity.append(round(capital, 2))
-        # W39 (PF-06): a position's partial-exit rows count as one trade, as in each run's own metrics
-        if any(t.get("partial") for t in oos_trades):
-            from backtest.engine import round_trips_from_rows
+        # W39 (PF-06): a position's partial-exit rows count as one trade, as in each run's own metrics;
+        # W40: so do a futures short's rolled contract legs
+        from backtest.engine import needs_folding, round_trips_from_rows
+        if needs_folding(oos_trades):
             oos_trades = round_trips_from_rows(oos_trades)
         stitched = M.summarize(oos_dates, oos_equity, [t["net_pnl"] for t in oos_trades],
                                [t["return_pct"] for t in oos_trades if t["return_pct"] is not None],

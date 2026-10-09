@@ -125,3 +125,29 @@ def postmarket_target_date(now: datetime = None) -> date:
     if is_trading_day(today) and now.time() >= POSTMARKET_CUTOFF:
         return today
     return last_trading_day(today - timedelta(days=1))
+
+
+def sessions_until(d, end) -> int:
+    """NSE trading sessions after d up to and including end; 0 when end <= d. W40: the
+    sessions left to a futures expiry (the roll window of backtest/futures.py and of the
+    paper book's auto-roll, execution/futures_paper.py) -- 0 on the expiry day itself."""
+    d = d if isinstance(d, date) and not isinstance(d, datetime) else date.fromisoformat(str(d)[:10])
+    end = end if isinstance(end, date) and not isinstance(end, datetime) else date.fromisoformat(str(end)[:10])
+    return _sessions_until(d, end)
+
+
+_SESSIONS_CACHE = {}
+
+
+def _sessions_until(d: date, end: date) -> int:
+    key = (d, end)
+    if key not in _SESSIONS_CACHE:
+        n, x = 0, d + timedelta(days=1)
+        while x <= end:
+            if is_trading_day(x):
+                n += 1
+            x += timedelta(days=1)
+        if len(_SESSIONS_CACHE) > 20000:
+            _SESSIONS_CACHE.clear()
+        _SESSIONS_CACHE[key] = n
+    return _SESSIONS_CACHE[key]

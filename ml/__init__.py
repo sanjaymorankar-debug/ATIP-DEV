@@ -19,6 +19,9 @@ A model never places an order and nothing in ml/ imports execution/: ML output
 reaches trading only as a feature a strategy reads, and the strategy's
 decisions still pass through the W4 risk engine.
 
+W40: meta_label.py -- a secondary model over the technical signals (triple-barrier labels,
+uniqueness weights, purged k-fold, bet sizing, an ADOPTABLE / NO_EDGE gate); research only.
+
 Also: regime.py (deterministic / ML / hybrid regime providers), monitoring.py
 (prediction and feature drift, realised performance), explain.py (linear
 contributions, global importances), assistant.py (read-only "why" answers).

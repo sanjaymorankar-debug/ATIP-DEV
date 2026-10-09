@@ -78,6 +78,25 @@ the result it did before they existed.
              in the trade rows and equity but not the statistics. Without partial rows
              the definitions and inputs are unchanged. When a run has any ADD or partial
              exit, metrics also carry trade_rows, partial_exits and adds.
+
+Short legs (W40, QR-05 / QR-06): SHORT / COVER signals are simulated as near-month stock
+FUTURES by backtest.futures.FuturesBook -- built on the first SHORT signal, so a run without
+one never touches it and its result is exactly what it was (the digests are pinned by
+tests/test_w40_futures_backtest.py). backtest/futures.py has the rules; in short:
+
+  QUEUEING   (step 5) a SHORT is sized at the decision close in whole lots of the
+             near-month future (value / quantity / max_position_pct, capped at it, rounded
+             DOWN); no stored futures contract -> refused with an event (never priced off
+             spot). COVER of a held short is queued; of anything else ignored (event).
+  FUTURES    (step 3b, after the max-hold check, at d's END-OF-DAY futures closes) covers
+             fill; held contracts roll futures.roll_days_before_expiry sessions before expiry
+             into the next month (or settle at expiry with no roll); new shorts fill; every
+             leg is marked to its contract's close with the variation paid through cash; a
+             leg held max_hold_sessions is queued to cover at the next close.
+  MARK       (step 4) equity = cash + longs + futures margin blocked; exposure is gross.
+  ROWS       one trade row per contract leg (instrument FUT, direction SHORT, expiry, lots,
+             lot_size, leg; rolled / calendar_spread / roll_cost on a rolled leg); a rolled
+             position folds into one round trip like a position with partial exits.
 """
 
 from __future__ import annotations
@@ -94,6 +113,7 @@ from backtest.liquidity import LiquidityRule
 from backtest.slippage import SlippageModel
 from backtest.strategies import make_strategy
 from backtest.strategy import PositionView, StrategyContext
+from utils.trading_calendar import sessions_until
 
 log = logging.getLogger("atip.backtest")
 
@@ -166,6 +186,7 @@ def run(snapshot: dict, conn) -> dict:
     stored = bool(snapshot.get("strategy_definition_hash"))      # a W3 strategy version
     strat = make_strategy(snapshot["strategy_id"], snapshot.get("params"),
                           snapshot.get("strategy_version") if stored else None)
+    strat.simulates_futures = True      # W40: this engine trades SHORT / COVER (strategy_engine/adapter.py)
     if snapshot.get("strategy_version") and snapshot["strategy_version"] != strat.version:
         raise BacktestError(f"strategy {strat.strategy_id} is now version {strat.version}, the run was "
                             f"configured for {snapshot['strategy_version']} — results would not reproduce")
@@ -196,6 +217,7 @@ def run(snapshot: dict, conn) -> dict:
     from orders.risk import size_position
 
     st = SimState(cash=float(snapshot["initial_capital"]))
+    fut = None                          # W40: the futures book, built on the first SHORT signal
 
     def close_position(pos: Position, ref_price: float, d: date, i: int, reason: str, qty: int | None = None):
         """Sell the whole position, or -- qty below the held quantity -- that many
@@ -332,6 +354,10 @@ def run(snapshot: dict, conn) -> dict:
             if pos.max_hold and i - pos.entry_idx >= pos.max_hold and sym not in pending_sells:
                 st.pending.append(_Order(sym, "SELL", reason="MAX_HOLD", queued=d))
 
+        # 3b. futures legs at d's end-of-day futures closes (W40)
+        if fut:
+            fut.session(d, i, sessions_until)
+
         # 4. mark to market
         pv = cost_basis = 0.0
         for sym, pos in st.positions.items():
@@ -344,12 +370,21 @@ def run(snapshot: dict, conn) -> dict:
             pv += pos.qty * mark
             cost_basis += pos.qty * pos.entry_price
         eq = st.cash + pv
+        if fut:                                 # W40: the blocked futures margin is equity
+            f_margin, f_notional = fut.margin(), fut.notional()
+            eq += f_margin
         prev_eq = st.equity[-1]["equity"] if st.equity else float(snapshot["initial_capital"])
-        st.equity.append({"date": d, "cash": round(st.cash, 2), "positions_value": round(pv, 2),
-                          "equity": round(eq, 2), "exposure_pct": round(pv / eq * 100, 4) if eq else None,
-                          "n_positions": len(st.positions), "realized_cum": round(st.realized, 2),
-                          "unrealized": round(pv - cost_basis, 2),
-                          "daily_return": round(eq / prev_eq - 1, 8) if prev_eq else None})
+        point = {"date": d, "cash": round(st.cash, 2), "positions_value": round(pv, 2),
+                 "equity": round(eq, 2), "exposure_pct": round(pv / eq * 100, 4) if eq else None,
+                 "n_positions": len(st.positions), "realized_cum": round(st.realized, 2),
+                 "unrealized": round(pv - cost_basis, 2),
+                 "daily_return": round(eq / prev_eq - 1, 8) if prev_eq else None}
+        if fut:                                 # gross exposure; shorts count as positions
+            point.update({"exposure_pct": round((pv + f_notional) / eq * 100, 4) if eq else None,
+                          "n_positions": len(st.positions) + len(fut.positions),
+                          "unrealized": round(pv - cost_basis + fut.unrealized(), 2),
+                          "futures_margin": round(f_margin, 2), "futures_notional": round(f_notional, 2)})
+        st.equity.append(point)
 
         # 5. strategy, after the close -- nothing queued on the last session
         if i == len(sessions) - 1:
@@ -358,7 +393,8 @@ def run(snapshot: dict, conn) -> dict:
             as_of=d, data=history.view(d), universe=universe.symbols,
             positions={s: PositionView(s, p.qty, p.entry_price, p.entry_date, i - p.entry_idx)
                        for s, p in st.positions.items()},
-            cash=st.cash, equity=eq, params=dict(strat.params), scores=scores)
+            cash=st.cash, equity=eq, params=dict(strat.params), scores=scores,
+            futures=fut.views(i) if fut else {})
         try:
             signals = strat.on_bar(ctx) or []
         except LookAheadError as e:
@@ -369,6 +405,15 @@ def run(snapshot: dict, conn) -> dict:
         for s in signals:
             if s.symbol not in universe.symbols:
                 st.events.append({"date": d, "symbol": s.symbol, "event": "signal outside universe ignored"})
+                continue
+            if s.side in ("SHORT", "COVER"):    # W40: a short leg, as a near-month stock future
+                if s.side == "COVER" and not fut:
+                    event(d, s.symbol, f"cover ignored: {s.symbol} is not held short")
+                    continue
+                if not fut:
+                    from backtest.futures import FuturesBook
+                    fut = FuturesBook(conn, snapshot, universe.symbols, start, end, slip, st, event)
+                fut.queue(s, d, eq, sizing, len(st.positions) + len(queued_buys))
                 continue
             if s.side == "SELL":
                 if s.symbol in st.positions and s.symbol not in queued_sells:
@@ -419,7 +464,11 @@ def run(snapshot: dict, conn) -> dict:
                 continue
             if s.symbol in st.positions or s.symbol in queued_buys:
                 continue
-            if len(st.positions) + len(queued_buys) >= int(sizing["max_positions"]):
+            if fut and s.symbol in fut.positions:
+                event(d, s.symbol, f"buy ignored: {s.symbol} is held short (futures)")
+                continue
+            n_open = len(st.positions) + len(queued_buys) + (fut.open_count() if fut else 0)     # W40: + shorts
+            if n_open >= int(sizing["max_positions"]):
                 st.events.append({"date": d, "symbol": s.symbol, "event": "buy skipped: max_positions"})
                 continue
             bar = history.bar(s.symbol, d)
@@ -439,15 +488,26 @@ def run(snapshot: dict, conn) -> dict:
     last_i, last_d = len(sessions) - 1, sessions[-1]
     for o in st.pending:
         st.events.append({"date": last_d, "symbol": o.symbol, "event": f"{o.side} unfilled at end of window"})
-    if snapshot.get("close_out_at_end", True) and st.positions:
+    for o in (fut.pending if fut else []):
+        st.events.append({"date": last_d, "symbol": o.symbol, "event": f"{o.side} unfilled at end of window"})
+    has_fut = bool(fut and fut.positions)
+    if snapshot.get("close_out_at_end", True) and (st.positions or has_fut):
         for sym in sorted(st.positions):
             close_position(st.positions[sym], st.last_close.get(sym, st.positions[sym].entry_price),
                            last_d, last_i, "END_OF_WINDOW")
+        if has_fut:
+            fut.close_all(last_d, last_i)
         pt = st.equity[-1]
         prev = st.equity[-2]["equity"] if len(st.equity) > 1 else float(snapshot["initial_capital"])
         pt.update({"cash": round(st.cash, 2), "positions_value": 0.0, "equity": round(st.cash, 2),
                    "exposure_pct": 0.0, "n_positions": 0, "realized_cum": round(st.realized, 2),
                    "unrealized": 0.0, "daily_return": round(st.cash / prev - 1, 8) if prev else None})
+        if fut:
+            pt.update({"futures_margin": 0.0, "futures_notional": 0.0})
+    if fut:                                     # every point of a futures run carries the columns
+        for p in st.equity:
+            p.setdefault("futures_margin", 0.0)
+            p.setdefault("futures_notional", 0.0)
 
     # drawdown columns on the curve, metrics, episodes
     eqs = [p["equity"] for p in st.equity]
@@ -457,14 +517,18 @@ def run(snapshot: dict, conn) -> dict:
     rf = float(snapshot.get("risk_free_rate_pct") or 0) / 100
     pnls = [t["net_pnl"] for t in st.trades]
     rets = [t["return_pct"] for t in st.trades if t["return_pct"] is not None]
-    if st.partials:
-        pnls, rets = _round_trips(st)
+    if st.partials or (fut and fut.rolls):
+        pnls, rets = _round_trips(st, {p.uid for p in fut.positions.values()} if fut else ())
     metrics = M.summarize(dates, eqs, pnls, rets, rf_annual=rf, exposure=[p["exposure_pct"] or 0 for p in st.equity])
     metrics.update({"costs_paid": round(st.costs_paid, 2), "slippage_paid": round(st.slippage_paid, 2),
                     "turnover": round(st.turnover, 2), "events": len(st.events),
                     "open_positions_at_end": len(st.positions)})
     if st.partials or st.adds:
         metrics.update({"trade_rows": len(st.trades), "partial_exits": st.partials, "adds": st.adds})
+    if fut:
+        metrics.update(fut.metrics())
+        if fut.rolls:
+            metrics["trade_rows"] = len(st.trades)
     episodes = M.drawdown_episodes(dates, eqs)
 
     bias = {
@@ -478,6 +542,9 @@ def run(snapshot: dict, conn) -> dict:
                     + _not_simulated_warning(strat)
                     + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else []),
     }
+    if fut:
+        bias["futures"], warns = fut.bias()
+        bias["warnings"] = bias["warnings"] + warns
     return {"strategy": strat.describe(), "sessions": len(sessions), "trades": st.trades,
             "equity": st.equity, "metrics": metrics, "drawdowns": episodes, "events": st.events,
             "bias_report": bias, "data_fingerprint": history.fingerprint()}
@@ -486,12 +553,22 @@ def run(snapshot: dict, conn) -> dict:
 def _not_simulated_warning(strat) -> list:
     """Decisions a strategy made that this engine could not trade. A W3 strategy
     version (strategy_engine/adapter.py) counts them in `not_simulated`
-    ({action: n}); ADD / REDUCE are simulated, so only what is left appears."""
+    ({action: n}). ADD / REDUCE of a held long are simulated, and so are SHORT / COVER
+    (as near-month stock futures, W40), so only what is left appears: a change or exit of
+    a position the run did not hold in that form (e.g. "REDUCE (not held)",
+    "COVER (not held short)", "EXIT (held short)")."""
     skipped = getattr(strat, "not_simulated", None) or {}
     if not skipped:
         return []
     what = ", ".join(f"{a} x{n}" for a, n in sorted(skipped.items()))
-    return [f"decisions not simulated: {what} -- the backtest is a long-only cash book (no short legs)"]
+    return [f"decisions not simulated: {what} -- each names a position the backtest did not hold in that form "
+            f"(long legs are a cash book; SHORT / COVER are simulated as near-month stock futures)"]
+
+
+def needs_folding(rows: list) -> bool:
+    """True when stored rows hold more than one row for some position: partial exits
+    (PF-06) or rolled futures legs (W40) -- fold them with round_trips_from_rows."""
+    return any(t.get("partial") or t.get("rolled") for t in rows)
 
 
 def round_trips_from_rows(rows: list) -> list:
@@ -502,10 +579,14 @@ def round_trips_from_rows(rows: list) -> list:
     "net_pnl", "return_pct", "qty", "entry_price", "rows"}; return_pct is the summed net
     over the summed cost basis (each row's basis = net / return, else qty x entry price).
     A position with only partial rows is still open (close_out_at_end false): left out.
-    Rows of runs without partial exits map one to one, figures unchanged."""
+    Rows of runs without partial exits map one to one, figures unchanged.
+    W40: a futures short's contract legs (instrument "FUT"; "rolled" on each leg a roll
+    closed) group by (symbol, entry_date, instrument) too; each leg holds the whole
+    position, so the basis, qty and entry price are those of its FIRST leg (leg 1) and the
+    net is the sum of its legs. A position whose rows are all rolled is still open."""
     groups, order = {}, []
     for t in rows:
-        k = (t["symbol"], str(t["entry_date"]))
+        k = (t["symbol"], str(t["entry_date"]), t.get("instrument"))
         if k not in groups:
             groups[k] = []
             order.append(k)
@@ -513,7 +594,7 @@ def round_trips_from_rows(rows: list) -> list:
     out = []
     for k in order:
         g = groups[k]
-        if all(t.get("partial") for t in g):
+        if all(t.get("partial") or t.get("rolled") for t in g):
             continue
         if len(g) == 1:
             t = g[0]
@@ -522,24 +603,26 @@ def round_trips_from_rows(rows: list) -> list:
                         "entry_price": t["entry_price"], "rows": 1})
             continue
         net = sum(t["net_pnl"] or 0 for t in g)
+        first = [t for t in g if (t.get("leg") or 1) == 1]          # every row, unless futures legs
         basis = sum((t["net_pnl"] / (t["return_pct"] / 100)) if t.get("return_pct") else
-                    (t["qty"] * t["entry_price"]) for t in g)
-        qty = sum(t["qty"] for t in g)
+                    (t["qty"] * t["entry_price"]) for t in first)
+        qty = sum(t["qty"] for t in first)
         out.append({"symbol": g[0]["symbol"], "entry_date": g[0]["entry_date"], "exit_date": g[-1]["exit_date"],
                     "net_pnl": round(net, 2), "return_pct": round(net / basis * 100, 4) if basis else None,
-                    "qty": qty, "entry_price": round(sum(t["qty"] * t["entry_price"] for t in g) / qty, 4),
+                    "qty": qty, "entry_price": round(sum(t["qty"] * t["entry_price"] for t in first) / qty, 4),
                     "rows": len(g)})
     out.sort(key=lambda r: str(r["exit_date"]))
     return out
 
 
-def _round_trips(st: SimState) -> tuple[list, list]:
+def _round_trips(st: SimState, also_open=()) -> tuple[list, list]:
     """Net P&L and return % per CLOSED position (round trip) for the trade statistics:
-    a position's rows (partial exits and the close) fold into one trade. Ordered by
-    each position's closing row; a one-row position keeps its row's own figures. A
-    position still open at the end (close_out_at_end false) is not a closed trade:
-    its partial rows stay in the trade rows and the equity curve, not in the stats."""
-    return fold_round_trips(st.trades, st.trade_legs, {p.uid for p in st.positions.values()})
+    a position's rows (partial exits and the close; a futures short's rolled contract
+    legs, W40) fold into one trade. Ordered by each position's closing row; a one-row
+    position keeps its row's own figures. A position still open at the end
+    (close_out_at_end false) is not a closed trade: its partial rows stay in the trade
+    rows and the equity curve, not in the stats. also_open: uids of open futures legs."""
+    return fold_round_trips(st.trades, st.trade_legs, {p.uid for p in st.positions.values()} | set(also_open))
 
 
 def fold_round_trips(trades: list, trade_legs: list, still_open: set) -> tuple[list, list]:

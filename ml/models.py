@@ -3,6 +3,8 @@ The model interface and model families.
 
     BaseModel
       fit(X, y)                 X: float matrix with NaN for missing; y: labels / targets
+                                (logistic_regression, native_gbm, native_random_forest also take
+                                sample_weight=, W40: the meta-label model's uniqueness weights)
       predict(X)                classes (classification) or values (regression)
       predict_proba(X)          class probabilities, classification only
       interval(X)               (low, high) prediction interval, regression when supported
@@ -75,6 +77,16 @@ class Preprocessor:
         return cls(np.array(s["medians"]), np.array(s["means"]), np.array(s["stds"]))
 
 
+def _weights(sample_weight, n):
+    """Sample weights rescaled to mean 1 (so the loss keeps its scale), or None for an unweighted fit."""
+    if sample_weight is None:
+        return None
+    w = np.asarray(sample_weight, dtype=float).reshape(-1)
+    if len(w) != n or not np.all(np.isfinite(w)) or (w < 0).any() or w.sum() <= 0:
+        raise ValueError("sample_weight: one finite, non-negative weight per row, not all zero")
+    return w * (n / w.sum())
+
+
 class BaseModel:
     model_type = "base"
     tasks = ("classification", "regression")
@@ -125,7 +137,9 @@ class LogisticModel(BaseModel):
     tasks = ("classification",)
     default_params = {"l2": 1.0, "learning_rate": 0.1, "iterations": 500}
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
+        """sample_weight (W40, ml/meta_label.py): per-row weights, rescaled to mean 1, multiplying each row's
+        gradient; None is every row weight 1 (the unweighted fit, unchanged)."""
         y = [str(v) for v in y]
         present = set(y)
         wanted = [str(c) for c in (self.classes or [])]
@@ -136,11 +150,12 @@ class LogisticModel(BaseModel):
         k = len(self.classes)
         idx = {c: i for i, c in enumerate(self.classes)}
         Y = np.zeros((n, k)); Y[np.arange(n), [idx[v] for v in y]] = 1
+        sw = _weights(sample_weight, n)
         W, b = np.zeros((p, k)), np.zeros(k)
         lr, l2 = float(self.params["learning_rate"]), float(self.params["l2"])
         for _ in range(int(self.params["iterations"])):
             P = self._softmax(Z @ W + b)
-            G = P - Y
+            G = P - Y if sw is None else (P - Y) * sw[:, None]
             W -= lr * (Z.T @ G / n + l2 * W / n)
             b -= lr * G.mean(axis=0)
         self.W, self.b = W, b
