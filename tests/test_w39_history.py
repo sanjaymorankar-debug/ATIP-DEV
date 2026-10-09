@@ -237,4 +237,5 @@ def test_backfill_and_reports_are_scheduled_nightly(monkeypatch):
                          ("20:35", S._w39_earnings_surprise),
                          ("20:40", S._w39_research_reports), ("20:50", S._w39_saved_screens),
                          ("22:20", S._w39_history_backfill), (None, S._w39_intraday_tick),
-                         ("15:31", S._w39_global_sync), ("08:42", S._w39_global_sync)]
+                         ("15:31", S._w39_global_sync), ("08:42", S._w39_global_sync),
+                         ("09:09", S._w39_preopen_capture), ("17:10", S._w39_preopen_evaluate)]

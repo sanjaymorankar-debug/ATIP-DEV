@@ -74,6 +74,7 @@ _D += " enterprise_billing_ref"                # W39b: payment-gateway ids (Razo
 _G += (" prices_daily_backfill research_report technical_snapshot technical_signal order_book_pressure "
        "fo_participant_oi market_cue market_regime_gate fundamental_scorecard macro_event intraday_signal depth20_snapshot global_snapshot")
 _G += " earnings_surprise"                     # W39b: SUE / EPS trend per stored quarter (reference data)
+_G += " preopen_snapshot"                      # NSE pre-open auction per stock (market data)
 _O += " research_screen"                       # the owner's saved screens
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")

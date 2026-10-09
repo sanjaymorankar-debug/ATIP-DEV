@@ -16,6 +16,8 @@
 | Intraday 15-min OHLC bars | **Dhan API** | Every 30 min | 09:15 – 15:30 |
 | Global markets (S&P, Dow, Gold, Crude) | **yfinance** | Every 30 min | 09:15 – 15:30 |
 | Pre-market GIFT Nifty + Global | **yfinance** | Once | 07:15 AM |
+| NSE pre-open auction (IEP, total buy / sell per stock) | **NSE** (`data/preopen.py`) | Once, after order entry closes | 09:09 AM |
+| Pre-open outcome (open, first 15 min, close) | **Computed** | Once | 17:10 PM |
 | Market news (RSS + Claude AI) | **RSS + Anthropic** | Twice | 07:45 AM, 12:00 PM |
 | Portfolio sync (Dhan or Zerodha) | **Dhan / Kite API** | Twice | 08:00 AM, 17:30 PM |
 | NSE Bhavcopy (official EOD) | **NSE Archives** | Once | 16:05 PM |
