@@ -1,9 +1,8 @@
-# W39b deployment runbook (owner, macOS)
+# W40 deployment runbook (owner, macOS)
 
-> **Superseded by `docs/W40_DEPLOY_RUNBOOK.md`**, which deploys W39b and W40 together. Kept for reference.
-
-**Release:** `ATIP-W39B` = the `master` commit that merges PR #5. After `git pull`, `git log -1 --format='%h %s'` shows it: a merge of `claude/wizardly-curie-fbjeoa`, or a commit titled "W39b: ...".
-**Previous production:** `1d089a7` (W39, PR #4). This is the rollback target.
+**Release:** `ATIP-W40` = the `master` commit that merges PR #9. After `git pull`, `git log -1 --format='%h %s'` shows it: a merge of `claude/wizardly-curie-fbjeoa`, or a commit titled "W40: ...".
+**Rollback target:** `d01705e` (`master` before W40: W39b, PR #5, plus the MySQL runtime, PR #8).
+**Haven't deployed W39b (`ATIP-W39B`) yet?** Then skip it and follow only this runbook: this release includes it. `docs/W39B_DEPLOY_RUNBOOK.md` is kept for reference.
 **Machine:** the Mac running the `com.atip.platform` LaunchAgent. On the old Windows machine, use `deploy\deploy_release.ps1`; the steps are the same.
 
 The release changes nothing about trading safety: LIVE stays off, and every new automatic behaviour ships switched off (see [What ships switched off](#what-ships-switched-off)).
@@ -23,18 +22,18 @@ cd /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
 git fetch origin
 git checkout master
 git pull --ff-only origin master
-git log -1 --format='%h %s'                         # the PR #5 merge (see Release above)
-git tag -a ATIP-W39B HEAD -m "W39b: tracker reconciliation and remaining features (PR #5)"
-git branch -f backup/pre-w39b-master 1d089a7          # the rollback target
+git log -1 --format='%h %s'                         # the PR #9 merge (see Release above)
+git tag -a ATIP-W40 HEAD -m "W40: remaining buildable features after W39b (PR #9)"
+git branch -f backup/pre-w40-master d01705e           # the rollback target
 
 # dependencies (adds only what is missing)
 .venv/bin/pip install -r requirements.txt
 
 # dry run: prints the plan and runs the read-only preflight
-deploy/deploy_release.sh ATIP-W39B
+deploy/deploy_release.sh ATIP-W40
 
 # deploy
-deploy/deploy_release.sh ATIP-W39B --authorize
+deploy/deploy_release.sh ATIP-W40 --authorize
 ```
 
 **What `--authorize` does:**
@@ -46,14 +45,14 @@ deploy/deploy_release.sh ATIP-W39B --authorize
 6. Waits up to 3 minutes for `/health/ready`, then checks every health endpoint and that `LIVE_TRADING_ENABLED` is false.
 7. Writes `DEPLOYED` (or `FAILED`) to `atip_data/releases/history.jsonl`.
 
-**It is done when the last line reads `DEPLOYED ATIP-W39B (...)`.**
+**It is done when the last line reads `DEPLOYED ATIP-W40 (...)`.**
 
 ## 3. Check it (5 minutes)
 
 ```bash
 launchctl list | grep com.atip                 # 0 in the second column
 tail -n 50 atip_data/launchd.err               # no Traceback
-tail -n 3 atip_data/releases/history.jsonl     # DEPLOYED ATIP-W39B
+tail -n 3 atip_data/releases/history.jsonl     # DEPLOYED ATIP-W40
 curl -s http://127.0.0.1:8000/health/ready     # {"status":"READY",...}
 ```
 
@@ -61,14 +60,15 @@ Then open http://127.0.0.1:8000:
 
 | Page | What to look for |
 |---|---|
-| `/research` → any stock | The scorecard, then the new **DVM view** card (three 0–100 bars and a zone), then the **Earnings surprise** card. "Insufficient history" is expected until the NSE filings backfill has run. |
-| `/screener` | 45 presets, including "75-minute and daily both bullish", "DVM strong performers", "Positive earnings surprise" and "Chart pattern breakdowns". The new fields stay empty until the 20:30 / 20:35 / 20:50 jobs have run once. |
-| Stock chart (any stock panel) | Diamonds for pattern breakouts, dots for signals and candle patterns, dashed pattern lines. The **Patterns** button hides them. |
-| `/data-platform` → Multi-asset | Search a mutual fund and click it: returns, rolling returns, risk, category rank, SIP calculator. |
-| `/wealth` | Unchanged figures; the Simple / Detailed toggle. |
-| `/market-pulse` | The 20-level card shows OFI only when `depth20.enabled` is on and the Dhan Data API is subscribed. |
+| Stock chart (any stock panel) | **RSI 14** and **MACD** buttons (off by default) add the two panels. **1D 15m / 5D 15m** show the intraday chart with VWAP and the previous close; without the Dhan Data API it says there are no 15-minute bars. The Technicals tab shows the on-demand **75-minute rating**. Pattern and signal marks as before. |
+| `/signals` | A **75m** column next to Weekly. There is no meta-label column until meta-labelling is switched on and a model is adopted. |
+| `/trading` → Portfolio risk | A **Factor risk model** card: factor vs specific risk and the bias statistic. It reads "no data" until the 21:45 job has run, and until 30+ stocks have filed share counts. |
+| `/quant` | Factor risk model: latest factor returns, volatilities and the bias test. |
+| `/wealth` → Performance | Benchmark **NIFTY50_TR** in the list (`nifty50tr`), with values after the first 21:10 run (or `python -m data.total_return`). |
+| `/strategies` | A "Derivatives (paper)" column. An option-overlay strategy shows its option positions and a **Dry run today** button. |
+| `/research`, `/screener`, `/data-platform` | As in W39b: the DVM and earnings-surprise cards, 147 screener fields, mutual fund analytics (its SIP calculator now has step-up and exit load). |
 
-**One-time, after this deploy: rotate the dashboard write token.** An earlier hosted snapshot carried it. The fix is in this release, but the old token must be replaced:
+**One-time, if not done with W39b: rotate the dashboard write token.** An earlier hosted snapshot carried it. The fix is in the code, but the old token must be replaced:
 
 ```bash
 rm atip_data/dashboard_token.txt
@@ -80,15 +80,15 @@ Update any bookmark or script that sends the old token.
 ## 4. If something is wrong: roll back
 
 ```bash
-deploy/rollback_release.sh backup/pre-w39b-master              # dry run
-deploy/rollback_release.sh backup/pre-w39b-master --authorize  # code-only rollback
+deploy/rollback_release.sh backup/pre-w40-master              # dry run
+deploy/rollback_release.sh backup/pre-w40-master --authorize  # code-only rollback
 ```
 
-**The code-only rollback is normally enough.** Every W39b schema change is additive, so the W39 code runs on the newer database.
+**The code-only rollback is normally enough.** Every W40 schema change is additive (new tables and columns only), so the previous code runs on the newer database.
 
 Restore the database only if the release damaged data. Add `--restore-backup <backup_id>`, using the `atip-pre-release-...` id the deploy printed in step 3, or the one from `python -m ops backups`. Data written after that backup is lost.
 
-To restore the configuration copy as well, add `--restore-config-from ATIP-W39B`.
+To restore the configuration copy as well, add `--restore-config-from ATIP-W40`.
 
 ## What ships switched off
 
@@ -102,26 +102,42 @@ Each item is one setting, and each stays off until you turn it on.
 | `billing.provider` | `sandbox` | `razorpay` uses the Razorpay provider. It needs the vault keys (docs/BILLING_RAZORPAY.md), and only matters with the enterprise layer on. |
 | `billing.razorpay.allow_live` | `false` | Allows `rzp_live_` keys, and only in the production environment. Test keys work without it. |
 | `risk_limits.enforce_circuit_limits` | **`true`** | The only one that ships **on**. It refuses an order priced outside today's NSE circuit band, which the exchange would reject anyway. Set it to `false` to turn it off. |
+| `meta_label.enabled` | `false` | Saturday 09:30 retraining and 20:45 scoring of the technical signals by the meta-label model. Scoring also needs a version you adopted, which needs an ADOPTABLE test result: 200+ closed signals and a significant gain. |
+| `options.enabled` | `false` | The paper options book. With it on, option-overlay strategies can open multi-leg paper positions, and expiry settlement runs. LIVE options stay refused. |
+| `futures.auto_roll` | `false` | The paper futures book rolls a short into the next month `futures.roll_days_before_expiry` (2) sessions before expiry, instead of letting it settle. |
 | `execution.mode` / `live_trading_enabled` | `PAPER` / `false` | Unchanged by this release. Live orders still need both settings and the production environment, and the deploy checks this. |
 
-**Per-report option, not a setting:** the wealth performance report's `slippage_model` (`fixed` by default; `impact` uses the square-root market-impact model).
+**On by default, read-only research (W40):**
+- `risk_model.enabled` (`true`): the factor risk model, nightly at `risk_model.time` (21:45). The first build takes about 30 s and writes about 30 MB. Set it to `false` to stop it.
+- `total_return`: the Nifty 50 total-return series, nightly at 21:10. Settings `index` (NIFTY50) and `members` (50).
 
-**Scheduled jobs added (market days):**
-- **20:35:** earnings surprise.
-- **20:30:** the existing signal run now also computes the 75-minute rating.
-- **20:50:** the existing scorecard job now also stores the DVM.
-- The paper SIP job runs as before (W39b round 1).
+**Per-report and per-request options, not settings:**
+- the wealth report's `slippage_model` and benchmark `nifty50tr`;
+- a backtest's `"futures"` settings: margin, roll days and costs, for strategies with `short_via_futures`;
+- the optimiser's `method="bayes"`;
+- CPCV's `engine="event_driven"`.
 
-Each job only reads data ATIP already stores.
+**Scheduled jobs (market days unless noted):**
+- 20:30: signals and the 75-minute rating.
+- 20:35: earnings surprise.
+- 20:45: meta-label scoring, only when enabled.
+- 20:50: scorecard and DVM.
+- 21:10: total return.
+- 21:45: risk model, every day.
+- Saturday 09:30: meta-label retraining, only when enabled.
+- 16:20: the options job now also marks option-overlay positions.
+
+Each job reads only data ATIP already stores.
 
 ## What still needs you (blockers)
 
 | What | Who / what is needed | Until then |
 |---|---|---|
 | Running this deploy | You, on the Mac (section 2) | The code is on `master`; production runs the previous release |
+| GitHub Actions | Your account's Actions minutes or spending limit (Settings → Billing and plans). Since 2026-10-09, jobs fail before any step runs | CI cannot run; the full suite was run locally instead (see the W40 handoff) |
 | Live trading (EX-19 GTT, options one-click, the aggressive strategy) | Your explicit go-ahead, plus the Dhan forever-order API on the account | PAPER only |
 | BR-08 sandbox check | A Dhan-issued sandbox token, then `python -m orders.sandbox_check --place-test-order` | Not run |
-| Dhan Data API | The subscription | No 20-level depth / OFI, no 15-minute bars (so no 75-minute rating), no order-book pressure |
+| Dhan Data API | The subscription | No 20-level depth / OFI, no 15-minute bars (so no 75-minute rating and no intraday chart), no order-book pressure |
 | ENT-04 Razorpay | A KYC-activated business account with Invoices and Subscriptions; keys in the vault | Billing uses the sandbox provider |
 | ENT-07 / ENT-08 exposure | How ATIP is reached from the internet (tunnel / VPN / reverse proxy), the domain and TLS | Local only; Razorpay settles by polling, not webhooks |
 | ENT-14 regulatory | Sign-off by a qualified professional (SEBI RA / IA; payments tax) | Reports carry disclosures; nothing is published |

@@ -1,6 +1,6 @@
 # ATIP API reference
 
-Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running application (582 method + path pairs). Do not edit by hand -- regenerate.
+Generated 2026-10-09 18:58 by `python -m ops api-docs` from the running application (593 method + path pairs). Do not edit by hand -- regenerate.
 
 - **Base URL:** `http://127.0.0.1:8000` (local only until ENT-07). `/api/v1/...` is an alias of every `/api/...` route (ops/http.py) and adds the `API-Version` header, pagination, sort and filter on list endpoints, and the standard error envelope `{"error": {"code", "message", "request_id"}}`.
 - **Auth:** with `enterprise.enabled`, a session cookie or `Authorization: Bearer <api key>`; the *Permission* column is what the authz middleware requires (enterprise/authz.py). Without enterprise, the dashboard is single-owner and local.
@@ -153,9 +153,9 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | GET | `/api/backtests` | research:read |  | `limit`=50, `strategy_id` |  |
 | POST | `/api/backtests` | research:run | token |  | Body: a backtest request (backtest/service.py). Returns run_id; runs in the background. |
 | POST | `/api/backtests/costsweep` | research:run | token |  | Body: {request, multipliers? (default [0,0.5,1,1.5,2,3,5]), scale? costs\|slippage\|both} (BT-19). |
-| POST | `/api/backtests/cpcv` | research:run | token |  | Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?} -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths. |
+| POST | `/api/backtests/cpcv` | research:run | token |  | Body: {request (start/end; + event_driven settings), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?, engine? w2\|event_driven} -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths. |
 | POST | `/api/backtests/event-driven` | research:run | token |  | a backtest request + {"event_driven": {...}}    BT-17 |
-| POST | `/api/backtests/optimize` | research:run | token |  | Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}. |
+| POST | `/api/backtests/optimize` | research:run | token |  | Body: {request, space, method? grid\|random\|adaptive\|bayes, select_by?, max_trials?, seed?, min_trades?}. |
 | POST | `/api/backtests/robustness` | research:run | token |  | Body: {request (start/end), n_subsamples?, seed?}. |
 | POST | `/api/backtests/sensitivity` | research:run | token |  | Body: {request, space, select_by?, steps?, pairwise?}. |
 | GET | `/api/backtests/strategies` | research:read |  |  |  |
@@ -230,10 +230,12 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | GET | `/api/data/mf` | dashboard:read |  | `q`, `limit`=50 | ?q=&limit=50  latest NAVs, name search |
 | GET | `/api/data/mf/compare` | dashboard:read |  | `schemes`, `category_of`, `same_plan`=1, `as_of` | ?schemes=a,b,...&as_of \| ?category_of=<code>&same_plan=1   W39b |
 | GET | `/api/data/mf/{scheme}/analytics` | dashboard:read |  | `scheme`, `hurdle`, `rf`, `benchmark`, `risk_years`, `as_of`, `peers`=1 | ?hurdle&rf&benchmark&risk_years&as_of&peers=1 |
-| GET | `/api/data/mf/{scheme}/sip` | dashboard:read |  | `scheme`, `amount`, `day`=1, `start`, `end`, `lump_sum` | ?amount&day=1&start&end&lump_sum |
+| GET | `/api/data/mf/{scheme}/sip` | dashboard:read |  | `scheme`, `amount`, `day`=1, `start`, `end`, `lump_sum`, `step_up_pct`, `stamp_duty`, `round_units`, `exit_load_pct`, `exit_load_days` | ?amount&day=1&start&end&lump_sum&step_up_pct&stamp_duty=1 |
 | GET | `/api/data/ticks` | dashboard:read |  | `day`, `symbol`, `limit`=2000 | ?day&symbol&limit=2000 |
 | POST | `/api/data/ticks/minute-bars` | research:run | token |  | {day?}  rebuild 1-min bars from ticks |
 | GET | `/api/data/ticks/status` | dashboard:read |  | `days`=10 | ?days=10  tick capture per day                    DP-04 |
+| GET | `/api/data/total-return` | dashboard:read |  | `index`=NIFTY50, `start`, `end` | the estimated total-return index and its summary |
+| POST | `/api/data/total-return/rebuild` | research:run | token |  | {index?, members?}  rebuild it now (also nightly) |
 
 ## `/api/data-quality`
 
@@ -534,6 +536,7 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | POST | `/api/portfolio/imports/from-broker` | portfolio:manage | token |  | {broker} |
 | POST | `/api/portfolio/imports/preview` | portfolio:manage | token |  | {filename, content}   (CSV text) |
 | GET | `/api/portfolio/imports/runs` | portfolio:read |  |  |  |
+| GET | `/api/portfolio/risk-model` | portfolio:read |  | `portfolio`, `book` | ?portfolio=PAPER\|LIVE  total = factor + specific risk, per-factor |
 
 ## `/api/position-intents`
 
@@ -581,6 +584,9 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | GET | `/api/quant/research` | quant:read |  | `key`, `limit`=50 | POST (token) {key, kind: ic\|ic_decay\|quantiles\|correlation, ...} |
 | POST | `/api/quant/research` | research:run | token |  | {key, kind: ic\|ic_decay\|quantiles\|correlation, start, end, horizon?, keys?, as_of?} -- background. |
 | POST | `/api/quant/research-report` | research:run | token |  | (token) {start, end} IC / decay / redundancy for all factors |
+| GET | `/api/quant/risk-model/factors` | quant:read |  | `as_of`, `days`=20 | ?as_of&days  latest factor returns (t statistics), returns over |
+| POST | `/api/quant/risk-model/run` | quant:write | token |  | (token) {rebuild?: bool} update the stored model now (background; |
+| GET | `/api/quant/risk-model/status` | quant:read |  |  | model definition (factors, merged industries, hash), coverage |
 | GET | `/api/quant/scores` | quant:read |  | `as_of`, `key`, `symbol`, `limit`=200 | ?as_of&key&symbol&limit |
 | GET | `/api/quant/spreads` | quant:read |  | `pair_id`, `limit`=100 | stored spread snapshots |
 | GET | `/api/quant/status` | quant:read |  |  | config, factor coverage, data dependencies |
@@ -614,6 +620,7 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | GET | `/api/research/equity/{symbol}/history` | research:read |  | `symbol` | rating / target calls and their outcomes |
 | POST | `/api/research/equity/{symbol}/refresh` | research:run | token | `symbol` | build and store today's report |
 | GET | `/api/research/hit-rate` | research:read |  |  | closed calls by rating |
+| GET | `/api/research/meta-label/report` | research:read |  |  | the settings, the adopted model (if any), the latest training |
 | GET | `/api/research/scorecard-record` | research:read |  | `horizon`=60 | return vs the Nifty after 20 / 60 / 120 / 250 sessions by checks passed |
 | GET | `/api/research/scorecard/{symbol}` | research:read |  | `symbol` | the fundamental scorecard: 5 axes x 6 checks, each with its numbers |
 | GET | `/api/research/studies` | research:read |  | `status` | ?status ; POST (token) {title, hypothesis, method, tags, supersedes} |
@@ -700,6 +707,8 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | Method | Path | Permission | Token | Parameters | Summary |
 |---|---|---|---|---|---|
 | GET | `/api/stock/{symbol}/history` | dashboard:read |  | `symbol`, `sessions`=400 |  |
+| GET | `/api/stock/{symbol}/intraday` | dashboard:read |  | `symbol`, `date`, `days`=1, `interval`=15 | W40: intraday bars, session VWAP, previous close and scan marks (stock_intraday above). |
+| GET | `/api/stock/{symbol}/rating-75` | dashboard:read |  | `symbol`, `as_of` | (W39B-TF75) |
 
 ## `/api/strategies`
 
@@ -724,6 +733,8 @@ Generated 2026-10-08 10:56 by `python -m ops api-docs` from the running applicat
 | GET | `/api/strategies/{sid}/health` | strategy:read |  | `sid`, `version` |  |
 | POST | `/api/strategies/{sid}/lifecycle` | strategy:lifecycle | token | `sid` | {to_state, reason, evidence}: any transition lifecycle.TRANSITIONS allows. |
 | POST | `/api/strategies/{sid}/ml-activate` | strategy:lifecycle | token | `sid` | (token, strategy:lifecycle) {to_state: PAPER\|ACTIVE, reason?} |
+| GET | `/api/strategies/{sid}/options` | strategy:read |  | `sid`, `status`, `limit`=50 | W40 (ENT-15): the strategy's paper option positions (option overlays) with legs and daily marks. |
+| GET | `/api/strategies/{sid}/options/dry-run` | strategy:read |  | `sid`, `as_of`, `version` | W40 (ENT-15): an option overlay's legs and risk check for today (or as_of) -- nothing stored, nothing placed (strategy_engine/option_overlay.dry_run). |
 | GET | `/api/strategies/{sid}/parameters` | strategy:read |  | `sid`, `version` |  |
 | POST | `/api/strategies/{sid}/pause` | strategy:lifecycle | token | `sid` |  |
 | POST | `/api/strategies/{sid}/retire` | strategy:lifecycle | token | `sid` |  |
