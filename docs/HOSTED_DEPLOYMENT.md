@@ -1,7 +1,12 @@
 # Hosting ATIP at `*.bkesari.com/ATIP/`
 
-How to run the **full interactive** ATIP server-side on MySQL, reverse-proxied at
+How to run the **full interactive** ATIP server-side on PostgreSQL, reverse-proxied at
 `/ATIP/`, across the dev → test → production tiers.
+
+> **Database plan changed on 2026-10-09: PostgreSQL, not MySQL.** Earlier versions of
+> this guide deployed on MySQL 8. PostgreSQL 16 is now the hosted database. The MySQL
+> service is gone from `docker-compose.yml`, and `db/mysql.py` is kept only as legacy
+> code. SQLite stays the default for a local install.
 
 The project now lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP`
 on macOS. Local operation is unchanged — see `README.md` and
@@ -53,93 +58,106 @@ Do not skip any of these before the hostname is public:
 - [ ] **`execution.mode` stays `paper`** until live trading is separately
       authorised. Hosting changes nothing about that; verify it after deploy.
 - [ ] The dashboard token file is present and not world-readable.
-- [ ] The VPS firewall exposes **only** 80/443 — never 8000 or 3306.
-- [ ] A backup of `atip_data/` and the MySQL database before first public DNS.
+- [ ] The VPS firewall exposes **only** 80/443 — never 8000 or 5432.
+- [ ] A backup of `atip_data/` and the PostgreSQL database (`pg_dump -Fc atip`) before first public DNS.
 
 ---
 
-## 3. MySQL
+## 3. PostgreSQL
 
-ATIP's MySQL backend is `db/mysql.py`. It is verified against a real server by
-`tests/test_mysql_backend.py`: all 186 tables and 67 indexes are created by MySQL
-itself, and upsert/trigger semantics are round-tripped.
+ATIP's PostgreSQL backend is `db/postgres.py`. `tests/test_postgres_backend.py` verifies it
+against a real server, and CI runs those tests against a PostgreSQL 16 service on every push.
+They build the whole schema with `init_db()`, apply every migration, and round-trip upserts,
+the append-only triggers, job locks and the error classes.
 
 ### 3.1 Create the database
 
-```sql
-CREATE DATABASE atip CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'atip'@'%' IDENTIFIED BY '<strong password>';
-GRANT ALL PRIVILEGES ON atip.* TO 'atip'@'%';
-FLUSH PRIVILEGES;
+**Option A: the bundled container** (simplest; the same box as ATIP):
+
+```bash
+printf '%s\n' "<strong password>" > deploy/pg_password.txt   # git-ignored; one line
+docker compose --profile postgres up -d                      # PostgreSQL 16 as service "postgres"
 ```
 
-Or use the bundled container: `docker compose --profile mysql up -d` (writes
-`deploy/mysql_password.txt`, git-ignored).
+The container creates the `atip` role and the `atip` database itself. Its port is
+published on the host's `127.0.0.1:54320` only.
+
+**Option B: PostgreSQL installed on the VPS, or a managed PostgreSQL:**
+
+```sql
+-- as the postgres superuser:  sudo -u postgres psql
+CREATE ROLE atip LOGIN PASSWORD '<strong password>';
+CREATE DATABASE atip OWNER atip ENCODING 'UTF8' TEMPLATE template0;
+```
+
+Keep PostgreSQL listening on localhost (`listen_addresses = 'localhost'`, the package
+default), or limit it in `pg_hba.conf` to the app host.
 
 **One database per tier.** dev, test and production never share one.
 
 ### 3.2 Turn the backend on
 
-Both are required — the URL alone does nothing:
+Both are required. The URL alone does nothing:
 
 ```bash
-export ATIP_DATABASE_URL='mysql://atip:<password>@127.0.0.1:3306/atip'
+export ATIP_DATABASE_URL='postgresql://atip:<password>@127.0.0.1:5432/atip'
+#   inside docker compose the host is the service name:  @postgres:5432/atip
+#   the bundled container from the host:                 @127.0.0.1:54320/atip
 ```
 
 ```json
 // atip_data/config.json
 {
-  "database": { "backend": "mysql", "allow_experimental": true }
+  "database": { "backend": "postgresql", "allow_experimental": true }
 }
 ```
 
-The same two-key gate gates the PostgreSQL path (`db/schema.pg_runtime_url`), and
-for the same reason: see §3.4.
+It must be `ATIP_DATABASE_URL`. A generic `DATABASE_URL` left by another project is
+ignored on purpose. The driver is `psycopg` 3 (`pip install "psycopg[binary]"`). It is in
+`requirements.txt`, and the Docker image installs it.
 
 ### 3.3 Create the schema
 
+Use one of these:
+
 ```bash
-python main.py --init
+python main.py --init                                                   # ATIP builds it
+psql -d atip -v ON_ERROR_STOP=1 -f db/sql/atip_schema.postgresql.sql    # or restore the pre-built one
 ```
 
-`db/mysql.ddl()` translates each statement on the way through. What it has to do
-that the PostgreSQL path does not:
+`db/postgres.py` translates ATIP's SQLite SQL on the way through: `?` placeholders,
+`INSERT OR REPLACE` / `OR IGNORE` as `ON CONFLICT` upserts, `REAL` → `DOUBLE PRECISION`,
+`BLOB` → `BYTEA`, `LIKE` → `ILIKE`, `PRAGMA` / `sqlite_master` onto `information_schema`,
+and the append-only triggers as PL/pgSQL. `docs/POSTGRESQL_MIGRATION.md` has the full list.
 
-| SQLite | MySQL | Why |
+What the connection does so that ATIP behaves the way it does on SQLite:
+
+| SQLite behaviour | On PostgreSQL | Why it matters |
 |---|---|---|
-| `run_id TEXT, PRIMARY KEY (run_id, seq)` | `VARCHAR(191)` | MySQL cannot index `TEXT` without a prefix length. 191 chars × 4 bytes (utf8mb4) keeps a 4-column composite key inside InnoDB's 3072-byte limit. |
-| `status TEXT DEFAULT 'DRAFT'` | `VARCHAR(255)` | "BLOB, TEXT … can't have a default value" |
-| `rows`, `status`, `key`, `rank`, `format` | `` `rows` `` … | Reserved words differ across MySQL 8 / MariaDB 10.6 / 10.11, so **every** generated identifier is quoted. |
-| `INSERT OR REPLACE` | `ON DUPLICATE KEY UPDATE` | Fires on any unique key — the same rule SQLite follows, so no key has to be chosen. |
-| `INSERT OR IGNORE` | `INSERT IGNORE` | |
-| `RAISE(ABORT, 'msg')` in a trigger | `SIGNAL SQLSTATE '45000'` | MySQL has no trigger `WHEN`, so a conditional guard becomes an `IF` in the body. |
+| `CURRENT_TIMESTAMP` / `date('now')` are UTC | Every session is pinned to `TimeZone=UTC` | A server installed from packages runs in the OS zone (IST). It would stamp defaulted rows 5h30m off. |
+| A failed statement fails alone | Rolled back on its own: a savepoint inside a write transaction, otherwise a rollback of the read-only transaction | PostgreSQL otherwise aborts the whole transaction. Every "try the query, fall back" probe (live P&L, the risk checks, migrations) would then break the queries after it. |
+| `BEGIN IMMEDIATE` takes the write lock | A transaction-scoped advisory lock | Job locks (`ops/jobs.py`) and migrations rely on it. Without it every job lock raised. |
+| `rowid` is the entry order | An identity `seq` column on `perf_ledger` / `ml_dl_benefit` | A same-day BUY must sort before its SELL. |
+| `cursor.lastrowid` | `lastval()` | Notifications and Telegram alerts read it. |
 
-`GROUP_CONCAT`, `IFNULL`, `LIKE`, `SUM(a > b)`, `BLOB` and `DATETIME` are native
-MySQL and are deliberately left alone — the PostgreSQL rewrites for them would be
-syntax errors here.
+### 3.4 Moving existing data
 
-### 3.4 What is still SQLite-only
-
-The backend stays behind `allow_experimental` because hand-written queries across
-the wider code base still contain constructs MySQL rejects. Two scanners report
-them:
+To move existing SQLite data, use `tools/sqlite_to_postgres.py` **on a backup copy**. It upgrades
+the copy to this release's schema, copies every table and verifies the row counts table by table.
+See `docs/POSTGRESQL_MIGRATION.md`.
 
 ```bash
-python -c "from db.dialect_scan import scan; r=scan('.'); print(r['pct_ready'], r['by_kind'])"
-python -c "
-from db import mysql; import db.schema as S, re
-stmts=[d for n in dir(S) if re.fullmatch(r'(W\d+\w*|WEALTH)_TABLES',n)
-       for ds in getattr(S,n).values() for d in ds]
-print(mysql.reserved_columns(stmts))"
+python -m ops backup                                   # take a copy first
+python tools/sqlite_to_postgres.py --source <copy.db> --target "$ATIP_DATABASE_URL" --execute
 ```
 
-`rowid` and `strftime()` raise `UnsupportedSQL` rather than being silently
-mistranslated: MySQL has no stable physical row identifier, so an
-`ORDER BY rowid` entry-order tie-breaker cannot be reproduced at all.
+### 3.5 Why the switch stays behind `allow_experimental`
 
-**Migrating existing data** out of SQLite is a separate job and is not covered by
-`--init`. `tools/sqlite_to_postgres.py` is the model to follow; there is no MySQL
-equivalent yet.
+`python -m db.dialect_scan --details` lists the statements that still need a hand
+translation. These are a handful of SQLite-only maintenance tools, not runtime paths.
+Everything else raises `UnsupportedSQL` naming the construct, so a missed query fails
+loudly instead of returning different data. Watch `/compliance` and the job-health
+panel for the first days on a new tier.
 
 ---
 
@@ -205,7 +223,7 @@ one of:
 | | dev | test | production |
 |---|---|---|---|
 | URL | `dev.bkesari.com/ATIP/` | `test.bkesari.com/ATIP/` | `bkesari.com/ATIP/` |
-| MySQL database | its own | its own | its own |
+| PostgreSQL database | its own | its own | its own |
 | `ATIP_ROOT_PATH` | `/ATIP` | `/ATIP` | `/ATIP` |
 | `execution.mode` | `paper` | `paper` | `paper` until separately authorised |
 
@@ -215,16 +233,17 @@ one of:
 
 ```bash
 cd /opt/atip && git pull
-printf '%s\n' "<mysql password>" > deploy/mysql_password.txt   # git-ignored
+printf '%s\n' "<postgres password>" > deploy/pg_password.txt     # git-ignored
 cp deploy/atip.env.example deploy/atip.env                      # then edit it
-docker compose --profile mysql up -d --build
+docker compose --profile postgres up -d --build
 docker compose logs -f atip
 ```
 
-`deploy/atip.env` should carry at least:
+`deploy/atip.env` should carry at least the lines below. `atip_data/config.json` also needs
+`"database": {"backend": "postgresql", "allow_experimental": true}` (§3.2):
 
 ```
-ATIP_DATABASE_URL=mysql://atip:<password>@mysql:3306/atip
+ATIP_DATABASE_URL=postgresql://atip:<password>@postgres:5432/atip
 ATIP_ROOT_PATH=/ATIP
 ATIP_DASHBOARD_HOST=0.0.0.0
 TZ=Asia/Kolkata
@@ -245,7 +264,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://dev.bkesari.com/ATIP/   # 401 
 ```
 
 `/health/live` = the process answers. `/health/ready` also checks the database and
-the scheduler, so it is the one that proves MySQL is wired up.
+the scheduler, so it is the one that proves PostgreSQL is wired up.
 
 ---
 

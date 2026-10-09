@@ -89,6 +89,10 @@ def _gated_runtime_url(schemes, backend_name):
 def mysql_runtime_url():
     """The MySQL URL when the runtime is switched over, else None.
 
+    LEGACY: PostgreSQL replaced MySQL as the hosted database on 2026-10-09
+    (pg_runtime_url() below). This switch is kept so an existing config keeps
+    behaving as it did, but MySQL is no longer deployed.
+
     Gated exactly like pg_runtime_url(): config.json "database": {"backend": "mysql",
     "allow_experimental": true} plus ATIP_DATABASE_URL=mysql://user:pass@host/db.
     db/mysql.py translates the whole schema (verified against a real server by
@@ -101,7 +105,8 @@ def mysql_runtime_url():
 
 
 def pg_runtime_url():
-    """W38 (DBS-05): the PostgreSQL URL when the runtime is switched over, else None. All three are
+    """W38 (DBS-05): the PostgreSQL URL when the runtime is switched over, else None. PostgreSQL is the
+    hosted deployment's database (2026-10-09, replacing MySQL); SQLite stays the local default. All three are
     required -- ATIP_DATABASE_URL (not the generic DATABASE_URL other projects set) is postgresql://,
     config database.backend = "postgresql" and database.allow_experimental = true -- because the
     statements db/dialect_scan.py lists (PRAGMA, sqlite_master, rowid) still fail on PostgreSQL."""

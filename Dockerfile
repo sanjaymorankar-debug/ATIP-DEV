@@ -30,8 +30,8 @@ RUN if [ ! -e "/usr/share/zoneinfo/$TZ" ]; then \
 
 WORKDIR /app
 COPY requirements.txt requirements.lock.txt ./
-# The lock is the tested set; requirements.txt adds nothing it lacks. psycopg is only for the
-# PostgreSQL path (DBS-05) and is harmless when the runtime stays on SQLite.
+# The lock is the tested set; requirements.txt adds nothing it lacks. psycopg is the driver for
+# PostgreSQL, the hosted deployment's database, and is harmless when the runtime stays on SQLite.
 RUN pip install -r requirements.lock.txt && pip install "psycopg[binary]>=3.2"
 
 COPY --chown=atip:atip . .

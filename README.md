@@ -56,8 +56,8 @@
 │   Packages sit directly under the project root — there is deliberately NO
 │   nested atip/ package (see the note in main.py's docstring).
 ├── db/schema.py                    ← the full schema (186 tables) + AI weight configs
-├── db/mysql.py                     ← MySQL / MariaDB backend
-├── db/postgres.py                  ← PostgreSQL backend
+├── db/mysql.py                     ← MySQL / MariaDB backend (legacy, not deployed)
+├── db/postgres.py                  ← PostgreSQL backend (the hosted deployment's database)
 ├── data/
 │   ├── dhan.py                     ← Dhan API: live quotes, history, WebSocket
 │   ├── bhavcopy.py                 ← NSE Bhavcopy official EOD

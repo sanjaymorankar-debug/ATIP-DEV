@@ -15,10 +15,12 @@ Database backend abstraction (W9, DBS-05 foundation).
                         ATIP's DDL / DML use (db/postgres.py, db/mysql.py)
     compatibility_report(root)  SQLite-specific SQL still in the code base
 
-THE RUNTIME STAYS ON SQLITE. db.schema.get_connection() is unchanged; ops/config
-validation reports an error if a postgresql URL is configured for the runtime,
-because ~hundreds of queries still use SQLite-only functions (the report counts them).
-PostgreSQL is used in W9 only by tools/sqlite_to_postgres.py against COPIES.
+DATABASE PLAN (2026-10-09): PostgreSQL is the server database for the hosted
+deployment; MySQL is no longer the target (db/mysql.py is kept as legacy code, not
+deployed). SQLite stays the default for a local install. The runtime moves to
+PostgreSQL only through db.schema.pg_runtime_url()'s gate (ATIP_DATABASE_URL +
+config "database": {"backend": "postgresql", "allow_experimental": true}) --
+docs/POSTGRESQL_MIGRATION.md and docs/HOSTED_DEPLOYMENT.md.
 """
 
 from __future__ import annotations
@@ -49,36 +51,41 @@ def backend(url: str | None = None) -> str:
     raise ValueError("unsupported database URL scheme (sqlite:///, postgresql:// or mysql://)")
 
 
+# Tables whose row ORDER carries meaning, not just their contents. SQLite gets that order
+# from its implicit rowid; PostgreSQL and MySQL have no stable equivalent (PostgreSQL's
+# ctid moves when a row is updated or the table is vacuumed full), so db.postgres.ddl()
+# and db.mysql.ddl() give these tables an auto-numbered column, and entry_order_column()
+# tells a query which name to order by on the backend it is actually running against.
+#
+# perf_ledger is here for a measured reason, recorded in wealth/perf/engine.py: its own
+# txn_id is a random id, and ordering by it put a same-day SELL before its BUY about half
+# the time, which capped the sell as EXCESS_SELL and lost the round trip. This is P&L
+# correctness, not tidiness. ml_dl_benefit wants the latest row when two benefit checks
+# share a created_at.
+ENTRY_ORDER_TABLES = frozenset(("perf_ledger", "ml_dl_benefit"))
+ENTRY_ORDER_COLUMN = "seq"
+
+
 def entry_order_column(table: str, url: str | None = None) -> str:
     """The column a query should ORDER BY to get rows back in the order they were written.
 
-    SQLite answers with its implicit `rowid`; MySQL has no per-row physical identifier
-    at all, so db.mysql.ddl() gives the tables that need one an AUTO_INCREMENT column
-    and this returns its name. A caller interpolates the result rather than writing
-    `rowid`, which keeps the same query correct on either backend and keeps it away
-    from db.mysql's rowid guard.
+    SQLite answers with its implicit `rowid`; PostgreSQL and MySQL get a real
+    auto-numbered column (ENTRY_ORDER_COLUMN) on the tables that need one, and this
+    returns its name. A caller interpolates the result rather than writing `rowid`,
+    which keeps the same query correct on every backend.
 
-    Only tables in db.mysql.ENTRY_ORDER_TABLES have such a column: asking for any
-    other is a mistake worth hearing about, since the answer would otherwise be a
-    column name that does not exist.
-
-    PostgreSQL raises. Its `ctid` moves when a row is updated, so it is not an entry
-    order, and the identity column this needs has not been added there -- the two
-    queries that depend on this were already unsupported on that backend.
+    Only tables in ENTRY_ORDER_TABLES have such a column: asking for any other is a
+    mistake worth hearing about, since the answer would otherwise be a column name
+    that does not exist.
     """
     be = backend(url)
     if be == "sqlite":
         return "rowid"
-    from db import mysql
-    if table not in mysql.ENTRY_ORDER_TABLES:
+    if table not in ENTRY_ORDER_TABLES:
         raise ValueError(
-            f"{table} has no entry-order column; add it to db.mysql.ENTRY_ORDER_TABLES "
+            f"{table} has no entry-order column; add it to db.backend.ENTRY_ORDER_TABLES "
             f"(and migrate the table) before ordering by one")
-    if be == "mysql":
-        return mysql.ENTRY_ORDER_COLUMN
-    raise mysql.UnsupportedSQL(
-        f"entry order for {table} is not available on {be}: PostgreSQL has no stable "
-        f"per-row identifier and no identity column has been added for it")
+    return ENTRY_ORDER_COLUMN
 
 
 def masked_url(url: str | None = None) -> str:
@@ -98,7 +105,7 @@ def translate(sql: str, pk_of=None, url: str | None = None, keyed=None) -> str:
     elsewhere is then invisible and its index fails with errno 1170. Callers that hold
     the whole schema should pass it; MySQLConnection, which does not, widens such a
     column when the index arrives instead."""
-    if backend(url) == "mysql":
+    if backend(url) == "mysql":                                     # legacy backend
         from db import mysql
         if sql.lstrip().upper().startswith(("CREATE ", "ALTER ")):
             keys = keyed if keyed is not None else mysql.keyed_columns([sql])
@@ -126,7 +133,8 @@ def PgConnection(url):
 
 
 def MySQLConnection(url):
-    """The full wrapper lives in db.mysql (ON DUPLICATE KEY upserts, rows by name)."""
+    """The full wrapper lives in db.mysql (ON DUPLICATE KEY upserts, rows by name).
+    Legacy: PostgreSQL replaced MySQL as the hosted database (2026-10-09)."""
     from db.mysql import MySQLConnection as _My
     return _My(url.replace("mysql+pymysql://", "mysql://").replace("mariadb://", "mysql://"))
 

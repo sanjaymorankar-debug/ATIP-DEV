@@ -108,7 +108,10 @@ def cluster_stocks(conn, as_of=None, k: int = 6, factor_keys=None, seed: int = 7
 
 
 def return_pca(conn, as_of=None, lookback: int = 120, n: int = 5, symbols=None) -> dict:
-    as_of = str(as_of or conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol='NIFTY50'").fetchone()[0])[:10]
+    as_of = as_of or conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol='NIFTY50'").fetchone()[0]
+    if not as_of:   # no index history yet; str(None) is 'None', which PostgreSQL rejects as a date
+        raise LookupError("no NIFTY50 prices to anchor the PCA window")
+    as_of = str(as_of)[:10]
     days = [str(r[0])[:10] for r in conn.execute("SELECT date FROM prices_daily WHERE symbol='NIFTY50' AND date<=? "
                                                  "ORDER BY date DESC LIMIT ?", (as_of, int(lookback) + 1))][::-1]
     if symbols is None:
@@ -160,7 +163,10 @@ def _robust_z(hist, x):
 
 
 def detect_anomalies(conn, as_of=None, symbols=None, threshold: float = 4.0, store: bool = True) -> dict:
-    as_of = str(as_of or conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol='NIFTY50'").fetchone()[0])[:10]
+    as_of = as_of or conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol='NIFTY50'").fetchone()[0]
+    if not as_of:   # no index history yet; str(None) is 'None', which PostgreSQL rejects as a date
+        raise LookupError("no NIFTY50 prices to anchor the PCA window")
+    as_of = str(as_of)[:10]
     if symbols is None:
         from data.dhan import get_tracked_symbols
         symbols = get_tracked_symbols(conn)

@@ -8,8 +8,8 @@ signal / strategy / recovery tables those modules create on first use.
 | File | Engine | Use |
 |---|---|---|
 | `atip_schema.sqlite.sql` | SQLite — **production** | Pre-build `atip_data/atip.db` (`sqlite3 atip_data/atip.db < db/sql/atip_schema.sqlite.sql`). Normally unnecessary: `python main.py --init` / first start does the same. |
-| `atip_schema.postgresql.sql` | PostgreSQL 16 — experimental (DBS-05) | `psql -d atip -v ON_ERROR_STOP=1 -f db/sql/atip_schema.postgresql.sql`, then switch over per `docs/POSTGRESQL_MIGRATION.md` step 4. A shortcut rather than a necessity: `main.py --init` can build a PostgreSQL database itself since `PgConnection` gained `cursor()`. |
-| `atip_schema.mysql.sql` | MySQL 8 / MariaDB | phpMyAdmin import of an **empty reporting copy** (tables prefixed `atip_`). Its tables are named and typed for reporting, not for the runtime — see the note below. |
+| `atip_schema.postgresql.sql` | PostgreSQL 16 — **the hosted deployment's database** (2026-10-09) | `psql -d atip -v ON_ERROR_STOP=1 -f db/sql/atip_schema.postgresql.sql`, then switch over per `docs/HOSTED_DEPLOYMENT.md` §3. A shortcut rather than a necessity: `main.py --init` builds the same database. **Regenerated 2026-10-09**, natively on PostgreSQL (`init_db()` + `seed_weights()` + `ops.migrations.apply()` through `PgConnection`, then `pg_dump`). It is current through W40: 239 tables, migrations 0001-0006. |
+| `atip_schema.mysql.sql` | MySQL 8 / MariaDB — **legacy** | phpMyAdmin import of an **empty reporting copy** (tables prefixed `atip_`). Its tables are named and typed for reporting, not for the runtime — see the note below. MySQL is no longer the deployment target. |
 
 All three are for **empty** databases. To move existing data use
 `tools/sqlite_to_postgres.py`, `tools/sqlite_to_mysql.py` or
@@ -40,7 +40,7 @@ nothing; the PostgreSQL file restores into PG 16 identically to what
 `tools/sqlite_to_postgres.py --execute` produced; the MySQL file imports
 into MariaDB 10.11 with 216 tables and 105 weight rows.
 
-**W39 (2026-10-07) is not in these files yet.** It adds six tables (`history_backfill_run`,
+**W39 (2026-10-07) is not in the SQLite and MySQL files yet** (the PostgreSQL file was regenerated after it). It adds six tables (`history_backfill_run`,
 `history_backfill_symbol`, `order_basket`, `order_basket_run`, `sip_plan`, `sip_execution`),
 plus columns on `perf_ledger` (`entry_seq`, `order_ref`, `signal_ref`, `fee_breakdown`),
 `ml_model_version` (`code_version`, `lineage_json`), `live_quotes` (`upper_circuit`,

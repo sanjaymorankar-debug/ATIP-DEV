@@ -52,12 +52,12 @@ cryptography>=41.0
 tqdm>=4.66.0
 openpyxl>=3.1.0
 
-# ── Database backends beyond SQLite (Optional) ───────────────────────────
-# SQLite is the default and needs nothing installed. The hosted deployment runs
-# on MySQL (db/mysql.py); PostgreSQL (db/postgres.py) is the earlier W38 path.
-# Both stay opt-in behind config database.backend + allow_experimental, so
-# neither driver is required for a normal local run.
+# ── Database backends beyond SQLite ──────────────────────────────────────
+# SQLite is the default and needs nothing installed. The hosted deployment runs on
+# PostgreSQL (db/postgres.py; the plan moved from MySQL to PostgreSQL on 2026-10-09).
+# It stays opt-in behind config database.backend + allow_experimental, so a normal
+# local run never connects to it.
 #
-#   MySQL / MariaDB:  pip install PyMySQL
 #   PostgreSQL:       pip install "psycopg[binary]"
-PyMySQL>=1.1.0
+#   MySQL (legacy, not deployed; db/mysql.py):  pip install PyMySQL
+psycopg[binary]>=3.1

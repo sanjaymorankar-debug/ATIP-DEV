@@ -1,5 +1,9 @@
 r"""
-MySQL / MariaDB support -- the path off SQLite for the hosted deployment.
+MySQL / MariaDB support -- LEGACY. It was the planned database for the hosted
+deployment until 2026-10-09, when the plan moved to PostgreSQL (db/postgres.py).
+The module and its tests are kept so nothing that imports it breaks, but it is not
+deployed: docker-compose.yml has no MySQL service any more, and new work targets
+PostgreSQL.
 
 Sibling of db/postgres.py, built the same way and to the same contract: give the
 runtime what MySQL needs without forcing it.
@@ -175,18 +179,9 @@ def reserved_columns(stmts) -> dict:
 
 # Length used for a TEXT column that MySQL will not accept as TEXT (see the module
 # docstring): 191 keeps a four-column composite key inside InnoDB's 3072-byte limit.
-# Tables whose row ORDER carries meaning, not just their contents. SQLite gets that
-# order from its implicit rowid; MySQL has no equivalent, so ddl() gives these tables
-# an AUTO_INCREMENT column and db.backend.entry_order_column() tells a query which
-# name to order by on the backend it is actually running against.
-#
-# perf_ledger is here for a measured reason, recorded in wealth/perf/engine.py: its
-# own txn_id is a random id, and ordering by it put a same-day SELL before its BUY
-# about half the time, which capped the sell as EXCESS_SELL and lost the round trip.
-# This is P&L correctness, not tidiness. ml_dl_benefit wants the latest row when two
-# benefit checks share a created_at.
-ENTRY_ORDER_TABLES = frozenset(("perf_ledger", "ml_dl_benefit"))
-ENTRY_ORDER_COLUMN = "seq"
+# Tables whose row ORDER carries meaning get an AUTO_INCREMENT column here; the list
+# and the column name are shared with the PostgreSQL path (db/backend.py explains why).
+from db.backend import ENTRY_ORDER_COLUMN, ENTRY_ORDER_TABLES  # noqa: E402
 
 KEYED_TEXT_LEN = 191
 # A TEXT column that only needs VARCHAR because it carries a DEFAULT is not in any
