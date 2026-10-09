@@ -1706,6 +1706,11 @@ if HAS_FASTAPI:
     # limit, idempotency, security headers, metrics) + the standard error envelope
     from ops.http import install as _install_ops_http
     _install_ops_http(app)
+    # Owner-only gate (central bkesari.com login). Added last so it is the
+    # outermost layer: a non-owner gets a bare 404 before anything else runs.
+    # Off unless BKESARI_SSO_INTROSPECT_URL is set -- see dashboard/owner_gate.py.
+    from dashboard.owner_gate import install as _install_owner_gate
+    _install_owner_gate(app)
 
     # ── Buy/Sell target + stoploss rules ────────────────────────────────
     # See orders/rules.py docstring for why triggering (automatic)
