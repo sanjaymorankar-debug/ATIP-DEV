@@ -75,6 +75,8 @@ _G += (" prices_daily_backfill research_report technical_snapshot technical_sign
        "fo_participant_oi market_cue market_regime_gate fundamental_scorecard macro_event intraday_signal depth20_snapshot global_snapshot")
 _G += " earnings_surprise"                     # W39b: SUE / EPS trend per stored quarter (reference data)
 _G += " index_total_return"                    # W40: estimated Nifty total-return index (reference data)
+_G += " ml_meta_label"                         # W40: triple-barrier labels of the (shared) technical signals
+_O += " ml_meta_label_run ml_meta_label_score"  # W40: the owner's meta-label model runs and its nightly scores
 _O += " research_screen"                       # the owner's saved screens
 _P += (" ai_usage_log audit_export broker_health_check ops_restore_drill ops_rollback_drill ml_health_check "
        "live_feed_status enterprise_mfa_recovery")

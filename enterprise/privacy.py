@@ -77,6 +77,9 @@ INVENTORY = {
     "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
     "earnings_surprise": ("research", False, "kept: recomputed nightly from the stored quarters (W39b)"),
     "index_total_return": ("market", False, "kept: rebuilt nightly from prices and dividends (W40)"),
+    "ml_meta_label": ("research", False, "kept: recomputed from prices at each training run (W40 meta-labelling)"),
+    "ml_meta_label_run": ("research", False, "kept: every meta-label training run and its verdict (W40)"),
+    "ml_meta_label_score": ("research", False, "kept: the meta-label model's score of each day's signals (W40)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

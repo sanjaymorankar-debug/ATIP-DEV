@@ -15,6 +15,8 @@ The 7-year history backfill is #4's data/history_backfill.py (table prices_daily
     ml_model_version (+ columns)  ML-18  code_version (git commit, +dirty) and lineage_json (dataset /
                                          feature set / config / backtest links) of every trained version
     index_total_return            PERF-001-05  the estimated Nifty total-return index (data/total_return.py)
+    ml_meta_label / ml_meta_label_run / ml_meta_label_score   W40  meta-labelling of the technical signals
+                                         (DDL in ml/meta_label.py, appended to W39B_TABLES below)
 """
 
 from data.total_return import DDL as _TRI
@@ -60,3 +62,11 @@ W39B_COLUMNS = {
     # PF-06 partial position changes: a REDUCE row (1), the ADD fills into its position
     "backtest_trade": {"partial": "INTEGER", "adds": "INTEGER"},
 }
+
+# W40 (gap analysis §4 item 9): meta-labelling of the technical signals -- the DDL lives with its module
+#     ml_meta_label         one triple-barrier label per closed technical signal (barrier, t1, R, gap)
+#     ml_meta_label_run     every training run: the out-of-fold report and its ADOPTABLE / NO_EDGE verdict
+#     ml_meta_label_score   the nightly scores of the day's signals (probability, bet size), when enabled
+from ml.meta_label import DDL as _META_LABEL_DDL  # noqa: E402  (stdlib + numpy only at import)
+
+W39B_TABLES.update(_META_LABEL_DDL)

@@ -1976,6 +1976,15 @@ def start_scheduler():
     except Exception as e:
         log.warning(f"  W39b jobs not scheduled: {e}")
 
+    # ── W40: meta-labelling of the technical signals: scoring 20:45 (after the 20:30 signals),
+    # training Saturday 09:30 -- both no-ops unless config meta_label.enabled (ml/meta_label.py) ───
+    try:
+        from ml.meta_label import schedule_jobs as _meta_label_jobs
+        for line in _meta_label_jobs(schedule, run_job):
+            log.info(f"  W40 job: {line}")
+    except Exception as e:
+        log.warning(f"  W40 meta-label jobs not scheduled: {e}")
+
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)

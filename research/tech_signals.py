@@ -26,7 +26,8 @@ actually work on Indian stocks.
                          CLOSED) and its ALIGNMENT with the market (WITH / MIXED / AGAINST). A long signal
                          while the gate is CLOSED is flagged "against the market" and never alerted.
     evaluate_signals     OPEN signals are marked TARGET / STOPPED (a bar touching both counts as
-                         STOPPED: conservative) or EXPIRED at the horizon with the return and R
+                         STOPPED: conservative) or EXPIRED at the horizon with the return and R --
+                         the rule is first_touch(), which ml/meta_label.py's triple-barrier labels reuse (W40)
     scan_stats           per scan: closed signals, win rate, average R, expectancy (optionally for one
                          alignment); gate_effect: the same split WITH / MIXED / AGAINST the market, which
                          is the honest test of whether the gate earns its place. Chart-pattern scans
@@ -651,8 +652,43 @@ def record_map(conn, horizon: int = 20) -> dict:
     return out
 
 
+def first_touch(direction, stop, target, horizon, bars) -> tuple:
+    """The outcome rule of every signal (used by evaluate_signals and by ml/meta_label.py's triple-barrier
+    labels, so the two can never disagree). bars: [(date, high, low, close), ...] -- the stock's sessions AFTER
+    the signal's close, oldest first. Walking at most `horizon` of them:
+        a long  is STOPPED when a bar's low <= stop, else TARGET when its high >= target
+        a short is STOPPED when a bar's high >= stop, else TARGET when its low <= target
+        a bar touching both levels counts as STOPPED (conservative: the daily bar cannot say which came first)
+        none touched in `horizon` sessions: EXPIRED at the last one's close
+    The exit price is the level itself, also on a bar that opened beyond it (a gap through the stop is
+    recorded at the stop, which understates that loss). Returns (status, index of the deciding bar, exit
+    price), or (None, None, None) while fewer than `horizon` sessions have passed and nothing was touched."""
+    h = int(horizon or HORIZON)
+    for i, (_bd, hi, lo, cl) in enumerate(bars[:h]):
+        hi, lo = hi or cl, lo or cl
+        if direction == "BULL":
+            if stop is not None and lo <= stop:
+                return "STOPPED", i, stop
+            if target is not None and hi >= target:
+                return "TARGET", i, target
+        else:
+            if stop is not None and hi >= stop:
+                return "STOPPED", i, stop
+            if target is not None and lo <= target:
+                return "TARGET", i, target
+    if len(bars) >= h:
+        return "EXPIRED", h - 1, bars[h - 1][3]
+    return None, None, None
+
+
+def r_multiple(direction, entry, stop, price) -> float | None:
+    """The result in R: (exit - entry) / |entry - stop|, signed for the direction (+2 at a 4 x ATR target)."""
+    risk = abs(entry - stop) if entry and stop else None
+    return (1 if direction == "BULL" else -1) * (price - entry) / risk if risk else None
+
+
 def evaluate_signals(conn) -> dict:
-    """Close OPEN signals that reached their target or stop, or ran out of horizon."""
+    """Close OPEN signals that reached their target or stop, or ran out of horizon (first_touch)."""
     ensure_tables(conn)
     done = {"TARGET": 0, "STOPPED": 0, "EXPIRED": 0}
     rows = conn.execute("SELECT signal_id, symbol, date, direction, entry, stop, target, horizon FROM technical_signal "
@@ -660,28 +696,13 @@ def evaluate_signals(conn) -> dict:
     for sid, sym, d0, direction, entry, stop, target, horizon in rows:
         bars = conn.execute("SELECT date, high, low, close FROM prices_daily WHERE symbol=? AND date>? ORDER BY date "
                             "LIMIT ?", (sym, str(d0)[:10], int(horizon or HORIZON))).fetchall()
-        status = when = price = None
-        for bd, hi, lo, cl in bars:
-            hi, lo = hi or cl, lo or cl
-            if direction == "BULL":
-                if stop is not None and lo <= stop:
-                    status, when, price = "STOPPED", bd, stop
-                elif target is not None and hi >= target:
-                    status, when, price = "TARGET", bd, target
-            else:
-                if stop is not None and hi >= stop:
-                    status, when, price = "STOPPED", bd, stop
-                elif target is not None and lo <= target:
-                    status, when, price = "TARGET", bd, target
-            if status:
-                break
-        if status is None and len(bars) >= int(horizon or HORIZON):
-            status, when, price = "EXPIRED", bars[-1][0], bars[-1][3]
+        status, i, price = first_touch(direction, stop, target, horizon, bars)
+        when = bars[i][0] if status else None
         if status and entry:
             sign = 1 if direction == "BULL" else -1
             ret = round(sign * (price / entry - 1) * 100, 2)
-            risk = abs(entry - stop) if stop else None
-            r_mult = round(sign * (price - entry) / risk, 2) if risk else None
+            r = r_multiple(direction, entry, stop, price)
+            r_mult = round(r, 2) if r is not None else None
             conn.execute("UPDATE technical_signal SET status=?, outcome_date=?, outcome_price=?, return_pct=?, "
                          "r_multiple=? WHERE signal_id=?", (status, str(when)[:10], price, ret, r_mult, sid))
             done[status] += 1
