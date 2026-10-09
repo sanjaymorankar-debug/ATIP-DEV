@@ -17,6 +17,11 @@ The 7-year history backfill is #4's data/history_backfill.py (table prices_daily
     index_total_return            PERF-001-05  the estimated Nifty total-return index (data/total_return.py)
     ml_meta_label / ml_meta_label_run / ml_meta_label_score   W40  meta-labelling of the technical signals
                                          (DDL in ml/meta_label.py, appended to W39B_TABLES below)
+    backtest_trade / backtest_equity (+ columns)  QR-05 / QR-06 (W40)  futures short legs of the W2
+                                         backtest: instrument / direction / expiry / lots / lot_size /
+                                         leg / rolled / calendar_spread / roll_cost per trade row,
+                                         futures_margin / futures_notional per equity point (DDL in
+                                         backtest/futures.py)
 """
 
 from data.total_return import DDL as _TRI
@@ -70,3 +75,9 @@ W39B_COLUMNS = {
 from ml.meta_label import DDL as _META_LABEL_DDL  # noqa: E402  (stdlib + numpy only at import)
 
 W39B_TABLES.update(_META_LABEL_DDL)
+
+# QR-05 / QR-06 (W40): futures short legs in the W2 backtest -- the DDL lives in backtest/futures.py
+from backtest.futures import EQUITY_COLUMNS as _FUT_EQUITY, TRADE_COLUMNS as _FUT_TRADE  # noqa: E402
+
+W39B_COLUMNS["backtest_trade"] = {**W39B_COLUMNS["backtest_trade"], **_FUT_TRADE}
+W39B_COLUMNS["backtest_equity"] = {**W39B_COLUMNS.get("backtest_equity", {}), **_FUT_EQUITY}

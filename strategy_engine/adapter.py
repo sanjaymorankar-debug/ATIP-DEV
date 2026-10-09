@@ -18,9 +18,27 @@ Signals back:
                                  REDUCE default (an intent carries no other size for it)
     HOLD / NO_ACTION / SELL   -> nothing (SELL on a symbol not held opens nothing)
     BLOCKED_BY_RISK           -> nothing
-    SHORT / COVER, or ADD / REDUCE of a symbol not held
+    SHORT  (symbol not held)  -> Signal SHORT (W40): W2 simulates it as a near-month stock
+                                 future (backtest/futures.py), value = the intent's
+                                 target_position_pct of equity at the decision close (W2 floors
+                                 it to whole lots and caps it at max_position_pct, as the W4 risk
+                                 engine's _futures_leg does); no target -> W2's default
+                                 (max_position_pct). max_hold_sessions rides along.
+    COVER  (held short)       -> Signal COVER (the whole short)
+    ADD / REDUCE of a symbol not held (or held short), SHORT of a held symbol, COVER of one
+    not held short, EXIT of a held short
                               -> nothing; counted in not_simulated ({action: n}), which the
-                                 run's bias report states (the backtest has no short book)
+                                 run's bias report states
+
+Held shorts: W2's futures book reaches the evaluator as ctx.futures; they are merged into
+`held` as {"qty": -shares, "short": True, ...} -- what the live engine passes
+(strategy_engine/engine.py _held), so a pair / portfolio decides COVER for its short leg.
+A pairs / portfolio definition with short_via_futures needs dv_fno (quant/derivatives_features)
+to choose SHORT: when its inputs do not load the quant features and the engine running it
+simulates futures legs (the W2 engine sets simulates_futures), the F&O flag alone is read
+from fo_underlying_daily (_FnoFlags) -- the definition and its hash are unchanged. The
+event-driven engine (BT-17) does not trade SHORT, so there the pair keeps its pre-W40 path
+(the short leg is a SELL decision and the long leg is held back unless allow_single_leg).
 
 Regime and benchmark series are read once from the database and only ever
 consulted for dates on or before the session being decided, like prices.
@@ -39,6 +57,23 @@ from strategy_engine.decisions import A_REDUCE as REDUCE, A_SHORT as SHORT
 from strategy_engine.definition import definition_hash, specs
 from strategy_engine.kinds import EvalEnv, make_evaluator, session_ordinal
 from strategy_engine.params import resolve
+
+
+class _FnoFlags:
+    """dv_fno alone: 1 when fo_underlying_daily holds the symbol that session (the meaning
+    quant.derivatives_features.DerivHistory gives it), read once."""
+
+    def __init__(self, conn):
+        self._have = set()
+        try:
+            for d, s in conn.execute("SELECT date, symbol FROM fo_underlying_daily"):
+                self._have.add((d if isinstance(d, date) else date.fromisoformat(str(d)[:10]), s))
+        except Exception:
+            pass
+
+    def on(self, as_of, symbol) -> dict:
+        key = {"NIFTY50": "NIFTY"}.get(symbol, symbol)
+        return {"dv_fno": 1} if (as_of, key) in self._have else {}
 
 
 class DefinitionStrategy(Strategy):
@@ -91,6 +126,8 @@ class DefinitionStrategy(Strategy):
             if "quant" in ins:        # W6: factor / composite scores and events stored per date
                 from quant.strategy_features import QuantHistory
                 self._quant = QuantHistory(conn)
+            elif self.defn.get("short_via_futures") and getattr(self, "simulates_futures", False):
+                self._quant = _FnoFlags(conn)           # W40: which legs are shortable via futures
             self._bench = {}
             if "benchmark" in ins:
                 for d, c in conn.execute("SELECT date, close FROM prices_daily WHERE symbol='NIFTY50'"):
@@ -105,19 +142,32 @@ class DefinitionStrategy(Strategy):
                       getattr(self, "_quant", None))
         held = {s: {"qty": p.qty, "entry_price": p.entry_price, "held_sessions": p.held_sessions}
                 for s, p in ctx.positions.items()}
+        for s, f in (getattr(ctx, "futures", None) or {}).items():      # W40: short legs (futures)
+            held.setdefault(s, {"qty": f.qty, "entry_price": f.entry_price, "held_sessions": f.held_sessions,
+                                "short": True, "instrument": "FUT", "expiry": f.expiry})
         out = []
         for it in self._ev.decide(env, ctx.as_of, held, session_ordinal(ctx.as_of)):
+            short = bool((held.get(it.symbol) or {}).get("short"))
             if it.action == BUY:
                 out.append(Signal(it.symbol, "BUY", stop_price=it.stop_price, target_price=it.target_price,
                                   max_hold_sessions=it.max_hold_sessions, reason=it.reason[:200]))
-            elif it.action == EXIT and it.symbol in held:
+            elif it.action == EXIT and it.symbol in held and not short:
                 out.append(Signal(it.symbol, "SELL", reason=it.reason[:200]))
-            elif it.action in (ADD, REDUCE) and it.symbol in held:
+            elif it.action in (ADD, REDUCE) and it.symbol in held and not short:
                 rq = (it.features or {}).get("rebalance_qty")
                 out.append(Signal(it.symbol, it.action, stop_price=it.stop_price if it.action == ADD else None,
                                   quantity=int(rq) if rq else None, reason=it.reason[:200]))
-            elif it.action in (ADD, REDUCE, SHORT, COVER):
-                key = it.action if it.action in (SHORT, COVER) else f"{it.action} (not held)"
+            elif it.action == SHORT and it.symbol not in held:
+                tgt, eq = it.target_position_pct, getattr(ctx, "equity", None)
+                value = round(float(eq) * float(tgt) / 100, 2) if tgt and eq and eq > 0 else None
+                out.append(Signal(it.symbol, "SHORT", value=value, max_hold_sessions=it.max_hold_sessions,
+                                  reason=it.reason[:200]))
+            elif it.action == COVER and short:
+                out.append(Signal(it.symbol, "COVER", reason=it.reason[:200]))
+            elif it.action in (ADD, REDUCE, SHORT, COVER) or (it.action == EXIT and short):
+                key = ("SHORT (already held)" if it.action == SHORT else
+                       "COVER (not held short)" if it.action == COVER else
+                       f"{it.action} (held short)" if short else f"{it.action} (not held)")
                 self.not_simulated[key] = self.not_simulated.get(key, 0) + 1
         return out
 

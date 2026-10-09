@@ -545,7 +545,7 @@ def test_adapter_maps_add_and_reduce_and_counts_what_it_cannot_trade(db):
                  dec("BBB", "REDUCE", features={"close": 50.0}),
                  dec("CCC", "REDUCE", features={"rebalance_qty": 3}),
                  dec("DDD", "REDUCE"), dec("DDD", "SHORT"), dec("EEE", "BUY", stop_price=9.0),
-                 dec("AAA", "HOLD")]
+                 dec("FFF", "COVER"), dec("AAA", "HOLD")]
     s = DefinitionStrategy(_mf("mf"), {})
     s._ev = SimpleNamespace(decide=lambda env, as_of, held, idx: decisions)
     held = {sym: PositionView(sym, 10, 100.0, as_of, 3) for sym in ("AAA", "BBB", "CCC")}
@@ -554,10 +554,12 @@ def test_adapter_maps_add_and_reduce_and_counts_what_it_cannot_trade(db):
     assert s.on_bar(ctx) == [Signal("AAA", "ADD", stop_price=95.0, quantity=7, reason="why"),
                              Signal("BBB", "REDUCE", reason="why"),
                              Signal("CCC", "REDUCE", quantity=3, reason="why"),
+                             # W40: a SHORT is simulated now (a near-month stock future, backtest/futures.py)
+                             Signal("DDD", "SHORT", reason="why"),
                              Signal("EEE", "BUY", stop_price=9.0, reason="why")]
-    assert s.not_simulated == {"REDUCE (not held)": 1, "SHORT": 1}
+    assert s.not_simulated == {"REDUCE (not held)": 1, "COVER (not held short)": 1}
     [w] = _not_simulated_warning(s)
-    assert "REDUCE (not held) x1, SHORT x1" in w and "REDUCE / ADD" not in w
+    assert "COVER (not held short) x1, REDUCE (not held) x1" in w and "REDUCE / ADD" not in w
 
 
 def _pf(sid, **kw):

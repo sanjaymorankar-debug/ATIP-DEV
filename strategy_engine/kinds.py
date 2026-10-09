@@ -450,19 +450,34 @@ class PythonEvaluator(Evaluator):
     held symbol becomes an ADD / REDUCE decision whose share quantity rides on the decision
     (features.rebalance_qty, read by engine._quantity) when the signal gives one -- quantity,
     fraction x held, or value // close; an ADD / REDUCE of a symbol not held decides nothing.
-    (It used to fall through to BUY.)"""
+    (It used to fall through to BUY.) W40: a SHORT of a symbol not held is a SHORT decision
+    (a stock-futures short leg; the W4 risk engine sizes it in lots), a COVER of a held
+    short a COVER decision; held shorts reach the code strategy as ctx.futures, not as
+    positions. (Both used to fall through to BUY.)"""
 
     def decide(self, env, as_of, held, session_index=None):
         from backtest.strategies import REGISTRY
-        from backtest.strategy import PositionView, StrategyContext
+        from backtest.strategy import FuturesView, PositionView, StrategyContext
         strat = REGISTRY[self.defn["python_class"]](**self.params)
         ctx = StrategyContext(as_of=as_of, data=env.history.view(as_of), universe=env.universe,
                               positions={s: PositionView(s, h.get("qty", 0), h.get("entry_price", 0), as_of,
-                                                         h.get("held_sessions", 0)) for s, h in held.items()},
-                              cash=0.0, equity=0.0, params=dict(self.params), scores=env.scores)
+                                                         h.get("held_sessions", 0)) for s, h in held.items()
+                                         if not h.get("short")},
+                              cash=0.0, equity=0.0, params=dict(self.params), scores=env.scores,
+                              futures={s: FuturesView(s, int(h.get("qty") or 0), h.get("entry_price") or 0.0, as_of,
+                                                      h.get("held_sessions") or 0, expiry=h.get("expiry"))
+                                       for s, h in held.items() if h.get("short")})
         out, cands = [], []
         for sig in strat.on_bar(ctx) or []:
             fctx = env.context(sig.symbol, as_of)
+            if sig.side in ("SHORT", "COVER"):
+                is_short = bool((held.get(sig.symbol) or {}).get("short"))
+                if fctx is None or (sig.side == "SHORT" and sig.symbol in held) or (sig.side == "COVER"
+                                                                                   and not is_short):
+                    continue
+                out.append(self.intent(sig.symbol, as_of, sig.side, None, sig.reason or f"{sig.side.lower()} signal",
+                                       fctx))
+                continue
             if sig.side == "SELL":
                 dec = EXIT if sig.symbol in held else SELL
                 out.append(self.intent(sig.symbol, as_of, dec, None, sig.reason or "sell signal", fctx))
@@ -509,6 +524,10 @@ class PairsEvaluator(Evaluator):
     allow_single_leg is true, the long leg is then NO_ACTION (SHORT_LEG_UNAVAILABLE)
     -- a pair is never silently traded as a naked long. Each leg's
     target_position_pct is capital_allocation_pct / 2.
+    With short_via_futures and an F&O short leg (dv_fno), the short leg is a SHORT intent
+    and the long leg a BUY (W30); a held short closes with COVER. Live they go to the paper
+    futures book (execution/futures_paper.py); in a W2 backtest they are simulated as
+    near-month stock futures (backtest/futures.py, W40).
     """
 
     def decide(self, env, as_of, held, session_index=None):
@@ -592,9 +611,13 @@ class PortfolioEvaluator(Evaluator):
                                          decision (features.rebalance_qty)
       held and no longer in it        -> EXIT (PORTFOLIO_DROP)
       new long names                  -> BUY (target_position_pct = weight x 100)
-      short names                     -> SELL decision, SHORT_LEG (no intent)
+      short names                     -> SELL decision, SHORT_LEG (no intent); with
+                                         short_via_futures and dv_fno a SHORT intent (W30),
+                                         a held short no longer in the target -> COVER
     A long_short portfolio cannot be neutral without its shorts, so its new longs
-    are NO_ACTION (NEUTRALITY_UNAVAILABLE) unless allow_long_only is true.
+    are NO_ACTION (NEUTRALITY_UNAVAILABLE) unless allow_long_only is true (or the shorts go
+    via futures). SHORT / COVER are traded by the paper futures book live and simulated as
+    near-month stock futures in a W2 backtest (backtest/futures.py, W40).
     Off-rebalance sessions: HOLD everything held.
     """
 

@@ -74,10 +74,14 @@ Everything new since W27 is **off or read-only by default**. Flip a switch only 
 | `execution.protective_stops` | false | Child SL-M after a paper entry fills |
 | `execution.block_on_broker_health` | true | No new BUY while broker health is DOWN / STALE |
 | `futures.enabled` | false | Paper stock-futures short legs (pairs / long-short with `short_via_futures`) |
+| `futures.auto_roll` / `futures.roll_days_before_expiry` | false / 2 | **W40** the post-market futures job rolls a paper short into the next month this many NSE sessions before expiry, instead of letting it expire (paper only) |
+| `backtest.futures` | margin 20%, roll 2 sessions before expiry, `nse_futures` costs | **W40** how a backtest simulates SHORT / COVER legs (below) |
 | `ops.backup_offsite_dir` | unset | Folder for encrypted off-site backup copies |
 | `ops.restore_drill_enabled` | true | Sunday restore drill |
 | `audit.offbox_dir` | unset | Folder for audit-log segments |
 | `meta_label.enabled` | false | Saturday retraining and nightly scoring of the technical signals by the adopted meta-label model (§8) |
+
+**Backtesting short legs (W40).** A backtest (`/backtests`, `python -m backtest run`) now simulates a strategy's SHORT / COVER decisions -- pairs and long/short portfolios with `"short_via_futures": true` -- as **near-month stock futures**, read from the stored F&O bhavcopy (`fo_underlying_daily`, `fo_contract_daily`): whole lots rounded down, `margin_pct` of the notional blocked from cash, profit and loss settled through cash every day, NSE F&O charges (STT 0.02% on the sell side, exchange 0.00173%, SEBI fee, stamp 0.002% on the buy side, GST, brokerage), and a roll into the next month `roll_days_before_expiry` sessions before expiry (`null` = settle at expiry). A futures leg fills at the session's end-of-day futures close, the stock leg at its open. A stock with no stored futures history cannot be shorted in the backtest: the leg is refused and the bias report names it. A roll needs the next month's close, which only `fo_contract_daily` holds; without it the leg is settled at expiry and the bias report says so. To fill both tables run `python -m data.derivatives --backfill N --recompute`. Runs without SHORT decisions give exactly the results they gave before. This is research and paper only: there are no live futures orders.
 
 Secrets do not belong in config.json any more. Use these:
 - `python -m ops keygen` (once);
@@ -110,6 +114,7 @@ Secrets do not belong in config.json any more. Use these:
 | Market brief says "rule-based — not AI" | `news.ai_enabled` is off, the API key is rejected (KD-001), or today's cost cap is reached (shown on the card) |
 | A strategy never trades | `/strategies` health issues; `/ml` AI-strategy gates for ML strategies; risk decisions on `/trading` say which check failed |
 | Futures short REJECTED "one lot exceeds the position target" | Stock-futures lots are ~₹5–10 lakh notional; the paper book needs crores |
+| Backtest warning "futures legs refused: no futures history" | The F&O bhavcopy for those sessions is not stored (or the stock was not in F&O then); the long leg traded unhedged. Backfill with `python -m data.derivatives --backfill N --recompute` |
 | `/health/*` DEGRADED after a deploy | `python -m ops release postcheck`; the rollback procedure is `docs/ROLLBACK_PROCEDURE.md` |
 
 ## 7. What ATIP will not do

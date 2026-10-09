@@ -9,8 +9,14 @@ section over DEFAULTS. Engines and strategies never carry their own copies.
       "liquidity": {"max_participation_pct": 10.0, "min_avg_turnover": 50000000, "on_breach": "cap"},
       "sizing": {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0, "max_positions": 10,
                  "default_stop_pct": 5.0},
-      "risk_free_rate_pct": 0.0
+      "risk_free_rate_pct": 0.0,
+      "futures": {"margin_pct": 20, "roll_days_before_expiry": 2, "min_days_to_expiry": 3,
+                  "cost_model": "nse_futures", "cost_overrides": {}}
     }
+
+"futures" (W40) applies only to runs whose strategy SHORTs: those legs are simulated as
+near-month stock futures (backtest/futures.py). A snapshot carries it only when config.json
+or the request sets it, so the snapshot of every other run is unchanged.
 """
 
 from __future__ import annotations
@@ -19,6 +25,8 @@ import copy
 import json
 import logging
 from pathlib import Path
+
+from backtest.futures import DEFAULTS as FUTURES_DEFAULTS
 
 log = logging.getLogger("atip.backtest")
 
@@ -36,6 +44,7 @@ DEFAULTS = {
     "sizing": {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0, "max_positions": 10,
                "default_stop_pct": 5.0},
     "risk_free_rate_pct": 0.0,
+    "futures": copy.deepcopy(FUTURES_DEFAULTS),          # W40: SHORT legs as stock futures
 }
 
 

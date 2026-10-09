@@ -12,7 +12,10 @@ Request keys (all but strategy_id optional):
     period_label (research|validation|test|full), allow_test,
     initial_capital, universe ("tracked_current" or a symbol list),
     universe_survivorship_bias, cost_model, cost_overrides, slippage {kind,value},
-    liquidity {...}, sizing {...}, risk_free_rate_pct, close_out_at_end, notes
+    liquidity {...}, sizing {...}, risk_free_rate_pct, close_out_at_end, notes,
+    futures {margin_pct, roll_days_before_expiry, min_days_to_expiry, cost_model,
+             cost_overrides} (W40: how SHORT legs are simulated as stock futures; in the
+             snapshot only when the request or config.json sets it -- backtest/futures.py)
 """
 
 from __future__ import annotations
@@ -35,7 +38,8 @@ log = logging.getLogger("atip.backtest")
 
 REQUEST_KEYS = {"strategy_id", "strategy_version", "params", "start", "end", "periods", "period_label", "allow_test",
                 "initial_capital", "universe", "universe_survivorship_bias", "cost_model", "cost_overrides",
-                "slippage", "liquidity", "sizing", "risk_free_rate_pct", "close_out_at_end", "notes"}
+                "slippage", "liquidity", "sizing", "risk_free_rate_pct", "close_out_at_end", "notes",
+                "futures"}
 
 
 def _sizing(sizing: dict, strat, requested: dict) -> dict:
@@ -120,6 +124,15 @@ def resolve_config(request: dict) -> dict:
         if not snap["sizing"].get(k) or snap["sizing"][k] <= 0:
             raise ValueError(f"sizing.{k} must be positive")
     snap["cost_model_resolved"] = cost_model(snap["cost_model"], snap["cost_overrides"] or None).as_dict()
+    # W40: futures short legs. Only a request or config.json that sets "futures" puts it in the
+    # snapshot, so every other snapshot -- and the event-driven result that embeds it -- is unchanged;
+    # the engine then uses backtest.futures.DEFAULTS.
+    from backtest.config import DEFAULTS as CFG_DEFAULTS
+    from backtest.futures import settings as futures_settings
+    fut = merged("futures")
+    resolved = futures_settings(fut)                 # validates either way
+    if request.get("futures") is not None or fut != CFG_DEFAULTS["futures"]:
+        snap["futures"] = resolved
     return snap
 
 
@@ -192,9 +205,9 @@ def run_montecarlo(run_id: str, method: str = "trade_shuffle", n_sims: int = 100
             raise ValueError(f"run {run_id} is not a completed backtest")
         if method == "trade_shuffle":
             trades = store.get_rows(conn, "backtest_trade", run_id)
-            if any(t.get("partial") for t in trades):           # W39 (PF-06): one trade per position
-                from backtest.engine import round_trips_from_rows
-                trades = round_trips_from_rows(trades)
+            from backtest.engine import needs_folding, round_trips_from_rows
+            if needs_folding(trades):                # PF-06 partial exits, W40 rolled futures legs: one trade
+                trades = round_trips_from_rows(trades)                                   # per position
             eq = {r["date"]: r["equity"] for r in store.get_rows(conn, "backtest_equity", run_id)}
             fracs = [(t["qty"] * t["entry_price"]) / eq[t["entry_date"]] for t in trades
                      if eq.get(t["entry_date"])]
