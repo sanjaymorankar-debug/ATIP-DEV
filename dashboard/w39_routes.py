@@ -58,6 +58,9 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     POST /api/orderbook/snapshot                     poll the whole universe now
     GET  /api/orderbook/depth20                      20-level depth: latest DWI and OFI per watchlist stock, persistent flags, feed
     GET  /api/orderbook/depth20/validation?horizon=1 does DWI / best-level / 20-level imbalance / OFI predict the next 1 / 5 minutes? (+ OFI vs its own interval)
+    GET  /api/orderbook/preopen?date&side&nifty50&limit  NSE pre-open auction: breadth summary + per-stock IEP and buy / sell imbalance
+    GET  /api/orderbook/preopen/record?days=120      has the pre-open imbalance called the first 15 minutes / open -> close? (hit rate vs 50%)
+    POST /api/orderbook/preopen/capture              capture NSE's pre-open page now (STALE before 09:00 or on a holiday)
     GET  /api/brokers/open-orders                    your pending orders at Dhan (read-only) + ATIP's resting ones
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates
@@ -344,6 +347,31 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_depth20_validation(horizon: int = 1):
         from data.depth20 import validate
         return await run(lambda c: validate(c, int(horizon)))
+
+    @app.get("/api/orderbook/preopen")
+    async def api_preopen(date: str = None, side: str = None, nifty50: bool = False, limit: int = 100):
+        from data.preopen import latest, summary
+        if side and side not in ("buy", "sell"):
+            return JSONResponse({"error": "side must be buy or sell"}, status_code=400)
+        lim = max(1, min(int(limit), 5000))
+
+        def f(conn):
+            from datetime import date as _date
+            day = _date.fromisoformat(date) if date else None        # ValueError -> 400
+            return {"summary": summary(conn, day=day), "rows": latest(conn, day=day, side=side, nifty50=nifty50, limit=lim)}
+        return await run(f)
+
+    @app.get("/api/orderbook/preopen/record")
+    async def api_preopen_record(days: int = 120):
+        from data.preopen import record
+        return await run(lambda c: record(c, days=max(5, min(int(days), 2000))))
+
+    @app.post("/api/orderbook/preopen/capture", dependencies=guard)
+    async def api_preopen_capture():
+        def f(conn):
+            from data.preopen import capture
+            return capture(conn=conn)
+        return await run(f)
 
     @app.post("/api/orderbook/snapshot", dependencies=guard)
     async def api_book_snapshot():

@@ -46,6 +46,9 @@ data, and every model reports how well it has done.
 6. Order book (data/order_pressure.py): market-wide pending buy / sell ratio and the stocks with
    persistent one-sided books -- context with a spoofing caveat.
 
+7. Pre-open auction (data/preopen.py): today's 09:00-09:08 auction breadth -- stocks indicated up / down
+   and books leaning to buyers / sellers. Shown, not voted: its record() has to earn a vote first.
+
 pulse(conn) assembles all of it, plus ATIP's regime and the market gate (research/regime_gate.py),
 into an overall context (RISK_ON / NEUTRAL / RISK_OFF) and the reasons. Nothing here is advice or an order.
 CLI: python -m research.market_pulse [pulse|gift|evaluate|nifty-history]
@@ -599,6 +602,12 @@ def pulse(conn) -> dict:
                               "Indian stocks predicts ~5 minutes ahead and fades within 30 (research)"}
     except Exception as e:
         log.debug(f"order book summary: {e}")
+    preopen = {}
+    try:
+        from data.preopen import summary as preopen_summary
+        preopen = preopen_summary(conn, day=date.today())
+    except Exception as e:
+        log.debug(f"pre-open summary: {e}")
     mh = _rows(conn, "SELECT date, regime, mh_score, vix_level FROM market_health ORDER BY date DESC LIMIT 1")
     reasons, votes = [], []
     events = {}
@@ -649,7 +658,7 @@ def pulse(conn) -> dict:
             "context_score": round(ctx, 2) if ctx is not None else None,
             "context": None if ctx is None else ("RISK_ON" if ctx > 0.25 else "RISK_OFF" if ctx < -0.25 else "NEUTRAL"),
             "reasons": reasons, "global_model": gm, "gift_today": cue[0] if cue else None,
-            "gap_record": gap_record(conn), "fii": fp, "positioning": pos, "oi_walls": walls, "order_book": book,
+            "gap_record": gap_record(conn), "fii": fp, "positioning": pos, "oi_walls": walls, "order_book": book, "preopen": preopen,
             "market_health": mh[0] if mh else None, "market_gate": gate if gate and gate.get("gate") else None,
             "events": events, "global_sync": _sync_summary(conn),
             "disclaimer": "Context from ATIP's own models and stored data; not advice."}

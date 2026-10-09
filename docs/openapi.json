@@ -7835,6 +7835,126 @@
     }
    }
   },
+  "/api/orderbook/preopen": {
+   "get": {
+    "summary": "Api Preopen",
+    "operationId": "api_preopen_api_orderbook_preopen_get",
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Date"
+      }
+     },
+     {
+      "name": "side",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Side"
+      }
+     },
+     {
+      "name": "nifty50",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Nifty50"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 100,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/preopen/record": {
+   "get": {
+    "summary": "Api Preopen Record",
+    "operationId": "api_preopen_record_api_orderbook_preopen_record_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 120,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/orderbook/preopen/capture": {
+   "post": {
+    "summary": "Api Preopen Capture",
+    "operationId": "api_preopen_capture_api_orderbook_preopen_capture_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/orderbook/snapshot": {
    "post": {
     "summary": "Api Book Snapshot",
