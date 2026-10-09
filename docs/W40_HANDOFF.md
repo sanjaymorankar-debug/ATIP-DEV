@@ -103,8 +103,13 @@ Unchanged from W39b (`docs/W39_TRACKER_RECONCILIATION_HANDOFF.md`, Blocked), plu
 
 ## Test results
 
-**`pytest tests/`** with all seven branches merged: **1,555 passed, 1 failed, 37 skipped**.
-- The failure was a scheduler test that counted every job in the module. It now checks its own job and passes.
-- **Not yet done:** the final full run on the tip, which is also the coverage run that generates the tracker.
+**`pytest tests/`** with all seven branches merged, on the tip: **1,556 passed, 37 skipped, 0 failures** (the coverage run that generates the tracker).
 - **Baseline:** 1,349 on the first W40 commit (`d01705e` plus the total-return work); 563 before W39.
+- **Merge:** one scheduler test failed first, because it counted every job in the module. It now checks its own job.
 - **CI:** GitHub Actions could not run (see Blocked).
+
+**Tracker:** 333 rows, regenerated with that coverage.
+- 126 COMPLETED
+- 197 IMPLEMENTED BUT NOT VERIFIED
+- 9 BLOCKED
+- 1 IN PROGRESS
