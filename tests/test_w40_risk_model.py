@@ -733,8 +733,8 @@ def test_settings_read_config_json_and_ignore_bad_values(tmp_path, monkeypatch):
     assert RM.model_hash(s, ["market"]) == RM.model_hash({**s, "bias_window": 99, "time": "23:00"}, ["market"])
 
 
-def test_tables_are_created_classified_and_translate_to_mysql(temp_db):
-    from db import mysql as my
+def test_tables_are_created_classified_and_translate_to_postgresql(temp_db):
+    from db import postgres as pg
     from db.schema import get_connection, init_db
     from db.schema_w39b import W39B_TABLES
     from enterprise.privacy import classify
@@ -749,7 +749,6 @@ def test_tables_are_created_classified_and_translate_to_mysql(temp_db):
         assert t in W39B_TABLES and t in have
         assert TABLES[t] == "GLOBAL" and classify(t)["class"] == "research" and classify(t)["source"] == "explicit"
     stmts = [s for t in RM.TABLES for s in RM.TABLES[t]]
-    keyed = my.keyed_columns(stmts)
     for s in stmts:
-        my.ddl(s, keyed.get(my._table_of(s), set()))
-    assert not my.reserved_columns(stmts)
+        out = pg.ddl(s)
+        assert "AUTOINCREMENT" not in out.upper() and " REAL" not in out.upper()

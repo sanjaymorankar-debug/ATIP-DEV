@@ -62,7 +62,6 @@ BUSY_TIMEOUT_MS = 60_000
 
 
 _PG_URL: list = []
-_MYSQL_URL: list = []
 
 
 def _gated_runtime_url(schemes, backend_name):
@@ -71,7 +70,7 @@ def _gated_runtime_url(schemes, backend_name):
     All three are required -- ATIP_DATABASE_URL (not the generic DATABASE_URL other
     projects set) with a matching scheme, config database.backend = backend_name, and
     database.allow_experimental = true -- because the statements db/dialect_scan.py
-    lists (PRAGMA, sqlite_master, rowid) still fail off SQLite."""
+    lists still fail off SQLite."""
     url = os.environ.get("ATIP_DATABASE_URL", "")
     if not url.lower().startswith(schemes):
         return None
@@ -86,18 +85,20 @@ def _gated_runtime_url(schemes, backend_name):
     return None
 
 
-def mysql_runtime_url():
-    """The MySQL URL when the runtime is switched over, else None.
+def _refuse_retired_runtime():
+    """A runtime that was switched to MySQL must not quietly come up on SQLite.
 
-    Gated exactly like pg_runtime_url(): config.json "database": {"backend": "mysql",
-    "allow_experimental": true} plus ATIP_DATABASE_URL=mysql://user:pass@host/db.
-    db/mysql.py translates the whole schema (verified against a real server by
-    tests/test_mysql_backend.py), but hand-written queries in the wider code base
-    still contain SQLite-only constructs and reserved-word column references
-    (db.mysql.reserved_columns reports those), so the backend stays opt-in."""
-    if not _MYSQL_URL:
-        _MYSQL_URL.append(_gated_runtime_url(("mysql://", "mysql+pymysql://", "mariadb://"), "mysql"))
-    return _MYSQL_URL[0]
+    The MySQL backend was removed (PostgreSQL is ATIP's one server database). A
+    deployment still configured for it -- ATIP_DATABASE_URL=mysql://... AND config
+    database.backend = "mysql" with allow_experimental -- would otherwise fall through
+    to an empty local atip.db and look healthy. Refuse instead, and say what to do."""
+    from db.backend import RETIRED_SCHEMES
+    if _gated_runtime_url(RETIRED_SCHEMES, "mysql"):
+        raise RuntimeError(
+            "ATIP is configured for the MySQL runtime, which was removed: PostgreSQL is ATIP's server "
+            "database. Migrate a SQLite backup with tools/sqlite_to_postgres.py and set ATIP_DATABASE_URL="
+            "postgresql://... and config.json database.backend = \"postgresql\" "
+            "(docs/POSTGRESQL_MIGRATION.md), or unset ATIP_DATABASE_URL to stay on SQLite.")
 
 
 def pg_runtime_url():
@@ -106,6 +107,7 @@ def pg_runtime_url():
     config database.backend = "postgresql" and database.allow_experimental = true -- because the
     statements db/dialect_scan.py lists (PRAGMA, sqlite_master, rowid) still fail on PostgreSQL."""
     if not _PG_URL:
+        _refuse_retired_runtime()
         _PG_URL.append(_gated_runtime_url(
             ("postgres://", "postgresql://", "postgresql+psycopg://"), "postgresql"))
     return _PG_URL[0]
@@ -126,9 +128,6 @@ def describe_target() -> str:
     pg = pg_runtime_url()
     if pg:
         return f"PostgreSQL — {masked_url(pg)}"
-    my = mysql_runtime_url()
-    if my:
-        return f"MySQL — {masked_url(my)}"
     return f"SQLite — {DB_PATH.resolve()}"
 
 
@@ -137,10 +136,6 @@ def get_connection():
     if pg:
         from db.backend import PgConnection
         return PgConnection(pg)
-    my = mysql_runtime_url()
-    if my:
-        from db.backend import MySQLConnection
-        return MySQLConnection(my)
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
@@ -1781,7 +1776,7 @@ def init_db():
     _ensure_migrated(conn, force=True)   # W8: base tables now exist -- re-run the additive layer
     _migrate_index_levels_unique(conn)
     conn.close()
-    # describe_target(), not DB_PATH: on MySQL or PostgreSQL this function has
+    # describe_target(), not DB_PATH: on PostgreSQL this function has
     # just built the schema on a server and written no SQLite file at all, and
     # naming one told an operator they were on an engine they were not.
     target = describe_target()

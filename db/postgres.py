@@ -1,7 +1,8 @@
 """
 PostgreSQL support (W38: DBS-05) -- the path off SQLite, built so it can be taken one step at a time.
 
-ATIP runs on SQLite (WAL) today and keeps doing so by default. This module provides what moving to
+PostgreSQL is ATIP's one server database target (the MySQL backend was removed 2026-10-09). ATIP runs
+on SQLite (WAL) today and keeps doing so by default. This module provides what moving to
 Postgres needs, without forcing it:
 
   translate(sql)        SQLite -> PostgreSQL for the dialect ATIP actually uses (measured with
@@ -22,10 +23,12 @@ Postgres needs, without forcing it:
                         through -- and raising the sqlite3 exception classes callers catch rather than
                         psycopg's, which are unrelated to them. See as_sqlite_error().
 
-Activation (db/schema.get_connection): config.json "database": {"backend": "postgres",
-"allow_experimental": true} plus a DSN in ATIP_PG_DSN (secret). BOTH are required: until every query has
-been exercised on Postgres (tools/pg_migrate.py --check runs the read paths), the backend stays opt-in.
-Requires `pip install "psycopg[binary]"` (not installed by default).
+Activation (db/schema.pg_runtime_url): config.json "database": {"backend": "postgresql",
+"allow_experimental": true} plus ATIP_DATABASE_URL=postgresql://... (secret). BOTH are required: until
+every query has been exercised on PostgreSQL (python -m db.dialect_scan --details lists what still needs a
+hand change), the backend stays opt-in. Requires `pip install "psycopg[binary]"` (not installed by default).
+A fresh schema: db/sql/atip_schema.postgresql.sql (tools/schema_sql.py); existing data:
+tools/sqlite_to_postgres.py.
 """
 
 from __future__ import annotations
@@ -214,10 +217,10 @@ def translate(sql: str, pk_of=None) -> str:
     for rx, name in _UNSUPPORTED:
         if rx.search("".join(p for s, p in _split_strings(sql) if not s)):
             raise UnsupportedSQL(f"{name} has no automatic PostgreSQL translation: {sql.strip()[:120]}")
-    # Backtick-quoted identifiers. ATIP's shared SQL quotes the columns that are
-    # reserved words in MySQL 8 (signal, key, rank, rows, change, trigger); SQLite
-    # accepts backticks for MySQL compatibility, PostgreSQL does not, so they become
-    # the standard double quote here. Double quoting also makes the name
+    # Backtick-quoted identifiers. ATIP's shared SQL quotes some columns (signal, key,
+    # rank, rows, change, trigger) with backticks -- a leftover of the removed MySQL
+    # backend, where they are reserved words. SQLite accepts backticks, PostgreSQL does
+    # not, so they become the standard double quote here. Double quoting also makes the name
     # case-sensitive in PostgreSQL -- harmless, as ATIP declares every column in
     # lower case, which is what an unquoted name folds to.
     sql = "".join(p if s else p.replace("`", '"') for s, p in _split_strings(sql))
@@ -356,16 +359,15 @@ class Row(tuple):
 
 # ── errors: psycopg's exceptions as the sqlite3 ones callers catch ─────────
 #
-# Same problem, and the same remedy, as db/mysql.py's as_sqlite_error() -- see the
-# note there. psycopg and sqlite3 both implement PEP 249, but their hierarchies are
+# psycopg and sqlite3 both implement PEP 249, but their hierarchies are
 # unrelated, so `except sqlite3.OperationalError` catches nothing psycopg raises.
 # ATIP's additive migrations are built on that clause (db/schema.py swallows
 # "column already exists" to make ALTER TABLE ADD COLUMN idempotent), so the
 # connection has to raise what they catch, exactly as it already answers to `?`
 # placeholders and sqlite3.Row.
 #
-# The rule here is simpler than MySQL's errno list, because PostgreSQL reports the
-# SQL standard's own SQLSTATE and class 23 *is* "integrity constraint violation":
+# The rule is simple, because PostgreSQL reports the SQL standard's own SQLSTATE
+# and class 23 *is* "integrity constraint violation":
 # 23502 not-null, 23503 foreign key, 23505 unique, 23514 check, 23001 restrict,
 # 23P01 exclusion. That is exactly the set SQLite raises IntegrityError for, so the
 # prefix is the mapping -- no table of codes to fall out of date.
@@ -373,16 +375,15 @@ class Row(tuple):
 # psycopg's own classes cannot be used for this. They are finer-grained than
 # sqlite3's (DuplicateColumn, UndefinedTable, SyntaxError) and they sort conditions
 # differently again: a duplicate column is DuplicateColumn where SQLite says
-# OperationalError, and a CHECK violation is CheckViolation where PyMySQL -- the
-# other backend -- says OperationalError. Verified against PostgreSQL 16.14.
+# OperationalError, and a CHECK violation is CheckViolation where SQLite says
+# IntegrityError. Verified against PostgreSQL 16.14.
 
 
 def as_sqlite_error(exc: Exception) -> Exception:
     """`exc` as the sqlite3 class SQLite would raise for the same condition.
 
     `args` is carried over unchanged, so the message reads the way psycopg wrote it
-    -- and unlike PyMySQL, psycopg puts the message in args[0], which is also
-    sqlite3's own convention. The SQLSTATE is kept on the result as `.sqlstate` for
+    -- psycopg puts the message in args[0], which is also sqlite3's own convention. The SQLSTATE is kept on the result as `.sqlstate` for
     anything that wants to switch on it. Whatever is not a psycopg error is returned
     untouched, which is what keeps UnsupportedSQL and ordinary programming mistakes
     from being disguised as database trouble.
@@ -518,8 +519,7 @@ class PgConnection:
 
         init_db() is hundreds of `conn.cursor().execute(...)` calls, so without this
         the PostgreSQL backend could not create the schema at all -- it failed with
-        AttributeError before any SQL was sent. MySQLConnection has had it; this is
-        the sibling catching up.
+        AttributeError before any SQL was sent.
         """
         return self
 

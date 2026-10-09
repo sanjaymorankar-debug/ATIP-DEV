@@ -7,7 +7,7 @@ screener, signals, market pulse, research reports and scorecards next to the Dha
                protocol messages; anything an imported module prints goes to stderr.
     read-only  every tool reads; there is no tool that writes, orders, cancels or changes a setting. The
                SQLite connection is opened with PRAGMA query_only, so even a bug in a reader cannot write
-               (MySQL / PostgreSQL deployments: read-only by the tool set alone). `open_orders` reads your
+               (a PostgreSQL deployment: read-only by the tool set alone). `open_orders` reads your
                Dhan order book through the broker API (read-only call). No tool keeps a cache table: what
                is computed on a call (the DVM's screener snapshot, a SIP, an earnings surprise) lives in
                memory only.

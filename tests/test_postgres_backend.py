@@ -1,8 +1,8 @@
 """
 PostgreSQL backend (db/postgres.py).
 
-Companion to tests/test_mysql_backend.py, and added for the same reason: until
-now db/postgres.py was only ever tested through its translated STRINGS (see
+PostgreSQL is ATIP's one server database (the MySQL backend was removed). Until
+these tests, db/postgres.py was only ever tested through its translated STRINGS (see
 tests/test_w38_platform_compliance.py). Nothing executed them, so two defects
 sat in PgConnection -- it had no cursor() at all, and it raised psycopg's
 exception classes at callers written to catch sqlite3's.
@@ -61,7 +61,6 @@ def test_the_mapping_keeps_the_message_and_the_sqlstate():
     exc.sqlstate = "42701"
     out = pg.as_sqlite_error(exc)
     # psycopg puts the message in args[0], which is sqlite3's own convention
-    # (PyMySQL puts the errno there instead -- each driver's convention is kept)
     assert out.args == ('column "a" of relation "t" already exists',)
     assert out.sqlstate == "42701"
 
@@ -71,6 +70,36 @@ def test_the_mapping_leaves_everything_else_alone():
     disguised as database trouble."""
     for exc in (UnsupportedSQL("no translation"), ValueError("nope"), KeyError("k")):
         assert pg.as_sqlite_error(exc) is exc
+
+
+# ── PostgreSQL is the one server database ─────────────────────────────────
+
+def test_a_mysql_url_is_refused_with_the_reason():
+    """The MySQL backend was removed: a leftover mysql:// URL must say so, not fall
+    through to a generic 'unsupported scheme' or, worse, to SQLite."""
+    from db.backend import backend
+    for url in ("mysql://u:p@h/atip", "mysql+pymysql://u:p@h/atip", "mariadb://u:p@h/atip"):
+        with pytest.raises(ValueError, match="no longer supported.*PostgreSQL"):
+            backend(url)
+    assert backend("postgresql://u@h/atip") == "postgresql" and backend("sqlite:///x.db") == "sqlite"
+
+
+def test_a_runtime_still_switched_to_mysql_refuses_to_start(monkeypatch, tmp_path):
+    """Configured for the old MySQL runtime, ATIP must not come up on an empty local
+    SQLite file and look healthy."""
+    import db.schema as S
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "atip_data").mkdir()
+    (tmp_path / "atip_data" / "config.json").write_text(
+        '{"database": {"backend": "mysql", "allow_experimental": true}}', encoding="utf-8")
+    monkeypatch.setenv("ATIP_DATABASE_URL", "mysql://atip:pw@127.0.0.1:3306/atip")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    with pytest.raises(RuntimeError, match="MySQL runtime, which was removed"):
+        S.get_connection()
+    # the URL alone (no runtime switch) is not a startup failure: the runtime stays on SQLite
+    (tmp_path / "atip_data" / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() is None
 
 
 # ── live server ───────────────────────────────────────────────────────────
@@ -164,7 +193,7 @@ def test_the_connection_is_sqlite_shaped(live_db):
 @live_only
 def test_the_connection_commits_and_rolls_back_as_a_context_manager(live_db):
     """`with conn:` commits on success and rolls back on an exception, as sqlite3
-    and MySQLConnection both do."""
+    does."""
     c = pg.PgConnection(LIVE_URL)
     try:
         c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
@@ -215,9 +244,9 @@ def test_init_db_creates_the_whole_schema_on_postgres_and_is_idempotent(live_db)
 
 
 def test_backticked_identifiers_become_double_quotes():
-    """ATIP's shared SQL backticks the columns MySQL 8 reserves (signal, key,
-    rank, rows, change, trigger). SQLite accepts backticks for MySQL
-    compatibility; PostgreSQL does not, so they become the standard quote."""
+    """ATIP's shared SQL backticks some columns (signal, key, rank, rows, change,
+    trigger) -- a leftover of the removed MySQL backend, where they are reserved.
+    SQLite accepts backticks; PostgreSQL does not, so they become the standard quote."""
     from db.postgres import translate
     assert translate("SELECT `signal`, a FROM t WHERE `key`=?") == \
         'SELECT "signal", a FROM t WHERE "key"=%s'
@@ -226,7 +255,7 @@ def test_backticked_identifiers_become_double_quotes():
 
 
 def test_a_backticked_column_is_still_qualified_on_the_right_of_an_upsert():
-    """The mirror of the MySQL excluded bug, from the same quoting change.
+    """A bug from the same backtick-quoting change.
 
     PostgreSQL needs the target-row reference qualified -- a bare one is
     "column reference is ambiguous" -- and the name is matched with a non-word
