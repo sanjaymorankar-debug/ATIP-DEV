@@ -34,7 +34,7 @@ import math
 
 import numpy as np
 
-from ml.models import BaseModel, Preprocessor
+from ml.models import BaseModel, Preprocessor, _weights
 
 
 # ── the multi-output histogram tree ────────────────────────────────────────
@@ -205,17 +205,20 @@ class NativeGBM(_TreeModelBase):
     default_params = {"n_estimators": 150, "learning_rate": 0.05, "max_depth": 3, "min_samples_leaf": 40,
                       "l2": 1.0, "subsample": 0.8, "colsample": 0.8, "max_bins": 32, "seed": 7}
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
+        """sample_weight (W40): per-row weights, rescaled to mean 1, multiplying each row's gradient and hessian
+        (and the weighted prior); None is the unweighted fit, unchanged."""
         p = self.params
         rng = np.random.default_rng(int(p["seed"]))
         B = self._prep(X, fit=True)
         Y = self._targets(y)
         n, k = Y.shape
+        sw = _weights(sample_weight, n)
         if self.task == "classification":
-            prior = np.clip(Y.mean(axis=0), 1e-6, 1)
+            prior = np.clip(Y.mean(axis=0) if sw is None else (Y * sw[:, None]).mean(axis=0), 1e-6, 1)
             self.init = np.log(prior) - np.log(prior).mean()
         else:
-            self.init = np.array([float(Y.mean())])
+            self.init = np.array([float(Y.mean() if sw is None else (Y[:, 0] * sw).mean())])
         F = np.tile(self.init, (n, 1))
         self.trees = []
         m = B.shape[1]
@@ -226,6 +229,8 @@ class NativeGBM(_TreeModelBase):
                 G, H = P - Y, np.maximum(P * (1 - P), 1e-6)
             else:
                 G, H = F - Y, np.ones_like(F)
+            if sw is not None:
+                G, H = G * sw[:, None], H * sw[:, None]
             rows = rng.random(n) < float(p["subsample"]) if float(p["subsample"]) < 1 else np.ones(n, bool)
             cols = sorted(rng.choice(m, ncol, replace=False).tolist())
             t = _Tree().fit(B[rows], G[rows], H[rows], cols, int(p["max_depth"]), int(p["min_samples_leaf"]),
@@ -276,17 +281,23 @@ class NativeRandomForest(_TreeModelBase):
     default_params = {"n_estimators": 100, "max_depth": 8, "min_samples_leaf": 30, "max_features": "sqrt",
                       "bootstrap": True, "max_bins": 32, "seed": 7}
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
+        """sample_weight (W40): each tree's bootstrap draws row i with probability w_i / sum(w) (AFML 4.5:
+        weighted bagging); without bootstrap the weights are ignored. None is the unweighted fit, unchanged."""
         p = self.params
         rng = np.random.default_rng(int(p["seed"]))
         B = self._prep(X, fit=True)
         Y = self._targets(y)
         n, m = B.shape
+        sw = _weights(sample_weight, n)
         mf = p["max_features"]
         ncol = max(1, int(math.sqrt(m))) if mf == "sqrt" else max(1, int(round(m * float(mf)))) if mf else m
         self.trees = []
         for _ in range(int(p["n_estimators"])):
-            rows = rng.integers(0, n, n) if p["bootstrap"] else np.arange(n)
+            if not p["bootstrap"]:
+                rows = np.arange(n)
+            else:
+                rows = rng.integers(0, n, n) if sw is None else rng.choice(n, n, replace=True, p=sw / sw.sum())
             cols = sorted(rng.choice(m, ncol, replace=False).tolist())
             # leaf value = -sum(g)/(sum(h)+l2) with g = -Y, h = 1 and l2 ~ 0 -> the mean target
             self.trees.append(_Tree().fit(B[rows], -Y[rows], np.ones_like(Y[rows]), cols, int(p["max_depth"]),

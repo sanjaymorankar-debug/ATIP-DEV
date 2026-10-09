@@ -284,7 +284,7 @@
   "/api/backtests/optimize": {
    "post": {
     "summary": "Api Backtest Optimize",
-    "description": "Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}.",
+    "description": "Body: {request, space, method? grid|random|adaptive|bayes, select_by?, max_trials?, seed?, min_trades?}.",
     "operationId": "api_backtest_optimize_api_backtests_optimize_post",
     "responses": {
      "200": {
@@ -352,7 +352,7 @@
   "/api/backtests/cpcv": {
    "post": {
     "summary": "Api Backtest Cpcv",
-    "description": "Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?}\n-- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths.",
+    "description": "Body: {request (start/end; + event_driven settings), groups? (6), test_groups? (2), candidates?, select_by?,\npurge?, embargo?, engine? w2|event_driven} -- combinatorially purged CV (backtest/cpcv.py): the distribution of\nk/N x C(N, k) out-of-sample paths.",
     "operationId": "api_backtest_cpcv_api_backtests_cpcv_post",
     "responses": {
      "200": {
@@ -1461,6 +1461,119 @@
        "type": "boolean",
        "default": false,
        "title": "Include Wait"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/strategies/{sid}/options": {
+   "get": {
+    "summary": "Api Strategy Options",
+    "description": "W40 (ENT-15): the strategy's paper option positions (option overlays) with legs and daily marks.",
+    "operationId": "api_strategy_options_api_strategies__sid__options_get",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Sid"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Status"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 50,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/strategies/{sid}/options/dry-run": {
+   "get": {
+    "summary": "Api Strategy Options Dry Run",
+    "description": "W40 (ENT-15): an option overlay's legs and risk check for today (or as_of) -- nothing stored,\nnothing placed (strategy_engine/option_overlay.dry_run).",
+    "operationId": "api_strategy_options_dry_run_api_strategies__sid__options_dry_run_get",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Sid"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "As Of"
+      }
+     },
+     {
+      "name": "version",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Version"
       }
      }
     ],
@@ -2698,6 +2811,131 @@
     }
    }
   },
+  "/api/quant/risk-model/status": {
+   "get": {
+    "summary": "Api Risk Model Status",
+    "operationId": "api_risk_model_status_api_quant_risk_model_status_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/quant/risk-model/factors": {
+   "get": {
+    "summary": "Api Risk Model Factors",
+    "operationId": "api_risk_model_factors_api_quant_risk_model_factors_get",
+    "parameters": [
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "As Of"
+      }
+     },
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 20,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/portfolio/risk-model": {
+   "get": {
+    "summary": "Api Portfolio Risk Model",
+    "operationId": "api_portfolio_risk_model_api_portfolio_risk_model_get",
+    "parameters": [
+     {
+      "name": "portfolio",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Portfolio"
+      }
+     },
+     {
+      "name": "book",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Book"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/quant/risk-model/run": {
+   "post": {
+    "summary": "Api Risk Model Run",
+    "operationId": "api_risk_model_run_api_quant_risk_model_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/stock/{symbol}/history": {
    "get": {
     "summary": "Api Stock History",
@@ -2720,6 +2958,119 @@
        "type": "integer",
        "default": 400,
        "title": "Sessions"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stock/{symbol}/intraday": {
+   "get": {
+    "summary": "Api Stock Intraday",
+    "description": "W40: intraday bars, session VWAP, previous close and scan marks (stock_intraday above).",
+    "operationId": "api_stock_intraday_api_stock__symbol__intraday_get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     },
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Date"
+      }
+     },
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 1,
+       "title": "Days"
+      }
+     },
+     {
+      "name": "interval",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 15,
+       "title": "Interval"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stock/{symbol}/rating-75": {
+   "get": {
+    "summary": "Api Stock Rating 75",
+    "operationId": "api_stock_rating_75_api_stock__symbol__rating_75_get",
+    "parameters": [
+     {
+      "name": "symbol",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Symbol"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "As Of"
       }
      }
     ],
@@ -5440,6 +5791,51 @@
       "schema": {
        "type": "string",
        "title": "Lump Sum"
+      }
+     },
+     {
+      "name": "step_up_pct",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Step Up Pct"
+      }
+     },
+     {
+      "name": "stamp_duty",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Stamp Duty"
+      }
+     },
+     {
+      "name": "round_units",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Round Units"
+      }
+     },
+     {
+      "name": "exit_load_pct",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Exit Load Pct"
+      }
+     },
+     {
+      "name": "exit_load_days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Exit Load Days"
       }
      }
     ],
@@ -8631,6 +9027,78 @@
     }
    }
   },
+  "/api/data/total-return": {
+   "get": {
+    "summary": "Api Total Return",
+    "operationId": "api_total_return_api_data_total_return_get",
+    "parameters": [
+     {
+      "name": "index",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "NIFTY50",
+       "title": "Index"
+      }
+     },
+     {
+      "name": "start",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "Start"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "title": "End"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/data/total-return/rebuild": {
+   "post": {
+    "summary": "Api Total Return Rebuild",
+    "operationId": "api_total_return_rebuild_api_data_total_return_rebuild_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/orders/sip": {
    "get": {
     "summary": "Api Sip Plans",
@@ -8745,6 +9213,22 @@
         "schema": {
          "$ref": "#/components/schemas/HTTPValidationError"
         }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/meta-label/report": {
+   "get": {
+    "summary": "Api Meta Label Report",
+    "operationId": "api_meta_label_report_api_research_meta_label_report_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
        }
       }
      }

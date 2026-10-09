@@ -62,6 +62,9 @@ TRANSITIONS = {
     "ARCHIVED": set(),
 }
 _ID = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+# signal: ml_* features for strategies; regime: the strategy regime; meta_label (W40): the secondary model that
+# scores the technical signals (ml/meta_label.py) -- APPROVED / ACTIVE only with an ADOPTABLE run of its own
+PURPOSES = ("signal", "regime", "meta_label")
 
 
 class ModelRegistryError(ValueError):
@@ -84,8 +87,8 @@ def create_model(conn, model_id, name, model_type, label_kind, feature_set, desc
         raise ModelRegistryError(f"model_type must be one of {sorted(MODEL_TYPES)}")
     if label_kind not in KINDS:
         raise ModelRegistryError(f"label kind must be one of {sorted(KINDS)}")
-    if purpose not in ("signal", "regime"):
-        raise ModelRegistryError("purpose must be signal or regime")
+    if purpose not in PURPOSES:
+        raise ModelRegistryError(f"purpose must be one of {', '.join(PURPOSES)}")
     if conn.execute("SELECT 1 FROM ml_model WHERE model_id=?", (model_id,)).fetchone():
         raise ModelRegistryError(f"model {model_id} already exists")
     now = datetime.now()
@@ -166,13 +169,18 @@ def transition(conn, model_id, version, to_state, reason="", actor="owner") -> d
     if to_state in ("VALIDATION", "APPROVED", "ACTIVE") and not r[1]:
         raise ModelRegistryError(f"version {version} has no trained artifact")
     if to_state in ("APPROVED", "ACTIVE"):                  # W36 (ML-02): deep learning only with validated benefit
-        mt = conn.execute("SELECT m.model_type, v.dataset_id FROM ml_model m JOIN ml_model_version v ON "
+        mt = conn.execute("SELECT m.model_type, v.dataset_id, m.purpose FROM ml_model m JOIN ml_model_version v ON "
                           "v.model_id=m.model_id WHERE m.model_id=? AND v.version=?", (model_id, version)).fetchone()
         if mt and mt[0] == "neural_network":
             from ml.deep import allowed_to_activate
             ok, why = allowed_to_activate(conn, mt[1])
             if not ok:
                 raise ModelRegistryError(f"neural_network {version} cannot be {to_state}: {why}")
+        if mt and mt[2] == "meta_label":                    # W40: only a meta-label version whose run is ADOPTABLE
+            from ml.meta_label import allowed_to_activate as meta_ok
+            ok, why = meta_ok(conn, model_id, version)
+            if not ok:
+                raise ModelRegistryError(f"meta-label {model_id} {version} cannot be {to_state}: {why}")
     now = datetime.now()
     if to_state == "ACTIVE":
         prev = conn.execute("SELECT version FROM ml_model_version WHERE model_id=? AND status='ACTIVE'",

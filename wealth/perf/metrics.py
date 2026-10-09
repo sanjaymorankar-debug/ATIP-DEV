@@ -88,7 +88,7 @@ def annualize(total: float | None, days: int) -> float | None:
     return (1 + total) ** (365.25 / days) - 1
 
 
-def _beta_alpha(r, b, rf_daily):
+def _beta_alpha(r, b, rf_daily, periods: float = PERIODS):
     n = len(r)
     if n < 20:
         return None, None, None
@@ -100,11 +100,15 @@ def _beta_alpha(r, b, rf_daily):
     beta = cov / vb
     alpha_d = (mr - rf_daily) - beta * (mb - rf_daily)
     te = BM._stdev([x - y for x, y in zip(r, b)])
-    return beta, alpha_d * PERIODS, (te * math.sqrt(PERIODS) if te else None)
+    return beta, alpha_d * periods, (te * math.sqrt(periods) if te else None)
 
 
-def series_metrics(dates: list, rets: list, bench: list | None = None, rf_pct: float = 6.5) -> dict:
-    """Metrics of a daily return series (None entries = not invested that day, skipped)."""
+def series_metrics(dates: list, rets: list, bench: list | None = None, rf_pct: float = 6.5,
+                   periods_per_year: float = PERIODS) -> dict:
+    """Metrics of a daily return series (None entries = not invested that day, skipped). periods_per_year
+    annualises volatility, Sharpe, Sortino, alpha, tracking error and the information ratio: 252 sessions
+    unless the caller measured its series' own frequency (data/mf_analytics.py)."""
+    ppy = periods_per_year
     pairs = [(d, r, (bench[i] if bench else None)) for i, (d, r) in enumerate(zip(dates, rets)) if r is not None]
     if not pairs:
         return {"days": 0}
@@ -119,14 +123,14 @@ def series_metrics(dates: list, rets: list, bench: list | None = None, rf_pct: f
     out = {"days": len(rs), "calendar_days": span, "total_return_pct": _pct(tot),
            "annualized_pct": _pct(annualize(tot, span)) if span >= 365 else None,
            "annualized_note": None if span >= 365 else "period under a year: annualized figure withheld",
-           "volatility_pct": _pct(BM.volatility(rs)), "sharpe": _r(BM.sharpe(rs, rf)),
-           "sortino": _r(BM.sortino(rs, rf)), "max_drawdown_pct": _pct(BM.max_drawdown([1.0] + eq))}
+           "volatility_pct": _pct(BM.volatility(rs, ppy)), "sharpe": _r(BM.sharpe(rs, rf, ppy)),
+           "sortino": _r(BM.sortino(rs, rf, ppy)), "max_drawdown_pct": _pct(BM.max_drawdown([1.0] + eq))}
     bp = [(p[1], p[2]) for p in pairs if p[2] is not None]
     if bench is not None and len(bp) >= 20:
-        beta, alpha, te = _beta_alpha([x for x, _ in bp], [y for _, y in bp], (1 + rf) ** (1 / PERIODS) - 1)
+        beta, alpha, te = _beta_alpha([x for x, _ in bp], [y for _, y in bp], (1 + rf) ** (1 / ppy) - 1, ppy)
         ex = chain([x for x, _ in bp]), chain([y for _, y in bp])
         out.update({"beta": _r(beta), "alpha_annual_pct": _pct(alpha), "tracking_error_pct": _pct(te),
-                    "information_ratio": _r(((sum(x for x, _ in bp) - sum(y for _, y in bp)) / len(bp) * PERIODS)
+                    "information_ratio": _r(((sum(x for x, _ in bp) - sum(y for _, y in bp)) / len(bp) * ppy)
                                             / te) if te else None,
                     "excess_return_pct": _pct(ex[0] - ex[1]) if None not in ex else None})
     return out

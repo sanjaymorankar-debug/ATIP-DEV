@@ -1,5 +1,7 @@
 # W39b deployment runbook (owner, macOS)
 
+> **Superseded by `docs/W40_DEPLOY_RUNBOOK.md`**, which deploys W39b and W40 together. Kept for reference.
+
 **Release:** `ATIP-W39B` = the `master` commit that merges PR #5. After `git pull`, `git log -1 --format='%h %s'` shows it: a merge of `claude/wizardly-curie-fbjeoa`, or a commit titled "W39b: ...".
 **Previous production:** `1d089a7` (W39, PR #4). This is the rollback target.
 **Machine:** the Mac running the `com.atip.platform` LaunchAgent. On the old Windows machine, use `deploy\deploy_release.ps1`; the steps are the same.

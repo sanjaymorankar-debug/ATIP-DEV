@@ -65,6 +65,11 @@ INVENTORY = {
     "tenant_paper_position": ("financial", False, "tenant lifetime"),
     "tenant_paper_fill": ("financial", False, "tenant lifetime"),
     "oms_order": ("financial", False, "kept (trade audit)"),
+    # W40 (ENT-15): option-overlay strategies' paper option positions (the paper_ rule would match too)
+    "paper_option_strategy_position": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_leg": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_trade": ("financial", False, "kept (paper trade audit)"),
+    "paper_option_strategy_mark": ("financial", False, "kept with its position (daily marks)"),
     "strategy": ("research", False, "tenant lifetime"),
     "prices_daily": ("market", False, "7 years (W39 history tier, db/purge.py)"),
     "order_book_pressure": ("market", False, "90 days (W39, db/purge.py SHORT tier)"),
@@ -77,6 +82,16 @@ INVENTORY = {
     "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
     "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
     "earnings_surprise": ("research", False, "kept: recomputed nightly from the stored quarters (W39b)"),
+    "index_total_return": ("market", False, "kept: rebuilt nightly from prices and dividends (W40)"),
+    "ml_meta_label": ("research", False, "kept: recomputed from prices at each training run (W40 meta-labelling)"),
+    "ml_meta_label_run": ("research", False, "kept: every meta-label training run and its verdict (W40)"),
+    "ml_meta_label_score": ("research", False, "kept: the meta-label model's score of each day's signals (W40)"),
+    # W40: the factor risk model (quant/risk_model.py), rebuilt from prices and filings on demand
+    "quant_risk_exposure": ("research", False, "the last risk_model.history_sessions (500) sessions"),
+    "quant_risk_factor_return": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_regression": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_covariance": ("research", False, "kept: rebuilt when the model changes (W40)"),
+    "quant_risk_state": ("research", False, "the model definition and its latest bias test (W40)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables

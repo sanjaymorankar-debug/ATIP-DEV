@@ -82,8 +82,9 @@ def build(conn, owner, portfolio: str = "PAPER", start=None, end=None, benchmark
     if (end - start).days > 3660:
         raise ValueError("period longer than 10 years")
     bsym = D.benchmark_symbol(benchmark or cfg["benchmark"])
-    if not conn.execute("SELECT 1 FROM prices_daily WHERE symbol=? LIMIT 1", (bsym,)).fetchone():
-        raise ValueError(f"benchmark {bsym} has no prices in prices_daily")
+    if not D.has_prices(conn, bsym):
+        raise ValueError(f"benchmark {bsym} has no prices" + (" (run python -m data.total_return)"
+                                                               if bsym.endswith("_TR") else " in prices_daily"))
     imported = L.sync(conn, owner) if sync_first else None
     prices = D.Prices(conn, start - timedelta(days=40), end)
     rf = cfg["risk_free_pct"]
@@ -95,9 +96,9 @@ def build(conn, owner, portfolio: str = "PAPER", start=None, end=None, benchmark
     cal = mdl["calendar"]
     bench_ret = []
     prev = None
-    rows = conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol=? AND date<?", (bsym, str(start))).fetchone()
-    if rows and rows[0]:
-        prev = prices.close(bsym, D._d(rows[0]), count_gap=False)
+    before = D.last_date(conn, bsym, before=start)
+    if before:
+        prev = prices.close(bsym, D._d(before), count_gap=False)
     for d in cal:
         c = prices.close(bsym, d, count_gap=False)
         bench_ret.append(c / prev - 1 if (c and prev) else None)
@@ -147,7 +148,7 @@ def build(conn, owner, portfolio: str = "PAPER", start=None, end=None, benchmark
     ]
     ledger_rows = [t["txn_id"] for t in txns]
     signal_ids = [t["signal_id"] for t in mdl["model"]["trades"]]
-    last_px = conn.execute("SELECT MAX(date) FROM prices_daily WHERE symbol=?", (bsym,)).fetchone()[0]
+    last_px = D.last_date(conn, bsym)
     syms = sorted({t["symbol"] for t in txns if t["symbol"]} | {t["symbol"] for t in mdl["model"]["trades"]} | {bsym})
     px_inputs = _price_inputs(conn, syms, start - timedelta(days=40), end)
     try:
@@ -217,14 +218,13 @@ def _signals_digest(conn, ids) -> str | None:
 
 
 def _price_inputs(conn, syms, start, end) -> dict:
-    """The prices_daily rows the report read (close / open / volume of every symbol involved,
+    """The price rows the report read (close / open / volume of every symbol involved,
     from 40 days before the period): their count, sha256 and each series' last date. A
     corporate-action re-adjustment or a late bar changes the hash, so a stored report's
     inputs can be told apart from today's (verify())."""
     rows, last = [], {}
     for s in syms:
-        rs = conn.execute("SELECT date, open, close, volume FROM prices_daily WHERE symbol=? AND date>=? AND date<=? "
-                          "ORDER BY date", (s, str(start), str(end))).fetchall()
+        rs = D.rows(conn, s, start, end)           # *_TR benchmarks: index_total_return (W40)
         rows += [[s, str(r[0])[:10], r[1], r[2], r[3]] for r in rs]
         last[s] = str(rs[-1][0])[:10] if rs else None
     return {"rows": len(rows), "sha256": C.digest(rows), "last": last}

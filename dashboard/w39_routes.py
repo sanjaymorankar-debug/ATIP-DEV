@@ -31,6 +31,7 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     POST /api/screener/saved/{id}/delete
     GET  /signals                                    technical signals page (today, track record)
     GET  /api/signals/technical?date&direction&min_confluence&alignment    signals with levels, confluence, market gate
+                                                     (+ meta_prob / meta_size / meta_kept when meta-label scoring is on, W40)
     GET  /api/signals/technical/stats?min_confluence&alignment  track record per scan: win rate, average R
     GET  /api/signals/technical/gate-effect?min_confluence     closed signals WITH / MIXED / AGAINST the market gate
     GET  /api/signals/technical/forward?horizon=20&min_confluence   vs the Nifty after 5 / 20 / 60 sessions, by scan x
@@ -401,8 +402,12 @@ def register(app, guard, Req, get_connection, json_safe):
             return JSONResponse({"error": "direction must be BULL or BEAR"}, status_code=400)
         if alignment and alignment != "not_against" and alignment.upper() not in _ALIGN:
             return JSONResponse({"error": "alignment must be WITH, MIXED, AGAINST or not_against"}, status_code=400)
-        return await run(lambda c: todays_signals(c, date, direction, max(0, int(min_confluence)),
+
+        def f(c):
+            from ml.meta_label import attach_scores     # W40: meta_prob / meta_size when scoring is on
+            return attach_scores(c, todays_signals(c, date, direction, max(0, int(min_confluence)),
                                                    max(1, min(int(limit), 2000)), alignment))
+        return await run(f)
 
     @app.get("/api/signals/technical/stats")
     async def api_tech_signal_stats(min_confluence: int = 0, alignment: str = None):

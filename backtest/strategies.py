@@ -277,6 +277,10 @@ def make_strategy(strategy_id: str, params: dict | None = None, version: str | N
             known = sorted(set(REGISTRY) | {s["strategy_id"] for s in registry.list_strategies(conn)})
             raise ValueError(f"unknown strategy {strategy_id!r}" + (f" version {version}" if version else "")
                              + f"; known: {known}")
+        if v["definition"].get("kind") == "option_overlay":         # W40 (ENT-15)
+            raise ValueError(f"{strategy_id} is an option_overlay strategy: W2 simulates cash (and futures) "
+                             f"positions, not option legs -- replay it on the stored daily option prices with "
+                             f"strategy_engine.option_overlay.replay()")
         return DefinitionStrategy(v["definition"], params, registry.loader(conn))
     finally:
         conn.close()

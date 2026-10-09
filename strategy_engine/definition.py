@@ -15,6 +15,7 @@ The strategy definition (SE-01): one JSON document per strategy VERSION.
       "risk": {"requirement": "STANDARD", "max_cri": 75, "blocked_regimes": ["HIGH_RISK"]},
       ... kind-specific keys, see kinds.py ...
     }
+    kind "option_overlay" (W40): multi-leg OPTION intents -- keys in strategy_engine/option_overlay.py
 
 Any value in position/risk/rules/factors may be {"param": name}.
 
@@ -66,6 +67,12 @@ KIND_KEYS = {
 }
 _SLUG = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+
+# W40 (ENT-15): option overlays -- multi-leg OPTION intents; validated by strategy_engine/option_overlay.py
+KINDS = KINDS + ("option_overlay",)
+DEFAULT_CATEGORY["option_overlay"] = "options"
+KIND_KEYS["option_overlay"] = {"underlyings", "template", "strikes", "expiry", "lots", "exits", "option_risk",
+                               "allow_naked_short_calls"}
 
 
 class DefinitionError(ValueError):
@@ -229,6 +236,12 @@ def validate(defn: dict) -> dict:
             unknown = set(names) - set(REGISTRY[d["python_class"]].default_params)
             if unknown:
                 raise DefinitionError(f"parameters {sorted(unknown)} are not accepted by {d['python_class']}")
+        elif k == "option_overlay":                      # W40 (ENT-15)
+            from strategy_engine.option_overlay import OverlayError, validate_overlay
+            try:
+                used |= validate_overlay(d, declared, {s.name: s for s in sp})
+            except OverlayError as e:
+                raise DefinitionError(str(e))
     except R.RuleError as e:
         raise DefinitionError(str(e))
     # risk and position may use features only indirectly; the risk gate reads cri/regime

@@ -110,10 +110,13 @@ NEW_ROWS = [
     _row("PERF-001-05", "Wealth / Performance", "Benchmark Return", "NIFTY / index / sector benchmark; period and "
          "methodology displayed", SRC_PERF, "P1", IMPL, 85,
          "any prices_daily symbol (NIFTY50, NIFTYBANK, midcap, smallcap, sector indices); price return over the same "
-         "sessions + PME of the investor's flows; W39: days invested shown and exported",
-         "Total-return index (dividends) not available from the data source", "wealth/perf/data.py; "
-                                                                                 "wealth/perf/report.py",
-         "test_benchmark_return_is_the_price_return_over_the_sessions"),
+         "sessions + PME of the investor's flows; W39: days invested shown and exported. W40: benchmark "
+         "\"nifty50tr\" -- the Nifty 50 with dividends reinvested (data/total_return.py: NSE's TRI method, the price "
+         "index exact, its dividend points estimated from the top 50 stored stocks by cap, picked monthly and weighted "
+         "daily; nightly 21:10; GET /api/data/total-return), part of the report's audited inputs",
+         "Independent QA; the dividend part is an estimate (no free-float or constituent data) -- compare once with "
+         "NSE's published TRI", "wealth/perf/data.py; wealth/perf/report.py; data/total_return.py",
+         "test_benchmark_return_is_the_price_return_over_the_sessions; tests/test_w40_total_return.py"),
     _row("PERF-001-06", "Wealth / Performance", "Cost Attribution", "Brokerage, exchange, slippage, other costs; "
          "reconcile exactly to the ledger", SRC_PERF, "P0", IMPL, 90,
          "W39: fees per kind for the period (dividend TDS and capped-sell fees counted), independent SUM over "
@@ -203,8 +206,11 @@ NEW_ROWS += [
     _row("DB-20", "Dashboard", "Stock history like a trading platform", "History of a stock shown like any "
          "trading software", SRC_NOTES, "P1", IMPL, 90,
          "W26 stock panel + W39: 3Y / 5Y / All, daily / weekly / monthly bars, SMA 20/50/200, EMA 21, Bollinger, "
-         "log scale, multi-year returns; checked in headless Chromium", "Owner UAT", "dashboard/stock_view.py",
-         "test_stock_history_reports_multi_year_returns"),
+         "log scale, multi-year returns; checked in headless Chromium. W39b: signal / pattern marks. W40: RSI 14 and "
+         "MACD 12-26-9 panels (the server's definitions), an intraday chart (1D / 5D on 15-minute bars, session VWAP, "
+         "previous close, intraday scan marks; GET /api/stock/{symbol}/intraday) and the on-demand 75-minute rating",
+         "Owner UAT", "dashboard/stock_view.py",
+         "test_stock_history_reports_multi_year_returns; tests/test_w40_stock_chart.py"),
 ]
 
 # ── the global algo-trading feature map (ATIP_Global_Algo_Trading_Features_and_Formulas (1).xlsx) ──
@@ -360,7 +366,8 @@ NEW_ROWS += [
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
                "DEPLOYED; independent validation PENDING"),
     _row('W39-MCP', 'APIs', 'Read-only ATIP MCP server (MC-01..03)', '12 read-only tools over stdio on a query-only database connection', SRC4, "P1", IMPL, 85,
-         'tools/atip_mcp.py',
+         'tools/atip_mcp.py; W40: 20 tools -- adds dvm, earnings_surprise, mf_search / mf_analytics / mf_sip / '
+         'mf_compare, backtest_validation (stored CPCV / PBO) and chart_marks, each checked under query_only',
          'Local stdio only (no hosted transport)', 'tools/atip_mcp.py', 'tests/test_w39_mcp.py',
          owner="Claude (development), PR #4",
          notes="W39 developed on branch ccr-643d84fc-yig8ts (PR #4), merged to master 2026-10-08; NOT "
@@ -384,8 +391,10 @@ NEW_ROWS += [
          "stored 15-minute bars (09:15 / 10:30 / 11:45 / 13:00 / 14:15), completed bars only, 35 bars (7 sessions) "
          "needed, never a stale session; stored in technical_snapshot (tech_rating_75*, rsi_14_75, "
          "supertrend_dir_75, bar_75_end, mtf_alignment_75) by the 20:30 run; screener fields and a preset",
-         "Independent QA; no live intraday refresh (once a day, as of the close); /signals has no 75-minute column",
-         "research/technicals.py; research/tech_signals.py; research/screener.py", "tests/test_w39b_tf75.py",
+         "Independent QA. W40: a 75m column on /signals and GET /api/stock/{symbol}/rating-75 (on demand from the "
+         "stored 15-minute bars, completed bars only); the /signals column is still the 20:30 snapshot",
+         "research/technicals.py; research/tech_signals.py; research/screener.py",
+         "tests/test_w39b_tf75.py; tests/test_w39b_tf75_signals.py",
          notes=NOTE5),
     _row("W39B-DVM", "Research", "DVM view: durability, valuation, momentum 0-100 and zones",
          "Trendlyne-style DVM scores with explanations", SRC5, "P2", IMPL, 85,
@@ -413,11 +422,42 @@ NEW_ROWS += [
          "data/mf_analytics.py: point-to-point and CAGR returns, 1Y / 3Y rolling returns with hurdle stats, "
          "volatility / Sharpe / Sortino, drawdown with dates, beta / alpha / tracking error vs a price index, SIP "
          "and lump-sum XIRR, category rank among stored schemes, side-by-side compare; 3 read-only GET routes; "
-         "scheme detail card on /data-platform",
+         "scheme detail card on /data-platform. W40: step-up SIP, stamp duty (0.005 %) and units rounded down to 3 "
+         "decimals by default, optional flat exit load per instalment; volatility annualised by the NAVs actually "
+         "observed a year (not a fixed 252)",
          "Independent QA. Holding MFs in the wealth ledger stays out of scope (owner Scope Exclusions); "
-         "benchmark is a price index, not total return; peers limited to stored schemes",
+         "benchmark is a price index (the W40 Nifty 50 TR is not wired here yet); peers limited to stored schemes; "
+         "tiered exit loads not modelled",
          "data/mf_analytics.py; dashboard/w35_routes.py; dashboard/w35_page.py",
          "tests/test_w39b_mf_analytics.py", notes=NOTE5),
+]
+
+# ── W40 (2026-10-09): what remained buildable after W39b -- gap analysis section 4 items 5 and 9 ──────
+SRC6 = "W40 (PR #9): docs/ATIP_GAP_ANALYSIS_2026-10.md section 4 items 5 and 9; tracker next actions"
+W40N = "W40 developed 2026-10-09 on branch claude/wizardly-curie-fbjeoa (PR #9); independent validation PENDING"
+NEW_ROWS += [
+    _row("W40-RISKMODEL", "Risk & Portfolio", "Fundamental factor risk model (Barra-style)",
+         "Factor exposures, factor returns, covariance, specific risk and portfolio risk decomposition", SRC6, "P1",
+         IMPL, 85,
+         "quant/risk_model.py: 8 styles (size, beta, momentum, residual volatility, book-to-price, earnings yield, "
+         "ROE, liquidity) point in time, winsorised and cap-standardised, NSE industries (small ones pooled); "
+         "daily sqrt(cap)-weighted regression with the industry constraint and robust t statistics; EWMA / "
+         "Newey-West factor covariance; shrunk EWMA specific risk; decomposition of the PAPER / LIVE book (factor vs "
+         "specific, per factor, marginal per stock, beta, active risk vs a cap-weighted Nifty 50 proxy); bias "
+         "statistic on standard portfolios; nightly 21:45, incremental; /trading and /quant cards",
+         "Independent QA on the real database; needs filed share counts for 30+ stocks; universe and industries are "
+         "today's (survivorship); no free-float data", "quant/risk_model.py; portfolio/risk.py; "
+         "dashboard/risk_model_routes.py", "tests/test_w40_risk_model.py", notes=W40N),
+    _row("W40-META", "AI/ML", "Meta-labelling of the technical signals (AFML ch. 3-4, 7, 10)",
+         "A second model deciding which primary signals to take, with bet sizes", SRC6, "P2", IMPL, 85,
+         "ml/meta_label.py: triple-barrier labels from the signal engine's own outcome rule; 37 features known at "
+         "the signal's close; sample weights by average uniqueness; purged k-fold with embargo; GBM / logistic / RF; "
+         "out-of-fold precision / recall / AUC and the kept signals' expectancy vs all; AFML bet sizing (reported "
+         "only); ADOPTABLE only with 200+ signals and t >= 2, and the registry refuses activating anything else; "
+         "Saturday retrain and 20:45 scoring, both off unless meta_label.enabled; /signals column when adopted",
+         "Owner: switch on after a few hundred closed signals exist and a version is ADOPTABLE; independent QA",
+         "ml/meta_label.py; ml/validation.py; dashboard/w40_routes.py", "tests/test_w40_meta_label.py",
+         notes=W40N),
 ]
 
 # rows still in development when the files are generated: shown IN PROGRESS until merged
@@ -602,9 +642,11 @@ UPDATES = {
               "C(N-1,k-1) out-of-sample paths with their distribution) and PBO by CSCV (Bailey et al.: logits, "
               "degradation regression, probability of loss; from a matrix or an optimisation's trials); "
               "python -m backtest cpcv | pbo; POST /api/backtests/cpcv and /api/backtests/{id}/pbo",
-              "Next Action / Missing Work": "Independent QA; the stochastic-dominance test is not implemented; "
-              "CPCV runs on the W2 engine only",
-              "Key Files": "backtest/robustness.py; backtest/cpcv.py", "Evidence": "tests/test_w39b_cpcv_pbo.py"},
+              "Next Action / Missing Work": "Independent QA. W40: first / second-order stochastic dominance of the "
+              "selected trial's out-of-sample results over a random selection (in pbo() and CPCV); CPCV on the "
+              "event-driven engine (engine=\"event_driven\")",
+              "Key Files": "backtest/robustness.py; backtest/cpcv.py",
+              "Evidence": "tests/test_w39b_cpcv_pbo.py; tests/test_w39b_cpcv_dominance.py"},
     "BT-17": {"Current Implementation": "W34: backtest/event_driven.py -- event queue over daily or intraday bars; "
               "latency, partial fills vs bar volume, MARKET/LIMIT/STOP, impact-priced fills, TWAP slices, intrabar "
               "protective exits; same Strategy interface; stored as kind event_driven. W39b: ADD / REDUCE through "
@@ -612,9 +654,34 @@ UPDATES = {
               "byte-identical); fix: a SELL with nothing left to sell (a max-hold exit queued on the bar a stop "
               "fired) was charged costs and a fill, an over-sized SELL was charged on its full size, and a slow "
               "max-hold exit was queued again every session",
-              "Next Action / Missing Work": "Independent QA; the engine does not yet report the adapter's skipped "
-              "decisions the way W2 does",
-              "Evidence": "tests/test_w39_backtest_partial.py (test_event_driven_*)"},
+              "Next Action / Missing Work": "Independent QA. W40: reports the adapter's skipped decisions like W2; "
+              "fix: the end-of-window close-out is now in the last day's return (chained returns overstated final "
+              "equity by the close-out costs). It still does not trade SHORT (W2 does, as futures)",
+              "Evidence": "tests/test_w39_backtest_partial.py (test_event_driven_*); "
+                          "tests/test_w39b_event_driven_skips.py"},
+    "BT-04": {"Completion %": "90", "Current Implementation": "W23: grid / random / adaptive optimiser with trial runs, "
+              "test-window refusal, Deflated Sharpe + overfit warning. W40: method=\"bayes\" -- a Tree-structured "
+              "Parzen Estimator (Bergstra et al. 2011) in numpy after a seeded random start, same trial storage and "
+              "deflated-Sharpe accounting",
+              "Next Action / Missing Work": "Independent QA",
+              "Key Files": "backtest/optimize.py", "Evidence": "tests/test_w39b_bayes_optimize.py"},
+    "QR-05": {"Completion %": "90", "Next Action / Missing Work": "Independent QA. W40: the W2 backtest simulates "
+              "SHORT / COVER as near-month stock futures (lots, margin, daily variation margin, NSE F&O costs, a "
+              "roll N sessions before expiry; refused, never priced off spot, without futures history); the paper "
+              "book can auto-roll (futures.auto_roll, off by default). Not modelled: physical settlement, SPAN margin",
+              "Key Files": "execution/futures_paper.py; backtest/futures.py; backtest/engine.py",
+              "Evidence": "tests/test_w40_futures_backtest.py"},
+    "QR-06": {"Next Action / Missing Work": "Independent QA. W40: long/short portfolios backtest with their futures "
+              "legs (see QR-05); lot granularity still makes small books non-neutral -- check exposure after sizing",
+              "Evidence": "tests/test_w40_futures_backtest.py"},
+    "ENT-15": {"Completion %": "85", "Next Action / Missing Work": "Owner: options.enabled; QA. W40: option-overlay "
+               "strategies (strategy_engine/option_overlay.py) emit multi-leg OPTION intents -- covered call, "
+               "protective put, spreads, iron condor and more, strikes by delta or % OTM, monthly expiry -- sized by "
+               "the risk engine (max loss, margin approximation, naked short calls refused unless allowed), filled "
+               "all-or-nothing in the paper options book, marked daily, exited by rule, settled at expiry; PAPER "
+               "only, LIVE refused; a replay on stored daily option prices",
+               "Key Files": "execution/options_paper.py; execution/option_intents.py; strategy_engine/option_overlay.py",
+               "Evidence": "tests/test_w40_option_intents.py; docs/W40_OPTION_INTENTS_HANDOFF.md"},
     "API-05": {"Completion %": "100", "Current Implementation": "W31: python -m ops api-docs (openapi.json + "
                "API_REFERENCE.md, 362 routes with permissions). W39: every public v1 resource has a typed response "
                "schema (openapi-v1.json) checked against the real handlers by a contract test; error bodies "
@@ -635,6 +702,7 @@ UPDATES = {
 
 # Deployment-tracker wave of every module (owner waves 1-9 are module groups; 11-20 = repo W11-W20)
 WAVE_BY_PREFIX = [
+    (r"^W40-", "W40 (PR #9)"),
     (r"^W39B-", "W39b (PR #5)"),
     (r"^W39-", "W39 (PR #4)"),
     (r"^(INV|WLT|GOL|AAL|RBL|PERF|AIA|INT|QA|UAT|REL)-", None),     # by ID below

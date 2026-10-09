@@ -1475,7 +1475,7 @@ if HAS_FASTAPI:
 
     @app.post("/api/backtests/optimize", dependencies=_guard)
     async def api_backtest_optimize(request: _Req):
-        """Body: {request, space, method?, select_by?, max_trials?, seed?, min_trades?}."""
+        """Body: {request, space, method? grid|random|adaptive|bayes, select_by?, max_trials?, seed?, min_trades?}."""
         from backtest.optimize import optimize, prepare
         b = await request.json()
         try:
@@ -1530,13 +1530,15 @@ if HAS_FASTAPI:
 
     @app.post("/api/backtests/cpcv", dependencies=_guard)
     async def api_backtest_cpcv(request: _Req):
-        """Body: {request (start/end), groups? (6), test_groups? (2), candidates?, select_by?, purge?, embargo?}
-        -- combinatorially purged CV (backtest/cpcv.py): the distribution of k/N x C(N, k) out-of-sample paths."""
+        """Body: {request (start/end; + event_driven settings), groups? (6), test_groups? (2), candidates?, select_by?,
+        purge?, embargo?, engine? w2|event_driven} -- combinatorially purged CV (backtest/cpcv.py): the distribution of
+        k/N x C(N, k) out-of-sample paths."""
         from backtest.cpcv import prepare_cpcv, run_cpcv
         b = await request.json()
         try:
             args = (b["request"], int(b.get("groups", 6)), int(b.get("test_groups", 2)), b.get("candidates"),
-                    b.get("select_by", "sharpe"), int(b.get("purge") or 0), int(b.get("embargo") or 0))
+                    b.get("select_by", "sharpe"), int(b.get("purge") or 0), int(b.get("embargo") or 0),
+                    b.get("engine") or "w2")
             prepare_cpcv(*args)
         except (ValueError, KeyError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
@@ -1644,6 +1646,8 @@ if HAS_FASTAPI:
     _register_execution_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.portfolio_risk_routes import register as _register_portfolio_risk     # W25
     _register_portfolio_risk(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.risk_model_routes import register as _register_risk_model            # W40 factor risk model
+    _register_risk_model(app, _guard, _Req, get_connection, json_safe)
     from dashboard.stock_view import register as _register_stock_view                   # W26
     _register_stock_view(app, get_connection, json_safe)
     from dashboard.market_routes import register as _register_market_routes             # W27
@@ -1668,6 +1672,8 @@ if HAS_FASTAPI:
     _register_w39_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.w39_retail_routes import register as _register_w39b_routes           # W39b: baskets, SIP
     _register_w39b_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.w40_routes import register as _register_w40_routes                   # W40: meta-labelling
+    _register_w40_routes(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes

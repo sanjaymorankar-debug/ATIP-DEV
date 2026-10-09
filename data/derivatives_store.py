@@ -23,6 +23,11 @@ ATM IV). The contracts themselves were thrown away. Now:
 
     chain(conn, symbol, ts=None)   the latest (or a given) snapshot as rows
     contracts(conn, symbol, d)     the session's stored contracts
+    chain_on(conn, symbol, as_of)  (W40) the chain as stored for one session, point in time: the
+                                   EOD contracts of the latest session <= as_of, overlaid by that
+                                   day's latest intraday snapshot -- what option-overlay strategies
+                                   select strikes from and the paper options book fills / marks at
+    fo_symbol(symbol)              ATIP symbol -> NSE F&O underlying (NIFTY50 -> NIFTY ...)
 
 Config (config.json "derivatives"): {"option_chain_enabled": false, "chain_symbols": ["NIFTY",
 "BANKNIFTY"], "chain_minutes": 15, "nearest_expiries": 2}
@@ -187,3 +192,114 @@ def contracts(conn, symbol: str, d=None, expiry=None) -> list:
         sql += " AND expiry=?"
         args.append(expiry)
     return [dict(r) for r in conn.execute(sql + " ORDER BY instrument, expiry, strike, option_type", args)]
+
+
+# ── W40 (ENT-15): the chain on a date, for option-overlay strategies and their paper fills ─────────
+FO_ALIAS = {"NIFTY50": "NIFTY", "NIFTYBANK": "BANKNIFTY"}      # ATIP index symbol -> NSE F&O underlying
+ATIP_ALIAS = {v: k for k, v in FO_ALIAS.items()}
+
+
+def fo_symbol(symbol: str) -> str:
+    s = str(symbol or "").upper()
+    return FO_ALIAS.get(s, s)
+
+
+def atip_symbol(underlying: str) -> str:
+    u = str(underlying or "").upper()
+    return ATIP_ALIAS.get(u, u)
+
+
+def _iv(v):
+    """Stored IVs are percentages (NSE's chain; W35's bhavcopy IV): as a decimal."""
+    v = _f(v)
+    if v is None or v <= 0:
+        return None
+    return v / 100.0 if v > 3 else v
+
+
+def chain_on(conn, symbol: str, as_of=None, fresh_minutes: int | None = None) -> dict:
+    """
+    The option chain ATIP stored for one session, point in time (W40).
+
+    EOD      fo_contract_daily rows of the latest session <= as_of (default today): close, else
+             settle; IV (decimal), OI, volume, lot size, the underlying's close that day.
+    INTRADAY the latest option_chain_snapshot taken ON the as_of date overrides each contract's
+             quote: mid of bid / ask when both are quoted (ask >= bid > 0), else LTP. With
+             `fresh_minutes` (fills) the snapshot is used only when it is at most that old.
+    Returns {symbol, session, snapshot_ts, source, spot, lot_size, expiries,
+             quotes {(expiry, strike, CE|PE): {price, bid, ask, ltp, close, iv, oi, volume, lot_size, source}}}.
+    Nothing is invented: a contract ATIP has no price for is absent.
+    """
+    from datetime import timedelta
+    u = fo_symbol(symbol)
+    d = (as_of if isinstance(as_of, date) else date.fromisoformat(str(as_of)[:10])) if as_of else date.today()
+    out = {"symbol": u, "session": None, "snapshot_ts": None, "source": None, "spot": None, "lot_size": None,
+           "expiries": [], "quotes": {}}
+    try:
+        sess = conn.execute("SELECT MAX(date) FROM fo_contract_daily WHERE symbol=? AND date<=? AND "
+                            "option_type IN ('CE','PE')", (u, str(d))).fetchone()[0]
+    except Exception:
+        sess = None
+    lots = {}
+    if sess:
+        out["session"] = str(sess)[:10]
+        out["source"] = f"F&O bhavcopy {out['session']}"
+        for r in conn.execute("SELECT expiry, strike, option_type, close, settle, iv, oi, volume, lot_size, underlying "
+                              "FROM fo_contract_daily WHERE symbol=? AND date=? AND option_type IN ('CE','PE') "
+                              "AND expiry>=?", (u, sess, str(d))):
+            px = _f(r[3]) or _f(r[4])
+            if r[9] and not out["spot"]:
+                out["spot"] = float(r[9])
+            if r[8]:
+                lots[int(r[8])] = lots.get(int(r[8]), 0) + 1
+            if not px or px <= 0:
+                continue
+            out["quotes"][(str(r[0])[:10], float(r[1]), r[2])] = {
+                "price": round(px, 2), "bid": None, "ask": None, "ltp": None, "close": px, "iv": _iv(r[5]),
+                "oi": _f(r[6]) or 0.0, "volume": _f(r[7]) or 0.0, "lot_size": int(r[8]) if r[8] else None,
+                "source": out["source"]}
+    try:
+        ts = conn.execute("SELECT MAX(ts) FROM option_chain_snapshot WHERE symbol=? AND ts>=? AND ts<=?",
+                          (u, f"{d} 00:00:00", f"{d} 23:59:59")).fetchone()[0]
+    except Exception:
+        ts = None
+    if ts and fresh_minutes is not None:
+        cutoff = (datetime.now() - timedelta(minutes=int(fresh_minutes))).strftime("%Y-%m-%d %H:%M:%S")
+        if str(ts)[:19] < cutoff:
+            ts = None
+    if ts:
+        out["snapshot_ts"] = str(ts)[:19]
+        src = f"option chain {str(ts)[:16]}"
+        for r in conn.execute("SELECT expiry, strike, option_type, ltp, bid, ask, iv, oi, volume, underlying FROM "
+                              "option_chain_snapshot WHERE symbol=? AND ts=? AND expiry>=?", (u, ts, str(d))):
+            ltp, bid, ask = _f(r[3]), _f(r[4]), _f(r[5])
+            px = (bid + ask) / 2 if bid and ask and ask >= bid > 0 else ltp
+            if r[9]:
+                out["spot"] = float(r[9])
+            if not px or px <= 0:
+                continue
+            key = (str(r[0])[:10], float(r[1]), r[2])
+            prev = out["quotes"].get(key) or {}
+            out["quotes"][key] = {"price": round(px, 2), "bid": bid, "ask": ask, "ltp": ltp, "close": prev.get("close"),
+                                  "iv": _iv(r[6]) or prev.get("iv"), "oi": _f(r[7]) or prev.get("oi") or 0.0,
+                                  "volume": _f(r[8]) or prev.get("volume") or 0.0, "lot_size": prev.get("lot_size"),
+                                  "source": src}
+        out["source"] = src + (f" over {out['source']}" if out["source"] else "")
+    if lots:
+        out["lot_size"] = max(lots.items(), key=lambda kv: kv[1])[0]
+    else:
+        try:
+            r = conn.execute("SELECT lot_size FROM fo_underlying_daily WHERE symbol=? AND date<=? AND lot_size>0 "
+                             "ORDER BY date DESC LIMIT 1", (u, str(d))).fetchone()
+            out["lot_size"] = int(r[0]) if r and r[0] else None
+        except Exception:
+            pass
+    if not out["spot"]:
+        try:
+            r = conn.execute("SELECT underlying_price FROM fo_underlying_daily WHERE symbol=? AND date<=? AND "
+                             "underlying_price>0 ORDER BY date DESC LIMIT 1", (u, str(d))).fetchone()
+            out["spot"] = float(r[0]) if r and r[0] else None
+        except Exception:
+            pass
+    out["expiries"] = sorted({k[0] for k in out["quotes"]})
+    return out

@@ -1683,13 +1683,16 @@ def _w38_compliance():
 
 
 def _w37_options_settle():
-    """Settle paper options that expired today (intrinsic value). No-op without open positions."""
+    """Settle paper options that expired today (intrinsic value) -- the owner's and (W40) the option-overlay
+    strategies' positions -- then mark the strategies' open positions at today's chain. No-op without
+    open positions."""
     if not is_market_day():
         return
     try:
-        from execution.options_paper import settings as opt_settings, settle_expired
+        from execution.options_paper import mark_strategy_positions, settings as opt_settings, settle_expired
         if opt_settings()["enabled"]:
             run_job("options_expiry", settle_expired)
+            run_job("options_strategy_marks", mark_strategy_positions)
     except Exception as e:
         log.warning(f"  Options expiry: {e}")
 
@@ -1995,13 +1998,22 @@ def start_scheduler():
     # ── W8 operations: monitoring, verified backup, webhook delivery ───
     _schedule_ops_jobs()
 
-    # ── W39b: stock SIP (paper) ───
+    # ── W39b: stock SIP (paper); W40: the nightly factor risk model (after post-market) ───
     try:
         from pipeline import w39_jobs
         for line in w39_jobs.schedule_jobs(schedule, run_job):
             log.info(f"  W39b job: {line}")
     except Exception as e:
         log.warning(f"  W39b jobs not scheduled: {e}")
+
+    # ── W40: meta-labelling of the technical signals: scoring 20:45 (after the 20:30 signals),
+    # training Saturday 09:30 -- both no-ops unless config meta_label.enabled (ml/meta_label.py) ───
+    try:
+        from ml.meta_label import schedule_jobs as _meta_label_jobs
+        for line in _meta_label_jobs(schedule, run_job):
+            log.info(f"  W40 job: {line}")
+    except Exception as e:
+        log.warning(f"  W40 meta-label jobs not scheduled: {e}")
 
     # ── Morning catch-up — news and portfolio if the pre-market missed them
     for t in ("08:20", "12:20"):

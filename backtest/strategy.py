@@ -15,7 +15,8 @@ engine logic in a strategy.
             return [Signal("RELIANCE", "BUY", stop_price=..., reason="...")]
 
 Signals: BUY (open), SELL (close all), and for a held position ADD (increase)
-and REDUCE (partial exit) -- see Signal.
+and REDUCE (partial exit) -- see Signal. SHORT / COVER open and close a short leg, which
+the W2 engine simulates as a near-month stock future (backtest/futures.py, W40).
 
 A strategy must be deterministic given (params, data): no clock, no random
 state, no reads outside ctx. That is what makes a run reproducible.
@@ -27,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 
-SIDES = ("BUY", "SELL", "ADD", "REDUCE")
+SIDES = ("BUY", "SELL", "ADD", "REDUCE", "SHORT", "COVER")
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,16 @@ class Signal:
               quantity, or -- neither given -- half of it (the W4 risk engine's
               REDUCE default). At or above the held quantity it closes the position.
 
+    Short legs (W40, QR-05 / QR-06; the W2 engine simulates them as near-month stock
+    FUTURES -- backtest/futures.py has the rules):
+
+      SHORT   open a short of `quantity` shares or `value` rupees of notional, rounded DOWN
+              to whole lots of the near-month future at the decision close; neither given ->
+              sizing.max_position_pct of equity. Capped at max_position_pct. Ignored while
+              the symbol is held (long or short). max_hold_sessions applies; stop_price /
+              target_price do not (no protective stops on futures legs).
+      COVER   buy the whole short back. Ignored (an event) when the symbol is not held short.
+
     BUY / SELL take none of quantity / fraction / value, so every existing
     Signal means exactly what it did.
     """
@@ -69,8 +80,10 @@ class Signal:
         if self.side not in SIDES:
             raise ValueError(f"Signal side must be one of {SIDES}, not {self.side!r}")
         given = [k for k in ("quantity", "fraction", "value") if getattr(self, k) is not None]
-        if self.side in ("BUY", "SELL") and given:
+        if self.side in ("BUY", "SELL", "COVER") and given:
             raise ValueError(f"{self.side} trades a whole position: {given[0]} applies to ADD / REDUCE only")
+        if self.side == "SHORT" and (self.stop_price is not None or self.target_price is not None):
+            raise ValueError("SHORT takes no stop_price / target_price: futures legs have no protective stops")
         if len(given) > 1:
             raise ValueError(f"give at most one of quantity / fraction / value, not {given}")
         q = self.quantity
@@ -82,8 +95,8 @@ class Signal:
             if not 0 < float(self.fraction) <= 1:
                 raise ValueError(f"fraction must be within (0, 1], not {self.fraction!r}")
         if self.value is not None:
-            if self.side != "ADD":
-                raise ValueError("value applies to ADD only")
+            if self.side not in ("ADD", "SHORT"):
+                raise ValueError("value applies to ADD / SHORT only")
             if not float(self.value) > 0:
                 raise ValueError(f"value must be positive, not {self.value!r}")
 
@@ -97,6 +110,20 @@ class PositionView:
     held_sessions: int
 
 
+@dataclass(frozen=True)
+class FuturesView:
+    """A short futures leg the strategy holds (W40): qty is negative shares (lots x lot size)."""
+    symbol: str
+    qty: int
+    entry_price: float
+    entry_date: date
+    held_sessions: int
+    lots: int = 0
+    lot_size: int = 0
+    expiry: date | None = None
+    short: bool = True
+
+
 @dataclass
 class StrategyContext:
     as_of: date                       # the session just closed
@@ -107,6 +134,7 @@ class StrategyContext:
     equity: float
     params: dict = field(default_factory=dict)
     scores: object | None = None      # backtest.data.ScoresHistory when the strategy asked for it
+    futures: dict = field(default_factory=dict)   # symbol -> FuturesView: short legs held (W40)
 
 
 class Strategy:

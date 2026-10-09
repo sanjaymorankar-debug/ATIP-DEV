@@ -2,6 +2,9 @@
 The /quant page (W6): factors (category, coverage, top ranks), composites,
 quant strategies, pairs (spread, z-score, hedge ratio), experiments, portfolio
 exposure, data dependencies. Read from /api/quant/*; nothing is computed here.
+W40: the factor risk model's factors (latest return, t statistic, 20-session return, annualised
+volatility), the regression R^2 and the bias test (/api/quant/risk-model/*); the book view is on
+/trading (Portfolio risk).
 """
 
 import json
@@ -31,6 +34,7 @@ select,button{background:var(--bg);color:var(--text);border:1px solid var(--line
 <h2>Pairs</h2><div id="pr" class="scroll"></div>
 <h2>Experiments</h2><div id="ex" class="scroll"></div>
 <h2>Portfolio exposure (latest)</h2><div id="pf"></div>
+<h2 id="rmh">Factor risk model (W40)</h2><div id="rm"></div>
 </div>
 <script>
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -54,9 +58,15 @@ async function load(){
   const PF=await j('/api/quant/portfolios?limit=1');
   if(PF.length){const p=PF[0],x=p.exposures||{};document.getElementById('pf').innerHTML=`<b>${esc(p.name)}</b> ${p.as_of} · ${p.method} · long ${num(x.long,3)} short ${num(x.short,3)} gross ${num(x.gross,3)} net ${num(x.net,3)} beta ${num(x.beta,3)}`+table(['Sector','Net weight'],Object.entries(x.sector_net||{}).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${num(v,4)}</td></tr>`))}else document.getElementById('pf').innerHTML='<span class="muted">no portfolio built yet (POST /api/quant/portfolios)</span>';
 }
+async function riskModel(){const el=document.getElementById('rm');try{
+  const S=await j('/api/quant/risk-model/status');
+  if(S.status==='NOT_BUILT'){el.innerHTML=`<span class="muted">${esc(S.note)}</span>`;return}
+  const F=await j('/api/quant/risk-model/factors?days=20');const B=(S.bias||{}).summary||{},X=S.exposures||{},R=S.factor_returns||{};
+  el.innerHTML=`<div>${pill(S.status)} model ${esc((S.model||{}).model_hash)} · exposures ${esc(X.first)} → ${esc(X.last)} (${X.latest_estimation_universe??'—'} of ${X.latest_universe??'—'} stocks in the estimation universe) · R² latest ${num(R.r2_latest,3)}, 20-session mean ${num(R.r2_mean_20,3)}`+(B.portfolios?` · bias test: ${B.in_band} of ${B.portfolios} test portfolios inside the 95% band, median ${num(B.median_bias,3)}`:'')+`</div>`+
+   (F.status==='OK'?table(['Factor','Kind','Return '+esc(F.factor_return_date||''),'t','20 sessions','Vol (ann.)'],F.factors.map(f=>`<tr><td>${esc(f.factor)}</td><td class="muted">${f.kind}</td><td>${num(f.return_pct,3)}%</td><td>${num(f.t_stat,2)}</td><td>${num(f.cum_return_pct_20d,2)}%</td><td>${num(f.vol_pct_annual,1)}%</td></tr>`)):`<span class="muted">${esc(F.note||'')}</span>`)}catch(e){el.textContent=e.message}}
 async function ranks(){const k=document.getElementById('key').value;if(!k)return;try{const R=await j('/api/quant/rankings?top=25&key='+encodeURIComponent(k));
   document.getElementById('rk').innerHTML=table(['Rank','Symbol','Score','Raw','Sector','Sector rank'],R.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.symbol)}</td><td>${num(r.score,1)}</td><td>${num(r.raw,4)}</td><td>${esc(r.sector)}</td><td>${r.sector_rank??''}</td></tr>`))}catch(e){document.getElementById('rk').textContent=e.message}}
-load();
+load();riskModel();
 </script></body></html>"""
 
 

@@ -62,13 +62,28 @@ A run with no ADD / REDUCE signal produces exactly the result it did before they
           trade_rows, partial_exits and adds. Every leg is realised once, so the rows' net P&L sums
           to final equity - initial capital when the run ends flat.
 
+Decisions it does not simulate are reported like the W2 engine reports them:
+  - a signal for a symbol outside the universe -> event "signal outside universe ignored";
+  - a signal side other than BUY / SELL / ADD / REDUCE -> event "<side> not simulated by the
+    event-driven engine", counted in the bias report's warnings;
+  - decisions a W3 strategy version made that never became signals -- SHORT / COVER, ADD / REDUCE
+    of a symbol not held (strategy_engine/adapter.py counts them in `not_simulated`) -> the bias
+    report's warning "decisions not simulated: ... -- the backtest is a long-only cash book (no
+    short legs)", the W2 engine's wording (backtest.engine._not_simulated_warning).
+
 Output has the engine's shape (trades, equity, metrics, drawdowns, events, bias_report), so it is
-stored with backtest.store and shown wherever runs are listed (kind='event_driven').
+stored with backtest.store and shown wherever runs are listed (kind='event_driven'). As in the W2
+engine, the last equity row's daily_return includes the close-out at the end of the window (its
+costs), so the stored daily returns chain to the final equity.
 
     run(request, conn)            request = a normal backtest request (backtest.service.resolve_config)
                                   plus "event_driven": {timeframe, latency_bars, participation_cap,
                                   slices, ttl_bars, impact ("sqrt" | "none"), impact_y}
     run_and_store(request)        -> run_id
+    execute_child(request, kind, parent_run_id, window_index)
+                                  one run stored under a parent study run (CPCV's cpcv_trial,
+                                  backtest/cpcv.py run_cpcv(engine="event_driven")): the run row
+                                  is created first, so a failure is stored FAILED with its error
 """
 
 from __future__ import annotations
@@ -84,6 +99,40 @@ from backtest import metrics as M
 
 ED_DEFAULTS = {"timeframe": "1d", "latency_bars": 1, "participation_cap": 0.1, "slices": 1, "ttl_bars": 26,
                "impact": "sqrt", "impact_y": None}
+TIMEFRAMES = ("1d", "15m", "5m", "1m")
+
+
+def settings(request: dict) -> tuple:
+    """(the backtest request without "event_driven", its event_driven settings over ED_DEFAULTS)."""
+    req = dict(request)
+    ed = dict(ED_DEFAULTS)
+    ed.update(req.pop("event_driven", None) or {})
+    if ed["timeframe"] not in TIMEFRAMES:
+        raise ValueError("event_driven.timeframe must be 1d, 15m, 5m or 1m")
+    return req, ed
+
+
+def snapshot(request: dict) -> dict:
+    """The configuration snapshot an event-driven run is stored with -- what run_and_store stores
+    after the run, built before it (execute_child): the resolved backtest request plus the
+    event_driven settings and their timeframe."""
+    from backtest.service import resolve_config
+    req, ed = settings(request)
+    snap = dict(resolve_config(req), event_driven=ed)
+    snap["timeframe"] = ed["timeframe"]
+    return snap
+
+
+def _decisions_not_simulated(strat) -> list:
+    """Decisions a strategy made that never reached this engine as signals. A W3 strategy version
+    (strategy_engine/adapter.py) counts them in `not_simulated` ({action: n}): SHORT / COVER, and
+    ADD / REDUCE of a symbol not held. Stated as the W2 engine states them
+    (backtest.engine._not_simulated_warning), kept here so the two engines can evolve apart."""
+    skipped = getattr(strat, "not_simulated", None) or {}
+    if not skipped:
+        return []
+    what = ", ".join(f"{a} x{n}" for a, n in sorted(skipped.items()))
+    return [f"decisions not simulated: {what} -- the backtest is a long-only cash book (no short legs)"]
 
 
 @dataclass(order=True)
@@ -185,11 +234,7 @@ def run(request: dict, conn) -> dict:
     from backtest.strategy import PositionView, StrategyContext
     from orders.risk import size_position
 
-    req = dict(request)
-    ed = dict(ED_DEFAULTS)
-    ed.update(req.pop("event_driven", None) or {})
-    if ed["timeframe"] not in ("1d", "15m", "5m", "1m"):
-        raise ValueError("event_driven.timeframe must be 1d, 15m, 5m or 1m")
+    req, ed = settings(request)
     snap = resolve_config(req)
     strat = make_strategy(snap["strategy_id"], snap.get("params"), snap.get("strategy_version")
                           if snap.get("strategy_definition_hash") else None)
@@ -429,7 +474,8 @@ def run(request: dict, conn) -> dict:
             pending_sells = {o.symbol for o in working if o.side == "SELL"}
             pending_changes = {(o.side, o.symbol) for o in working if o.side in ("ADD", "REDUCE") and not o.done}
             for sig in signals:
-                if sig.symbol not in universe.symbols:
+                if sig.symbol not in universe.symbols:      # reported as the W2 engine reports it
+                    events.append({"date": d, "symbol": sig.symbol, "event": "signal outside universe ignored"})
                     continue
                 if sig.side not in ("BUY", "SELL", "ADD", "REDUCE"):
                     events.append({"date": d, "symbol": sig.symbol,
@@ -552,8 +598,13 @@ def run(request: dict, conn) -> dict:
             trades.append(row)
             trade_legs.append((p.uid, net, p.cost))
         positions.clear()
+        prev = equity[-2]["equity"] if len(equity) > 1 else float(snap["initial_capital"])
         equity[-1].update({"cash": round(cash, 2), "positions_value": 0.0, "equity": round(cash, 2), "exposure_pct": 0.0,
-                           "n_positions": 0, "realized_cum": round(realized, 2), "unrealized": 0.0})
+                           "n_positions": 0, "realized_cum": round(realized, 2), "unrealized": 0.0,
+                           # the close-out (and its costs) is in the last session's return, as in the W2
+                           # engine; it used to be left out, so chained daily returns (CPCV, PBO, the
+                           # return bootstrap) overstated the final equity by the close-out costs
+                           "daily_return": round(cash / prev - 1, 8) if prev else None})
     for o in working:
         if not o.done:
             events.append({"date": last_d, "symbol": o.symbol, "event": f"{o.side} {o.qty - o.filled} unfilled at end"})
@@ -585,6 +636,7 @@ def run(request: dict, conn) -> dict:
         "warnings": (["intraday bars: only sessions stored in intraday_bars (DP-03 retention) are simulated"]
                      if ed["timeframe"] != "1d" else [])
                     + (["survivorship bias: universe is today's constituents"] if universe.survivorship_bias else [])
+                    + _decisions_not_simulated(strat)
                     + ([f"signals not simulated by the event-driven engine: "
                         f"{', '.join(f'{k} x{n}' for k, n in sorted(not_simulated.items()))}"]
                        if not_simulated else []),
@@ -593,6 +645,10 @@ def run(request: dict, conn) -> dict:
     return {"strategy": strat.describe(), "sessions": len(set(days)), "bars": len(bars.points), "trades": trades,
             "equity": equity, "metrics": metrics, "drawdowns": M.drawdown_episodes(dts, eqs), "events": events,
             "bias_report": bias, "data_fingerprint": history.fingerprint(), "snapshot": snap_out}
+
+
+SUMMARY_KEYS = ("total_return", "cagr", "sharpe", "max_drawdown", "fills", "partial_fills", "slippage_paid",
+                "costs_paid")
 
 
 def run_and_store(request: dict) -> dict:
@@ -605,9 +661,31 @@ def run_and_store(request: dict) -> dict:
         snap["timeframe"] = snap["event_driven"]["timeframe"]
         rid = store.create_run(conn, snap, kind="event_driven")
         store.mark_running(conn, rid)
-        store.save_result(conn, rid, res, summary={k: res["metrics"].get(k) for k in
-                                                   ("total_return", "cagr", "sharpe", "max_drawdown",
-                                                    "fills", "partial_fills", "slippage_paid", "costs_paid")})
+        store.save_result(conn, rid, res, summary={k: res["metrics"].get(k) for k in SUMMARY_KEYS})
         return {"run_id": rid, "metrics": res["metrics"], "trades": len(res["trades"]), "bars": res["bars"]}
+    finally:
+        conn.close()
+
+
+def execute_child(request: dict, kind: str, parent_run_id: str, window_index: int | None = None) -> tuple:
+    """One event-driven run under a parent study run, like backtest.service create + execute for the
+    W2 engine: the run row (kind `kind`, the snapshot()) is created and marked RUNNING first, then the
+    run either completes (trades, equity, drawdowns stored) or is marked FAILED with its error.
+    -> (run_id, {"run_id", "status": "COMPLETED", "metrics"} | {"run_id", "status": "FAILED", "error"})."""
+    from backtest import store
+    from db.schema import get_connection
+    snap = snapshot(request)                    # a request that cannot resolve raises, nothing stored
+    conn = get_connection()
+    try:
+        rid = store.create_run(conn, snap, kind=kind, parent_run_id=parent_run_id, window_index=window_index)
+        store.mark_running(conn, rid)
+        try:
+            res = run(request, conn)
+        except Exception as e:
+            store.mark_failed(conn, rid, f"{type(e).__name__}: {e}")
+            return rid, {"run_id": rid, "status": "FAILED", "error": str(e)}
+        res.pop("snapshot")
+        store.save_result(conn, rid, res, summary={k: res["metrics"].get(k) for k in SUMMARY_KEYS})
+        return rid, {"run_id": rid, "status": "COMPLETED", "metrics": res["metrics"]}
     finally:
         conn.close()

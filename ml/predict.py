@@ -111,6 +111,9 @@ def predict(conn, model_id: str, as_of=None, version: str | None = None, symbols
     m = REG.get_model(conn, model_id)
     if not m:
         raise REG.ModelRegistryError(f"no model {model_id}")
+    if m.get("purpose") == "meta_label":
+        raise REG.ModelRegistryError(f"{model_id} is a meta-label model: it scores stored technical signals "
+                                     "(python -m ml.meta_label score), not symbols")
     mv = REG.get_version(conn, model_id, version)
     if not mv:
         raise REG.ModelRegistryError(f"model {model_id} has no {'version ' + version if version else 'ACTIVE version'}")
@@ -195,7 +198,9 @@ def run_scheduled_predictions(trade_date=None) -> dict:
     conn = get_connection()
     try:
         done, failed = {}, {}
-        for (mid,) in conn.execute("SELECT DISTINCT model_id FROM ml_model_version WHERE status='ACTIVE'").fetchall():
+        for (mid,) in conn.execute("SELECT DISTINCT v.model_id FROM ml_model_version v JOIN ml_model m ON "
+                                   "m.model_id=v.model_id WHERE v.status='ACTIVE' AND m.purpose<>'meta_label'"
+                                   ).fetchall():               # W40: meta-label models score signals, not symbols
             try:
                 done[mid] = predict(conn, mid, trade_date)["rows"]
             except Exception as e:
