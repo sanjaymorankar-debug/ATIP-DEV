@@ -702,19 +702,21 @@ def test_nightly_job_is_registered_after_post_market_and_obeys_its_switch(monkey
     monkeypatch.setattr(w39_jobs, "config", lambda: {"sip_enabled": False})
     fake = _Schedule()
     lines = w39_jobs.schedule_jobs(fake, "RUN_JOB")
-    assert [(t, a) for t, fn, a in fake.jobs] == [("21:45", ("risk_model", w39_jobs.risk_model_run))]
+    def risk_jobs(sched):           # the other W40 job in this module (total_return) is not this test's
+        return [(t, a) for t, fn, a in sched.jobs if a and a[0] == "risk_model"]
+    assert risk_jobs(fake) == [("21:45", ("risk_model", w39_jobs.risk_model_run))]
     assert any("risk_model" in x for x in lines)
     from pipeline.scheduler import POSTMARKET_CATCHUP_TIME, POSTMARKET_RUN_TIME, EOD_LATE_RUN_TIME
     assert max(POSTMARKET_RUN_TIME, POSTMARKET_CATCHUP_TIME, EOD_LATE_RUN_TIME) < "21:45"
     monkeypatch.setattr(RM, "settings", lambda: RM.validate({"enabled": False}))
     fake2 = _Schedule()
     w39_jobs.schedule_jobs(fake2, "RUN_JOB")
-    assert fake2.jobs == []
+    assert risk_jobs(fake2) == []
     assert RM.run_scheduled()["status"] == "SKIPPED"
     monkeypatch.setattr(RM, "settings", lambda: RM.validate({"time": "22:05"}))
     fake3 = _Schedule()
     w39_jobs.schedule_jobs(fake3, "RUN_JOB")
-    assert fake3.jobs[0][0] == "22:05"
+    assert [t for t, _ in risk_jobs(fake3)] == ["22:05"]
 
 
 def test_settings_read_config_json_and_ignore_bad_values(tmp_path, monkeypatch):
