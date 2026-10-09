@@ -23,7 +23,8 @@ from pathlib import Path
 
 from db.postgres import UnsupportedSQL, keys_from_ddl, translate
 
-SKIP_DIRS = {".git", "tests", "__pycache__", "atip_data", ".venv", "venv", "node_modules"}
+SKIP_DIRS = {".git", "tests", "__pycache__", "atip_data", ".venv", "venv", "node_modules",
+             ".claude"}                                       # W40: local agent worktrees are not ATIP code
 CALLS = {"execute", "executemany", "executescript"}
 
 

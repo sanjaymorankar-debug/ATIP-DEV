@@ -14,7 +14,10 @@ The 7-year history backfill is #4's data/history_backfill.py (table prices_daily
     technical_ext (+ columns)        TA-08b / TA-05  sector-relative strength, swing-anchored Fibonacci
     ml_model_version (+ columns)  ML-18  code_version (git commit, +dirty) and lineage_json (dataset /
                                          feature set / config / backtest links) of every trained version
+    index_total_return            PERF-001-05  the estimated Nifty total-return index (data/total_return.py)
 """
+
+from data.total_return import DDL as _TRI
 
 W39B_TABLES = {
     "order_basket": (
@@ -40,6 +43,7 @@ W39B_TABLES = {
             TIMESTAMP, symbol TEXT, quantity INTEGER, price_ref REAL, status TEXT, order_status TEXT, order_id TEXT,
             detail TEXT, PRIMARY KEY (plan_id, due_date))""",
     ),
+    "index_total_return": _TRI,                                     # W40 PERF-001-05
 }
 
 W39B_COLUMNS = {

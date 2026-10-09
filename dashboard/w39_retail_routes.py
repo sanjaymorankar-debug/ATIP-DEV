@@ -15,6 +15,10 @@ on every POST. Authz (enterprise/authz.py): GET /api/orders -> execution:read, P
     GET  /api/orders/sip/{plan_id}                 one plan + its executions
     POST /api/orders/sip/{plan_id}/status          {status: ACTIVE | PAUSED | ENDED}
     POST /api/orders/sip/run                       execute what is due now (PAPER only)
+
+W40 (PERF-001-05), authz: GET /api/data -> dashboard:read, POST -> research:run:
+    GET  /api/data/total-return?index=NIFTY50&start&end   the estimated total-return index and its summary
+    POST /api/data/total-return/rebuild            {index?, members?}  rebuild it now (also nightly)
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
@@ -90,6 +94,33 @@ def register(app, guard, Req, get_connection, json_safe):
         return await run(lambda conn: BK.execute(conn, basket_id, confirm=b.get("confirm") is True))
 
     # ── EX-20 SIP ──
+    @app.get("/api/data/total-return")
+    async def api_total_return(index: str = "NIFTY50", start: str = None, end: str = None):
+        def f(conn):
+            from datetime import date
+            from data import total_return as TR
+            rows = TR.series(conn, index, date.fromisoformat(start) if start else None,
+                             date.fromisoformat(end) if end else None)
+            if not rows:
+                raise LookupError(f"no total-return series for {index.upper()} "
+                                  f"(built nightly; or POST /api/data/total-return/rebuild)")
+            return {"index": index.upper(), "symbol": TR.tr_symbol(index), "summary": TR.summary(rows),
+                    "rows": [{k: (str(v) if k == "date" else v) for k, v in r.items()} for r in rows]}
+        return await run(f)
+
+    @app.post("/api/data/total-return/rebuild", dependencies=guard)
+    async def api_total_return_rebuild(request: Req):
+        b = await body(request)
+
+        def f(conn):
+            from data import total_return as TR
+            members = b.get("members")
+            if members is not None and not (isinstance(members, int) and not isinstance(members, bool)
+                                            and 1 <= members <= 500):
+                raise ValueError("members must be an integer 1..500")
+            return TR.run(conn, b.get("index"), members)
+        return await run(f)
+
     @app.get("/api/orders/sip")
     async def api_sip_plans():
         from orders import sip as SIP

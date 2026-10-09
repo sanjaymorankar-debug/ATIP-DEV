@@ -76,6 +76,7 @@ INVENTORY = {
     "macro_event": ("research", False, "kept: public release dates (W39 event calendar)"),
     "intraday_signal": ("research", False, "kept: the intraday scans' own track record (W39)"),
     "earnings_surprise": ("research", False, "kept: recomputed nightly from the stored quarters (W39b)"),
+    "index_total_return": ("market", False, "kept: rebuilt nightly from prices and dividends (W40)"),
     "ops_idempotency": ("operational", False, "expires after 24 h"),
     "ops_secret_access": ("operational", False, "names only; kept"),
     # W38 (ENT-17): the rest of the enterprise tables
