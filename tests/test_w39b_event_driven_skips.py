@@ -22,8 +22,13 @@ import pytest
 from tests.test_w39_backtest_partial import (LEGACY, WAVES, _days, _flat, _mf, _run, _run_ed, _script, _seed,
                                              _seed_waves, _sig, _store)
 
-NOT_SIMULATED = ("decisions not simulated: ADD (not held) x1, COVER x2, REDUCE (not held) x1, SHORT x1 -- the "
-                 "backtest is a long-only cash book (no short legs)")
+# W40 (QR-05 / QR-06): the W2 engine simulates SHORT / COVER as near-month stock futures, so its count no
+# longer lists SHORT and calls a COVER of nothing "not held short"; the event engine has no short legs and
+# reports a SHORT as a signal it does not simulate.
+SKIPPED = "decisions not simulated: ADD (not held) x1, COVER (not held short) x2, REDUCE (not held) x1 -- "
+NOT_SIMULATED_W2 = SKIPPED + ("each names a position the backtest did not hold in that form (long legs are a "
+                              "cash book; SHORT / COVER are simulated as near-month stock futures)")
+NOT_SIMULATED_ED = SKIPPED + "the backtest is a long-only cash book (no short legs)"
 
 
 @pytest.fixture
@@ -38,7 +43,8 @@ def db(temp_db, tmp_path, monkeypatch):
 def test_a_versions_skipped_decisions_are_reported_by_both_engines(db, monkeypatch):
     """The real adapter (strategy_engine/adapter.py) over a stored version whose evaluator is replaced:
     on the first session it decides SHORT AAA, COVER BBB twice and BUY CCC; on the second ADD AAA and
-    REDUCE BBB, neither held. The BUY trades; the other five are counted, never traded."""
+    REDUCE BBB, neither held. The BUY trades; the other five are reported, never traded (W40: the W2 engine
+    tries the SHORT as a futures leg and refuses it without futures history; the event engine has no short legs)."""
     import strategy_engine.adapter as AD
     from backtest import engine, service
     from backtest import event_driven as ED
@@ -62,10 +68,16 @@ def test_a_versions_skipped_decisions_are_reported_by_both_engines(db, monkeypat
     finally:
         conn.close()
     for res in (w2, ed):
-        assert NOT_SIMULATED in res["bias_report"]["warnings"]
         assert [(t["symbol"], t["exit_reason"]) for t in res["trades"]] == [("CCC", "END_OF_WINDOW")]
-        assert not any(e["symbol"] in ("AAA", "BBB") for e in res["events"])     # warnings, not events
-    assert not any("signals not simulated by the event-driven engine" in w for w in ed["bias_report"]["warnings"])
+        assert not any(e["symbol"] == "BBB" for e in res["events"])              # warnings, not events
+    # W2: the SHORT becomes a futures leg, refused here (no futures history) with an event and a warning
+    assert NOT_SIMULATED_W2 in w2["bias_report"]["warnings"]
+    assert w2["bias_report"]["futures"]["refused"] == {"AAA": 1}
+    assert [e["symbol"] for e in w2["events"]] == ["AAA"] and "short refused" in w2["events"][0]["event"]
+    # event-driven: no short legs -- the SHORT is a signal it does not simulate, counted once
+    assert NOT_SIMULATED_ED in ed["bias_report"]["warnings"]
+    assert "signals not simulated by the event-driven engine: SHORT x1" in ed["bias_report"]["warnings"]
+    assert [e["symbol"] for e in ed["events"]] == ["AAA"]
     # a version that only BUYs / EXITs: no such warning in either engine
     plan.clear()
     plan[d[0]] = [("CCC", "BUY")]

@@ -877,8 +877,11 @@ LEGACY_W40 = {
                      2, "68a431a00de983165f939174ed2b77c22922a00fb1cec5ea2ffc1e20d919c918"),
     "ed_pr_single": ({"strategy_id": "pr_single", "universe": ["AAA", "BBB"]},
                      28, "d3198e9d3640e330ccf1caba73f672e284296ab3803a3ae9a599f072de0060fd"),
+    # re-pinned on merging BT-17's close-out fix (was b920c72d...): the event engine's last equity row now
+    # carries the end-of-window close-out in its daily_return; the full result differs in exactly that one
+    # leaf (equity[186].daily_return 4.418e-05 -> -4.59e-05). Nothing of the W40 futures work changes it.
     "ed_pf_fut_nofno": ({"strategy_id": "pf_fut_nofno", "universe": ALL6},
-                        2, "b920c72da978c3d66b2b5b6d03665cb67ce5fd9ec81f049e900ae604b7b9bbff"),
+                        2, "f39275a58471f4341a135abc124d03d282bc53fdfbde626788e675ef9a71e133"),
 }
 
 
