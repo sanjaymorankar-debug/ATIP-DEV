@@ -52,12 +52,11 @@ cryptography>=41.0
 tqdm>=4.66.0
 openpyxl>=3.1.0
 
-# ── Database backends beyond SQLite (Optional) ───────────────────────────
-# SQLite is the default and needs nothing installed. The hosted deployment runs
-# on MySQL (db/mysql.py); PostgreSQL (db/postgres.py) is the earlier W38 path.
-# Both stay opt-in behind config database.backend + allow_experimental, so
-# neither driver is required for a normal local run.
-#
-#   MySQL / MariaDB:  pip install PyMySQL
-#   PostgreSQL:       pip install "psycopg[binary]"
-PyMySQL>=1.1.0
+# ── Server database: PostgreSQL ──────────────────────────────────────────
+# SQLite is the default and needs nothing installed. PostgreSQL (db/postgres.py)
+# is ATIP's one server database target -- the MySQL backend (and PyMySQL) was
+# removed. The runtime moves to it only behind config database.backend =
+# "postgresql" + allow_experimental + ATIP_DATABASE_URL (docs/POSTGRESQL_MIGRATION.md),
+# so a local SQLite run never imports the driver; it is listed so a server
+# install, tools/sqlite_to_postgres.py and tools/schema_sql.py work out of the box.
+psycopg[binary]>=3.2
