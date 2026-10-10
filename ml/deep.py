@@ -269,8 +269,8 @@ def benefit_check(conn, dataset_spec: dict, params: dict | None = None, baseline
 
 def allowed_to_activate(conn, dataset_id: str) -> tuple:
     """(ok, why) for a neural_network version trained on dataset_id."""
-    # rowid (ctid on PostgreSQL, which db.postgres.translate allows as an ORDER BY
-    # tie-breaker because ml_dl_benefit is append-only): picks the LATEST check when two
+    # rowid (on PostgreSQL the identity `seq` column db.postgres gives the entry-order
+    # tables, db.backend.ENTRY_ORDER_TABLES): picks the LATEST check when two
     # share a created_at, which TIMESTAMP's one-second resolution makes likely for checks
     # queued together.
     r = conn.execute("SELECT verdict, reason FROM ml_dl_benefit WHERE dataset_id=? "

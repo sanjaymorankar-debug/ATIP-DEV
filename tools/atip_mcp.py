@@ -6,8 +6,8 @@ screener, signals, market pulse, research reports and scorecards next to the Dha
                Written to the specification directly, so it needs no new package. Stdout carries only
                protocol messages; anything an imported module prints goes to stderr.
     read-only  every tool reads; there is no tool that writes, orders, cancels or changes a setting. The
-               SQLite connection is opened with PRAGMA query_only, so even a bug in a reader cannot write
-               (a PostgreSQL deployment: read-only by the tool set alone). `open_orders` reads your
+               connection is opened with PRAGMA query_only (on PostgreSQL, db/postgres.py makes that a READ
+               ONLY transaction mode), so even a bug in a reader cannot write. `open_orders` reads your
                Dhan order book through the broker API (read-only call). No tool keeps a cache table: what
                is computed on a call (the DVM's screener snapshot, a SIP, an earnings surprise) lives in
                memory only.
@@ -199,12 +199,12 @@ def _finite(o):
 
 
 def connect():
-    """A connection that cannot write (SQLite PRAGMA query_only)."""
+    """A connection that cannot write (PRAGMA query_only; READ ONLY transactions on PostgreSQL)."""
     from db.schema import get_connection
     conn = get_connection()
     try:
         conn.execute("PRAGMA query_only = ON")
-    except Exception as e:                         # not SQLite: read-only by the tool set alone
+    except Exception as e:                         # an engine without it: read-only by the tool set alone
         log.info(f"query_only not applied: {e}")
     return conn
 

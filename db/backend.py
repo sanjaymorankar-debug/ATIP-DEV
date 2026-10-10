@@ -56,6 +56,20 @@ def backend(url: str | None = None) -> str:
     raise ValueError("unsupported database URL scheme (sqlite:/// or postgresql://)")
 
 
+# Tables whose row ORDER carries meaning, not just their contents. SQLite gets that order
+# from its implicit rowid; PostgreSQL has no stable equivalent (ctid moves when a row is
+# updated or the table is vacuumed full), so db.postgres.ddl() gives these tables an
+# identity column, ENTRY_ORDER_COLUMN, and db.postgres.translate() reads `rowid` on them
+# as that column -- so a query can keep writing `rowid` and be right on both engines.
+#
+# perf_ledger is here for a measured reason, recorded in wealth/perf/engine.py: its own
+# txn_id is a random id, and ordering by it put a same-day SELL before its BUY about half
+# the time, which capped the sell as EXCESS_SELL and lost the round trip. This is P&L
+# correctness, not tidiness. ml_dl_benefit wants the latest row when two benefit checks
+# share a created_at (ml/deep.allowed_to_activate).
+ENTRY_ORDER_TABLES = frozenset(("perf_ledger", "ml_dl_benefit"))
+ENTRY_ORDER_COLUMN = "seq"
+
 def masked_url(url: str | None = None) -> str:
     return re.sub(r"//([^:/@]+):([^@]+)@", r"//\1:***@", url or database_url())
 
