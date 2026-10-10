@@ -23,6 +23,10 @@ desktop.ini
 # W38 OPS-04: filled-in container env and the PostgreSQL password (deploy/atip.env.example is the template)
 deploy/atip.env
 deploy/pg_password.txt
+# MySQL passwords from the removed docker compose --profile mysql (PostgreSQL replaced it,
+# 2026-10-09); still ignored so a leftover secret file on a server is never committed
+deploy/mysql_password.txt
+deploy/mysql_root_password.txt
 
 # W39b: temporary git worktrees made by agent tooling (each is a full checkout)
 .claude/worktrees/
