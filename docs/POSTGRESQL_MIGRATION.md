@@ -26,18 +26,38 @@ ATIP runs on SQLite (WAL) and **keeps doing so by default** until the runtime sw
 - 2-argument `MAX` / `MIN` become `GREATEST` / `LEAST`.
 - `LIKE` becomes `ILIKE`, because SQLite's LIKE is case-insensitive.
 - `SUM(<comparison>)` gets a cast to int, because SQLite booleans are 0 and 1.
-- `rowid` used as an ORDER BY tie-breaker becomes `ctid`. This is only valid on append-only tables, which is where ATIP uses it.
+- `rowid` on `perf_ledger` / `ml_dl_benefit` becomes their identity `seq` column (`db.backend.ENTRY_ORDER_TABLES`). Any other `rowid` used as an ORDER BY tie-breaker becomes `ctid`, which is only valid on append-only tables.
+- `BEGIN IMMEDIATE` takes a transaction-scoped advisory lock (one writer at a time, as in SQLite); `COMMIT` / `ROLLBACK` go through the connection.
+- `CREATE TRIGGER IF NOT EXISTS` becomes `CREATE OR REPLACE TRIGGER`. `DROP TRIGGER name` gets its `ON table` from the catalogue.
+- `PRAGMA query_only = ON` makes the following transactions `READ ONLY` (the MCP tools rely on this).
+- `cursor.lastrowid` is read with `lastval()`.
 - `sqlite_master` and `PRAGMA table_info` are answered from `information_schema`.
 - The connection PRAGMAs become no-ops.
 
 Anything else raises `UnsupportedSQL` and names the construct. A missed query fails loudly rather than returning different data.
 
-**Status (2026-10-09, after the MySQL removal):**
-- 1,649 statements; 1,646 (99.8 %) translate automatically.
-- The 3 that don't: migration 0006's one-time `entry_seq=rowid` backfill (it numbers rows written on SQLite before W39; `atip_schema.postgresql.sql` records 0006 as applied), `tools/atip_mcp.py`'s `PRAGMA query_only` (its SQLite read-only guard), and the one-off SQLite repair `tools/repair_news_timezone.py`.
+**Status (2026-10-10):**
+- 1,648 statements; 1,647 (99.9 %) translate automatically.
+- The one that doesn't is the one-off SQLite repair `tools/repair_news_timezone.py` (`strftime()`).
 - (W38 measured 1,327 statements at 99.7 %.)
 
+## What the connection does beyond translating
+
+`PgConnection` makes PostgreSQL behave the way ATIP's SQLite code expects:
+
+- **Session time zone pinned to UTC.** SQLite's `CURRENT_TIMESTAMP` and `date('now')` are UTC. A PostgreSQL server installed from packages runs in the OS zone (IST), so without the pin, defaulted timestamps were 5h30m off.
+- **A failed statement fails alone.** PostgreSQL normally aborts the whole transaction. Inside a write transaction each statement now runs in a savepoint; a failed read outside one rolls back a transaction that has written nothing. Without this, a "is the table there yet?" probe after a write threw the write away at the next commit.
+- **Entry order.** New `perf_ledger` / `ml_dl_benefit` tables get `seq`. One made by an earlier release gains the column on the next start; rows are numbered in physical order, which on these append-only tables is the order they were written. `tools/sqlite_to_postgres.py` copies them in rowid order.
+
 Run `python -m db.dialect_scan --details` to see the current list.
+
+## Verified (2026-10-10, native build)
+
+On a throwaway PostgreSQL 16, a database built from nothing with `init_db()` + `seed_weights()` + `ops.migrations.apply()`, with the runtime switched over the normal way:
+- Migrations 0001-0006 all apply, a second run finds nothing pending, and `ops.migrations.validate()` is clean. Before this, every migration failed at `BEGIN IMMEDIATE`, so a database built this way had no append-only guards and lacked the migrations' indexes.
+- Its tables, columns, indexes and the 16 append-only triggers are identical to `db/sql/atip_schema.postgresql.sql` loaded into an empty database (the file additionally holds the tables the order / paper / signal / strategy / recovery modules create on first use).
+- On the loaded file: `ops.jobs.acquire()`, `ml.deep.allowed_to_activate()`, `cursor.lastrowid` and `PRAGMA query_only` work, and the append-only guards fire.
+- `tests/test_postgres_backend.py` runs live in CI against a PostgreSQL 16 service.
 
 ## Verified (2026-10-02)
 

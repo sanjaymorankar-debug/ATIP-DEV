@@ -139,7 +139,9 @@ What the translation does:
 | `INSERT OR IGNORE` / `INSERT OR REPLACE` | `ON CONFLICT DO NOTHING` / an upsert on the unique key the inserted columns cover |
 | `RAISE(ABORT, 'msg')` in a trigger | a row trigger calling `atip_append_only('msg')` |
 | `` `signal` `` (backticked columns) | `"signal"` |
-| `rowid` as an ORDER BY tie-breaker | `ctid` (append-only tables only) |
+| `rowid` on `perf_ledger` / `ml_dl_benefit` | their identity `seq` column (other ORDER BY tie-breakers: `ctid`, append-only tables only) |
+| `BEGIN IMMEDIATE` | a transaction-scoped advisory lock |
+| `CREATE TRIGGER IF NOT EXISTS` | `CREATE OR REPLACE TRIGGER` |
 
 **Existing data:** migrate a backup copy with `tools/sqlite_to_postgres.py`
 (dry run, then `--target postgresql://... --execute`; it verifies row counts per table).
@@ -153,7 +155,7 @@ use constructs with no automatic translation. The scanner lists them:
 python -m db.dialect_scan --details
 ```
 
-`strftime()` and any `rowid` that is not an ORDER BY tie-breaker raise `UnsupportedSQL`
+`strftime()` and any `rowid` that is neither an entry-order column nor an ORDER BY tie-breaker raise `UnsupportedSQL`
 rather than being silently mistranslated. Run the scheduler's write jobs for a few
 days on a PostgreSQL copy before relying on it (DBS-05's open item).
 
