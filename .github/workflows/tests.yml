@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     # PostgreSQL is ATIP's server database, so the live tests in tests/test_postgres_backend.py
     # run here against a real server instead of being skipped. The database they name is
-    # dropped and recreated by the tests; it is a throwaway.
+    # dropped and recreated by the tests; it is a throwaway. This service is the only
+    # database CI ever reaches: no Neon URL or credential belongs in this workflow.
+    # tests/test_neon_parity.py's TLS / PgBouncer checks skip here (no TLS, no pooler);
+    # TEST_SPEC.md level S7 runs them against a local stand-in.
     services:
       postgres:
         # Docker Hub's official image, the one bkesari-platform's CI uses. This

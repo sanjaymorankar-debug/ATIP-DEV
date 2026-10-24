@@ -19,6 +19,7 @@ exception classes at callers written to catch sqlite3's.
 
 import os
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -100,6 +101,101 @@ def test_a_runtime_still_switched_to_mysql_refuses_to_start(monkeypatch, tmp_pat
     (tmp_path / "atip_data" / "config.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(S, "_PG_URL", [])
     assert S.pg_runtime_url() is None
+
+
+def test_config_validation_reports_the_database_the_runtime_actually_uses(monkeypatch, tmp_path):
+    """db.backend.database_url() used to fall back to the generic DATABASE_URL, which the
+    runtime ignores. With another project's URL there (under the Neon convention every
+    tier's .env has one: its pooled URL), validation reported an "EXPERIMENTAL PostgreSQL
+    runtime" while ATIP was running on SQLite."""
+    import db.schema as S
+    from db.backend import backend, database_url
+    from ops.config import validate
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "atip_data").mkdir()
+    cfg = tmp_path / "atip_data" / "config.json"
+
+    def db_findings():
+        return {(f["level"], f["key"]) for f in validate()
+                if f["key"] in ("database.backend", "DATABASE_URL", "ATIP_DATABASE_URL")}
+
+    cfg.write_text('{"database": {"backend": "postgresql", "allow_experimental": true}}', encoding="utf-8")
+    monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://other:pw@ep-other-pooler.example.invalid/other")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() is None and backend() == "sqlite" and database_url().startswith("sqlite:")
+    # "ignored", never a runtime claim; and the switched config without ATIP's own URL is an error
+    assert db_findings() == {("warning", "DATABASE_URL"), ("error", "ATIP_DATABASE_URL")}
+    cfg.write_text("{}", encoding="utf-8")
+    assert db_findings() == {("warning", "DATABASE_URL")}
+
+    # ATIP's own URL with half the switch: an error naming what is missing, not a runtime claim
+    monkeypatch.delenv("DATABASE_URL")
+    monkeypatch.setenv("ATIP_DATABASE_URL", "postgresql://bk_atip_app:pw@127.0.0.1:1/bk_atip")
+    cfg.write_text('{"database": {"allow_experimental": true}}', encoding="utf-8")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() is None
+    assert db_findings() == {("error", "ATIP_DATABASE_URL")}
+
+    # all three switches: the runtime is PostgreSQL, and validation says so
+    cfg.write_text('{"database": {"backend": "postgresql", "allow_experimental": true}}', encoding="utf-8")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() == "postgresql://bk_atip_app:pw@127.0.0.1:1/bk_atip"
+    assert db_findings() == {("warning", "database.backend")}
+
+
+def test_the_migration_tool_upgrades_the_copy_where_no_runtime_switch_can_reach(monkeypatch, tmp_path):
+    """tools/sqlite_to_postgres.py first brings the COPY up to this release's schema with
+    init_db() in a subprocess. That subprocess ran in the project folder with the caller's
+    environment, so on a Mac already switched to PostgreSQL (config.json + ATIP_DATABASE_URL in
+    the environment or .env) its init_db() went to the PostgreSQL target, not the copy. It now
+    runs like tools/schema_sql.py: in an empty directory, without the URL."""
+    import subprocess
+    import sqlite3 as _sqlite
+    import tools.sqlite_to_postgres as T
+    src = tmp_path / "copy.db"
+    _sqlite.connect(src).close()
+    root = Path(T.__file__).resolve().parents[1]
+    monkeypatch.setenv("ATIP_DATABASE_URL", "postgresql://bk_atip_app:pw@127.0.0.1:1/bk_atip")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://other:pw@127.0.0.1:1/other")
+    seen = []
+
+    def fake_run(cmd, env=None, cwd=None, **kw):
+        seen.append((env, cwd))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert T.main(["--source", str(src), "--out", str(tmp_path / "out")]) == 0     # a dry run
+    (env, cwd), = seen
+    assert "ATIP_DATABASE_URL" not in env and "DATABASE_URL" not in env
+    assert env["ATIP_DB_PATH"] == str(src.resolve())
+    assert Path(cwd).resolve() != root and not (Path(cwd) / "atip_data").exists()
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(root)
+
+
+@pytest.mark.parametrize("where", ["dotenv", "secret_file"])
+def test_the_runtime_url_is_read_where_the_launchagent_can_see_it(monkeypatch, tmp_path, where):
+    """The Mac's LaunchAgent starts ATIP with launchd's environment, never a shell's, so a URL
+    exported in Terminal reached `main.py --init` but not the scheduled runs, which then wrote
+    to the SQLite file. ATIP_DATABASE_URL is read like ATIP's other secrets: the environment,
+    then the project's .env, then atip_data/secrets/ATIP_DATABASE_URL."""
+    import db.schema as S
+    from db.backend import configured_url
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "atip_data" / "secrets").mkdir(parents=True)
+    (tmp_path / "atip_data" / "config.json").write_text(
+        '{"database": {"backend": "postgresql", "allow_experimental": true}}', encoding="utf-8")
+    url = "postgresql://bk_atip_app:pw@ep-x.aws.neon.tech/bk_atip?sslmode=require&channel_binding=require"
+    monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+    if where == "dotenv":
+        (tmp_path / ".env").write_text(f"ANTHROPIC_API_KEY=x\nATIP_DATABASE_URL='{url}'\n", encoding="utf-8")
+    else:
+        (tmp_path / "atip_data" / "secrets" / "ATIP_DATABASE_URL").write_text(url + "\n", encoding="utf-8")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert configured_url() == url and S.pg_runtime_url() == url
+    # the environment still wins, as for every other secret
+    monkeypatch.setenv("ATIP_DATABASE_URL", "postgresql://bk_atip_app:pw@127.0.0.1:1/other")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() == "postgresql://bk_atip_app:pw@127.0.0.1:1/other"
 
 
 # ── live server ───────────────────────────────────────────────────────────

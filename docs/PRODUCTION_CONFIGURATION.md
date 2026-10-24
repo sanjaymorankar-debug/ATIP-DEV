@@ -106,7 +106,7 @@ Values are never shown. Status is CONFIGURED / MISSING / INVALID / NOT REQUIRED.
 
 | Variable (actual name in ATIP) | Where | Status |
 |---|---|---|
-| Database (`db.schema.DB_PATH`; `ATIP_DB_PATH` / `DATABASE_URL` overrides) | default `atip_data/atip.db` | CONFIGURED (SQLite; no URL needed) |
+| Database (`db.schema.DB_PATH`; `ATIP_DB_PATH` / `ATIP_DATABASE_URL` overrides) | default `atip_data/atip.db` | CONFIGURED (SQLite; no URL needed) |
 | `environment` / `ATIP_ENV` | config.json | NOT SET → development (see the note below) |
 | Dashboard token (the local `SECRET_KEY` equivalent) | `atip_data/dashboard_token.txt` (gitignored) | CONFIGURED |
 | `dhan_client_id`, `dhan_access_token` (broker keys) | config.json (legacy plaintext) | CONFIGURED (move to the secret store: W8-R4) |

@@ -736,6 +736,21 @@ class PgConnection:
         self._dirty = False
 
     def close(self):
+        """Close, discarding anything uncommitted -- as sqlite3's close() does.
+
+        The rollback is explicit because psycopg opens a transaction on the first
+        statement, reads included, and ATIP closes most connections straight after a
+        SELECT. Leaving that transaction open cost nothing on a direct connection, but a
+        transaction-mode pooler (Neon's PgBouncer) throws away a server connection whose
+        client disconnects mid-transaction: every ATIP call then paid for a new server
+        connection and the pool never held one."""
+        try:
+            from psycopg.pq import TransactionStatus
+            if self._conn.info.transaction_status != TransactionStatus.IDLE:
+                self._conn.rollback()
+        except Exception:                    # a dropped connection has nothing to roll back
+            pass
+        self._dirty = False
         self._conn.close()
 
     def cursor(self):

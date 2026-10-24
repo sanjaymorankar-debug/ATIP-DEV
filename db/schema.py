@@ -71,7 +71,8 @@ def _gated_runtime_url(schemes, backend_name):
     projects set) with a matching scheme, config database.backend = backend_name, and
     database.allow_experimental = true -- because the statements db/dialect_scan.py
     lists still fail off SQLite."""
-    url = os.environ.get("ATIP_DATABASE_URL", "")
+    from db.backend import configured_url
+    url = configured_url()                      # environment, .env or atip_data/secrets/
     if not url.lower().startswith(schemes):
         return None
     try:

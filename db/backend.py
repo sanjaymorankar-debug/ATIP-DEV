@@ -1,7 +1,8 @@
 """
 Database backend abstraction (W9, DBS-05 foundation).
 
-    database_url()      ATIP_DATABASE_URL / DATABASE_URL, else sqlite:///<db.schema.DB_PATH>
+    database_url()      ATIP_DATABASE_URL (environment, .env or atip_data/secrets/; configured_url()),
+                        else sqlite:///<db.schema.DB_PATH>
     backend()           "sqlite" | "postgresql"
     connect(url=None)   a DB-API connection with ATIP's sqlite3-style interface:
                         execute(sql with ? placeholders, params) -> cursor with fetchone /
@@ -31,8 +32,58 @@ import threading
 from pathlib import Path
 
 
+URL_NAME = "ATIP_DATABASE_URL"
+
+
+def _dotenv_value(name: str, path: Path) -> str:
+    """`name` from a .env file: python-dotenv when installed, else plain KEY=VALUE lines."""
+    if not path.is_file():
+        return ""
+    try:
+        from dotenv import dotenv_values
+        return str(dotenv_values(path).get(name) or "")
+    except ImportError:
+        pass
+    for line in path.read_text(encoding="utf-8").splitlines():
+        k, sep, v = line.strip().removeprefix("export ").partition("=")
+        if sep and k.strip() == name:
+            v = v.strip()
+            return v[1:-1] if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"" else v
+    return ""
+
+
+def configured_url() -> str:
+    """ATIP's own server-database URL, or "" -- from, in order:
+
+        1. the ATIP_DATABASE_URL environment variable
+        2. ATIP_DATABASE_URL in the project's .env (git-ignored)
+        3. the file atip_data/secrets/ATIP_DATABASE_URL (git-ignored with atip_data/)
+
+    The URL carries a password, so it lives where ATIP's other secrets do (ops/secrets.py)
+    rather than in config.json. 2 and 3 matter on the Mac: the LaunchAgent starts ATIP
+    with launchd's environment, which has no ATIP_DATABASE_URL, so a URL exported only in
+    a shell left the scheduled runs on SQLite while a Terminal run used PostgreSQL.
+
+    Not the generic DATABASE_URL: on a server shared with other projects that holds
+    THEIR database (under the Neon convention, a pooled URL)."""
+    u = os.environ.get(URL_NAME, "")
+    if u:
+        return u
+    try:
+        u = _dotenv_value(URL_NAME, Path(".env"))
+        if u:
+            return u
+        f = Path("atip_data") / "secrets" / URL_NAME
+        return f.read_text(encoding="utf-8").strip() if f.is_file() else ""
+    except Exception:
+        return ""
+
+
 def database_url() -> str:
-    u = os.environ.get("ATIP_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    """configured_url() -- the URL the runtime switch reads (db.schema.pg_runtime_url) -- else
+    the SQLite file. Reading the generic DATABASE_URL here made ops/config validation report a
+    PostgreSQL runtime while ATIP was in fact running on SQLite."""
+    u = configured_url()
     if u:
         return u
     from db.schema import DB_PATH

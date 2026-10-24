@@ -22,7 +22,11 @@ must never regress. Where this file and the spec disagree, the spec wins.
   itself wrong; say so in the report, with the evidence.
 - Do not commit, push, deploy, or touch any server. Leave fixes in the working
   tree; the session that called you reviews and commits them.
-- Do not edit `.env` files, credentials, or anything under `.claude/state/`.
+- Do not edit `.env` files, credentials, or anything under `.claude/state/`. (The one
+  `.env` you write is the fake `tests/canary/hostile.env`, copied into the canary's own
+  scratch copy as TEST_SPEC.md S6.4 says. Never one in the project folder.)
+- Run everything from the scratch copy that TEST_SPEC.md section 2 describes, never from
+  the project folder: on the owner's Mac its `atip_data/` and `.env` are the live ones.
 - Keep fixes minimal and in scope: what the defect needs, nothing more.
 
 ## Procedure

@@ -25,3 +25,5 @@ deploy/backups/
 node_modules/
 .mypy_cache/
 .ruff_cache/
+# The canary run's stand-in broker SDKs (TEST_SPEC.md S6.4): test tooling, never in the image
+tests/canary/

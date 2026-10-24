@@ -74,7 +74,10 @@ only, and the scheduler's evening jobs silently stop.
 python -m pytest
 ```
 
-Tests never touch `atip_data/atip.db` or Telegram: `tests/conftest.py` gives every
-test its own database and stubs Telegram delivery.
+Tests never touch `atip_data/` or Telegram. `tests/conftest.py` gives every test its
+own database, cache, token and config paths, keeps the runtime on SQLite even where
+PostgreSQL is switched on, and stubs Telegram delivery. The full procedure (a scratch
+copy, CI's packages only, the PostgreSQL scratch databases, the smoke and canary runs)
+is in `TEST_SPEC.md`.
 
 Logs: `atip_data/atip.log`, rotated at 20 MB, 10 files kept.

@@ -40,6 +40,9 @@ MySQL / MariaDB only, which ATIP no longer supports. PostgreSQL has to come from
   failover handled for you; restrict it to the VPS's IP and require TLS
   (`?sslmode=require` on the URL).
 
+The chosen one is **Neon**: one branch per tier, database `bk_atip` owned by the login `bk_atip_app`, and
+ATIP on the branch's **direct** endpoint (`docs/POSTGRESQL_MIGRATION.md`, "Neon").
+
 Minimum workable box: 2 vCPU / 4 GB RAM / 40 GB disk.
 
 ## 2. Read this second: exposing ATIP is a gated step
@@ -111,7 +114,9 @@ export ATIP_DATABASE_URL='postgresql://atip:<password>@127.0.0.1:5432/atip'
 ```
 
 This is the gate in `db/schema.pg_runtime_url()`, and it stays a gate for the reason
-in §3.4. `pip install "psycopg[binary]"` (in `requirements.txt`; the container image
+in §3.4. The URL can also live in the project's `.env` or in
+`atip_data/secrets/ATIP_DATABASE_URL`, both git-ignored. Those are where a process
+started by a service manager, which never reads a shell profile, finds it. `pip install "psycopg[binary]"` (in `requirements.txt`; the container image
 has it).
 
 ### 3.3 Create the schema
@@ -175,6 +180,15 @@ export ATIP_DASHBOARD_HOST=127.0.0.1 # the proxy reaches it locally; never 0.0.0
 `//ATIP//` all become `/ATIP`), and it is passed to both `FastAPI(root_path=…)`
 and `uvicorn.run(root_path=…)`.
 
+> **Not enough yet (found 2026-10-24).** `root_path` fixes the URLs FastAPI builds
+> itself: `openapi.json`'s `servers`, `/docs`. It does not fix the pages: their
+> `fetch()` calls and menu links are written as absolute paths (`fetch('/api/orders')`,
+> `href="/trading"`). Behind a proxy at `/ATIP/` they go to the portal's `/api/…`,
+> not ATIP's, so the interactive pages do not work under a prefix. Until the pages
+> are made prefix-aware, serve the interactive app at the root of its own hostname
+> (the subdomain option in §4.2). The read-only snapshot is unaffected: its requests
+> are blocked by the portal's CSP anyway.
+
 ### 4.1 nginx on the VPS
 
 ```nginx
@@ -216,7 +230,8 @@ one of:
 - **Proxy from the portal** — the portal forwards `/ATIP/` to the VPS. One
   hostname, no DNS change, and the portal's own login covers it.
 - **A subdomain** — `atip.bkesari.com` on the VPS, with the tab pointing at it.
-  Simpler to reason about, needs a DNS record and its own certificate.
+  Simpler to reason about, needs a DNS record and its own certificate. Today this is
+  the one that works, because the pages assume they are served at `/` (§4).
 
 ### 4.3 Per tier
 
@@ -224,6 +239,7 @@ one of:
 |---|---|---|---|
 | URL | `dev.bkesari.com/ATIP/` | `test.bkesari.com/ATIP/` | `bkesari.com/ATIP/` |
 | PostgreSQL database | its own | its own | its own |
+| Neon branch (database `bk_atip`, login `bk_atip_app`) | `dev` | `test` | `production` |
 | `ATIP_ROOT_PATH` | `/ATIP` | `/ATIP` | `/ATIP` |
 | `execution.mode` | `paper` | `paper` | `paper` until separately authorised |
 
@@ -247,6 +263,10 @@ ATIP_ROOT_PATH=/ATIP
 ATIP_DASHBOARD_HOST=0.0.0.0
 TZ=Asia/Kolkata
 ```
+
+On Neon, `ATIP_DATABASE_URL` is instead the tier's direct Neon URL, ending
+`?sslmode=require&channel_binding=require`, and the `postgres` compose profile is not used.
+Each tier's `deploy/atip.env` holds only that tier's URL.
 
 `ATIP_DASHBOARD_HOST=0.0.0.0` is correct **inside** the container — compose still
 publishes it on the host's `127.0.0.1:8000` only, and nginx is what faces the

@@ -138,8 +138,20 @@ def test_stdout_carries_only_protocol_messages(db, monkeypatch):
     assert [x.get("id") for x in lines] == [1, 2, None] and lines[2]["error"]["code"] == -32700
 
 
+def _offline_nifty500(cwd):
+    """The subprocess cannot see the db fixture's industry-map stub, and without a cached
+    Nifty 500 list it downloaded one from NSE. This is the same map, as the cache it reads."""
+    raw = cwd / "atip_data" / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    (raw / "ind_nifty500list.csv").write_text(
+        "Company Name,Industry,Symbol,Series,ISIN Code\n"
+        "Acme Ltd.,Capital Goods,ACME,EQ,INE000A01011\nPeer Ltd.,Capital Goods,PEER,EQ,INE000A01029\n",
+        encoding="utf-8")
+
+
 def test_a_real_stdio_session(db, tmp_path):
     import db.schema as S
+    _offline_nifty500(tmp_path)
     env = dict(os.environ, ATIP_DB_PATH=str(S.DB_PATH))
     msgs = [_rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t"}}, 1),
             {"jsonrpc": "2.0", "method": "notifications/initialized"}, _rpc("tools/list", None, 2),
@@ -394,6 +406,7 @@ def test_chart_marks_tool(w39b, db):
 def test_the_w39b_tools_in_a_real_stdio_session(w39b, tmp_path):
     """Through the script itself (its own query_only connection), every new tool answers."""
     import db.schema as S
+    _offline_nifty500(tmp_path)
     env = dict(os.environ, ATIP_DB_PATH=str(S.DB_PATH))
     calls = [("dvm", {"symbol": "ACME"}), ("earnings_surprise", {"symbol": "SURP"}), ("mf_search", {"query": "flexi"}),
              ("mf_analytics", {"scheme": "300001"}), ("mf_sip", {"scheme": "300001", "amount": 1000}),

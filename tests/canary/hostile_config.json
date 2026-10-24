@@ -1,0 +1,22 @@
+{
+  "_comment": "Canary run only (TEST_SPEC.md S6.4): every live switch on, fake credentials. Never a real atip_data/config.json.",
+  "environment": "production",
+  "broker_env": "LIVE",
+  "execution": {"mode": "LIVE", "live_trading_enabled": true},
+  "dhan_client_id": "fake-canary-client",
+  "dhan_access_token": "fake-canary-access-token",
+  "dhan_pin": "000000",
+  "dhan_totp_secret": "fake-canary-totp",
+  "kite_api_key": "fake-canary-kite-key",
+  "kite_api_secret": "fake-canary-kite-secret",
+  "kite_access_token": "fake-canary-kite-token",
+  "telegram_token": "fake-canary-telegram-token",
+  "telegram_chat_id": "1",
+  "aggressive_enabled": true,
+  "options": {"enabled": true},
+  "futures": {"auto_roll": true},
+  "live_feed": {"stocks_enabled": true},
+  "depth20": {"enabled": true},
+  "dashboard_host": "0.0.0.0",
+  "database": {"backend": "postgresql", "allow_experimental": true}
+}

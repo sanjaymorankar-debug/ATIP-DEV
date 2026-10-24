@@ -79,11 +79,65 @@ The same test found a W36 bug that also affected SQLite (the quant factor set). 
    `python tools/sqlite_to_postgres.py --source <copy.db> --target postgresql://user@host:5432/atip --execute`
    Or, for a new installation with no data, load `db/sql/atip_schema.postgresql.sql` into an empty database instead of steps 2-3.
 4. **Switch the runtime (experimental).** All three are required:
-   - `ATIP_DATABASE_URL=postgresql://…`
-     - This must be the ATIP-specific variable. A generic `DATABASE_URL` left by another project is ignored on purpose.
+   - `ATIP_DATABASE_URL=postgresql://…`, read from the environment, else the project's `.env`, else the file `atip_data/secrets/ATIP_DATABASE_URL` (both git-ignored).
+     - This must be the ATIP-specific variable. A generic `DATABASE_URL` left by another project is ignored on purpose; validation warns that it is.
    - In `config.json`:
      - `"database": {"backend": "postgresql", "allow_experimental": true}`
+   - Validation (the start-up report) names whichever of the three is missing. In `production` that stops start-up rather than letting ATIP run on the SQLite file.
 5. **Watch the first days.** `/compliance`, `/api/platform/postgres` and the job-health panel.
+
+## Neon
+
+ATIP's hosted PostgreSQL is Neon. One Neon project; on every branch the database is
+`bk_atip`, owned by the login `bk_atip_app` (the bkesari naming scheme).
+
+| Neon branch | Used by |
+|---|---|
+| `production` | the owner's Mac, whose snapshot bkesari.com shows (and `bkesari.com/ATIP/` if that is ever hosted) |
+| `test` | `test.bkesari.com/ATIP/` |
+| `dev` | `dev.bkesari.com/ATIP/` |
+
+Each machine's `.env` holds only its own tier's URL.
+
+**Which URL.** In the Neon console: the branch → **Connect** → role `bk_atip_app`, database
+`bk_atip`, **Connection pooling off**. That is the direct endpoint: its host has no
+`-pooler`. ATIP is one long-lived process that runs its own migrations at start-up, so it
+uses the direct endpoint. Keep the string exactly as Neon shows it:
+
+```
+ATIP_DATABASE_URL=postgresql://bk_atip_app:<password>@ep-<id>.<region>.aws.neon.tech/bk_atip?sslmode=require&channel_binding=require
+```
+
+Neon's integrations also write `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`
+(direct) for other projects. ATIP reads neither: copy the direct one into `ATIP_DATABASE_URL`.
+
+What was checked against a local stand-in (TLS PostgreSQL 16 and a PgBouncer in
+transaction mode; `tests/test_neon_parity.py`, `TEST_SPEC.md` level S7):
+
+- **TLS.** The URL reaches libpq unchanged, so `sslmode=require` and `channel_binding=require` both apply. The connection only adds its UTC time zone (`options=-c TimeZone=UTC`).
+- **Scale to zero.** A suspended compute drops idle connections. ATIP opens a connection per call (`db.schema.get_connection`), so the next call simply reconnects. A connection held across the drop raises `sqlite3.OperationalError`, which ATIP's callers already handle. The first connection after a suspend is slower; psycopg waits up to 130 s by default.
+- **No superuser.** `main.py --init` and the migrations run as the owning role, and ATIP needs no extension.
+- **The pooler**, if ATIP is ever pointed at it, works: the only locks are transaction-scoped (`BEGIN IMMEDIATE` becomes `pg_advisory_xact_lock`), psycopg's automatic prepared statements rely on the pooler's protocol-level support (Neon's has it), the time zone travels as a startup option, and a connection rolls back its open read before closing, so the pooler can reuse the server connection. Run `--init` and the migrations over the direct URL all the same. The local PgBouncer cannot do channel binding, so through it the checks use `sslmode=require` alone; Neon's pooler accepts the full string.
+
+### Moving the Mac from SQLite to Neon (the owner's step)
+
+1. Stop ATIP and the snapshot upload:
+   `launchctl bootout gui/$UID/com.atip.platform; launchctl bootout gui/$UID/com.atip.publish-snapshot`
+2. Take a copy: `.venv/bin/python -m ops backup` (it is written to `atip_data/backups/`).
+3. Put the URL where the LaunchAgent can read it: a line `ATIP_DATABASE_URL=…` in `.env` in
+   the project folder, or the URL alone in `atip_data/secrets/ATIP_DATABASE_URL`. Not
+   `~/.zshrc`: launchd never reads it, and the scheduled runs would stay on SQLite.
+4. Copy the data over the direct URL:
+   `.venv/bin/python tools/sqlite_to_postgres.py --source atip_data/backups/<copy>.db` (dry run), then the
+   same with `--target '<the direct URL>' --execute`. Every table must report `"ok": true`.
+5. In `atip_data/config.json`: `"database": {"backend": "postgresql", "allow_experimental": true}`.
+6. `.venv/bin/python main.py --init`. It must print `Database created : PostgreSQL — postgresql://bk_atip_app:***@ep-…`.
+7. Start again: `deploy/launchd/install.sh platform` and `deploy/launchd/install.sh snapshot`.
+8. Check: `curl -fsS http://127.0.0.1:8000/health/ready`, and the start-up log shows the
+   `EXPERIMENTAL PostgreSQL runtime` warning and no `ATIP_DATABASE_URL` error.
+
+To go back, remove the `database` block from `config.json`. ATIP is then on the SQLite file
+again, which holds nothing written since the switch.
 
 ## Known limits
 

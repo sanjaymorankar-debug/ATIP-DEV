@@ -277,6 +277,10 @@ supported (the MySQL backend and its tools were removed; a `mysql://` URL is ref
   `"database": {"backend": "postgresql", "allow_experimental": true}` in
   `atip_data/config.json`.
 
+- Hosted PostgreSQL is **Neon**: database `bk_atip`, owned by the login `bk_atip_app`, one branch per tier,
+  and ATIP on the branch's direct endpoint. The Mac switch is the owner's step, written
+  out in `docs/POSTGRESQL_MIGRATION.md` ("Neon").
+
 Details: `docs/POSTGRESQL_MIGRATION.md`; hosting on a VPS: `docs/HOSTED_DEPLOYMENT.md`.
 
 ---

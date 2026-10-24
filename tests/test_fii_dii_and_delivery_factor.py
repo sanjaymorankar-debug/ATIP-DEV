@@ -77,6 +77,8 @@ def watch(db, monkeypatch):
         return {}
     monkeypatch.setattr(data.bhavcopy, "store_fii_dii", store)
     monkeypatch.setattr(data.bhavcopy, "run_delivery_pipeline", delivery)
+    # it also syncs NSE's index closes, a download from archives.nseindia.com
+    monkeypatch.setattr(data.bhavcopy, "sync_nse_index_closes", lambda *a, **k: {"status": "SKIPPED"})
     monkeypatch.setattr(scores.engine, "run_scoring_pipeline", lambda d: calls.append("score") or {})
     monkeypatch.setattr(scores.portfolio_health, "store_phs", lambda d: calls.append("phs") or {})
     monkeypatch.setattr(scores.signal_log, "log_signals",
