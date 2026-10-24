@@ -18,6 +18,7 @@ setup(
     ],
     extras_require={
         "zerodha": ["kiteconnect>=4.2.0"],
+        "postgres": ["psycopg[binary]>=3.2"],      # the server database (db/postgres.py)
         "dev": ["pytest>=8.0", "httpx>=0.27"],
     },
 )

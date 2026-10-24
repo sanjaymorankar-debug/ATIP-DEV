@@ -66,7 +66,7 @@ def plan(source: Path) -> dict:
 
 
 def execute(source: Path, target: str, p: dict) -> dict:
-    from db.backend import PgConnection
+    from db.backend import ENTRY_ORDER_TABLES, PgConnection
     pg = PgConnection(target)
     src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
     results = []
@@ -78,7 +78,11 @@ def execute(source: Path, target: str, p: dict) -> dict:
             name = t["table"]
             cols = [r[1] for r in src.execute(f'PRAGMA table_info("{name}")')]
             ph = ",".join("?" * len(cols))
-            cur = src.execute(f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"')
+            # The entry-order tables (db.backend.ENTRY_ORDER_TABLES) get an identity `seq` on
+            # PostgreSQL that numbers rows as they arrive, standing in for SQLite's rowid -- so
+            # they are read in rowid order, or a same-day BUY / SELL pair could swap places.
+            order = " ORDER BY rowid" if name in ENTRY_ORDER_TABLES else ""
+            cur = src.execute(f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"{order}')
             while True:
                 batch = cur.fetchmany(1000)
                 if not batch:
