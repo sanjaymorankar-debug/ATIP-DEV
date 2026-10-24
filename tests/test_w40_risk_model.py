@@ -75,7 +75,8 @@ def test_regression_recovers_planted_factor_returns_with_calibrated_errors():
     est, z = [], []
     for t in range(300):
         o = RM.factor_regression(X, R[t], v, s["ind_cols"], s["icap"])
-        assert abs(float(o["f"][1:1 + s["J"]] @ s["c"])) < 1e-13            # the constraint holds every day
+        fj = o["f"][1:1 + s["J"]]                                          # the constraint holds every day,
+        assert abs(float(fj @ s["c"])) <= 64 * np.finfo(float).eps * float(np.abs(fj) @ s["c"])  # to rounding
         est.append(o["f"])
         z.append((o["f"] - fs[t]) / o["se"])
     est, z = np.array(est), np.array(z)
@@ -102,7 +103,10 @@ def test_industry_constraint_identifies_the_market_factor():
                               [s["mcap"][keep & (s["ind"] == j)].sum() for j in range(J)])
     assert o2["f"][1] == 0.0 and not o2["active"][1] and math.isnan(o2["t"][1])
     c2 = np.array([s["mcap"][keep & (s["ind"] == j)].sum() for j in range(J)])
-    assert abs(float(o2["f"][1:1 + J] @ c2)) < 1e-13
+    # zero up to rounding: the terms are ~1e3 each, so an absolute 1e-13 is below double
+    # precision and failed on a CI runner whose BLAS sums in another order (9.1e-13)
+    scale = float(np.abs(o2["f"][1:1 + J]) @ c2)
+    assert abs(float(o2["f"][1:1 + J] @ c2)) <= 64 * np.finfo(float).eps * scale
 
 
 def test_covariance_estimate_approaches_the_true_one():
