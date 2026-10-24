@@ -41,6 +41,7 @@ import re
 import time
 from urllib.parse import parse_qs
 
+from dashboard.base_path import route_path
 from ops import context, metrics
 from ops.errors import envelope
 
@@ -124,13 +125,16 @@ class OpsMiddleware:
         corr = headers.get("x-correlation-id") if _ID.match(headers.get("x-correlation-id") or "") else rid
         context.request_id.set(rid)
         context.correlation_id.set(corr)
-        path, method = scope["path"], scope["method"].upper()
+        # decide on the route path: under a root_path (ATIP_ROOT_PATH) uvicorn puts the
+        # prefix in front of scope["path"] ("/ATIP/api/orders"); see dashboard/base_path.py
+        path, method = route_path(scope), scope["method"].upper()
         version = None
         if path.startswith("/api/v1/"):
+            prefix = scope["path"][:len(scope["path"]) - len(path)]      # "" or the root_path
             scope = dict(scope)
-            scope["path"] = "/api/" + path[len("/api/v1/"):]
+            path, version = "/api/" + path[len("/api/v1/"):], "v1"
+            scope["path"] = prefix + path
             scope["raw_path"] = scope["path"].encode()
-            path, version = scope["path"], "v1"
         extra = [(b"x-request-id", rid.encode()), (b"x-correlation-id", corr.encode())] + \
             _security_headers(path, cfg) + ([(b"api-version", b"v1")] if path.startswith("/api/") else [])
         dep = None

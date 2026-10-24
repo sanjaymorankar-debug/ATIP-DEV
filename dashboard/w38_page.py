@@ -32,7 +32,7 @@ button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 1
 COMPLIANCE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Compliance</title><style>__STYLE__</style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Compliance &amp; platform (W38)</span></div>
-<div><a href="/privacy">Privacy notice</a><a href="/ops">Ops</a><a href="/">← Dashboard</a></div></div>
+<div><a href="/privacy">Privacy notice</a><a href="/api/ops/status">Ops</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap"><div class="tabs" id="tabs"></div>
 <div class="pane" id="p-chk"><div class="card"><h3>Compliance checks <button onclick="runNow()">Run now</button></h3>
 <div class="muted">Technical controls, checked daily at 07:50 and on demand; a check that gets worse raises an alert. Not a legal opinion — see the Regulatory tab.</div>

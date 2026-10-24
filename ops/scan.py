@@ -34,6 +34,15 @@ PATTERNS = {
 PLACEHOLDER = re.compile(r"(your|xxx|example|changeme|placeholder|<|\$\{|dummy|test|fake|\*\*\*|\.\.\.|…)", re.I)
 FORBIDDEN = (re.compile(r"^atip_data/"), re.compile(r"\.db$"), re.compile(r"(^|/)\.env$"),
              re.compile(r"(^|/)secrets/"), re.compile(r"\.(pem|key|pfx)$"))
+# Known non-secrets that match "secret_assignment": each is the fixed password of a throwaway
+# user that the test creates in its own temporary database. Exempt only that exact value in
+# that exact file; the same value anywhere else, any other value in these files and every
+# other pattern are still reported. Add an entry only for a test fixture, never for a real
+# credential, and keep it out of anything but tests/.
+FIXTURE_VALUES = {
+    ("tests/test_w39_api_contract.py", "Correct-Horse-Battery-9!"),
+    ("tests/test_w39_exec_data_tests.py", "Correct-Horse-Battery-9!"),
+}
 SKIP_EXT = {".png", ".jpg", ".ico", ".xlsx", ".pdf", ".gif", ".woff", ".woff2", ".ttf", ".zip", ".pkl", ".npz"}
 
 
@@ -63,7 +72,8 @@ def scan_secrets(root=".") -> list:
                 m = rx.search(line)
                 if not m:
                     continue
-                if name == "secret_assignment" and PLACEHOLDER.search(m.group(2)):
+                if name == "secret_assignment" and (PLACEHOLDER.search(m.group(2))
+                                                    or (f, m.group(2)) in FIXTURE_VALUES):
                     continue
                 if f.startswith("ops/scan.py"):
                     continue

@@ -121,7 +121,7 @@ does exactly that to `t_atip`. So nothing pooled may ever connect to `t_atip`.
 | `ATIP_DB_PATH` | `$SCRATCH/smoke-sqlite/atip.db` | S5 only |
 | `ATIP_DATABASE_URL` | the TLS URL (`--init`), then the pooler URL (the app) | S7 smoke only, in the scratch copy |
 | `ATIP_ROOT_PATH` | `/ATIP` | S5 base-path step only |
-| `ATIP_ENV`, `ATIP_CHROMIUM` | unset | Python Playwright is not installed, so the 7 browser tests skip, as in CI |
+| `ATIP_ENV`, `ATIP_CHROMIUM` | unset | Python Playwright is not installed in the test virtualenv, so the browser tests skip, as in CI (section 5 lists them). To drive them, use a separate virtualenv with `playwright` added and `ATIP_CHROMIUM=/opt/pw-browsers/chromium` (section 9); never add it to the test one |
 
 Port: **8100** for every smoke server (S5, S7), one at a time. Nothing listens on 8000.
 
@@ -206,7 +206,7 @@ for i in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:8100/health/live
 | S5.5 | `curl -s -X POST http://127.0.0.1:8100/api/orders -H 'Content-Type: application/json' -d '{"symbol":"ACME"}'` (and with `-H 'X-ATIP-Token: wrong'`) | 401, body names `X-ATIP-Token` |
 | S5.6 | `$PY tools/route_sweep.py http://127.0.0.1:8100` | exit 0: no parameterless GET route answers 5xx (503 = enterprise off is allowed), and **all 241 mutating routes refuse an anonymous caller** (401 / 503 / 4xx) |
 | S5.7 | stop it: `kill "$(cat "$SCRATCH/dash.pid")"` | the process exits; port 8100 is free |
-| S5.8 | base path: start again with `ATIP_ROOT_PATH=/ATIP`, then `curl -s http://127.0.0.1:8100/openapi.json` | contains `"servers":[{"url":"/ATIP"}]`; `/health/live` is 200 (the proxy strips the prefix). Stop it |
+| S5.8 | base path: start again with `ATIP_ROOT_PATH=/ATIP`, then `curl -s http://127.0.0.1:8100/openapi.json`, `curl -s http://127.0.0.1:8100/` and `$PY tools/route_sweep.py http://127.0.0.1:8100` | openapi contains `"servers":[{"url":"/ATIP"}]`; `/health/live` is 200 (the proxy strips the prefix); the page contains `window.ATIP_BASE="/ATIP"` and `'/ATIP/api/`, and no quoted `'/api/` or `"/api/` is left (`dashboard/base_path.py`); the sweep's counts equal S5.6's. Stop it |
 | S5.9 | snapshot dry run: `PYTHONPATH=tests/canary ATIP_CANARY_LOG="$SCRATCH/publish-canary.jsonl" $PY publish_snapshot.py --dry-run` | exit 0, logs `Snapshot for trade date … built (N KB)`, and `$SCRATCH/publish-canary.jsonl` does not exist (nothing tried to leave the machine). There is no `atip_data/publish.json` in the copy, so there is nowhere to upload to anyway |
 | S5.10 | the snapshot carries no write token: `$PY -c "from dashboard.security import token; import publish_snapshot as P; s=P.build_snapshot(); assert token() not in s['html'] and 'const ATIP_TOKEN=\"\"' in s['html']; print('token stripped')"` | prints `token stripped` |
 
@@ -217,7 +217,7 @@ for i in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:8100/health/live
 | Step | Command | Passes when |
 |---|---|---|
 | S6.1 | `git -C "$REPO" ls-files > "$SCRATCH/tracked.txt"`, then the `grep` below | the `grep` prints nothing |
-| S6.2 | the secret scan of `python -m ops scan`, run from the copy over the checkout's tracked files (it reads them; nothing is written there): `$PY -c "import json, sys; from ops.scan import scan_secrets; print(json.dumps(scan_secrets(sys.argv[1])))" "$REPO"` | the list is exactly the two known test-fixture passwords, `tests/test_w39_api_contract.py:27` and `tests/test_w39_exec_data_tests.py:724` (each file's fixed `PASSWORD` constant for a throwaway test user). Any other finding fails S6.2. Run it after the files are committed too: it only sees tracked files |
+| S6.2 | the secret scan of `python -m ops scan`, run from the copy over the checkout's tracked files (it reads them; nothing is written there): `$PY -c "import json, sys; from ops.scan import scan_secrets; print(json.dumps(scan_secrets(sys.argv[1])))" "$REPO"` | `[]`. The two fixed test-fixture passwords (`tests/test_w39_api_contract.py`, `tests/test_w39_exec_data_tests.py`: each file's `PASSWORD` constant for a throwaway test user) are exempt by exact file and value in `ops/scan.py` `FIXTURE_VALUES` (D11; `tests/test_scan_fixture_allowlist.py`); any finding fails S6.2. It only sees tracked files: before a commit, run it as well over a copy with a throwaway `git init && git add -A` |
 | S6.3 | anonymous mutating routes | S5.6's mutating count is 241 with 0 not refused (it moves with the API: compare it with `docs/API_REFERENCE.md`) |
 | S6.4 | **canary run**: the full suite with every live switch on and fake broker SDKs (below) | `tests/canary/report.py` exits 0: no broker API call, no market feed, no Zerodha client, no connection leaving the machine |
 | S6.5 | dependency audit, report-only, in a virtualenv of its own (pip-audit's dependencies must not change the test one): `python3 -m venv "$SCRATCH/audit" && "$SCRATCH/audit/bin/pip" install -q pip-audit && "$SCRATCH/audit/bin/pip-audit" -r requirements.txt --progress-spinner off` | report the findings. Fix one only when the fix is a trivial version bump; otherwise list it under open items (baseline: section 5). Offline it is **NOT RUN** |
@@ -318,7 +318,7 @@ This is CI's `python -m pytest tests/ -v` plus the two Neon stand-in URLs.
 | ATIP-CR-12 | Neon parity: the TLS parameters reach libpq unchanged; the schema builds as a non-superuser; the app works through a transaction pooler and lets it reuse server connections; the next call succeeds after the server drops connections | `tests/test_neon_parity.py` (all 8); S7 |
 | ATIP-CR-13 | The schedule: 07:00 pre-market, the 15-minute refresh from 09:15 to the 15:30 close, 16:45 post-market, on IST | `tests/test_schedule_times.py` (all 5); `tests/test_signal_pipeline.py::test_postmarket_runs_after_nse_publishes`; `tests/test_w38_platform_compliance.py` (the image's `TZ=Asia/Kolkata`) |
 | ATIP-CR-14 | Determinism: the scenario replay and the seeded searches give the same answer every time | S2.1; `tests/test_aggressive_backtest.py::test_simulation_is_deterministic`; `tests/test_w39b_bayes_optimize.py::test_bayes_is_deterministic_for_a_seed_and_starts_with_the_random_draws` |
-| ATIP-CR-15 | Serving under `/ATIP/`: the prefix is normalised and reaches FastAPI | `tests/test_root_path.py` (both); S5.8 |
+| ATIP-CR-15 | Serving under `/ATIP/`: the prefix is normalised and reaches FastAPI; every page's links and calls carry it and none 404s; the path middleware sees the path without it; at the root nothing is rewritten; the snapshot is never rewritten | `tests/test_root_path.py` (both); `tests/test_root_path_pages.py` (all; its Chromium test where Playwright is installed); S5.8; S5.10 |
 | ATIP-CR-16 | Past incident: one broken indicator must not silence the rest, and scores never use a session without its closes | `tests/test_regressions.py::test_macd_columns_are_not_swapped`, `::test_indicators_store_the_normalised_histogram`; `tests/test_signal_pipeline.py::test_postmarket_does_not_score_a_day_without_its_closes` |
 | ATIP-CR-17 | Append-only audit and ledger tables refuse edits, on both engines | `tests/test_w38_platform_compliance.py::test_ddl_and_append_only_triggers`; `tests/test_w39_performance_detail.py::test_migration_0006_numbers_old_rows_and_the_ledger_stays_append_only`; `tests/test_schema_sql.py::test_the_postgresql_script_loads_into_an_empty_database` |
 
@@ -327,7 +327,8 @@ This is CI's `python -m pytest tests/ -v` plus the two Neon stand-in URLs.
 | Changed path | Emphasise |
 |---|---|
 | `orders/**`, `execution/**`, `brokers/**`, `strategy/**`, `strategy_engine/**`, `portfolio/**` | CR-01, 02, 03, 04; `tests/test_paper_broker.py`, `test_risk_controls.py`, `test_live_gate.py`, `test_strategy_live.py`, `test_w39_risk_gateway.py`, `test_w40_option_intents.py`; S6.4 |
-| `dashboard/**`, `ops/http.py`, `enterprise/authz.py` | CR-05, 06, 07, 15; S5 in full; `tests/test_wealth_api_security.py`, `test_w39_api_contract.py`, `test_w39_ops_tests.py` (API reference) |
+| `dashboard/**`, `ops/http.py`, `enterprise/authz.py` | CR-05, 06, 07, 15; S5 in full; `tests/test_wealth_api_security.py`, `test_w39_api_contract.py`, `test_w39_ops_tests.py` (API reference), `test_root_path_pages.py` (a page, link or call added under any of these) |
+| `ops/scan.py` | S6.2; `tests/test_scan_fixture_allowlist.py` |
 | `db/**`, `ops/migrations.py`, `ops/config.py`, `tools/sqlite_to_postgres.py`, `tools/schema_sql.py` | CR-08, 09, 10, 11, 12, 17; S1.3, S3, S4.1, S7 (required) |
 | `pipeline/**`, `utils/trading_calendar.py`, `deploy/launchd/**` | CR-13; `tests/test_signal_pipeline.py`, `test_auto_recover.py`, `test_job_monitoring.py` |
 | `scores/**`, `data/technical.py`, `research/**`, `quant/**`, `ml/**`, `backtest/**` | CR-14, 16; S2.1 |
@@ -347,7 +348,9 @@ Say which ones. The same applies to S3 (0 skipped) and S7.1 (8 passed).
 ## 5. Baseline
 
 Measured 2026-10-24 on this branch (`claude/fervent-bell-wcmmdu`, base `cc1e54c`, plus
-this spec's uncommitted changes). Linux container, Python 3.12.3, the CI package set plus
+this spec's uncommitted changes; the baseline row: `ad1a797` plus the uncommitted D10 / D11 fixes, which add
+14 tests: 11 in `tests/test_root_path_pages.py`, one of them the Chromium skip, and 3 in
+`tests/test_scan_fixture_allowlist.py`). Linux container, Python 3.12.3, the CI package set plus
 `psycopg[binary]` 3.3.6, PostgreSQL 16.15 with TLS, PgBouncer 1.22, `TZ=UTC`. Four CPUs
 were shared with six other jobs, so the durations are pessimistic.
 
@@ -356,7 +359,9 @@ were shared with six other jobs, so the durations are pessimistic.
 | R1 on `cc1e54c` as committed (#13 claimed 1523 / 11; not reproduced) | 1548 | 1535 | 13 | 0 | 14 min 23 s |
 | R1, first run with this spec's tests | 1564 | 1551 | 13 | 0 | 17 min 14 s |
 | R1, round 2 (before the D9 and D12 fixes) | 1577 | 1564 | 13 | 0 | 13 min 49 s |
-| **R1, final (the baseline)** | **1578** | **1565** | **13** | **0** | 14 min 0 s |
+| R1, final of the first run (`ad1a797`) | 1578 | 1565 | 13 | 0 | 14 min 0 s |
+| R1 with the D10 / D11 fixes, first pass (1 environment error, see D16) | 1592 | 1577 | 14 | 0 + 1 error | 12 min 21 s |
+| **R1 with the D10 / D11 fixes (the baseline)** | **1592** | **1578** | **14** | **0** | 11 min 58 s |
 | S3 live PostgreSQL | 36 | 36 | 0 | 0 | — |
 | S7.1 Neon parity tests | 8 | 8 | 0 | 0 | — |
 | S6.4 canary | — | — | — | — | `report.py` exit 0: 0 order-capable calls, 0 refused calls or connections |
@@ -370,7 +375,16 @@ Expected skips in R1 (all of them, and only these):
 | 1 | `tests/test_w39b_patterns_more.py:361` | `playwright` |
 | 1 | `tests/test_w39b_tf75_signals.py:267` | `playwright` |
 | 1 | `tests/test_w40_stock_chart.py:333` | `playwright` |
+| 1 | `tests/test_root_path_pages.py:281` (the `/ATIP/` pages in Chromium) | `playwright` |
 | 1 | `tests/test_wealth_planning.py:146` | `anthropic` |
+
+Defects carried between runs (details in the reports under `.claude/test-runs/`):
+
+| ID | Severity | Summary | Status |
+|---|---|---|---|
+| D10 | S3 | Interactive pages did not work under `/ATIP/` (root-relative fetches, links, redirects) | fixed 2026-10-24: `dashboard/base_path.py`; `tests/test_root_path_pages.py` |
+| D11 | S4 | `python -m ops scan` flagged two fixed test-fixture passwords | fixed 2026-10-24: exact file + value allowlist, `ops/scan.py` `FIXTURE_VALUES`; `tests/test_scan_fixture_allowlist.py` |
+| D16 | S4 (environment) | `live_db` in `tests/test_postgres_backend.py` can hit `permission denied to terminate process` on `DROP DATABASE … WITH (FORCE)` when a backend the non-superuser `t_atip` may not signal (most likely an autovacuum worker) is in `t_atip`. Seen once, not reproduced in 4 reruns | open: re-run; a proposed fix is in the 2026-10-24 report |
 
 Earlier measurement, same container, on `44bd83e` (master before PostgreSQL #13, CI
 packages, no database server): 1601 collected, 1553 passed, 48 skipped, 0 failed, 19 min
@@ -476,7 +490,7 @@ VERDICT: PASS | FAIL | BLOCKED
 
 ## 9. Known gaps
 
-- **No browser end-to-end tests.** The 7 Playwright tests need the Python `playwright` package, which CI does not install, so they skip there and here. S5 probes the served page as text.
+- **Browser tests skip in CI and in the test virtualenv.** The Playwright tests need the Python `playwright` package, which CI does not install. S5 probes the served page as text, and `tests/test_root_path_pages.py` checks every page, link and call over HTTP without a browser. In a separate virtualenv with `playwright` 1.64.1 and `ATIP_CHROMIUM=/opt/pw-browsers/chromium` (2026-10-24), `test_w39_ui_smoke.py` (9) and the `/ATIP/` Chromium test pass; `test_w39b_patterns_more.py`, `test_w39b_tf75_signals.py` and `test_w40_stock_chart.py` look for Chromium on their own and still skip there.
 - **No load or soak tests.** `tests/test_w39_perf_budget.py` is an in-process latency budget, not a load test. A day of scheduler jobs is not run.
 - **The scheduler is never started for real.** `schedule` is left out, so `tests/test_schedule_times.py` records the registrations rather than firing them. The IST part rests on the launchers' `TZ=Asia/Kolkata`.
 - **External APIs are never contacted.** Dhan, NSE, yfinance, Telegram, Anthropic and Alpha Vantage are only seen through recorded payloads and stubs. A change in their responses is not caught.

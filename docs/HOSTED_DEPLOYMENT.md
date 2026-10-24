@@ -180,14 +180,19 @@ export ATIP_DASHBOARD_HOST=127.0.0.1 # the proxy reaches it locally; never 0.0.0
 `//ATIP//` all become `/ATIP`), and it is passed to both `FastAPI(root_path=…)`
 and `uvicorn.run(root_path=…)`.
 
-> **Not enough yet (found 2026-10-24).** `root_path` fixes the URLs FastAPI builds
-> itself: `openapi.json`'s `servers`, `/docs`. It does not fix the pages: their
-> `fetch()` calls and menu links are written as absolute paths (`fetch('/api/orders')`,
-> `href="/trading"`). Behind a proxy at `/ATIP/` they go to the portal's `/api/…`,
-> not ATIP's, so the interactive pages do not work under a prefix. Until the pages
-> are made prefix-aware, serve the interactive app at the root of its own hostname
-> (the subdomain option in §4.2). The read-only snapshot is unaffected: its requests
-> are blocked by the portal's CSP anyway.
+The pages are written with root-relative URLs (`fetch('/api/orders')`,
+`href="/trading"`, `location='/login'`). Under a prefix,
+`dashboard/base_path.py` (`BasePathMiddleware`) rewrites every HTML and JavaScript
+response for the request's `root_path`: a quoted URL that starts with one of the app's
+own route segments gets the prefix (`'/api/orders'` becomes `'/ATIP/api/orders'`),
+`href="/"` becomes `href="/ATIP/"`, and each page gets `window.ATIP_BASE = "/ATIP"`.
+The PWA manifest builds its URLs from `root_path` itself. The middleware that decides
+by path (`ops/http.py`, `enterprise/authz.py`) matches on the path without the prefix,
+and the sign-in redirect keeps it. Served at the root, nothing is rewritten.
+`tests/test_root_path_pages.py` serves the pages behind a stand-in for this proxy and
+sweeps every link and call (fixed 2026-10-24; before that the pages did not work
+under a prefix). The read-only snapshot is not served through the middleware and is
+unchanged: its token is stripped and the portal's CSP blocks its requests.
 
 ### 4.1 nginx on the VPS
 

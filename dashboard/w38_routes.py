@@ -138,9 +138,12 @@ def register(app, guard, Req, get_connection, json_safe):
         return await run(mobile_summary)
 
     @app.get("/manifest.webmanifest")
-    async def pwa_manifest():
+    async def pwa_manifest(request: Req):
         from dashboard.w38_page import MANIFEST
-        return Response(MANIFEST, media_type="application/manifest+json")
+        # start_url, scope and the icon under ATIP_ROOT_PATH ("" at the root); the pages and
+        # sw.js get theirs from dashboard/base_path.py, which does not rewrite JSON
+        root = request.scope.get("root_path") or ""
+        return Response(MANIFEST.replace('"/', '"' + root + "/"), media_type="application/manifest+json")
 
     @app.get("/sw.js")
     async def pwa_sw():
