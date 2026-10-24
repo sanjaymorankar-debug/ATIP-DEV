@@ -1,0 +1,6 @@
+{
+  "projects": [
+    {"name": "atip", "agent": "atip-tester", "spec": "TEST_SPEC.md", "paths": ["."]}
+  ],
+  "ignore": ["**/*.md", "docs/**", ".claude/**", "**/*.xlsx", "**/*.docx", "**/*.pdf", "**/*.txt", "atip_data/**"]
+}

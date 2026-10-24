@@ -41,6 +41,7 @@ from __future__ import annotations
 import json
 import re
 
+from dashboard.base_path import route_path
 from enterprise.config import COOKIE, settings
 
 PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh|forgot|verify-email)$"), ("GET", r"^/login$"),
@@ -247,7 +248,7 @@ def install(app):
     async def enterprise_authz(request, call_next):
         if not settings()["enabled"]:
             return await call_next(request)
-        method, path = request.method.upper(), request.url.path
+        method, path = request.method.upper(), route_path(request.scope)    # without the ATIP_ROOT_PATH prefix
         if method == "OPTIONS" or _public(method, path):
             return await call_next(request)
         from db.schema import get_connection
@@ -262,8 +263,9 @@ def install(app):
                     return JSONResponse({"error": "authentication required"}, status_code=401)
                 from urllib.parse import quote               # W33: keep the query (e.g. /app?verify=)
                 q = request.url.query
-                return RedirectResponse("/login?next=" + quote(path + (f"?{q}" if q else ""), safe="/"),
-                                        status_code=302)
+                root = request.scope.get("root_path") or ""
+                nxt = quote(root + path + (f"?{q}" if q else ""), safe="/")
+                return RedirectResponse(root + "/login?next=" + nxt, status_code=302)
 
             def deny(code, msg):
                 audit.record(conn, "authz.denied", tenant_id=p["tenant_id"], user_id=p.get("user_id"),

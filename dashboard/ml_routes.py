@@ -364,10 +364,16 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_ml_regime(as_of: str = None):
         from datetime import date
         from strategy_engine.regime import MarketHealthRegime, get_provider
+        try:
+            d = date.fromisoformat(as_of) if as_of else None
+        except ValueError:
+            return err(f"as_of must be YYYY-MM-DD, not {as_of!r}")
         conn = conn_ready()
         try:
-            d = date.fromisoformat(as_of) if as_of else (conn.execute("SELECT MAX(date) FROM market_health")
-                                                         .fetchone()[0])
+            if d is None:
+                d = conn.execute("SELECT MAX(date) FROM market_health").fetchone()[0]
+                if d is None:                    # a fresh install: nothing scored yet (was a 500)
+                    return err("no market_health rows yet; pass as_of=YYYY-MM-DD", 404)
             d = d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
             prov = get_provider(conn, d, d)
             return JSONResponse(json_safe({"as_of": str(d), "configured_source": settings()["regime_source"],

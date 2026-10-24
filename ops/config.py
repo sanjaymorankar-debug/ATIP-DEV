@@ -204,16 +204,27 @@ def validate(cfg: dict | None = None) -> list:
         add("error", "ops.shared_state_url", "redis:// configured but the redis package is not installed")
     try:
         from db.backend import backend as _db_backend
+        dbc = cfg.get("database") or {}
         if _db_backend() == "postgresql":
-            if (cfg.get("database") or {}).get("allow_experimental") is True:
+            # the same three switches as db.schema.pg_runtime_url(), so this never reports a
+            # PostgreSQL runtime that get_connection() is not actually using
+            if dbc.get("backend") == "postgresql" and dbc.get("allow_experimental") is True:
                 add("warning", "database.backend", "EXPERIMENTAL PostgreSQL runtime: statements listed by "
                                                    "`python -m db.dialect_scan --details` still fail on it")
             else:
-                add("error", "DATABASE_URL", "the ATIP runtime runs on SQLite; PostgreSQL is for "
-                                             "tools/sqlite_to_postgres.py unless database.allow_experimental "
-                                             "(docs/POSTGRESQL_MIGRATION.md)")
+                add("error", "ATIP_DATABASE_URL", "set, but the runtime stays on SQLite: it also needs "
+                                                  "config.json database.backend = \"postgresql\" and "
+                                                  "database.allow_experimental = true (docs/POSTGRESQL_MIGRATION.md)")
+        else:
+            if dbc.get("backend") == "postgresql":
+                add("error", "ATIP_DATABASE_URL", "config.json database.backend is \"postgresql\" but "
+                                                  "ATIP_DATABASE_URL is not set (environment, .env or "
+                                                  "atip_data/secrets/ATIP_DATABASE_URL): the runtime is on SQLite")
+            if str(os.environ.get("DATABASE_URL") or "").lower().startswith(("postgres://", "postgresql")):
+                add("warning", "DATABASE_URL", "ignored: ATIP reads ATIP_DATABASE_URL only (a generic DATABASE_URL "
+                                               "belongs to another project; the runtime is on SQLite)")
     except ValueError as e:
-        add("error", "DATABASE_URL", str(e))
+        add("error", "ATIP_DATABASE_URL", str(e))
     from ops.secrets import status as _secret_status
     if not cfg.get("dhan_client_id") and not _secret_status("DHAN_CLIENT_ID")["present"]:
         add("warning", "dhan_client_id", "Dhan client id missing: market data jobs will fail")

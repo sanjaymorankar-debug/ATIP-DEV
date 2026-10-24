@@ -6,8 +6,8 @@ perf_ledger (append-only; migration 0005 adds the triggers)
     txn_id, tenant_id, owner_id, portfolio, source, source_ref (unique per owner+source),
     trade_date, ts, kind, symbol, quantity, price, gross_value, fees, reference_price,
     price_quality, strategy_id, tag, note, created_at, import_run,
-    W39: entry_seq (entry order, the same-day tie-breaker on every database: MySQL has no
-    rowid), order_ref (the source order id), signal_ref (the signal_log id the trade
+    W39: entry_seq (entry order as a real column: the same-day tie-breaker off SQLite,
+    where there is no rowid), order_ref (the source order id), signal_ref (the signal_log id the trade
     acted on -- exact signal attribution), fee_breakdown (JSON of brokerage / stt /
     exchange / sebi / stamp / gst / dp / other when the source gives them; they sum to fees)
 perf_ledger_void (corrections): a voided txn is ignored by every engine; the row

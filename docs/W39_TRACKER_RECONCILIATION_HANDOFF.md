@@ -1,5 +1,7 @@
 # W39b — Tracker reconciliation and remaining features: handoff
 
+> **2026-10-09 plan change:** PostgreSQL is now ATIP's final server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Branch:** `claude/wizardly-curie-fbjeoa` (draft PR sanjaymorankar-debug/ATIP-DEV#5), based on master `1732829`.
 
 **Date:** 2026-10-07 (rounds 1–2), 2026-10-08 (merge with #4, round 3)

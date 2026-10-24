@@ -809,5 +809,11 @@ def test_history_sync_stores_each_index_under_its_own_symbol(temp_db, monkeypatc
             ("INDIAVIX", dt.date(2026, 9, 21), 11.25, "dhan_index")]
     finally:
         conn.close()
-    # an index with no series of its own is refused before anything is fetched
-    assert dhan.sync_index_benchmark_history(index_key="nifty_it")["status"] == "FAILED"
+    # an index with no series of its own is refused before anything is fetched. (This used
+    # nifty_it, which has had a series since W21 / DP-13; it then reached get_dhan_client()
+    # and passed only where no Dhan credentials exist -- with real ones, a live API call.)
+    class NeverCalled:
+        def historical_daily_data(self, **kw):
+            raise AssertionError(f"fetched {kw} for an index with no series")
+    for key in ("gift_nifty", "no_such_index"):
+        assert dhan.sync_index_benchmark_history(index_key=key, dhan=NeverCalled())["status"] == "FAILED"

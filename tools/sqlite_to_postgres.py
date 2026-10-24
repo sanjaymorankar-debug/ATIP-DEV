@@ -66,7 +66,7 @@ def plan(source: Path) -> dict:
 
 
 def execute(source: Path, target: str, p: dict) -> dict:
-    from db.backend import PgConnection
+    from db.backend import ENTRY_ORDER_TABLES, PgConnection
     pg = PgConnection(target)
     src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
     results = []
@@ -78,7 +78,11 @@ def execute(source: Path, target: str, p: dict) -> dict:
             name = t["table"]
             cols = [r[1] for r in src.execute(f'PRAGMA table_info("{name}")')]
             ph = ",".join("?" * len(cols))
-            cur = src.execute(f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"')
+            # The entry-order tables (db.backend.ENTRY_ORDER_TABLES) get an identity `seq` on
+            # PostgreSQL that numbers rows as they arrive, standing in for SQLite's rowid -- so
+            # they are read in rowid order, or a same-day BUY / SELL pair could swap places.
+            order = " ORDER BY rowid" if name in ENTRY_ORDER_TABLES else ""
+            cur = src.execute(f'SELECT {",".join(chr(34) + x + chr(34) for x in cols)} FROM "{name}"{order}')
             while True:
                 batch = cur.fetchmany(1000)
                 if not batch:
@@ -116,11 +120,19 @@ def main(argv=None) -> int:
     if not a.no_upgrade:
         # W38: bring the COPY to this release's schema first (what init_db does at start-up on SQLite);
         # otherwise tables / columns added since the copy was taken are missing on PostgreSQL
+        # In an empty directory and without ATIP_DATABASE_URL, like tools/schema_sql.py: run from
+        # the project folder, a switched config.json plus the URL (environment, .env or
+        # atip_data/secrets/) sent this init_db() to the PostgreSQL TARGET instead of the copy.
         import os
         import subprocess
-        env = {**os.environ, "ATIP_DB_PATH": str(source.resolve())}
-        r = subprocess.run([sys.executable, "-c", "from db.schema import init_db; init_db()"], env=env,
-                           cwd=str(Path(__file__).resolve().parents[1]), capture_output=True, text=True)
+        import tempfile
+        root = str(Path(__file__).resolve().parents[1])
+        env = {k: v for k, v in os.environ.items() if k not in ("ATIP_DATABASE_URL", "DATABASE_URL")}
+        env["ATIP_DB_PATH"] = str(source.resolve())
+        env["PYTHONPATH"] = root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        with tempfile.TemporaryDirectory() as cwd:
+            r = subprocess.run([sys.executable, "-c", "from db.schema import init_db; init_db()"], env=env,
+                               cwd=cwd, capture_output=True, text=True)
         if r.returncode:
             print(f"schema upgrade of the copy failed:\n{r.stderr[-2000:]}")
             return 1

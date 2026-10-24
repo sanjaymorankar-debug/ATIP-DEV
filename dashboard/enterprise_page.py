@@ -31,7 +31,8 @@ _TOP = """<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <sp
 def _page(title, body):
     return (f"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
             f"content='width=device-width,initial-scale=1'><title>ATIP {title}</title>{_STYLE}</head><body>"
-            f"{_TOP.format(title=title)}<div class='wrap'>{body}</div>{_JS}</body></html>")
+            # the helpers (j, send, esc, table) first: the body's own script calls them at once
+            f"{_JS}{_TOP.format(title=title)}<div class='wrap'>{body}</div></body></html>")
 
 
 def render_login():
@@ -47,7 +48,7 @@ def render_login():
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
 async function go(){const m=document.getElementById('msg');m.textContent='';
  try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null,otp:o.value||null});
-  const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}catch(e){m.textContent=e.message}}
+  const home=(window.ATIP_BASE||'')+'/',next=new URLSearchParams(location.search).get('next')||home;location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:home)}catch(e){m.textContent=e.message}}
 </script></body></html>""")
 
 

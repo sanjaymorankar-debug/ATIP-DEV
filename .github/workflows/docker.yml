@@ -3,6 +3,8 @@ name: docker
 # W39b (OPS-04): build the container image on every PR and prove it starts.
 # Nothing is pushed to a registry: publishing an image (and where) is an owner decision,
 # and the image never carries credentials or state (see Dockerfile and docs/CONTAINER_DEPLOYMENT.md).
+# It carries no database URL either: on Neon, each tier's ATIP_DATABASE_URL comes from that
+# tier's deploy/atip.env at run time (docs/HOSTED_DEPLOYMENT.md section 5).
 
 on:
   push:

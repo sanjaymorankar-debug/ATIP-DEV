@@ -403,6 +403,9 @@ def test_flows_are_still_fetched_when_prices_are_already_stored(db, monkeypatch)
 
 def test_flows_are_stored_under_nses_date_via_the_pipeline(db, monkeypatch):
     from data import bhavcopy
+    # session=None makes store_fii_dii open a real NSE session (a GET to nseindia.com);
+    # the stubbed download below never uses it
+    monkeypatch.setattr(bhavcopy, "get_nse_session", lambda: "no-network-session")
     monkeypatch.setattr(bhavcopy, "download_fii_dii",
                         lambda td, session: {"date": "2026-09-17", "fii_net_cr": -100.0,
                                              "dii_net_cr": 250.0, "fii_buy_cr": 1.0,

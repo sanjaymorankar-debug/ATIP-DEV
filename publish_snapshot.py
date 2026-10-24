@@ -10,6 +10,11 @@ reach those endpoints, so this machine only ever sends a finished HTML page
 outward — the hosted copy has no path back here, and its server blocks the
 page's scripts from making any network calls.
 
+The page is the local one, so it still shows the Buy / Sell buttons and the
+order form. They are inert there: the write token is removed below, and the
+portal's Content-Security-Policy (bkesari-platform portal/server.js, ATIP_CSP:
+connect-src 'none', form-action 'none') refuses every request they would make.
+
 This is a separate short-lived process: it does not touch the running
 scheduler/dashboard (see main.py), so it is safe to run on a timer.
 

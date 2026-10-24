@@ -1702,6 +1702,10 @@ if HAS_FASTAPI:
     # ── Operations (W8): health, metrics, backups, monitoring, webhooks ─
     from dashboard.ops_routes import register as _register_ops_routes
     _register_ops_routes(app, _guard, _Req, get_connection, json_safe)
+    # under a root_path (ATIP_ROOT_PATH=/ATIP) the pages' root-relative URLs get the
+    # prefix; a pass-through when served at / (dashboard/base_path.py)
+    from dashboard.base_path import BasePathMiddleware as _BasePath
+    app.add_middleware(_BasePath)
     # outermost middleware (request ids, /api/v1, size limits, JSON validation, rate
     # limit, idempotency, security headers, metrics) + the standard error envelope
     from ops.http import install as _install_ops_http

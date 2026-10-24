@@ -151,6 +151,23 @@ def test_default_config_leaves_the_regime_provider_unchanged(db, ml_config):
     assert settings()["regime_source"] == "deterministic"
 
 
+def test_regime_route_on_a_database_with_no_market_health_is_a_404_not_a_500(db, ml_config):
+    """A fresh install has no market_health rows: MAX(date) is NULL and the route used to
+    answer 500 (date.fromisoformat('None')). Found by the smoke run's GET-route sweep."""
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from dashboard import server
+    c = TestClient(server.app)
+    r = c.get("/api/ml/regime")
+    assert r.status_code == 404 and "market_health" in r.json()["error"]
+    assert c.get("/api/ml/regime?as_of=yesterday").status_code == 400
+    db.execute("INSERT INTO market_health (date, mh_score, regime, vix_level, pct_advancing) VALUES "
+               "('2026-01-05', 72, 'BULL', 13.5, 61)")
+    db.commit()
+    r = c.get("/api/ml/regime")
+    assert r.status_code == 200 and r.json()["as_of"] == "2026-01-05"
+
+
 # ── ML-18 ──
 def _registered_version(db, monkeypatch, code="abc1234+dirty"):
     from ml import registry as REG
