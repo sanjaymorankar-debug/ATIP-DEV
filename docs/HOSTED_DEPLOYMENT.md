@@ -46,8 +46,9 @@ Do not skip any of these before the hostname is public:
 - [ ] **Authentication in front of every route**, not just the mutating ones.
       `dashboard/security.py` guards mutating routes with a token
       (`X-ATIP-Token`); read routes are unauthenticated by design for localhost
-      and must not be left that way on a public host. Put HTTP Basic or an
-      identity-aware proxy in front of the whole prefix.
+      and must not be left that way on a public host. Use the **owner gate**
+      (§2.1): the central bkesari.com login in front of every route, with a
+      404 for anyone but the owner.
 - [ ] `enterprise.enabled: true` in `atip_data/config.json` so
       `enterprise/authz.py` stops being a pass-through.
 - [ ] **`execution.mode` stays `paper`** until live trading is separately
@@ -195,8 +196,10 @@ as `/ATIP/api/state`, which it does not serve.
 redirects the old lowercase `/atip/` there, so existing links keep working. Pick
 one of:
 
-- **Proxy from the portal** — the portal forwards `/ATIP/` to the VPS. One
-  hostname, no DNS change, and the portal's own login covers it.
+- **Proxy from the portal** — set `ATIP_ORIGIN` on the hub (with
+  `AUTH_ENABLED=1`); it forwards `/ATIP/` to the VPS, stripping the prefix,
+  only for the owner. One hostname, no DNS change. **Required with the owner
+  gate**, because the central session cookie is not sent to other hostnames.
 - **A subdomain** — `atip.bkesari.com` on the VPS, with the tab pointing at it.
   Simpler to reason about, needs a DNS record and its own certificate.
 
