@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)","Bash(python -m pytest:*)","Bash(python -m ruff:*)","Bash(git status)","Bash(git diff:*)","Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)"
+    ]
+  }
+}
