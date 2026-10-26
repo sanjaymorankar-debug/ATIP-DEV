@@ -359,11 +359,10 @@ def _sheet(wb, title, header, rows, widths=None, status_col=None):
 
 def _diagram_sheets(wb, diagrams):
     """One sheet per rendered diagram, the picture scaled to 1,100 px wide. Skipped without Pillow."""
-    try:
-        import PIL  # noqa: F401  (openpyxl needs it to read the PNG)
-        from openpyxl.drawing.image import Image
-    except ImportError:
+    import importlib.util
+    if importlib.util.find_spec("PIL") is None:          # openpyxl needs Pillow to embed a PNG
         return
+    from openpyxl.drawing.image import Image
     from openpyxl.styles import Font
     for i, (name, _src) in enumerate(diagrams, 1):
         png = DIAGRAM_DIR / f"{_slug(name)}.png"
