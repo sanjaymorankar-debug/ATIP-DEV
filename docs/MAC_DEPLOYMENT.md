@@ -178,9 +178,13 @@ The new folder is inside `~/Documents`, which macOS protects:
 
 - **Full Disk Access for `/bin/bash`.** System Settings → Privacy & Security → Full Disk Access
   → `+` → ⌘⇧G → `/bin/bash`. Without it the LaunchAgent cannot open the project and
-  `atip_data/launchd.err` says `Operation not permitted`. If it still fails, add Homebrew's
-  Python as well (`/opt/homebrew/bin/python3.13`). Moving the project out of `~/Documents`
-  (e.g. to `~/ATIP`) avoids this altogether.
+  `atip_data/launchd.err` says `Operation not permitted`. Bash hands over to Python, so add
+  the Python ATIP runs on as well: `.venv/bin/python -c "import os,sys;
+  print(os.path.realpath(sys._base_executable))"` prints it (python.org's 3.15:
+  `/Library/Frameworks/Python.framework/Versions/3.15/bin/python3.15`; add
+  `/Library/Frameworks/Python.framework/Versions/3.15/Resources/Python.app` too, which is what
+  that one starts). Then `./setup_atip.sh agents` and `./setup_atip.sh verify`. Moving the
+  project out of `~/Documents` (e.g. to `~/ATIP`) avoids this altogether.
 - **iCloud "Desktop & Documents Folders" off.** System Settings → your name → iCloud → iCloud
   Drive. With it on, iCloud syncs `atip.db` while ATIP writes to it, and a database copied
   mid-write can be corrupt. `check` reports ❌ when it looks on.
