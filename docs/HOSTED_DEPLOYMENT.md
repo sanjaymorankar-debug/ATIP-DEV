@@ -3,7 +3,7 @@
 How to run the **full interactive** ATIP server-side on MySQL, reverse-proxied at
 `/ATIP/`, across the dev → test → production tiers.
 
-The project now lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP`
+The project now lives at `/Users/agtci/Documents/GIT_ATIP/ATIP`
 on macOS. Local operation is unchanged — see `README.md` and
 `deploy/launchd/install.sh`.
 

@@ -668,7 +668,10 @@ def test_a_covered_call_is_closed_when_its_shares_are_sold(env):
 def test_a_stop_loss_fires_on_a_big_move(env):
     from execution import options_paper as O
     sid, _o, pos = _open_condor(env, exits={"stop_loss_pct": 25})
-    _seed_chain(env, "NIFTY", spot=26500.0)                           # through the short call and its wing
+    # to the condor's own long call: M1 moves with today's date (64 DTE from 2026-10-26), and with
+    # it the strikes, so a fixed 26500 stopped reaching the short call and missed the stop by < 1%
+    wing = max(float(l["strike"]) for l in pos["legs"] if l["option_type"] == "CE")
+    _seed_chain(env, "NIFTY", spot=wing)                              # through the short call, to its wing
     mk = O.mark_position(env, O.get_position(env, pos["position_id"]), AS_OF)
     assert mk["exit_signal"] == "STOP_LOSS" and mk["unrealized"] <= -0.25 * pos["loss_base"] < 0
     r = _decide(env, sid, AS_OF)
