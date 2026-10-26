@@ -24,6 +24,10 @@ def _isolated(tmp_path, monkeypatch):
     so a test that halts trading or fails a job would otherwise write to the
     real atip.db -- or message a configured bot."""
     monkeypatch.setattr(schema, "DB_PATH", tmp_path / "isolated.db")
+    # The 21:00-06:00 IST stop window (pipeline/operating_schedule.py) closes the kill switch and the
+    # job runner; a suite run after 21:00 must not see orders refused for the time of day. The
+    # operating-schedule tests switch it back on with a fixed clock.
+    monkeypatch.setenv("ATIP_OPERATING_SCHEDULE", "off")
     # The dashboard's state file is relative to the working directory: a test that rebuilds the
     # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
     # with its fixture rows (2026-10-26).
