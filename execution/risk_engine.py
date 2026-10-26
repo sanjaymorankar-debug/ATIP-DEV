@@ -300,6 +300,12 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         add("equity", FAIL, f"paper equity unknown ({bk.get('error') or 'no account'})")
         return finish(REJECTED, "equity cannot be measured")
     add("equity", PASS, f"paper equity {equity:,.2f}, cash {cash:,.2f}", equity)
+    pend = _unfilled_buys(conn) if own_book else []
+    committed = sum(v for _, _, v in pend)
+    if pend:
+        cash = (cash or 0.0) - committed
+        add("unfilled_buys", PASS, f"{len(pend)} unfilled BUY order(s) take {committed:,.2f} of cash and exposure "
+                                   f"when they fill", committed)
     px = rd.reference_price
     stop = it.get("stop_price")
     if not stop or stop >= px:
@@ -322,8 +328,9 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return finish(REJECTED, "position sizing gave 0 shares")
 
     positions = {p["symbol"]: p for p in bk["positions"]}
-    held_value = (positions.get(it["symbol"]) or {}).get("value") or 0.0
-    total_value = sum((p.get("value") or 0.0) for p in bk["positions"])
+    held_value = ((positions.get(it["symbol"]) or {}).get("value") or 0.0) + sum(
+        v for s, _, v in pend if s == it["symbol"])
+    total_value = sum((p.get("value") or 0.0) for p in bk["positions"]) + committed
     caps = {}
 
     def cap(name, limit, room_value=None, qty=None, what=""):
@@ -370,7 +377,7 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         cap("max_sector_exposure_pct", lim["max_sector_exposure_pct"],
             equity * lim["max_sector_exposure_pct"] / 100 - sv, what=f"sector {mine} % of equity")
     strat = [p for p in P.strategy_positions(conn, it["strategy_id"])]
-    strat_value = sum((p["value"] or 0.0) for p in strat)
+    strat_value = sum((p["value"] or 0.0) for p in strat) + sum(v for _, sid, v in pend if sid == it["strategy_id"])
     if lim["max_strategy_exposure_pct"] is not None:
         cap("max_strategy_exposure_pct", lim["max_strategy_exposure_pct"],
             equity * lim["max_strategy_exposure_pct"] / 100 - strat_value, what="strategy exposure % of equity")
@@ -406,8 +413,10 @@ def evaluate(conn, intent_id: str, actor: str = "risk_engine", store: bool = Tru
         return finish(REJECTED, f"no room under {binding}")
 
     # pass/fail limits
-    n_pos = len([p for p in bk["positions"] if (p.get("qty") or 0) > 0])
-    if lim["max_open_positions"] is not None and it["symbol"] not in positions:
+    held = {p["symbol"] for p in bk["positions"] if (p.get("qty") or 0) > 0}
+    held |= {s for s, _, _ in pend}                  # a position each, once they fill
+    n_pos = len(held)
+    if lim["max_open_positions"] is not None and it["symbol"] not in positions and it["symbol"] not in held:
         if n_pos + 1 > lim["max_open_positions"]:
             add("max_open_positions", FAIL, f"{n_pos} open", n_pos + 1, lim["max_open_positions"])
             return finish(REJECTED, f"max_open_positions {lim['max_open_positions']} reached")
@@ -565,6 +574,24 @@ def _circuit(conn, it, rd, otype, add) -> str | None:
         return cc["reason"]
     add("circuit_limit", PASS, cc["reason"], cc["value"])
     return None
+
+
+def _unfilled_buys(conn) -> list:
+    """
+    P1-6: W4 PAPER cash BUY orders not filled yet, [(symbol, strategy_id, value)] at the limit or the
+    decision's reference price. With next-open fills every order of the post-market cycle waits
+    overnight, so the book does not show them yet: counted here as cash and exposure already taken,
+    several BUYs approved in one evening cannot add up past a limit each one passes alone.
+    """
+    try:
+        rows = conn.execute("SELECT symbol, strategy_id, (quantity - COALESCE(filled_quantity,0)) * "
+                            "COALESCE(limit_price, reference_price, 0) FROM oms_order WHERE mode='PAPER' AND side='BUY' "
+                            "AND COALESCE(instrument,'CASH')='CASH' AND status IN ('CREATED','VALIDATED','SUBMITTED',"
+                            "'ACKNOWLEDGED','PARTIALLY_FILLED')").fetchall()
+    except Exception as e:
+        log.warning(f"  unfilled paper orders unreadable: {e}")
+        return []
+    return [(r[0], r[1], float(r[2] or 0)) for r in rows]
 
 
 def _futures_notional(conn) -> float | None:

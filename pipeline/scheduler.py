@@ -976,6 +976,15 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         log.info(f"  ✓ EOD freshness for {td}: {n_same}/{n_chk} bars identical to the "
                  f"previous session")
 
+    # P1-6: PAPER orders that waited for this session's open fill now, from the Bhavcopy just
+    # checked -- before the book is valued (daily P&L) or strategies decide on it
+    if not backfill:
+        try:
+            from execution.paper_matching import run_eod_matching
+            run_job("paper_next_open_fills", run_eod_matching, td)
+        except Exception as e:
+            log.warning(f"  Paper next-open fills: {e}")
+
     # 4:45 PM — Compute 35 technical indicators
     from data.technical import run_technical_pipeline
     run_job("technical_indicators", run_technical_pipeline, td)
@@ -1909,14 +1918,17 @@ def _broker_health_now():
 
 def _w29_paper_match_tick():
     """EX-02 / W4-R4: fill resting paper LIMIT / SL / SL-M orders that have crossed. Logged only
-    when something is pending."""
+    when something is pending (orders waiting for a next open fill post-market instead, P1-6)."""
     if not is_market_hours():
         return
     try:
         from db.schema import get_connection
+        from execution.paper_matching import LIVE_PENDING
+        from orders.paper import ensure_tables
         c = get_connection()
         try:
-            n = c.execute("SELECT COUNT(*) FROM paper_order WHERE status='PENDING'").fetchone()[0]
+            ensure_tables(c)                       # P1-6 columns, on an install that has not placed an order since
+            n = c.execute(f"SELECT COUNT(*) FROM paper_order WHERE {LIVE_PENDING}").fetchone()[0]
         finally:
             c.close()
         if n:

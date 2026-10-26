@@ -13,7 +13,7 @@ under two optional sections; anything missing takes the SAFE DEFAULT below.
         "order_type": "MARKET",
         "product_type": "CNC",
         "max_intent_age_days": 5,          older intents are REJECTED as stale
-        "paper_fill_price": "live"         live (Dhan LTP) | reference (the decision close)
+        "paper_fill_price": "next_open"    next_open | live -- see PAPER_FILL_PRICES
     },
     "w4_risk_limits": { ...RISK_DEFAULTS keys... }
 
@@ -44,6 +44,17 @@ CONFIG_PATH = Path("atip_data") / "config.json"
 PAPER, LIVE = "PAPER", "LIVE"
 MODES = (PAPER, LIVE)
 
+# How the W4 paper adapter prices a cash order (P1-6; fixes W4-R9):
+#   next_open  (default) every order waits for the open of the first session after it is placed and
+#              fills from that session's NSE Bhavcopy bar (orders/paper.py match_next_open, run
+#              post-market). The post-market cycle decides on a session's close, so its orders can
+#              never fill at that close; no Dhan quote is needed.
+#   live       the Dhan LTP while the NSE session is open (09:15-15:30 on a trading day); outside the
+#              session -- the post-market cycle -- or with no quote, the next open as above.
+# "reference" (the decision close: the signal day's close, a look-ahead fill for an end-of-day signal)
+# is no longer offered; a config that still says so gets next_open.
+PAPER_FILL_PRICES = ("next_open", "live")
+
 EXECUTION_DEFAULTS = {
     "mode": PAPER,
     "live_trading_enabled": False,
@@ -53,7 +64,7 @@ EXECUTION_DEFAULTS = {
     "order_type": "MARKET",
     "product_type": "CNC",
     "max_intent_age_days": 5,
-    "paper_fill_price": "live",
+    "paper_fill_price": "next_open",
     # W8: a BUY is REJECTED when the symbol's last daily bar is more than this many
     # sessions behind the last completed session (null disables)
     "max_market_data_age_sessions": 2,
@@ -115,6 +126,13 @@ def execution_settings() -> dict:
     if out["mode"] not in MODES:
         log.warning(f"  execution.mode={out['mode']!r} is not PAPER/LIVE — using PAPER")
         out["mode"] = PAPER
+    fp = str(out.get("paper_fill_price") or "next_open").lower()
+    if fp not in PAPER_FILL_PRICES:
+        log.warning(f"  execution.paper_fill_price={out['paper_fill_price']!r} is not one of "
+                    f"{'/'.join(PAPER_FILL_PRICES)} — using next_open"
+                    + (" (reference filled at the signal day's close)" if fp == "reference" else ""))
+        fp = "next_open"
+    out["paper_fill_price"] = fp
     # the gate is True only for a real JSON true -- never a string or a number
     out["live_trading_enabled"] = out.get("live_trading_enabled") is True
     out["auto_execute_paper"] = out.get("auto_execute_paper") is True

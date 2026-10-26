@@ -45,7 +45,7 @@ Last updated: 2026-09-26 (W20 wealth track).
 | W4-R6 | Broker reconciliation (OMS vs broker book) is not built. The paper broker is the book of record | execution/ | Medium | FIXED in W29 (BR-05) | W4 follow-up |
 | W4-R7 | Per-strategy attribution comes only from W4 fills. Positions opened outside W4 (order rules, aggressive exit, manual paper orders) belong to no strategy, but they do count in portfolio, sector and position limits | execution/positions.py | Low | OPEN (by design) | — |
 | W4-R8 | The sector map is read from the cached Nifty 500 list. When the cache is missing, sector exposure cannot be measured and every BUY is REJECTED (fail closed) | execution/positions.py | Low | OPEN | Defect-resolution phase if it occurs |
-| W4-R9 | The post-market cycle runs after the close. With `paper_fill_price` "live", an auto-executed order fills at the Dhan LTP at that time (the day's last price), not the next open | execution/pipeline.py | Low | OPEN (by design) | Scheduling decision for the owner |
+| W4-R9 | The post-market cycle runs after the close. With `paper_fill_price` "live", an auto-executed order fills at the Dhan LTP at that time (the day's last price), not the next open | execution/pipeline.py | Low | FIXED 2026-10-26 (P1-6): `paper_fill_price` "next_open" (default) fills at the next session's open from the Bhavcopy (`orders/paper.py` match_next_open, post-market job `paper_next_open_fills`); "live" uses the LTP only in the session; "reference" is gone | — |
 | W3-L1..L6 | W3 limitations (see KNOWN_DEFECTS.md section 3). L1 (intents never authorised) is now superseded by the W4 risk engine | strategy_engine/ | — | See KNOWN_DEFECTS.md | — |
 
 ## W5 items not built / known limits
