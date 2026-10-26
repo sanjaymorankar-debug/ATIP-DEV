@@ -22,7 +22,7 @@
 
 ## Manual commands
 
-Run all of these from `/Users/agtci/Documents/ATIP`.
+Run all of these from `/Users/agtci/ATIP`.
 
 Take a verified backup now:
 
