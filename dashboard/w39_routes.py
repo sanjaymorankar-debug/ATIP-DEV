@@ -120,15 +120,15 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── pages ──
     @app.get("/research", response_class=HTMLResponse)
     async def page_research():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_page import render_research
-        return HTMLResponse(render_research(token()))
+        return HTMLResponse(render_research(page_token()))
 
     @app.get("/options-builder", response_class=HTMLResponse)
     async def page_options_builder():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_page import render_options
-        return HTMLResponse(render_options(token()))
+        return HTMLResponse(render_options(page_token()))
 
     # ── equity research ──
     @app.get("/api/research/equity")
@@ -245,9 +245,9 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── market pulse: global cues, FII, positioning, order book ──
     @app.get("/market-pulse", response_class=HTMLResponse)
     async def page_market_pulse():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_page import render_pulse
-        return HTMLResponse(render_pulse(token()))
+        return HTMLResponse(render_pulse(page_token()))
 
     @app.get("/api/market-pulse")
     async def api_pulse():
@@ -388,9 +388,9 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── technical signals ──
     @app.get("/signals", response_class=HTMLResponse)
     async def page_signals():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_page import render_signals
-        return HTMLResponse(render_signals(token()))
+        return HTMLResponse(render_signals(page_token()))
 
     _ALIGN = ("WITH", "MIXED", "AGAINST")
 
@@ -496,9 +496,9 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── stock screener (fundamental + technical) ──
     @app.get("/screener", response_class=HTMLResponse)
     async def page_screener():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_page import render_screener
-        return HTMLResponse(render_screener(token()))
+        return HTMLResponse(render_screener(page_token()))
 
     @app.get("/api/screener/fields")
     async def api_screener_fields():

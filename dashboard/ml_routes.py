@@ -388,5 +388,5 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/ml", response_class=HTMLResponse)
     async def ml_page():
         from dashboard.ml_page import render
-        from dashboard.security import token as _tok
+        from dashboard.security import page_token as _tok
         return HTMLResponse(render(_tok()))

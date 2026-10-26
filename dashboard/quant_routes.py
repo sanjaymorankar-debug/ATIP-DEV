@@ -458,5 +458,5 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/quant", response_class=HTMLResponse)
     async def quant_page():
         from dashboard.quant_page import render
-        from dashboard.security import token as _tok
+        from dashboard.security import page_token as _tok
         return HTMLResponse(render(_tok()))

@@ -56,9 +56,9 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── pages ──
     @app.get("/compliance", response_class=HTMLResponse)
     async def page_compliance():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w38_page import render_compliance
-        return HTMLResponse(render_compliance(token()))
+        return HTMLResponse(render_compliance(page_token()))
 
     @app.get("/privacy", response_class=HTMLResponse)
     async def page_privacy():
@@ -75,9 +75,9 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/m", response_class=HTMLResponse)
     async def page_mobile():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w38_page import render_mobile
-        return HTMLResponse(render_mobile(token()))
+        return HTMLResponse(render_mobile(page_token()))
 
     # ── SEC-05 ──
     @app.get("/api/compliance")

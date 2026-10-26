@@ -78,8 +78,8 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/data-platform", response_class=HTMLResponse)
     async def data_platform():
         from dashboard.w35_page import render
-        from dashboard.security import token
-        return HTMLResponse(render(token()))
+        from dashboard.security import page_token
+        return HTMLResponse(render(page_token()))
 
     # ── DP-22 lake ──
     @app.get("/api/data/lake")

@@ -23,6 +23,12 @@ Two changes, both of which the owner should not notice:
   localhost: a cross-site script cannot set a custom header without a CORS
   preflight this server never grants. GET routes stay open locally -- they read
   nothing secret that a local user cannot already read from the database.
+
+  Enterprise mode serves other tenants from the same app. The install's token
+  stays the owner's: no other tenant's page carries it and its write guard
+  refuses it. A signed-in tenant gets a token of its own, derived from the
+  install's and tied to its session (session_token): its pages carry that, and
+  the guard accepts it for that session alone.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import json
 import logging
 import os
 import secrets
+from contextvars import ContextVar
 from pathlib import Path
 
 log = logging.getLogger("atip.dashboard")
@@ -68,6 +75,32 @@ def token() -> str:
 
 def token_ok(supplied: str | None) -> bool:
     return bool(supplied) and hmac.compare_digest(str(supplied), token())
+
+
+# The dashboard credential the request being served may carry, set by enterprise/authz.py. None while enterprise
+# mode is off, where the install's token is the one credential. In enterprise mode it is the install's token for the
+# owner, the signed-in session's own token (session_token) for any other tenant, and "" for a stranger.
+credential: ContextVar[str | None] = ContextVar("atip_dashboard_credential", default=None)
+
+
+def session_token(session_secret: str) -> str:
+    """One signed-in session's dashboard token. It is derived from the install's token, so it is not that token and
+    no other session can derive it: the session's own pages carry it, and the write guard accepts it for that session."""
+    return hmac.new(token().encode(), f"session:{session_secret}".encode(), "sha256").hexdigest()
+
+
+def page_token() -> str:
+    """The token a page may carry for the request being served (see credential)."""
+    current = credential.get()
+    return token() if current is None else current
+
+
+def guard_ok(supplied: str | None) -> bool:
+    """Whether the write guard accepts the supplied token for the request being served."""
+    current = credential.get()
+    if current is None:
+        return token_ok(supplied)
+    return bool(current) and bool(supplied) and hmac.compare_digest(str(supplied), current)
 
 
 def dashboard_host() -> str:
