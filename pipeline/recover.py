@@ -15,6 +15,10 @@ Limits, so a broken dependency (expired token, site down) cannot loop:
   MIN_GAP      and not again within this many minutes
 Every attempt is stored in job_recovery and shown on the dashboard / in the morning brief.
 
+The morning brief is re-sent only inside its window (alerts.telegram.morning_brief_window: a trading
+day, 08:30 to the 09:15 open), checked when the step is planned and again when it runs, after the
+steps before it. On 2026-10-26 ATIP started at 18:47 and this module sent the "morning" brief at 18:49.
+
     python -m pipeline.recover            # check, recover, print what happened
 """
 
@@ -85,6 +89,10 @@ def plan(conn, problems, now=None) -> list[dict]:
             allowed, reason = False, f"tried {attempts}x today — needs attention"
         elif last_at and now - last_at < MIN_GAP:
             allowed, reason = False, f"retried at {last_at:%H:%M}; next try after {(last_at + MIN_GAP):%H:%M}"
+        elif s == "brief":
+            from alerts.telegram import morning_brief_window
+            allowed, reason = morning_brief_window(now)
+            reason = "" if allowed else f"not sent: {reason}"
         out.append({"step": s, "labels": steps[s], "allowed": allowed, "reason": reason, "attempts": attempts})
     return out
 
@@ -130,6 +138,10 @@ def _run_step(step, now):
     if step == "weekly":
         return S.run_weekly()
     if step == "brief":
+        from alerts.telegram import morning_brief_window
+        ok, why = morning_brief_window(now)             # again: the steps before it can take minutes
+        if not ok:
+            return {"status": "SKIPPED", "reason": f"not sent: {why}"}
         return S.run_job("morning_digest", _brief)
     raise ValueError(step)
 
@@ -154,6 +166,8 @@ def recover(problems, now=None) -> dict:
             r = _run_step(st["step"], datetime.now())
             if isinstance(r, dict) and r.get("status") == "FAILED":
                 result = f"FAILED: {r.get('error') or ''}"[:200]
+            elif isinstance(r, dict) and r.get("status") == "SKIPPED":
+                result = f"SKIPPED: {r.get('reason') or ''}"[:200]
         except Exception as e:
             log.warning(f"  Auto-recovery {st['step']}: {e}")
             result = f"FAILED: {type(e).__name__}: {e}"[:200]
@@ -199,12 +213,12 @@ def check_and_recover(now=None) -> dict:
         conn.close()
     if not before:
         return {"problems": [], "recovered": [], "ran": [], "skipped": []}
-    rep = recover(before)
+    rep = recover(before, now)
     after = before
     if rep["ran"]:
         conn = get_connection()
         try:
-            after = check_job_health(conn)
+            after = check_job_health(conn, now)
         finally:
             conn.close()
     still = {p.label for p in after}

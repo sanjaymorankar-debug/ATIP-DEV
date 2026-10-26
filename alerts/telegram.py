@@ -1,11 +1,13 @@
 """ATIP — Telegram Alert Engine (10 alert types)"""
 import os, json, logging, requests
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from db.schema import get_connection
 
 log = logging.getLogger(__name__)
 CONFIG_PATH = Path("atip_data/config.json")
+# P1-3: when an automatic morning brief may go out -- from its 08:30 slot to the 09:15 open
+MORNING_BRIEF_WINDOW = (dtime(8, 30), dtime(9, 15))
 
 def load_config():
     cfg={}
@@ -254,6 +256,71 @@ def run_all_alert_checks(trade_date=None):
     return results
 
 
+def morning_brief_window(now=None):
+    """(True, "") when an automatic morning brief may go out at `now`: a trading day, from the 08:30
+    slot to the 09:15 open. After the open a brief reads as today's plan while the market is already
+    moving -- the auto-recovery sent one at 18:49 on 2026-10-26 -- and before 08:30 the scheduled run
+    is still to come. A brief asked for by hand (main.py --morning-brief) is not held to this."""
+    from utils.trading_calendar import is_trading_day
+    now = now or datetime.now()
+    start, end = MORNING_BRIEF_WINDOW
+    if not is_trading_day(now.date()):
+        return False, f"{now:%d %b} is not a trading day"
+    if now.time() < start:
+        return False, f"the {start:%H:%M} run sends it (now {now:%H:%M})"
+    if now.time() >= end:
+        return False, f"the market opened at {end:%H:%M} (now {now:%H:%M}): it would read as today's plan"
+    return True, ""
+
+def _fmt_chg(v):
+    return f" ({v:+.2f}%)" if v is not None else ""
+
+def _market_lines(conn, td, now=None):
+    """P1-3: crude, USD-INR, FII/DII and the news tone for the brief -- each says when it has nothing."""
+    now = now or datetime.now()
+    today = str(now.date())
+    lines = []
+    def asof(d):
+        return "" if str(d)[:10] == today else f" (as of {datetime.strptime(str(d)[:10], '%Y-%m-%d'):%d %b})"
+    cr = conn.execute("SELECT date,crude_brent,crude_brent_chg,crude_wti,crude_wti_chg FROM global_markets "
+                      "WHERE date<=? AND (crude_brent IS NOT NULL OR crude_wti IS NOT NULL) "
+                      "ORDER BY date DESC,id DESC LIMIT 1",(today,)).fetchone()
+    if cr:
+        bits = [f"{n} ${cr[k]:,.2f}{_fmt_chg(cr[k+'_chg'])}" for n,k in (("Brent","crude_brent"),("WTI","crude_wti"))
+                if cr[k] is not None]
+        lines.append("<b>Crude:</b> "+" · ".join(bits)+asof(cr["date"]))
+    else:
+        lines.append("<b>Crude:</b> — (no global markets fetch stored)")
+    fx = conn.execute("SELECT date,usd_inr,usd_inr_chg FROM global_markets WHERE date<=? AND usd_inr IS NOT NULL "
+                      "ORDER BY date DESC,id DESC LIMIT 1",(today,)).fetchone()
+    lines.append(f"<b>USD-INR:</b> {fx['usd_inr']:.2f}{_fmt_chg(fx['usd_inr_chg'])}{asof(fx['date'])}" if fx
+                 else "<b>USD-INR:</b> — (no global markets fetch stored)")
+    fd = conn.execute("SELECT date,fii_net_cr,dii_net_cr FROM fii_dii_market WHERE date<=? AND "
+                      "(fii_net_cr IS NOT NULL OR dii_net_cr IS NOT NULL) ORDER BY date DESC LIMIT 1",(td,)).fetchone()
+    if fd:
+        nets = " · ".join(f"{n} ₹{v:+,.0f} Cr" for n,v in (("FII",fd["fii_net_cr"]),("DII",fd["dii_net_cr"]))
+                          if v is not None)
+        lines.append(f"<b>FII/DII ({datetime.strptime(str(fd['date'])[:10], '%Y-%m-%d'):%d %b}):</b> {nets}"
+                     + ("" if str(fd["date"])[:10] == str(td)[:10] else f" — not yet published for {td}"))
+    else:
+        lines.append(f"<b>FII/DII:</b> — (none stored up to {td})")
+    try:
+        ns = conn.execute("SELECT created_at,article_count,classifier,summary_json FROM news_summary "
+                          "ORDER BY id DESC LIMIT 1").fetchone()
+    except Exception:
+        ns = None
+    made = None
+    if ns:
+        try: made = datetime.fromisoformat(str(ns["created_at"])[:19])
+        except ValueError: made = None
+    if ns and made and now - made <= timedelta(hours=24):
+        tone = (json.loads(ns["summary_json"] or "{}").get("tone") or "—").replace("_", "-")
+        how = "AI" if ns["classifier"] == "claude" else "keyword rules, not AI"
+        lines.append(f"<b>News tone:</b> {_html(tone)} · {ns['article_count'] or 0} headlines ({how}, {made:%d %b %H:%M})")
+    else:
+        lines.append("<b>News tone:</b> — (no news summary in the last 24 h)")
+    return lines
+
 def send_morning_digest(trade_date=None):
     """
     The 8:30 AM answer to "What should I do today?" — the question the
@@ -290,6 +357,9 @@ def send_morning_digest(trade_date=None):
                             LEFT JOIN technical_indicators t ON t.symbol=s.symbol AND t.date=s.date
                             WHERE s.date=? AND s.is_tod=1 LIMIT 1""",(td,)).fetchone()
         risky=conn.execute("SELECT COUNT(*) n FROM ai_scores WHERE date=? AND cri>75",(td,)).fetchone()
+        try: market=_market_lines(conn,td)
+        except Exception as e:                      # a bad row in these lines must not cost the whole brief
+            log.warning(f"  Morning digest: market lines unavailable: {e}"); market=[]
     finally:
         conn.close()
 
@@ -313,6 +383,7 @@ def send_morning_digest(trade_date=None):
     if glb and glb["global_score"] is not None:
         body.append(f"<b>Global:</b> score {glb['global_score']:.0f}"
                     +(f", S&amp;P {glb['sp500_chg']:+.2f}%" if glb["sp500_chg"] is not None else ""))
+    body.extend(market)
     if mh and mh["portfolio_health"] is not None:
         body.append(f"<b>Portfolio Health:</b> {mh['portfolio_health']:.0f}")
 

@@ -1290,11 +1290,16 @@ def _rebuild_dashboard(td):
 #  REFRESH: US market close data, commodities, FX
 # ═════════════════════════════════════════════════════════════════════════
 
-def run_morning_digest():
+def run_morning_digest(now=None):
     """8:30 AM Morning Brief. Skips non-trading days — there is no 'what should
-    I do today' on a Sunday."""
+    I do today' on a Sunday — and (P1-3) never goes out after the 09:15 open:
+    `schedule` runs a missed 08:30 slot when the Mac wakes, whatever the time."""
     if not is_market_day():
         log.info("⏩  Not a trading day — skipping morning brief"); return
+    from alerts.telegram import morning_brief_window
+    ok, why = morning_brief_window(now)
+    if not ok:
+        log.warning(f"⏩  Morning brief not sent: {why}"); return
     log.info(f"\n{'='*55}\n  MORNING BRIEF — {date.today()}\n{'='*55}")
     try:
         from alerts.telegram import send_morning_digest
