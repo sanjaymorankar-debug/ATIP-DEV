@@ -90,9 +90,19 @@ def download_bulk_block_deals(trade_date, session):
             if not (sym_col and qty_col and price_col):
                 log.warning(f"  {label} deals: unexpected columns {list(df.columns)[:8]} — skipping")
                 continue
+            # The file holds NSE's latest session only. Rows dated otherwise are another day's:
+            # a catch-up for past sessions stamped 2026-10-26's deals onto five of them.
+            date_col = next((c for c in df.columns if c.upper() == "DATE"), None)
+            if date_col:
+                days = df[date_col].map(_nse_date)
+                if days.notna().any():
+                    td = trade_date if isinstance(trade_date, date) else date.fromisoformat(str(trade_date)[:10])
+                    if not (days == td).any():
+                        log.info(f"  {label} deals: NSE's file is for {max(days.dropna())}, not {td} — nothing stored")
+                    df = df[days == td]
             for _, row in df.iterrows():
                 sym = str(row[sym_col]).strip().upper()
-                if not sym: continue
+                if not sym or sym == "NAN": continue        # "NO RECORDS" lines and blank rows
                 try:
                     qty = float(str(row[qty_col]).replace(",", ""))
                     price = float(str(row[price_col]).replace(",", ""))
