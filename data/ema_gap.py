@@ -70,8 +70,10 @@ def short_symbols(conn, universe: list, min_bars: int, upto: str) -> dict:
 
 
 def missing_sessions(conn, symbols: list, upto: date, lookback_days: int) -> list:
-    """Past NSE sessions (newest first) on which at least one of `symbols` has no bar, skipping sessions
-    already attempted."""
+    """Past NSE sessions on which at least one of `symbols` has no bar, skipping sessions already attempted --
+    the ones that repair the most symbols first, newest first among equals. (Newest-first alone spent the whole
+    budget on recent sessions that one recently listed symbol lacked -- HEGAM, listed 2026-09-22 -- and never
+    reached the 2026-07-30..09-04 hole every short symbol shares: defect found in the 2026-10-26 run.)"""
     from utils.trading_calendar import is_trading_day
     tried = {r[0] for r in conn.execute("SELECT date FROM ema_gap_sessions").fetchall()}
     out = []
@@ -85,8 +87,8 @@ def missing_sessions(conn, symbols: list, upto: date, lookback_days: int) -> lis
         n = conn.execute(f"SELECT COUNT(*) FROM prices_daily WHERE date=? AND symbol IN ({marks})",
                          (str(d), *symbols)).fetchone()[0]
         if n < len(symbols):
-            out.append(d)
-    return out
+            out.append((len(symbols) - n, d))
+    return [d for _, d in sorted(out, key=lambda x: (-x[0], -x[1].toordinal()))]
 
 
 def fill_session(conn, d: date, symbols: set, session, download=None) -> int:

@@ -91,3 +91,22 @@ def test_a_failed_download_is_recorded_not_fatal(db):
         raise RuntimeError("404")
     out = ema_gap.run(sessions=3, download=dead, session=object(), recompute=False)
     assert out["status"] == "FAILED" and out["sessions_failed"] == 3
+
+
+def test_the_shared_hole_is_filled_before_one_symbols_listing_gap(db):
+    """Regression (2026-10-26 real run): a recently listed symbol made every recent session 'missing', and
+    newest-first spent the budget there instead of on the older hole every short symbol shares."""
+    from data import ema_gap
+    from db.schema import get_connection
+    c = get_connection()
+    for d in db[-5:]:                                    # NEWCO listed 5 sessions ago
+        c.execute("INSERT INTO prices_daily (symbol,date,close,source) VALUES ('NEWCO',?,10,'bhavcopy')", (str(d),))
+    for i, d in enumerate(db[-33:]):                     # a third short symbol with SMALLCO's history
+        c.execute("INSERT INTO prices_daily (symbol,date,close,source) VALUES ('MIDCO',?,50,'bhavcopy')", (str(d),))
+    c.execute("INSERT INTO ai_scores (symbol, date, atip_score) VALUES ('NEWCO','2026-10-26',50)")
+    c.execute("INSERT INTO ai_scores (symbol, date, atip_score) VALUES ('MIDCO','2026-10-26',50)")
+    c.commit()
+    c.close()
+    calls = []
+    ema_gap.run(sessions=5, download=_fake_bhavcopy(calls), session=object(), recompute=False)
+    assert all(d < db[-33] for d in calls), "sessions every short symbol lacks come before NEWCO-only ones"
