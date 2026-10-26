@@ -24,6 +24,10 @@ def _isolated(tmp_path, monkeypatch):
     so a test that halts trading or fails a job would otherwise write to the
     real atip.db -- or message a configured bot."""
     monkeypatch.setattr(schema, "DB_PATH", tmp_path / "isolated.db")
+    # The dashboard's state file is relative to the working directory: a test that rebuilds the
+    # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
+    # with its fixture rows (2026-10-26).
+    monkeypatch.setattr("dashboard.server.STATE_PATH", tmp_path / "dashboard_state.json")
     import alerts.telegram as tg
     monkeypatch.setattr(tg, "_real_deliver_telegram", tg._deliver_telegram, raising=False)
     monkeypatch.setattr(tg, "_deliver_telegram", lambda message, parse_mode="HTML": (False, "test"))
