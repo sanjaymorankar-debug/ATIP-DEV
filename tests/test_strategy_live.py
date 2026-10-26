@@ -141,6 +141,133 @@ def test_stop_takes_precedence_within_one_pass(pos, cfg, orders):
     assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
 
 
+# ── the ATR stop (stop_atr_mult) ──────────────────────────────────────────
+
+def _atr_on(cfg, mult=2.0):
+    return A.validate_config(dict(cfg, stop_atr_mult=mult))
+
+
+def test_atr_stop_is_fixed_at_entry_and_replaces_the_fixed_stop(temp_db, cfg, orders, monkeypatch):
+    monkeypatch.setattr(L, "atr_for", lambda s, conn=None: 4.0)
+    on = _atr_on(cfg)
+    pos = L.enter("ACME", 100, cfg=on)["position"]
+    assert pos["initial_stop_pct"] == 8.0                        # 2 x 4 %
+    L.manage_position(pos, 95.0, on)                             # -5 %: inside the ATR stop
+    assert not [o for o in orders["sent"] if o["side"] == "SELL"]
+    monkeypatch.setattr(L, "atr_for", lambda s, conn=None: 1.0)  # a later ATR does not move it
+    L.manage_position(P.get_position(pos["id"]), 92.5, on)
+    assert not [o for o in orders["sent"] if o["side"] == "SELL"]
+    L.manage_position(P.get_position(pos["id"]), 91.9, on)
+    p = P.get_position(pos["id"])
+    assert p["status"] == A.ST_CLOSED and p["exit_reason"] == A.INITIAL_STOP_LOSS
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "SELL"] == [100]
+
+
+def test_explicit_stop_pct_still_overrides_the_atr_stop(temp_db, cfg, orders, monkeypatch):
+    monkeypatch.setattr(L, "atr_for", lambda s, conn=None: 4.0)
+    on = _atr_on(cfg)
+    pos = L.enter("ACME", 100, cfg=on)["position"]
+    L.manage_position(pos, 96.9, on, initial_stop_pct=3.0)
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_turning_the_atr_stop_on_leaves_open_positions_on_their_stop(pos, cfg, orders):
+    """`pos` opened with the setting off, so it keeps the fixed stop (target_1_pct, 3 %)."""
+    assert pos["initial_stop_pct"] is None
+    L.manage_position(pos, 96.9, _atr_on(cfg))
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_unknown_atr_keeps_the_fixed_stop(temp_db, cfg, orders, monkeypatch):
+    monkeypatch.setattr(L, "atr_for", lambda s, conn=None: None)
+    on = _atr_on(cfg)
+    pos = L.enter("ACME", 100, cfg=on)["position"]
+    assert pos["initial_stop_pct"] is None
+    L.manage_position(pos, 96.9, on)
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+# ── risk-based sizing (risk_sizing) ───────────────────────────────────────
+
+@pytest.fixture
+def sizing(monkeypatch):
+    """Rs 10 lakh capital, 1 % risk per trade, at most 20 % in one name; the quote is 100."""
+    monkeypatch.setattr("orders.risk.sizing_config", lambda: {
+        "capital": 1_000_000, "risk_per_trade_pct": 1.0, "max_position_pct": 20.0})
+    monkeypatch.setattr(L, "_last_price", lambda s: 100.0)
+
+
+def _sizing_on(cfg, **kw):
+    return A.validate_config(dict(cfg, risk_sizing=True, **kw))
+
+
+def test_risk_sized_entry_buys_what_the_stop_allows(temp_db, cfg, orders, sizing, monkeypatch):
+    monkeypatch.setattr(L, "atr_for", lambda s, conn=None: 4.0)
+    r = L.enter("ACME", cfg=_sizing_on(cfg, stop_atr_mult=2.0))
+    # Rs 10,000 at risk / Rs 8 a share to the 8 % ATR stop = 1,250 shares (under the 2,000 cap)
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "BUY"] == [1250]
+    assert r["sizing"]["capped_by"] == "risk_per_trade_pct"
+    assert r["position"]["initial_stop_pct"] == 8.0
+
+
+def test_a_tight_stop_is_capped_by_max_position_pct(temp_db, cfg, orders, sizing):
+    L.enter("ACME", cfg=_sizing_on(cfg))        # 3 % stop: 3,333 by risk, 2,000 by the cap
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "BUY"] == [2000]
+
+
+def test_risk_sized_entry_keeps_the_stop_it_was_sized_on(temp_db, cfg, orders, sizing):
+    """Sized on target_1_pct (3 %); raising the target afterwards must not widen the stop."""
+    pos = L.enter("ACME", cfg=_sizing_on(cfg))["position"]
+    assert pos["initial_stop_pct"] == 3.0
+    later = A.validate_config(dict(cfg, target_1_pct=6.0, target_2_pct=12.0))
+    L.manage_position(pos, 96.9, later)
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_entry_stop_pct_is_sized_on_and_stored(temp_db, cfg, orders, sizing):
+    r = L.enter("ACME", cfg=_sizing_on(cfg), stop_pct=5.0)
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "BUY"] == [2000]   # 10,000 / 5
+    assert r["position"]["initial_stop_pct"] == 5.0
+
+
+def test_an_explicit_quantity_is_not_resized(temp_db, cfg, orders, monkeypatch):
+    def no_quote(s):
+        raise AssertionError("an explicit quantity must not fetch a quote to size on")
+    monkeypatch.setattr(L, "_last_price", no_quote)
+    L.enter("ACME", 7, cfg=_sizing_on(cfg))
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "BUY"] == [7]
+
+
+def test_no_fresh_quote_means_no_risk_sized_entry(temp_db, cfg, orders, sizing, monkeypatch):
+    monkeypatch.setattr(L, "_last_price", lambda s: None)
+    r = L.enter("ACME", cfg=_sizing_on(cfg))
+    assert r["opened"] is False and "no fresh quote" in r["reason"]
+    assert orders["sent"] == [] and P.open_positions() == []
+
+
+def test_without_risk_sizing_an_entry_with_no_quantity_buys_one_share(temp_db, cfg, orders):
+    r = L.enter("ACME", cfg=cfg)
+    assert [o["qty"] for o in orders["sent"] if o["side"] == "BUY"] == [1]
+    assert r["position"]["initial_stop_pct"] is None
+
+
+def test_an_existing_position_table_gains_the_stop_column(temp_db):
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        conn.execute("CREATE TABLE strategy_position (id TEXT PRIMARY KEY, entry_rule_id TEXT, "
+                     "symbol TEXT NOT NULL, status TEXT DEFAULT 'OPEN')")   # indexed columns only
+        conn.execute("INSERT INTO strategy_position (id, symbol) VALUES ('old', 'ACME')")
+        conn.commit()
+        P.ensure_tables(conn)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(strategy_position)").fetchall()}
+        assert "initial_stop_pct" in cols
+        row = conn.execute("SELECT symbol, initial_stop_pct FROM strategy_position").fetchone()
+        assert tuple(row) == ("ACME", None)
+    finally:
+        conn.close()
+
+
 # ── the runner, checkpoint and trail ──────────────────────────────────────
 
 def test_checkpoint_runs_at_target_2_and_holds_on_strong_momentum(pos, cfg, orders, monkeypatch):

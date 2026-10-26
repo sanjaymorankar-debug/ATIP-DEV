@@ -41,11 +41,38 @@ def test_alternative_splits_validate_and_size_correctly(cfg, split):
     ({"trail_min_pct": 9.0, "trail_max_pct": 2.0}, "invalid"),
     ({"momentum_weak_score": 90.0, "momentum_strong_score": 50.0}, "must not exceed"),
     ({"execution_mode": "YOLO"}, "PAPER or LIVE"),
+    ({"stop_atr_mult": 0}, "stop_atr_mult"),
+    ({"stop_atr_mult": -2.0}, "stop_atr_mult"),
+    ({"stop_atr_mult": True}, "stop_atr_mult"),
+    ({"stop_atr_mult": "2"}, "stop_atr_mult"),
+    ({"stop_min_pct": 6.0, "stop_max_pct": 4.0}, "stop_min_pct/stop_max_pct invalid"),
+    ({"stop_min_pct": 0.0}, "stop_min_pct/stop_max_pct invalid"),
+    ({"risk_sizing": "yes"}, "risk_sizing"),
+    ({"risk_sizing": 1}, "risk_sizing"),
 ])
 def test_invalid_config_is_rejected(cfg, bad, msg):
     with pytest.raises(A.ConfigError) as e:
         A.validate_config({**cfg, **bad})
     assert msg in str(e.value)
+
+
+# ── the ATR initial stop ──────────────────────────────────────────────────
+
+def test_atr_stop_is_off_by_default(cfg):
+    assert A.DEFAULTS["stop_atr_mult"] is None
+    assert A.initial_stop_pct(4.0, cfg) is None
+
+
+@pytest.mark.parametrize("atr,expected", [
+    (4.0, 8.0),       # 2 x ATR
+    (0.5, 2.0),       # a quiet stock: floor
+    (9.0, 10.0),      # a wild one: ceiling
+    (None, None),     # unknown ATR: the caller keeps its fixed stop
+    (0.0, None),
+])
+def test_atr_stop_is_scaled_and_clamped(cfg, atr, expected):
+    c = A.validate_config({**cfg, "stop_atr_mult": 2.0})
+    assert A.initial_stop_pct(atr, c) == expected
 
 
 # ── partial-exit sizing ───────────────────────────────────────────────────
