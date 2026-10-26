@@ -1,0 +1,342 @@
+{
+ "pages": {
+  "/": {
+   "status": 200,
+   "bytes": 1035546,
+   "s": 1.46,
+   "api_total": 13,
+   "api_200": 13,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/backtests": {
+   "status": 200,
+   "bytes": 12225,
+   "s": 0.01,
+   "api_total": 2,
+   "api_200": 2,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/strategies": {
+   "status": 200,
+   "bytes": 17576,
+   "s": 0.03,
+   "api_total": 4,
+   "api_200": 4,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/trading": {
+   "status": 200,
+   "bytes": 29297,
+   "s": 0.22,
+   "api_total": 19,
+   "api_200": 17,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/execution/broker-health/check": 405,
+    "/api/execution/paper-match": 405
+   }
+  },
+  "/market": {
+   "status": 200,
+   "bytes": 12903,
+   "s": 0.14,
+   "api_total": 5,
+   "api_200": 5,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/ml": {
+   "status": 200,
+   "bytes": 9501,
+   "s": 0.04,
+   "api_total": 7,
+   "api_200": 7,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/quant": {
+   "status": 200,
+   "bytes": 8125,
+   "s": 0.05,
+   "api_total": 11,
+   "api_200": 10,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/quant/rankings": 422
+   }
+  },
+  "/execution-lab": {
+   "status": 200,
+   "bytes": 16160,
+   "s": 0.05,
+   "api_total": 10,
+   "api_200": 5,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/backtests/event-driven": 404,
+    "/api/execution/algos/tick": 404,
+    "/api/execution/events/dispatch": 405,
+    "/api/execution/impact": 422,
+    "/api/execution/impact/calibrate": 405
+   }
+  },
+  "/data-platform": {
+   "status": 200,
+   "bytes": 29204,
+   "s": 0.06,
+   "api_total": 15,
+   "api_200": 8,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/data/depth/snapshot": 405,
+    "/api/data/fo/chain": 422,
+    "/api/data/fo/chain/snapshot": 405,
+    "/api/data/fo/contracts": 422,
+    "/api/data/lake/archive": 405,
+    "/api/data/lake/verify": 405,
+    "/api/data/ticks/minute-bars": 405
+   }
+  },
+  "/assistant": {
+   "status": 200,
+   "bytes": 5565,
+   "s": 0.02,
+   "api_total": 3,
+   "api_200": 2,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/assistant/ask": 405
+   }
+  },
+  "/strategy-builder": {
+   "status": 200,
+   "bytes": 9261,
+   "s": 0.0,
+   "api_total": 1,
+   "api_200": 1,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/compliance": {
+   "status": 200,
+   "bytes": 8570,
+   "s": 0.03,
+   "api_total": 5,
+   "api_200": 5,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/privacy": {
+   "status": 200,
+   "bytes": 9261,
+   "s": 0.01,
+   "api_total": 0,
+   "api_200": 0,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/m": {
+   "status": 200,
+   "bytes": 6558,
+   "s": 0.01,
+   "api_total": 1,
+   "api_200": 1,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/baskets": {
+   "status": 200,
+   "bytes": 10959,
+   "s": 0.02,
+   "api_total": 3,
+   "api_200": 3,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/research": {
+   "status": 200,
+   "bytes": 24026,
+   "s": 0.06,
+   "api_total": 5,
+   "api_200": 4,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/data/history/backfill": 405
+   }
+  },
+  "/options-builder": {
+   "status": 200,
+   "bytes": 15757,
+   "s": 0.01,
+   "api_total": 3,
+   "api_200": 1,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/options/analyse": 405,
+    "/api/options/build": 405
+   }
+  },
+  "/market-pulse": {
+   "status": 200,
+   "bytes": 30945,
+   "s": 0.07,
+   "api_total": 10,
+   "api_200": 8,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/market-pulse/gift": 405,
+    "/api/orderbook/snapshot": 405
+   }
+  },
+  "/signals": {
+   "status": 200,
+   "bytes": 23327,
+   "s": 0.04,
+   "api_total": 8,
+   "api_200": 8,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/screener": {
+   "status": 200,
+   "bytes": 15762,
+   "s": 0.01,
+   "api_total": 3,
+   "api_200": 2,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/screener/ask": 405
+   }
+  },
+  "/brokers": {
+   "status": 200,
+   "bytes": 11526,
+   "s": 0.06,
+   "api_total": 5,
+   "api_200": 4,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/portfolio/imports/from-broker": 405
+   }
+  },
+  "/wealth": {
+   "status": 200,
+   "bytes": 76667,
+   "s": 0.14,
+   "api_total": 33,
+   "api_200": 23,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/wealth/advisor/ask": 404,
+    "/api/wealth/allocation": 404,
+    "/api/wealth/allocation/preview": 405,
+    "/api/wealth/cycle": 405,
+    "/api/wealth/dna": 404,
+    "/api/wealth/dna/preview": 404,
+    "/api/wealth/performance/report": 405,
+    "/api/wealth/performance/sync": 405,
+    "/api/wealth/rebalance/check": 400,
+    "/api/wealth/rebalance/plan": 405
+   }
+  },
+  "/app": {
+   "status": 200,
+   "bytes": 12731,
+   "s": 0.04,
+   "api_total": 16,
+   "api_200": 1,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/account/consents": 503,
+    "/api/account/deliveries": 503,
+    "/api/account/email/verify": 405,
+    "/api/account/notification-preferences": 503,
+    "/api/account/privacy": 503,
+    "/api/account/reports": 503,
+    "/api/account/sessions": 503,
+    "/api/account/vault": 503,
+    "/api/auth/me": 503,
+    "/api/auth/verify-email": 405,
+    "/api/billing": 503,
+    "/api/billing/autopay": 405,
+    "/api/billing/plan": 405,
+    "/api/onboarding": 503,
+    "/api/onboarding/setup": 405
+   }
+  },
+  "/login": {
+   "status": 200,
+   "bytes": 3360,
+   "s": 0.0,
+   "api_total": 0,
+   "api_200": 0,
+   "api_5xx_unexpected": {},
+   "api_other": {}
+  },
+  "/account": {
+   "status": 200,
+   "bytes": 6927,
+   "s": 0.02,
+   "api_total": 7,
+   "api_200": 0,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/account/alerts": 503,
+    "/api/account/api-keys": 503,
+    "/api/account/notifications": 503,
+    "/api/account/notifications/read": 405,
+    "/api/account/watchlists": 503,
+    "/api/auth/me": 503,
+    "/api/auth/password": 405
+   }
+  },
+  "/admin": {
+   "status": 200,
+   "bytes": 5983,
+   "s": 0.01,
+   "api_total": 5,
+   "api_200": 0,
+   "api_5xx_unexpected": {},
+   "api_other": {
+    "/api/admin/audit": 503,
+    "/api/admin/plans": 503,
+    "/api/admin/roles": 503,
+    "/api/admin/tenants": 503,
+    "/api/admin/users": 503
+   }
+  }
+ },
+ "extra": {
+  "/health/live": {
+   "status": 200,
+   "bytes": 77
+  },
+  "/health/ready": {
+   "status": 200,
+   "bytes": 37
+  },
+  "/manifest.webmanifest": {
+   "status": 200,
+   "bytes": 285
+  },
+  "/sw.js": {
+   "status": 200,
+   "bytes": 661
+  },
+  "/icon.svg": {
+   "status": 200,
+   "bytes": 319
+  },
+  "/api/live-quotes": {
+   "status": 200,
+   "bytes": 2
+  },
+  "/api/mobile/summary": {
+   "status": 200,
+   "bytes": 1703
+  }
+ }
+}

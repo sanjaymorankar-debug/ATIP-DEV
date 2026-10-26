@@ -1,0 +1,198 @@
+{
+ "session": "2026-10-26",
+ "baseline_signals": {
+  "BUY": 2,
+  "HOLD": 229,
+  "WAIT": 268
+ },
+ "news_neutral_changes": {
+  "news_articles_neutralised": 2089,
+  "news_symbol_score_removed": 2443
+ },
+ "news_neutral": {
+  "symbols": 499,
+  "signal_changes": 12,
+  "transitions": {
+   "HOLD->WAIT": 12
+  },
+  "examples": [
+   [
+    "AXISBANK",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "COALINDIA",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ESCORTS",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "FORCEMOT",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "FRACTAL",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "IEX",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "KFINTECH",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "M&M",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "PIRAMALFIN",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "SUNPHARMA",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "TMCV",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ULTRACEMCO",
+    "HOLD",
+    "WAIT"
+   ]
+  ],
+  "atip_abs_change_mean": 0.298,
+  "atip_abs_change_max": 1.57,
+  "mh_base_vs_alt": [
+   56.74,
+   56.74
+  ],
+  "regime_base_vs_alt": [
+   "NEUTRAL",
+   "NEUTRAL"
+  ],
+  "msi_base_vs_alt": [
+   63.96,
+   62.07
+  ],
+  "buy_count_base_vs_alt": [
+   2,
+   2
+  ]
+ },
+ "flows_global_neutral_changes": {
+  "fii_dii_rows_neutralised": 30,
+  "fii_dii_columns": [
+   "fii_net_cr=0",
+   "fii_5d_avg=0",
+   "dii_net_cr=500",
+   "dii_5d_avg=500"
+  ],
+  "global_rows_neutralised": 83,
+  "bulk_deals_removed": 265
+ },
+ "flows_global_neutral": {
+  "symbols": 499,
+  "signal_changes": 54,
+  "transitions": {
+   "HOLD->WAIT": 52,
+   "BUY->HOLD": 2
+  },
+  "examples": [
+   [
+    "ABB",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ACE",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ADANIENT",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ANGELONE",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ASAHIINDIA",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ASHOKLEY",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ASIANPAINT",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "ASTERDM",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "AXISBANK",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "AZAD",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "BSOFT",
+    "HOLD",
+    "WAIT"
+   ],
+   [
+    "CHOICEIN",
+    "HOLD",
+    "WAIT"
+   ]
+  ],
+  "atip_abs_change_mean": 1.952,
+  "atip_abs_change_max": 2.25,
+  "mh_base_vs_alt": [
+   56.74,
+   54.26
+  ],
+  "regime_base_vs_alt": [
+   "NEUTRAL",
+   "NEUTRAL"
+  ],
+  "msi_base_vs_alt": [
+   63.96,
+   57.98
+  ],
+  "buy_count_base_vs_alt": [
+   2,
+   0
+  ]
+ }
+}

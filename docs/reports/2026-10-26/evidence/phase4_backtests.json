@@ -1,0 +1,2833 @@
+{
+ "inputs": {
+  "start": "2025-03-03",
+  "end": "2026-10-26",
+  "sessions": 407,
+  "stocks": 2878,
+  "capital_per_session": 25000.0,
+  "dp_per_sell_rs": 15.93,
+  "slippage_rt_pct": 0.1,
+  "hold_sessions": 30,
+  "regime_filter": [
+   "BEAR",
+   "HIGH_RISK"
+  ],
+  "min_turnover_cr": 5.0,
+  "cooldown": 10,
+  "top_k": 10,
+  "cost_rt_pct_slots3": 0.3222,
+  "dp_as_pct_of_position_slots3": 0.191,
+  "cost_rt_pct_slots5": 0.3222,
+  "dp_as_pct_of_position_slots5": 0.319
+ },
+ "books": {
+  "momentum|atip_3|slots3": {
+   "years": 0.77,
+   "trades": 38,
+   "trades_per_year": 49.4,
+   "successful_per_year": 20.8,
+   "win_rate_pct": 42.1,
+   "avg_win_pct": 4.67,
+   "avg_loss_pct": -3.51,
+   "expectancy_pct": -0.069,
+   "expectancy_rs": -12.7,
+   "profit_factor": 0.92,
+   "net_pnl_rs": -483.0,
+   "cagr_pct": -2.5,
+   "sharpe": -0.1,
+   "max_dd_pct": -10.0,
+   "worst_month_pct": -7.4,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.1,
+   "months_negative_pct": 40.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-30",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 3,
+     "win_rate_pct": 33.3,
+     "expectancy_pct": -0.736
+    },
+    "from_2026": {
+     "trades": 35,
+     "win_rate_pct": 42.9,
+     "expectancy_pct": -0.012
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.491,
+   "all_candidates_pess_avg_net_pct": -0.51
+  },
+  "momentum|flat_4|slots3": {
+   "years": 0.72,
+   "trades": 176,
+   "trades_per_year": 245.4,
+   "successful_per_year": 111.5,
+   "win_rate_pct": 45.5,
+   "avg_win_pct": 3.44,
+   "avg_loss_pct": -3.59,
+   "expectancy_pct": -0.396,
+   "expectancy_rs": -29.4,
+   "profit_factor": 0.79,
+   "net_pnl_rs": -5176.0,
+   "cagr_pct": -27.63,
+   "sharpe": -1.72,
+   "max_dd_pct": -22.5,
+   "worst_month_pct": -8.6,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 2.7,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-11",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 5,
+     "win_rate_pct": 60.0,
+     "expectancy_pct": 0.667
+    },
+    "from_2026": {
+     "trades": 171,
+     "win_rate_pct": 45.0,
+     "expectancy_pct": -0.427
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.482,
+   "all_candidates_pess_avg_net_pct": -0.519
+  },
+  "momentum|atip_4|slots3": {
+   "years": 0.77,
+   "trades": 47,
+   "trades_per_year": 60.9,
+   "successful_per_year": 23.3,
+   "win_rate_pct": 38.3,
+   "avg_win_pct": 4.33,
+   "avg_loss_pct": -3.48,
+   "expectancy_pct": -0.486,
+   "expectancy_rs": -49.4,
+   "profit_factor": 0.69,
+   "net_pnl_rs": -2322.0,
+   "cagr_pct": -11.86,
+   "sharpe": -0.79,
+   "max_dd_pct": -14.0,
+   "worst_month_pct": -9.2,
+   "worst_month": "2026-07-31",
+   "best_month_pct": 5.5,
+   "months_negative_pct": 45.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-10-01",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 3,
+     "win_rate_pct": 33.3,
+     "expectancy_pct": -0.403
+    },
+    "from_2026": {
+     "trades": 44,
+     "win_rate_pct": 38.6,
+     "expectancy_pct": -0.492
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.557,
+   "all_candidates_pess_avg_net_pct": -0.566
+  },
+  "momentum|atip_be_4|slots3": {
+   "years": 0.76,
+   "trades": 92,
+   "trades_per_year": 121.8,
+   "successful_per_year": 55.6,
+   "win_rate_pct": 45.7,
+   "avg_win_pct": 2.28,
+   "avg_loss_pct": -3.45,
+   "expectancy_pct": -0.834,
+   "expectancy_rs": -61.9,
+   "profit_factor": 0.54,
+   "net_pnl_rs": -5695.0,
+   "cagr_pct": -28.97,
+   "sharpe": -1.97,
+   "max_dd_pct": -32.2,
+   "worst_month_pct": -10.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 7.8,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-25",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 3,
+     "win_rate_pct": 66.7,
+     "expectancy_pct": 0.638
+    },
+    "from_2026": {
+     "trades": 89,
+     "win_rate_pct": 44.9,
+     "expectancy_pct": -0.883
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.576,
+   "all_candidates_pess_avg_net_pct": -0.827
+  },
+  "momentum|trail_4|slots3": {
+   "years": 0.77,
+   "trades": 87,
+   "trades_per_year": 113.1,
+   "successful_per_year": 10.4,
+   "win_rate_pct": 9.2,
+   "avg_win_pct": 5.52,
+   "avg_loss_pct": -2.43,
+   "expectancy_pct": -1.704,
+   "expectancy_rs": -109.3,
+   "profit_factor": 0.23,
+   "net_pnl_rs": -9512.0,
+   "cagr_pct": -46.33,
+   "sharpe": -2.23,
+   "max_dd_pct": -48.4,
+   "worst_month_pct": -13.7,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 12.0,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-30",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 3,
+     "win_rate_pct": 33.3,
+     "expectancy_pct": 0.434
+    },
+    "from_2026": {
+     "trades": 84,
+     "win_rate_pct": 8.3,
+     "expectancy_pct": -1.78
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.601,
+   "all_candidates_pess_avg_net_pct": -1.104
+  },
+  "momentum|hold|slots3": {
+   "years": 0.79,
+   "trades": 48,
+   "trades_per_year": 60.5,
+   "successful_per_year": 10.1,
+   "win_rate_pct": 16.7,
+   "avg_win_pct": 15.28,
+   "avg_loss_pct": -3.63,
+   "expectancy_pct": -0.476,
+   "expectancy_rs": -49.3,
+   "profit_factor": 0.76,
+   "net_pnl_rs": -2369.0,
+   "cagr_pct": -11.78,
+   "sharpe": -0.4,
+   "max_dd_pct": -22.9,
+   "worst_month_pct": -10.7,
+   "worst_month": "2026-02-28",
+   "best_month_pct": 9.5,
+   "months_negative_pct": 45.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-10-09",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 3,
+     "win_rate_pct": 0.0,
+     "expectancy_pct": -3.527
+    },
+    "from_2026": {
+     "trades": 45,
+     "win_rate_pct": 17.8,
+     "expectancy_pct": -0.273
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.729,
+   "all_candidates_pess_avg_net_pct": -0.729
+  },
+  "breakout|atip_3|slots3": {
+   "years": 1.42,
+   "trades": 86,
+   "trades_per_year": 60.5,
+   "successful_per_year": 19.0,
+   "win_rate_pct": 31.4,
+   "avg_win_pct": 4.77,
+   "avg_loss_pct": -3.41,
+   "expectancy_pct": -0.842,
+   "expectancy_rs": -61.9,
+   "profit_factor": 0.65,
+   "net_pnl_rs": -5327.0,
+   "cagr_pct": -15.52,
+   "sharpe": -1.02,
+   "max_dd_pct": -28.5,
+   "worst_month_pct": -12.8,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 8.3,
+   "months_negative_pct": 56.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-10-21",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 43,
+     "win_rate_pct": 37.2,
+     "expectancy_pct": 0.319
+    },
+    "from_2026": {
+     "trades": 43,
+     "win_rate_pct": 25.6,
+     "expectancy_pct": -2.002
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.557,
+   "all_candidates_pess_avg_net_pct": -0.592
+  },
+  "breakout|flat_4|slots3": {
+   "years": 1.33,
+   "trades": 320,
+   "trades_per_year": 241.5,
+   "successful_per_year": 97.3,
+   "win_rate_pct": 40.3,
+   "avg_win_pct": 3.35,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -0.843,
+   "expectancy_rs": -45.1,
+   "profit_factor": 0.62,
+   "net_pnl_rs": -14425.0,
+   "cagr_pct": -47.76,
+   "sharpe": -3.5,
+   "max_dd_pct": -57.8,
+   "worst_month_pct": -14.6,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 1.7,
+   "months_negative_pct": 82.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 153,
+     "win_rate_pct": 43.1,
+     "expectancy_pct": -0.543
+    },
+    "from_2026": {
+     "trades": 167,
+     "win_rate_pct": 37.7,
+     "expectancy_pct": -1.118
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.593,
+   "all_candidates_pess_avg_net_pct": -0.626
+  },
+  "breakout|atip_4|slots3": {
+   "years": 1.35,
+   "trades": 95,
+   "trades_per_year": 70.5,
+   "successful_per_year": 22.3,
+   "win_rate_pct": 31.6,
+   "avg_win_pct": 4.4,
+   "avg_loss_pct": -3.4,
+   "expectancy_pct": -0.938,
+   "expectancy_rs": -67.6,
+   "profit_factor": 0.59,
+   "net_pnl_rs": -6425.0,
+   "cagr_pct": -19.79,
+   "sharpe": -1.36,
+   "max_dd_pct": -30.7,
+   "worst_month_pct": -14.3,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.9,
+   "months_negative_pct": 65.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-24",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 50,
+     "win_rate_pct": 32.0,
+     "expectancy_pct": -0.593
+    },
+    "from_2026": {
+     "trades": 45,
+     "win_rate_pct": 31.1,
+     "expectancy_pct": -1.322
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.602,
+   "all_candidates_pess_avg_net_pct": -0.621
+  },
+  "breakout|atip_be_4|slots3": {
+   "years": 1.33,
+   "trades": 185,
+   "trades_per_year": 139.6,
+   "successful_per_year": 59.6,
+   "win_rate_pct": 42.7,
+   "avg_win_pct": 1.97,
+   "avg_loss_pct": -3.6,
+   "expectancy_pct": -1.224,
+   "expectancy_rs": -67.8,
+   "profit_factor": 0.4,
+   "net_pnl_rs": -12537.0,
+   "cagr_pct": -40.86,
+   "sharpe": -3.63,
+   "max_dd_pct": -49.6,
+   "worst_month_pct": -12.8,
+   "worst_month": "2026-05-31",
+   "best_month_pct": 5.7,
+   "months_negative_pct": 88.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 96,
+     "win_rate_pct": 43.8,
+     "expectancy_pct": -1.242
+    },
+    "from_2026": {
+     "trades": 89,
+     "win_rate_pct": 41.6,
+     "expectancy_pct": -1.205
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.559,
+   "all_candidates_pess_avg_net_pct": -0.949
+  },
+  "breakout|trail_4|slots3": {
+   "years": 1.33,
+   "trades": 196,
+   "trades_per_year": 147.9,
+   "successful_per_year": 10.6,
+   "win_rate_pct": 7.1,
+   "avg_win_pct": 7.46,
+   "avg_loss_pct": -2.63,
+   "expectancy_pct": -1.91,
+   "expectancy_rs": -85.5,
+   "profit_factor": 0.2,
+   "net_pnl_rs": -16766.0,
+   "cagr_pct": -56.75,
+   "sharpe": -4.23,
+   "max_dd_pct": -67.3,
+   "worst_month_pct": -16.3,
+   "worst_month": "2026-05-31",
+   "best_month_pct": 4.5,
+   "months_negative_pct": 94.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 96,
+     "win_rate_pct": 7.3,
+     "expectancy_pct": -1.913
+    },
+    "from_2026": {
+     "trades": 100,
+     "win_rate_pct": 7.0,
+     "expectancy_pct": -1.907
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.545,
+   "all_candidates_pess_avg_net_pct": -1.271
+  },
+  "breakout|hold|slots3": {
+   "years": 1.33,
+   "trades": 91,
+   "trades_per_year": 68.7,
+   "successful_per_year": 12.1,
+   "win_rate_pct": 17.6,
+   "avg_win_pct": 13.16,
+   "avg_loss_pct": -3.5,
+   "expectancy_pct": -0.573,
+   "expectancy_rs": -42.6,
+   "profit_factor": 0.8,
+   "net_pnl_rs": -3874.0,
+   "cagr_pct": -11.93,
+   "sharpe": -0.41,
+   "max_dd_pct": -26.6,
+   "worst_month_pct": -13.0,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 14.7,
+   "months_negative_pct": 59.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 38,
+     "win_rate_pct": 21.1,
+     "expectancy_pct": -0.304
+    },
+    "from_2026": {
+     "trades": 53,
+     "win_rate_pct": 15.1,
+     "expectancy_pct": -0.767
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.648,
+   "all_candidates_pess_avg_net_pct": -0.648
+  },
+  "rsi_mr|atip_3|slots3": {
+   "years": 0.73,
+   "trades": 27,
+   "trades_per_year": 36.8,
+   "successful_per_year": 13.6,
+   "win_rate_pct": 37.0,
+   "avg_win_pct": 4.32,
+   "avg_loss_pct": -3.13,
+   "expectancy_pct": -0.371,
+   "expectancy_rs": -30.2,
+   "profit_factor": 0.81,
+   "net_pnl_rs": -816.0,
+   "cagr_pct": -4.42,
+   "sharpe": -0.37,
+   "max_dd_pct": -8.0,
+   "worst_month_pct": -3.6,
+   "worst_month": "2026-06-30",
+   "best_month_pct": 3.2,
+   "months_negative_pct": 60.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-23",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 3.872
+    },
+    "from_2026": {
+     "trades": 25,
+     "win_rate_pct": 32.0,
+     "expectancy_pct": -0.711
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.118,
+   "all_candidates_pess_avg_net_pct": -0.118
+  },
+  "rsi_mr|flat_4|slots3": {
+   "years": 0.7,
+   "trades": 33,
+   "trades_per_year": 47.1,
+   "successful_per_year": 28.5,
+   "win_rate_pct": 60.6,
+   "avg_win_pct": 3.47,
+   "avg_loss_pct": -3.51,
+   "expectancy_pct": 0.717,
+   "expectancy_rs": 51.5,
+   "profit_factor": 1.46,
+   "net_pnl_rs": 1700.0,
+   "cagr_pct": 9.84,
+   "sharpe": 1.03,
+   "max_dd_pct": -4.4,
+   "worst_month_pct": -1.6,
+   "worst_month": "2026-06-30",
+   "best_month_pct": 4.2,
+   "months_negative_pct": 40.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-09",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 3.473
+    },
+    "from_2026": {
+     "trades": 31,
+     "win_rate_pct": 58.1,
+     "expectancy_pct": 0.539
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": 0.244,
+   "all_candidates_pess_avg_net_pct": 0.244
+  },
+  "rsi_mr|atip_4|slots3": {
+   "years": 0.77,
+   "trades": 25,
+   "trades_per_year": 32.4,
+   "successful_per_year": 10.4,
+   "win_rate_pct": 32.0,
+   "avg_win_pct": 4.56,
+   "avg_loss_pct": -2.92,
+   "expectancy_pct": -0.523,
+   "expectancy_rs": -43.9,
+   "profit_factor": 0.72,
+   "net_pnl_rs": -1097.0,
+   "cagr_pct": -5.65,
+   "sharpe": -0.49,
+   "max_dd_pct": -8.4,
+   "worst_month_pct": -3.4,
+   "worst_month": "2026-06-30",
+   "best_month_pct": 1.9,
+   "months_negative_pct": 64.0,
+   "first_entry": "2026-01-07",
+   "last_exit": "2026-10-07",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 50.0,
+     "expectancy_pct": 0.977
+    },
+    "from_2026": {
+     "trades": 23,
+     "win_rate_pct": 30.4,
+     "expectancy_pct": -0.653
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.536,
+   "all_candidates_pess_avg_net_pct": -0.536
+  },
+  "rsi_mr|atip_be_4|slots3": {
+   "years": 0.72,
+   "trades": 33,
+   "trades_per_year": 46.0,
+   "successful_per_year": 27.9,
+   "win_rate_pct": 60.6,
+   "avg_win_pct": 2.12,
+   "avg_loss_pct": -3.52,
+   "expectancy_pct": -0.103,
+   "expectancy_rs": -13.6,
+   "profit_factor": 0.88,
+   "net_pnl_rs": -449.0,
+   "cagr_pct": -2.5,
+   "sharpe": -0.21,
+   "max_dd_pct": -7.4,
+   "worst_month_pct": -3.6,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 4.7,
+   "months_negative_pct": 40.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-17",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 1.375
+    },
+    "from_2026": {
+     "trades": 31,
+     "win_rate_pct": 58.1,
+     "expectancy_pct": -0.198
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.121,
+   "all_candidates_pess_avg_net_pct": -0.43
+  },
+  "rsi_mr|trail_4|slots3": {
+   "years": 0.72,
+   "trades": 33,
+   "trades_per_year": 46.0,
+   "successful_per_year": 2.8,
+   "win_rate_pct": 6.1,
+   "avg_win_pct": 15.28,
+   "avg_loss_pct": -1.8,
+   "expectancy_pct": -0.765,
+   "expectancy_rs": -61.3,
+   "profit_factor": 0.54,
+   "net_pnl_rs": -2023.0,
+   "cagr_pct": -11.1,
+   "sharpe": -1.0,
+   "max_dd_pct": -12.0,
+   "worst_month_pct": -6.0,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 8.1,
+   "months_negative_pct": 60.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-17",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 0.0,
+     "expectancy_pct": -0.52
+    },
+    "from_2026": {
+     "trades": 31,
+     "win_rate_pct": 6.5,
+     "expectancy_pct": -0.78
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.921,
+   "all_candidates_pess_avg_net_pct": -1.104
+  },
+  "rsi_mr|hold|slots3": {
+   "years": 0.79,
+   "trades": 23,
+   "trades_per_year": 29.1,
+   "successful_per_year": 6.3,
+   "win_rate_pct": 21.7,
+   "avg_win_pct": 11.41,
+   "avg_loss_pct": -3.59,
+   "expectancy_pct": -0.327,
+   "expectancy_rs": -27.4,
+   "profit_factor": 0.87,
+   "net_pnl_rs": -631.0,
+   "cagr_pct": -3.18,
+   "sharpe": -0.12,
+   "max_dd_pct": -14.0,
+   "worst_month_pct": -5.0,
+   "worst_month": "2026-06-30",
+   "best_month_pct": 6.7,
+   "months_negative_pct": 45.0,
+   "first_entry": "2026-01-07",
+   "last_exit": "2026-10-14",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 0.0,
+     "expectancy_pct": -3.516
+    },
+    "from_2026": {
+     "trades": 21,
+     "win_rate_pct": 23.8,
+     "expectancy_pct": -0.023
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -1.449,
+   "all_candidates_pess_avg_net_pct": -1.449
+  },
+  "dip|atip_3|slots3": {
+   "years": 1.48,
+   "trades": 97,
+   "trades_per_year": 65.7,
+   "successful_per_year": 26.4,
+   "win_rate_pct": 40.2,
+   "avg_win_pct": 4.6,
+   "avg_loss_pct": -3.38,
+   "expectancy_pct": -0.168,
+   "expectancy_rs": -18.9,
+   "profit_factor": 0.88,
+   "net_pnl_rs": -1837.0,
+   "cagr_pct": -5.04,
+   "sharpe": -0.38,
+   "max_dd_pct": -14.2,
+   "worst_month_pct": -6.5,
+   "worst_month": "2026-02-28",
+   "best_month_pct": 9.1,
+   "months_negative_pct": 56.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-24",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 48,
+     "win_rate_pct": 45.8,
+     "expectancy_pct": 0.307
+    },
+    "from_2026": {
+     "trades": 49,
+     "win_rate_pct": 34.7,
+     "expectancy_pct": -0.634
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.608,
+   "all_candidates_pess_avg_net_pct": -0.623
+  },
+  "dip|flat_4|slots3": {
+   "years": 1.49,
+   "trades": 238,
+   "trades_per_year": 159.2,
+   "successful_per_year": 60.2,
+   "win_rate_pct": 37.8,
+   "avg_win_pct": 3.45,
+   "avg_loss_pct": -3.73,
+   "expectancy_pct": -1.014,
+   "expectancy_rs": -56.9,
+   "profit_factor": 0.53,
+   "net_pnl_rs": -13553.0,
+   "cagr_pct": -40.7,
+   "sharpe": -3.22,
+   "max_dd_pct": -54.4,
+   "worst_month_pct": -12.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 1.8,
+   "months_negative_pct": 84.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-10-01",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 106,
+     "win_rate_pct": 37.7,
+     "expectancy_pct": -0.936
+    },
+    "from_2026": {
+     "trades": 132,
+     "win_rate_pct": 37.9,
+     "expectancy_pct": -1.077
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.615,
+   "all_candidates_pess_avg_net_pct": -0.626
+  },
+  "dip|atip_4|slots3": {
+   "years": 1.45,
+   "trades": 103,
+   "trades_per_year": 71.0,
+   "successful_per_year": 25.5,
+   "win_rate_pct": 35.9,
+   "avg_win_pct": 6.17,
+   "avg_loss_pct": -3.62,
+   "expectancy_pct": -0.102,
+   "expectancy_rs": -13.9,
+   "profit_factor": 0.92,
+   "net_pnl_rs": -1435.0,
+   "cagr_pct": -3.99,
+   "sharpe": -0.22,
+   "max_dd_pct": -28.9,
+   "worst_month_pct": -11.2,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 9.1,
+   "months_negative_pct": 50.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-15",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 51,
+     "win_rate_pct": 39.2,
+     "expectancy_pct": 0.695
+    },
+    "from_2026": {
+     "trades": 52,
+     "win_rate_pct": 32.7,
+     "expectancy_pct": -0.884
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.689,
+   "all_candidates_pess_avg_net_pct": -0.699
+  },
+  "dip|atip_be_4|slots3": {
+   "years": 1.45,
+   "trades": 147,
+   "trades_per_year": 101.3,
+   "successful_per_year": 37.2,
+   "win_rate_pct": 36.7,
+   "avg_win_pct": 3.13,
+   "avg_loss_pct": -3.7,
+   "expectancy_pct": -1.193,
+   "expectancy_rs": -73.3,
+   "profit_factor": 0.5,
+   "net_pnl_rs": -10773.0,
+   "cagr_pct": -32.19,
+   "sharpe": -2.79,
+   "max_dd_pct": -45.4,
+   "worst_month_pct": -13.8,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 3.4,
+   "months_negative_pct": 61.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-15",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 60,
+     "win_rate_pct": 38.3,
+     "expectancy_pct": -0.695
+    },
+    "from_2026": {
+     "trades": 87,
+     "win_rate_pct": 35.6,
+     "expectancy_pct": -1.536
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.671,
+   "all_candidates_pess_avg_net_pct": -0.866
+  },
+  "dip|trail_4|slots3": {
+   "years": 1.45,
+   "trades": 144,
+   "trades_per_year": 99.2,
+   "successful_per_year": 10.3,
+   "win_rate_pct": 10.4,
+   "avg_win_pct": 14.44,
+   "avg_loss_pct": -2.94,
+   "expectancy_pct": -1.128,
+   "expectancy_rs": -71.4,
+   "profit_factor": 0.59,
+   "net_pnl_rs": -10289.0,
+   "cagr_pct": -30.61,
+   "sharpe": -1.89,
+   "max_dd_pct": -48.5,
+   "worst_month_pct": -16.7,
+   "worst_month": "2026-02-28",
+   "best_month_pct": 6.2,
+   "months_negative_pct": 56.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-15",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 61,
+     "win_rate_pct": 14.8,
+     "expectancy_pct": 0.115
+    },
+    "from_2026": {
+     "trades": 83,
+     "win_rate_pct": 7.2,
+     "expectancy_pct": -2.041
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.647,
+   "all_candidates_pess_avg_net_pct": -1.065
+  },
+  "dip|hold|slots3": {
+   "years": 1.49,
+   "trades": 96,
+   "trades_per_year": 64.2,
+   "successful_per_year": 11.4,
+   "win_rate_pct": 17.7,
+   "avg_win_pct": 13.83,
+   "avg_loss_pct": -3.64,
+   "expectancy_pct": -0.546,
+   "expectancy_rs": -43.9,
+   "profit_factor": 0.8,
+   "net_pnl_rs": -4216.0,
+   "cagr_pct": -11.62,
+   "sharpe": -0.49,
+   "max_dd_pct": -29.5,
+   "worst_month_pct": -13.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 11.2,
+   "months_negative_pct": 58.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-10-01",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 46,
+     "win_rate_pct": 23.9,
+     "expectancy_pct": 0.644
+    },
+    "from_2026": {
+     "trades": 50,
+     "win_rate_pct": 12.0,
+     "expectancy_pct": -1.642
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.746,
+   "all_candidates_pess_avg_net_pct": -0.746
+  },
+  "random|atip_3|slots3": {
+   "years": 1.51,
+   "trades": 97,
+   "trades_per_year": 64.1,
+   "successful_per_year": 21.1,
+   "win_rate_pct": 33.0,
+   "avg_win_pct": 3.29,
+   "avg_loss_pct": -3.53,
+   "expectancy_pct": -1.28,
+   "expectancy_rs": -79.7,
+   "profit_factor": 0.47,
+   "net_pnl_rs": -7731.0,
+   "cagr_pct": -21.68,
+   "sharpe": -1.87,
+   "max_dd_pct": -32.6,
+   "worst_month_pct": -12.4,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 3.8,
+   "months_negative_pct": 58.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-09-29",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 48,
+     "win_rate_pct": 35.4,
+     "expectancy_pct": -0.918
+    },
+    "from_2026": {
+     "trades": 49,
+     "win_rate_pct": 30.6,
+     "expectancy_pct": -1.635
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.538,
+   "all_candidates_pess_avg_net_pct": -0.56
+  },
+  "random|flat_4|slots3": {
+   "years": 1.5,
+   "trades": 232,
+   "trades_per_year": 154.6,
+   "successful_per_year": 64.7,
+   "win_rate_pct": 41.8,
+   "avg_win_pct": 3.56,
+   "avg_loss_pct": -3.63,
+   "expectancy_pct": -0.626,
+   "expectancy_rs": -39.0,
+   "profit_factor": 0.71,
+   "net_pnl_rs": -9038.0,
+   "cagr_pct": -25.85,
+   "sharpe": -1.7,
+   "max_dd_pct": -35.2,
+   "worst_month_pct": -12.2,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 9.7,
+   "months_negative_pct": 68.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-09-24",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 107,
+     "win_rate_pct": 46.7,
+     "expectancy_pct": -0.303
+    },
+    "from_2026": {
+     "trades": 125,
+     "win_rate_pct": 37.6,
+     "expectancy_pct": -0.903
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.541,
+   "all_candidates_pess_avg_net_pct": -0.551
+  },
+  "random|atip_4|slots3": {
+   "years": 1.52,
+   "trades": 98,
+   "trades_per_year": 64.5,
+   "successful_per_year": 18.4,
+   "win_rate_pct": 28.6,
+   "avg_win_pct": 5.06,
+   "avg_loss_pct": -3.39,
+   "expectancy_pct": -0.972,
+   "expectancy_rs": -63.9,
+   "profit_factor": 0.6,
+   "net_pnl_rs": -6264.0,
+   "cagr_pct": -17.29,
+   "sharpe": -1.28,
+   "max_dd_pct": -27.8,
+   "worst_month_pct": -8.5,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.6,
+   "months_negative_pct": 60.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-01",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 45,
+     "win_rate_pct": 28.9,
+     "expectancy_pct": -0.879
+    },
+    "from_2026": {
+     "trades": 53,
+     "win_rate_pct": 28.3,
+     "expectancy_pct": -1.051
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.546,
+   "all_candidates_pess_avg_net_pct": -0.559
+  },
+  "random|atip_be_4|slots3": {
+   "years": 1.5,
+   "trades": 166,
+   "trades_per_year": 110.6,
+   "successful_per_year": 41.3,
+   "win_rate_pct": 37.3,
+   "avg_win_pct": 2.16,
+   "avg_loss_pct": -3.66,
+   "expectancy_pct": -1.487,
+   "expectancy_rs": -82.2,
+   "profit_factor": 0.35,
+   "net_pnl_rs": -13653.0,
+   "cagr_pct": -40.93,
+   "sharpe": -3.41,
+   "max_dd_pct": -53.9,
+   "worst_month_pct": -13.7,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.5,
+   "months_negative_pct": 79.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-09-24",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 75,
+     "win_rate_pct": 42.7,
+     "expectancy_pct": -1.182
+    },
+    "from_2026": {
+     "trades": 91,
+     "win_rate_pct": 33.0,
+     "expectancy_pct": -1.738
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.636,
+   "all_candidates_pess_avg_net_pct": -0.848
+  },
+  "random|trail_4|slots3": {
+   "years": 1.52,
+   "trades": 153,
+   "trades_per_year": 100.7,
+   "successful_per_year": 8.6,
+   "win_rate_pct": 8.5,
+   "avg_win_pct": 9.01,
+   "avg_loss_pct": -2.79,
+   "expectancy_pct": -1.789,
+   "expectancy_rs": -93.5,
+   "profit_factor": 0.26,
+   "net_pnl_rs": -14308.0,
+   "cagr_pct": -42.82,
+   "sharpe": -2.68,
+   "max_dd_pct": -58.3,
+   "worst_month_pct": -16.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 9.8,
+   "months_negative_pct": 85.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-01",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 76,
+     "win_rate_pct": 10.5,
+     "expectancy_pct": -1.879
+    },
+    "from_2026": {
+     "trades": 77,
+     "win_rate_pct": 6.5,
+     "expectancy_pct": -1.7
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.755,
+   "all_candidates_pess_avg_net_pct": -1.17
+  },
+  "random|hold|slots3": {
+   "years": 1.54,
+   "trades": 102,
+   "trades_per_year": 66.3,
+   "successful_per_year": 11.0,
+   "win_rate_pct": 16.7,
+   "avg_win_pct": 9.06,
+   "avg_loss_pct": -3.69,
+   "expectancy_pct": -1.568,
+   "expectancy_rs": -97.1,
+   "profit_factor": 0.46,
+   "net_pnl_rs": -9909.0,
+   "cagr_pct": -27.97,
+   "sharpe": -1.42,
+   "max_dd_pct": -39.4,
+   "worst_month_pct": -14.5,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 16.4,
+   "months_negative_pct": 85.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-08",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 48,
+     "win_rate_pct": 20.8,
+     "expectancy_pct": -1.881
+    },
+    "from_2026": {
+     "trades": 54,
+     "win_rate_pct": 13.0,
+     "expectancy_pct": -1.289
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.793,
+   "all_candidates_pess_avg_net_pct": -0.793
+  },
+  "momentum|atip_3|slots5": {
+   "years": 0.77,
+   "trades": 74,
+   "trades_per_year": 95.8,
+   "successful_per_year": 35.0,
+   "win_rate_pct": 36.5,
+   "avg_win_pct": 4.91,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -0.547,
+   "expectancy_rs": -34.8,
+   "profit_factor": 0.66,
+   "net_pnl_rs": -2572.0,
+   "cagr_pct": -13.12,
+   "sharpe": -1.09,
+   "max_dd_pct": -15.4,
+   "worst_month_pct": -7.0,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 3.6,
+   "months_negative_pct": 55.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-10-01",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 5,
+     "win_rate_pct": 40.0,
+     "expectancy_pct": 0.509
+    },
+    "from_2026": {
+     "trades": 69,
+     "win_rate_pct": 36.2,
+     "expectancy_pct": -0.623
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.491,
+   "all_candidates_pess_avg_net_pct": -0.51
+  },
+  "momentum|flat_4|slots5": {
+   "years": 0.72,
+   "trades": 288,
+   "trades_per_year": 401.5,
+   "successful_per_year": 178.4,
+   "win_rate_pct": 44.4,
+   "avg_win_pct": 3.28,
+   "avg_loss_pct": -3.83,
+   "expectancy_pct": -0.669,
+   "expectancy_rs": -25.4,
+   "profit_factor": 0.7,
+   "net_pnl_rs": -7317.0,
+   "cagr_pct": -38.29,
+   "sharpe": -3.15,
+   "max_dd_pct": -31.2,
+   "worst_month_pct": -7.4,
+   "worst_month": "2026-09-30",
+   "best_month_pct": 2.1,
+   "months_negative_pct": 80.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-11",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 9,
+     "win_rate_pct": 77.8,
+     "expectancy_pct": 1.889
+    },
+    "from_2026": {
+     "trades": 279,
+     "win_rate_pct": 43.4,
+     "expectancy_pct": -0.752
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.482,
+   "all_candidates_pess_avg_net_pct": -0.519
+  },
+  "momentum|atip_4|slots5": {
+   "years": 0.8,
+   "trades": 69,
+   "trades_per_year": 86.0,
+   "successful_per_year": 33.7,
+   "win_rate_pct": 39.1,
+   "avg_win_pct": 5.81,
+   "avg_loss_pct": -3.62,
+   "expectancy_pct": 0.07,
+   "expectancy_rs": -7.5,
+   "profit_factor": 0.93,
+   "net_pnl_rs": -517.0,
+   "cagr_pct": -2.57,
+   "sharpe": -0.16,
+   "max_dd_pct": -12.1,
+   "worst_month_pct": -8.7,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.2,
+   "months_negative_pct": 36.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-10-12",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 5,
+     "win_rate_pct": 60.0,
+     "expectancy_pct": 1.001
+    },
+    "from_2026": {
+     "trades": 64,
+     "win_rate_pct": 37.5,
+     "expectancy_pct": -0.003
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.557,
+   "all_candidates_pess_avg_net_pct": -0.566
+  },
+  "momentum|atip_be_4|slots5": {
+   "years": 0.76,
+   "trades": 157,
+   "trades_per_year": 207.8,
+   "successful_per_year": 96.6,
+   "win_rate_pct": 46.5,
+   "avg_win_pct": 2.09,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -0.998,
+   "expectancy_rs": -39.1,
+   "profit_factor": 0.51,
+   "net_pnl_rs": -6137.0,
+   "cagr_pct": -31.12,
+   "sharpe": -2.71,
+   "max_dd_pct": -30.1,
+   "worst_month_pct": -7.4,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.2,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-25",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 7,
+     "win_rate_pct": 85.7,
+     "expectancy_pct": 1.473
+    },
+    "from_2026": {
+     "trades": 150,
+     "win_rate_pct": 44.7,
+     "expectancy_pct": -1.113
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.576,
+   "all_candidates_pess_avg_net_pct": -0.827
+  },
+  "momentum|trail_4|slots5": {
+   "years": 0.77,
+   "trades": 137,
+   "trades_per_year": 178.1,
+   "successful_per_year": 16.9,
+   "win_rate_pct": 9.5,
+   "avg_win_pct": 8.92,
+   "avg_loss_pct": -2.62,
+   "expectancy_pct": -1.523,
+   "expectancy_rs": -59.7,
+   "profit_factor": 0.33,
+   "net_pnl_rs": -8175.0,
+   "cagr_pct": -40.23,
+   "sharpe": -2.4,
+   "max_dd_pct": -40.1,
+   "worst_month_pct": -11.3,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 7.0,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-30",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 7,
+     "win_rate_pct": 28.6,
+     "expectancy_pct": 0.699
+    },
+    "from_2026": {
+     "trades": 130,
+     "win_rate_pct": 8.5,
+     "expectancy_pct": -1.642
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.601,
+   "all_candidates_pess_avg_net_pct": -1.104
+  },
+  "momentum|hold|slots5": {
+   "years": 0.77,
+   "trades": 85,
+   "trades_per_year": 110.5,
+   "successful_per_year": 16.9,
+   "win_rate_pct": 15.3,
+   "avg_win_pct": 12.9,
+   "avg_loss_pct": -3.72,
+   "expectancy_pct": -1.174,
+   "expectancy_rs": -50.6,
+   "profit_factor": 0.61,
+   "net_pnl_rs": -4299.0,
+   "cagr_pct": -21.75,
+   "sharpe": -1.0,
+   "max_dd_pct": -26.3,
+   "worst_month_pct": -12.5,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 7.6,
+   "months_negative_pct": 50.0,
+   "first_entry": "2025-12-23",
+   "last_exit": "2026-09-30",
+   "candidates": 1506,
+   "split": {
+    "before_2026": {
+     "trades": 5,
+     "win_rate_pct": 20.0,
+     "expectancy_pct": -0.875
+    },
+    "from_2026": {
+     "trades": 80,
+     "win_rate_pct": 15.0,
+     "expectancy_pct": -1.193
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.729,
+   "all_candidates_pess_avg_net_pct": -0.729
+  },
+  "breakout|atip_3|slots5": {
+   "years": 1.42,
+   "trades": 147,
+   "trades_per_year": 103.5,
+   "successful_per_year": 28.9,
+   "win_rate_pct": 27.9,
+   "avg_win_pct": 5.08,
+   "avg_loss_pct": -3.41,
+   "expectancy_pct": -1.043,
+   "expectancy_rs": -39.4,
+   "profit_factor": 0.6,
+   "net_pnl_rs": -5785.0,
+   "cagr_pct": -16.91,
+   "sharpe": -1.44,
+   "max_dd_pct": -25.4,
+   "worst_month_pct": -9.2,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.5,
+   "months_negative_pct": 72.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-10-21",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 77,
+     "win_rate_pct": 28.6,
+     "expectancy_pct": -0.643
+    },
+    "from_2026": {
+     "trades": 70,
+     "win_rate_pct": 27.1,
+     "expectancy_pct": -1.483
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.557,
+   "all_candidates_pess_avg_net_pct": -0.592
+  },
+  "breakout|flat_4|slots5": {
+   "years": 1.33,
+   "trades": 516,
+   "trades_per_year": 389.4,
+   "successful_per_year": 157.0,
+   "win_rate_pct": 40.3,
+   "avg_win_pct": 3.08,
+   "avg_loss_pct": -3.96,
+   "expectancy_pct": -1.121,
+   "expectancy_rs": -30.7,
+   "profit_factor": 0.55,
+   "net_pnl_rs": -15819.0,
+   "cagr_pct": -53.04,
+   "sharpe": -5.06,
+   "max_dd_pct": -62.5,
+   "worst_month_pct": -13.0,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 3.7,
+   "months_negative_pct": 94.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 230,
+     "win_rate_pct": 43.0,
+     "expectancy_pct": -0.76
+    },
+    "from_2026": {
+     "trades": 286,
+     "win_rate_pct": 38.1,
+     "expectancy_pct": -1.41
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.593,
+   "all_candidates_pess_avg_net_pct": -0.626
+  },
+  "breakout|atip_4|slots5": {
+   "years": 1.35,
+   "trades": 168,
+   "trades_per_year": 124.7,
+   "successful_per_year": 31.2,
+   "win_rate_pct": 25.0,
+   "avg_win_pct": 5.04,
+   "avg_loss_pct": -3.49,
+   "expectancy_pct": -1.36,
+   "expectancy_rs": -49.3,
+   "profit_factor": 0.49,
+   "net_pnl_rs": -8286.0,
+   "cagr_pct": -25.84,
+   "sharpe": -2.28,
+   "max_dd_pct": -35.0,
+   "worst_month_pct": -11.4,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.9,
+   "months_negative_pct": 71.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-24",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 84,
+     "win_rate_pct": 25.0,
+     "expectancy_pct": -1.174
+    },
+    "from_2026": {
+     "trades": 84,
+     "win_rate_pct": 25.0,
+     "expectancy_pct": -1.545
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.602,
+   "all_candidates_pess_avg_net_pct": -0.621
+  },
+  "breakout|atip_be_4|slots5": {
+   "years": 1.33,
+   "trades": 335,
+   "trades_per_year": 252.8,
+   "successful_per_year": 95.1,
+   "win_rate_pct": 37.6,
+   "avg_win_pct": 1.93,
+   "avg_loss_pct": -3.83,
+   "expectancy_pct": -1.659,
+   "expectancy_rs": -46.2,
+   "profit_factor": 0.33,
+   "net_pnl_rs": -15479.0,
+   "cagr_pct": -51.74,
+   "sharpe": -5.68,
+   "max_dd_pct": -61.1,
+   "worst_month_pct": -14.5,
+   "worst_month": "2026-03-31",
+   "best_month_pct": -0.4,
+   "months_negative_pct": 100.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-16",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 148,
+     "win_rate_pct": 41.9,
+     "expectancy_pct": -1.34
+    },
+    "from_2026": {
+     "trades": 187,
+     "win_rate_pct": 34.2,
+     "expectancy_pct": -1.912
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.559,
+   "all_candidates_pess_avg_net_pct": -0.949
+  },
+  "breakout|trail_4|slots5": {
+   "years": 1.35,
+   "trades": 327,
+   "trades_per_year": 242.3,
+   "successful_per_year": 19.3,
+   "win_rate_pct": 8.0,
+   "avg_win_pct": 8.35,
+   "avg_loss_pct": -2.98,
+   "expectancy_pct": -2.076,
+   "expectancy_rs": -53.3,
+   "profit_factor": 0.24,
+   "net_pnl_rs": -17444.0,
+   "cagr_pct": -58.79,
+   "sharpe": -5.57,
+   "max_dd_pct": -69.1,
+   "worst_month_pct": -15.2,
+   "worst_month": "2026-05-31",
+   "best_month_pct": -2.2,
+   "months_negative_pct": 100.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-25",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 147,
+     "win_rate_pct": 10.2,
+     "expectancy_pct": -1.814
+    },
+    "from_2026": {
+     "trades": 180,
+     "win_rate_pct": 6.1,
+     "expectancy_pct": -2.29
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.545,
+   "all_candidates_pess_avg_net_pct": -1.271
+  },
+  "breakout|hold|slots5": {
+   "years": 1.35,
+   "trades": 158,
+   "trades_per_year": 117.3,
+   "successful_per_year": 18.6,
+   "win_rate_pct": 15.8,
+   "avg_win_pct": 14.35,
+   "avg_loss_pct": -3.66,
+   "expectancy_pct": -0.813,
+   "expectancy_rs": -31.9,
+   "profit_factor": 0.74,
+   "net_pnl_rs": -5041.0,
+   "cagr_pct": -15.4,
+   "sharpe": -0.7,
+   "max_dd_pct": -34.7,
+   "worst_month_pct": -14.6,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 21.3,
+   "months_negative_pct": 71.0,
+   "first_entry": "2025-05-20",
+   "last_exit": "2026-09-24",
+   "candidates": 2134,
+   "split": {
+    "before_2026": {
+     "trades": 74,
+     "win_rate_pct": 14.9,
+     "expectancy_pct": -0.934
+    },
+    "from_2026": {
+     "trades": 84,
+     "win_rate_pct": 16.7,
+     "expectancy_pct": -0.707
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.648,
+   "all_candidates_pess_avg_net_pct": -0.648
+  },
+  "rsi_mr|atip_3|slots5": {
+   "years": 0.79,
+   "trades": 38,
+   "trades_per_year": 47.9,
+   "successful_per_year": 17.6,
+   "win_rate_pct": 36.8,
+   "avg_win_pct": 3.91,
+   "avg_loss_pct": -3.35,
+   "expectancy_pct": -0.675,
+   "expectancy_rs": -29.5,
+   "profit_factor": 0.68,
+   "net_pnl_rs": -1123.0,
+   "cagr_pct": -5.62,
+   "sharpe": -0.81,
+   "max_dd_pct": -6.4,
+   "worst_month_pct": -3.9,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 1.5,
+   "months_negative_pct": 64.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-10-15",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 3.679
+    },
+    "from_2026": {
+     "trades": 36,
+     "win_rate_pct": 33.3,
+     "expectancy_pct": -0.916
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.118,
+   "all_candidates_pess_avg_net_pct": -0.118
+  },
+  "rsi_mr|flat_4|slots5": {
+   "years": 0.7,
+   "trades": 42,
+   "trades_per_year": 59.9,
+   "successful_per_year": 31.4,
+   "win_rate_pct": 52.4,
+   "avg_win_pct": 3.31,
+   "avg_loss_pct": -3.71,
+   "expectancy_pct": -0.035,
+   "expectancy_rs": -1.0,
+   "profit_factor": 0.99,
+   "net_pnl_rs": -44.0,
+   "cagr_pct": -0.25,
+   "sharpe": -0.01,
+   "max_dd_pct": -5.3,
+   "worst_month_pct": -3.3,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 1.7,
+   "months_negative_pct": 40.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-11",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 3.343
+    },
+    "from_2026": {
+     "trades": 40,
+     "win_rate_pct": 50.0,
+     "expectancy_pct": -0.204
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": 0.244,
+   "all_candidates_pess_avg_net_pct": 0.244
+  },
+  "rsi_mr|atip_4|slots5": {
+   "years": 0.77,
+   "trades": 32,
+   "trades_per_year": 41.4,
+   "successful_per_year": 14.2,
+   "win_rate_pct": 34.4,
+   "avg_win_pct": 4.7,
+   "avg_loss_pct": -3.31,
+   "expectancy_pct": -0.555,
+   "expectancy_rs": -24.8,
+   "profit_factor": 0.74,
+   "net_pnl_rs": -794.0,
+   "cagr_pct": -4.1,
+   "sharpe": -0.51,
+   "max_dd_pct": -5.2,
+   "worst_month_pct": -2.3,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 1.2,
+   "months_negative_pct": 45.0,
+   "first_entry": "2026-01-07",
+   "last_exit": "2026-10-07",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 50.0,
+     "expectancy_pct": 0.718
+    },
+    "from_2026": {
+     "trades": 30,
+     "win_rate_pct": 33.3,
+     "expectancy_pct": -0.64
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.536,
+   "all_candidates_pess_avg_net_pct": -0.536
+  },
+  "rsi_mr|atip_be_4|slots5": {
+   "years": 0.72,
+   "trades": 42,
+   "trades_per_year": 58.6,
+   "successful_per_year": 30.7,
+   "win_rate_pct": 52.4,
+   "avg_win_pct": 1.79,
+   "avg_loss_pct": -3.71,
+   "expectancy_pct": -0.83,
+   "expectancy_rs": -37.1,
+   "profit_factor": 0.52,
+   "net_pnl_rs": -1557.0,
+   "cagr_pct": -8.57,
+   "sharpe": -1.38,
+   "max_dd_pct": -7.2,
+   "worst_month_pct": -5.0,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 2.0,
+   "months_negative_pct": 60.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-17",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 100.0,
+     "expectancy_pct": 1.183
+    },
+    "from_2026": {
+     "trades": 40,
+     "win_rate_pct": 50.0,
+     "expectancy_pct": -0.931
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.121,
+   "all_candidates_pess_avg_net_pct": -0.43
+  },
+  "rsi_mr|trail_4|slots5": {
+   "years": 0.72,
+   "trades": 42,
+   "trades_per_year": 58.6,
+   "successful_per_year": 2.8,
+   "win_rate_pct": 4.8,
+   "avg_win_pct": 15.11,
+   "avg_loss_pct": -2.22,
+   "expectancy_pct": -1.393,
+   "expectancy_rs": -61.9,
+   "profit_factor": 0.32,
+   "net_pnl_rs": -2601.0,
+   "cagr_pct": -14.2,
+   "sharpe": -2.08,
+   "max_dd_pct": -11.2,
+   "worst_month_pct": -6.4,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 3.7,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-12-30",
+   "last_exit": "2026-09-17",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 0.0,
+     "expectancy_pct": -0.65
+    },
+    "from_2026": {
+     "trades": 40,
+     "win_rate_pct": 5.0,
+     "expectancy_pct": -1.431
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.921,
+   "all_candidates_pess_avg_net_pct": -1.104
+  },
+  "rsi_mr|hold|slots5": {
+   "years": 0.79,
+   "trades": 33,
+   "trades_per_year": 41.7,
+   "successful_per_year": 6.3,
+   "win_rate_pct": 15.2,
+   "avg_win_pct": 11.21,
+   "avg_loss_pct": -3.74,
+   "expectancy_pct": -1.477,
+   "expectancy_rs": -70.8,
+   "profit_factor": 0.49,
+   "net_pnl_rs": -2338.0,
+   "cagr_pct": -11.67,
+   "sharpe": -1.15,
+   "max_dd_pct": -11.9,
+   "worst_month_pct": -5.4,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 2.7,
+   "months_negative_pct": 64.0,
+   "first_entry": "2026-01-07",
+   "last_exit": "2026-10-14",
+   "candidates": 45,
+   "split": {
+    "before_2026": {
+     "trades": 2,
+     "win_rate_pct": 0.0,
+     "expectancy_pct": -3.645
+    },
+    "from_2026": {
+     "trades": 31,
+     "win_rate_pct": 16.1,
+     "expectancy_pct": -1.337
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -1.449,
+   "all_candidates_pess_avg_net_pct": -1.449
+  },
+  "dip|atip_3|slots5": {
+   "years": 1.48,
+   "trades": 164,
+   "trades_per_year": 111.1,
+   "successful_per_year": 43.4,
+   "win_rate_pct": 39.0,
+   "avg_win_pct": 4.66,
+   "avg_loss_pct": -3.64,
+   "expectancy_pct": -0.401,
+   "expectancy_rs": -21.9,
+   "profit_factor": 0.79,
+   "net_pnl_rs": -3596.0,
+   "cagr_pct": -9.99,
+   "sharpe": -0.95,
+   "max_dd_pct": -23.1,
+   "worst_month_pct": -8.3,
+   "worst_month": "2026-02-28",
+   "best_month_pct": 8.5,
+   "months_negative_pct": 61.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-24",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 75,
+     "win_rate_pct": 46.7,
+     "expectancy_pct": 0.48
+    },
+    "from_2026": {
+     "trades": 89,
+     "win_rate_pct": 32.6,
+     "expectancy_pct": -1.144
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.608,
+   "all_candidates_pess_avg_net_pct": -0.623
+  },
+  "dip|flat_4|slots5": {
+   "years": 1.45,
+   "trades": 392,
+   "trades_per_year": 270.1,
+   "successful_per_year": 102.0,
+   "win_rate_pct": 37.8,
+   "avg_win_pct": 3.18,
+   "avg_loss_pct": -3.98,
+   "expectancy_pct": -1.278,
+   "expectancy_rs": -37.8,
+   "profit_factor": 0.48,
+   "net_pnl_rs": -14826.0,
+   "cagr_pct": -46.18,
+   "sharpe": -4.39,
+   "max_dd_pct": -59.6,
+   "worst_month_pct": -14.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 1.0,
+   "months_negative_pct": 94.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-15",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 191,
+     "win_rate_pct": 38.2,
+     "expectancy_pct": -1.083
+    },
+    "from_2026": {
+     "trades": 201,
+     "win_rate_pct": 37.3,
+     "expectancy_pct": -1.464
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.615,
+   "all_candidates_pess_avg_net_pct": -0.626
+  },
+  "dip|atip_4|slots5": {
+   "years": 1.47,
+   "trades": 184,
+   "trades_per_year": 125.4,
+   "successful_per_year": 40.9,
+   "win_rate_pct": 32.6,
+   "avg_win_pct": 5.39,
+   "avg_loss_pct": -3.72,
+   "expectancy_pct": -0.748,
+   "expectancy_rs": -31.7,
+   "profit_factor": 0.7,
+   "net_pnl_rs": -5825.0,
+   "cagr_pct": -16.54,
+   "sharpe": -1.42,
+   "max_dd_pct": -29.1,
+   "worst_month_pct": -12.2,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.2,
+   "months_negative_pct": 61.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-21",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 91,
+     "win_rate_pct": 39.6,
+     "expectancy_pct": 0.119
+    },
+    "from_2026": {
+     "trades": 93,
+     "win_rate_pct": 25.8,
+     "expectancy_pct": -1.597
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.689,
+   "all_candidates_pess_avg_net_pct": -0.699
+  },
+  "dip|atip_be_4|slots5": {
+   "years": 1.45,
+   "trades": 251,
+   "trades_per_year": 173.0,
+   "successful_per_year": 65.5,
+   "win_rate_pct": 37.8,
+   "avg_win_pct": 3.27,
+   "avg_loss_pct": -3.88,
+   "expectancy_pct": -1.173,
+   "expectancy_rs": -40.8,
+   "profit_factor": 0.53,
+   "net_pnl_rs": -10244.0,
+   "cagr_pct": -30.47,
+   "sharpe": -2.82,
+   "max_dd_pct": -41.4,
+   "worst_month_pct": -15.9,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 3.6,
+   "months_negative_pct": 61.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-09-15",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 106,
+     "win_rate_pct": 42.5,
+     "expectancy_pct": -0.403
+    },
+    "from_2026": {
+     "trades": 145,
+     "win_rate_pct": 34.5,
+     "expectancy_pct": -1.735
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.671,
+   "all_candidates_pess_avg_net_pct": -0.866
+  },
+  "dip|trail_4|slots5": {
+   "years": 1.49,
+   "trades": 237,
+   "trades_per_year": 158.5,
+   "successful_per_year": 14.0,
+   "win_rate_pct": 8.9,
+   "avg_win_pct": 11.98,
+   "avg_loss_pct": -3.03,
+   "expectancy_pct": -1.703,
+   "expectancy_rs": -55.4,
+   "profit_factor": 0.42,
+   "net_pnl_rs": -13129.0,
+   "cagr_pct": -39.24,
+   "sharpe": -3.12,
+   "max_dd_pct": -52.9,
+   "worst_month_pct": -19.1,
+   "worst_month": "2026-02-28",
+   "best_month_pct": 4.6,
+   "months_negative_pct": 74.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-10-01",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 94,
+     "win_rate_pct": 16.0,
+     "expectancy_pct": -0.443
+    },
+    "from_2026": {
+     "trades": 143,
+     "win_rate_pct": 4.2,
+     "expectancy_pct": -2.531
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.647,
+   "all_candidates_pess_avg_net_pct": -1.065
+  },
+  "dip|hold|slots5": {
+   "years": 1.49,
+   "trades": 143,
+   "trades_per_year": 95.7,
+   "successful_per_year": 21.4,
+   "win_rate_pct": 22.4,
+   "avg_win_pct": 13.31,
+   "avg_loss_pct": -3.76,
+   "expectancy_pct": 0.061,
+   "expectancy_rs": -1.7,
+   "profit_factor": 0.99,
+   "net_pnl_rs": -245.0,
+   "cagr_pct": -0.66,
+   "sharpe": 0.06,
+   "max_dd_pct": -14.9,
+   "worst_month_pct": -10.5,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 9.3,
+   "months_negative_pct": 47.0,
+   "first_entry": "2025-04-03",
+   "last_exit": "2026-10-01",
+   "candidates": 3016,
+   "split": {
+    "before_2026": {
+     "trades": 70,
+     "win_rate_pct": 25.7,
+     "expectancy_pct": 0.341
+    },
+    "from_2026": {
+     "trades": 73,
+     "win_rate_pct": 19.2,
+     "expectancy_pct": -0.208
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.746,
+   "all_candidates_pess_avg_net_pct": -0.746
+  },
+  "random|atip_3|slots5": {
+   "years": 1.53,
+   "trades": 152,
+   "trades_per_year": 99.3,
+   "successful_per_year": 37.2,
+   "win_rate_pct": 37.5,
+   "avg_win_pct": 3.75,
+   "avg_loss_pct": -3.69,
+   "expectancy_pct": -0.896,
+   "expectancy_rs": -38.1,
+   "profit_factor": 0.59,
+   "net_pnl_rs": -5787.0,
+   "cagr_pct": -15.8,
+   "sharpe": -1.51,
+   "max_dd_pct": -24.7,
+   "worst_month_pct": -9.4,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.1,
+   "months_negative_pct": 65.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-05",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 78,
+     "win_rate_pct": 41.0,
+     "expectancy_pct": -0.493
+    },
+    "from_2026": {
+     "trades": 74,
+     "win_rate_pct": 33.8,
+     "expectancy_pct": -1.32
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.538,
+   "all_candidates_pess_avg_net_pct": -0.56
+  },
+  "random|flat_4|slots5": {
+   "years": 1.5,
+   "trades": 407,
+   "trades_per_year": 271.3,
+   "successful_per_year": 116.0,
+   "win_rate_pct": 42.8,
+   "avg_win_pct": 3.3,
+   "avg_loss_pct": -3.91,
+   "expectancy_pct": -0.83,
+   "expectancy_rs": -28.4,
+   "profit_factor": 0.63,
+   "net_pnl_rs": -11573.0,
+   "cagr_pct": -33.92,
+   "sharpe": -2.78,
+   "max_dd_pct": -45.2,
+   "worst_month_pct": -9.8,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 5.5,
+   "months_negative_pct": 79.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-09-24",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 193,
+     "win_rate_pct": 44.6,
+     "expectancy_pct": -0.681
+    },
+    "from_2026": {
+     "trades": 214,
+     "win_rate_pct": 41.1,
+     "expectancy_pct": -0.965
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.541,
+   "all_candidates_pess_avg_net_pct": -0.551
+  },
+  "random|atip_4|slots5": {
+   "years": 1.54,
+   "trades": 172,
+   "trades_per_year": 112.0,
+   "successful_per_year": 31.3,
+   "win_rate_pct": 27.9,
+   "avg_win_pct": 5.27,
+   "avg_loss_pct": -3.58,
+   "expectancy_pct": -1.11,
+   "expectancy_rs": -42.2,
+   "profit_factor": 0.58,
+   "net_pnl_rs": -7263.0,
+   "cagr_pct": -20.03,
+   "sharpe": -1.79,
+   "max_dd_pct": -29.9,
+   "worst_month_pct": -9.2,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 4.9,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-07",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 79,
+     "win_rate_pct": 31.6,
+     "expectancy_pct": -0.816
+    },
+    "from_2026": {
+     "trades": 93,
+     "win_rate_pct": 24.7,
+     "expectancy_pct": -1.36
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.546,
+   "all_candidates_pess_avg_net_pct": -0.559
+  },
+  "random|atip_be_4|slots5": {
+   "years": 1.52,
+   "trades": 282,
+   "trades_per_year": 185.6,
+   "successful_per_year": 75.0,
+   "win_rate_pct": 40.4,
+   "avg_win_pct": 2.11,
+   "avg_loss_pct": -3.9,
+   "expectancy_pct": -1.474,
+   "expectancy_rs": -45.9,
+   "profit_factor": 0.37,
+   "net_pnl_rs": -12953.0,
+   "cagr_pct": -38.15,
+   "sharpe": -3.49,
+   "max_dd_pct": -50.8,
+   "worst_month_pct": -13.6,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 6.1,
+   "months_negative_pct": 90.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-01",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 124,
+     "win_rate_pct": 47.6,
+     "expectancy_pct": -1.147
+    },
+    "from_2026": {
+     "trades": 158,
+     "win_rate_pct": 34.8,
+     "expectancy_pct": -1.732
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.636,
+   "all_candidates_pess_avg_net_pct": -0.848
+  },
+  "random|trail_4|slots5": {
+   "years": 1.52,
+   "trades": 250,
+   "trades_per_year": 164.5,
+   "successful_per_year": 15.1,
+   "win_rate_pct": 9.2,
+   "avg_win_pct": 8.05,
+   "avg_loss_pct": -2.85,
+   "expectancy_pct": -1.847,
+   "expectancy_rs": -55.2,
+   "profit_factor": 0.29,
+   "net_pnl_rs": -13801.0,
+   "cagr_pct": -41.05,
+   "sharpe": -2.79,
+   "max_dd_pct": -54.3,
+   "worst_month_pct": -12.1,
+   "worst_month": "2026-01-31",
+   "best_month_pct": 5.7,
+   "months_negative_pct": 80.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-01",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 117,
+     "win_rate_pct": 12.0,
+     "expectancy_pct": -1.583
+    },
+    "from_2026": {
+     "trades": 133,
+     "win_rate_pct": 6.8,
+     "expectancy_pct": -2.08
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.755,
+   "all_candidates_pess_avg_net_pct": -1.17
+  },
+  "random|hold|slots5": {
+   "years": 1.54,
+   "trades": 171,
+   "trades_per_year": 111.1,
+   "successful_per_year": 19.5,
+   "win_rate_pct": 17.5,
+   "avg_win_pct": 12.17,
+   "avg_loss_pct": -3.92,
+   "expectancy_pct": -1.093,
+   "expectancy_rs": -47.0,
+   "profit_factor": 0.59,
+   "net_pnl_rs": -8037.0,
+   "cagr_pct": -22.28,
+   "sharpe": -1.23,
+   "max_dd_pct": -38.6,
+   "worst_month_pct": -11.1,
+   "worst_month": "2026-03-31",
+   "best_month_pct": 12.2,
+   "months_negative_pct": 70.0,
+   "first_entry": "2025-03-25",
+   "last_exit": "2026-10-08",
+   "candidates": 3299,
+   "split": {
+    "before_2026": {
+     "trades": 85,
+     "win_rate_pct": 20.0,
+     "expectancy_pct": -1.714
+    },
+    "from_2026": {
+     "trades": 86,
+     "win_rate_pct": 15.1,
+     "expectancy_pct": -0.48
+    }
+   },
+   "all_candidates_ohlc_avg_net_pct": -0.793,
+   "all_candidates_pess_avg_net_pct": -0.793
+  }
+ },
+ "atip_buy": {
+  "atip_buy|atip_3|hold10|slots3": {
+   "years": 0.17,
+   "trades": 16,
+   "trades_per_year": 92.8,
+   "successful_per_year": 29.0,
+   "win_rate_pct": 31.2,
+   "avg_win_pct": 2.3,
+   "avg_loss_pct": -3.53,
+   "expectancy_pct": -1.71,
+   "expectancy_rs": -128.6,
+   "profit_factor": 0.3,
+   "net_pnl_rs": -2058.0,
+   "cagr_pct": null,
+   "sharpe": -3.12,
+   "max_dd_pct": -10.9,
+   "worst_month_pct": -6.0,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -0.8,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-30",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -1.049,
+   "all_signals_win_rate_pct": 33.3
+  },
+  "atip_buy|flat_4|hold10|slots3": {
+   "years": 0.17,
+   "trades": 19,
+   "trades_per_year": 111.9,
+   "successful_per_year": 23.6,
+   "win_rate_pct": 21.1,
+   "avg_win_pct": 3.46,
+   "avg_loss_pct": -3.54,
+   "expectancy_pct": -2.063,
+   "expectancy_rs": -152.7,
+   "profit_factor": 0.26,
+   "net_pnl_rs": -2901.0,
+   "cagr_pct": null,
+   "sharpe": -5.7,
+   "max_dd_pct": -11.0,
+   "worst_month_pct": -7.3,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -1.2,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-29",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -1.321,
+   "all_signals_win_rate_pct": 28.6
+  },
+  "atip_buy|hold|hold10|slots3": {
+   "years": 0.18,
+   "trades": 16,
+   "trades_per_year": 91.3,
+   "successful_per_year": 11.4,
+   "win_rate_pct": 12.5,
+   "avg_win_pct": 11.03,
+   "avg_loss_pct": -3.54,
+   "expectancy_pct": -1.714,
+   "expectancy_rs": -130.3,
+   "profit_factor": 0.43,
+   "net_pnl_rs": -2084.0,
+   "cagr_pct": null,
+   "sharpe": -1.94,
+   "max_dd_pct": -14.3,
+   "worst_month_pct": -5.4,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -0.5,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-01",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -0.226,
+   "all_signals_win_rate_pct": 19.0
+  },
+  "atip_buy|atip_3|hold20|slots3": {
+   "years": 0.21,
+   "trades": 15,
+   "trades_per_year": 70.2,
+   "successful_per_year": 23.4,
+   "win_rate_pct": 33.3,
+   "avg_win_pct": 3.58,
+   "avg_loss_pct": -3.53,
+   "expectancy_pct": -1.159,
+   "expectancy_rs": -91.8,
+   "profit_factor": 0.49,
+   "net_pnl_rs": -1377.0,
+   "cagr_pct": null,
+   "sharpe": -1.69,
+   "max_dd_pct": -10.5,
+   "worst_month_pct": -4.0,
+   "worst_month": "2026-09-30",
+   "best_month_pct": 0.2,
+   "months_negative_pct": 75.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-15",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": -0.693,
+   "all_signals_win_rate_pct": 35.0
+  },
+  "atip_buy|flat_4|hold20|slots3": {
+   "years": 0.16,
+   "trades": 18,
+   "trades_per_year": 115.3,
+   "successful_per_year": 25.6,
+   "win_rate_pct": 22.2,
+   "avg_win_pct": 3.46,
+   "avg_loss_pct": -3.54,
+   "expectancy_pct": -1.982,
+   "expectancy_rs": -146.6,
+   "profit_factor": 0.28,
+   "net_pnl_rs": -2638.0,
+   "cagr_pct": null,
+   "sharpe": -5.37,
+   "max_dd_pct": -11.0,
+   "worst_month_pct": -6.2,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -1.2,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-24",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": -1.221,
+   "all_signals_win_rate_pct": 30.0
+  },
+  "atip_buy|hold|hold20|slots3": {
+   "years": 0.22,
+   "trades": 15,
+   "trades_per_year": 69.4,
+   "successful_per_year": 9.2,
+   "win_rate_pct": 13.3,
+   "avg_win_pct": 16.91,
+   "avg_loss_pct": -3.53,
+   "expectancy_pct": -0.807,
+   "expectancy_rs": -68.3,
+   "profit_factor": 0.7,
+   "net_pnl_rs": -1025.0,
+   "cagr_pct": null,
+   "sharpe": -0.67,
+   "max_dd_pct": -13.3,
+   "worst_month_pct": -4.5,
+   "worst_month": "2026-09-30",
+   "best_month_pct": 1.7,
+   "months_negative_pct": 75.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-16",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": 1.412,
+   "all_signals_win_rate_pct": 20.0
+  },
+  "atip_buy|atip_3|hold10|slots5": {
+   "years": 0.17,
+   "trades": 17,
+   "trades_per_year": 98.6,
+   "successful_per_year": 29.0,
+   "win_rate_pct": 29.4,
+   "avg_win_pct": 1.99,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -2.01,
+   "expectancy_rs": -91.5,
+   "profit_factor": 0.21,
+   "net_pnl_rs": -1555.0,
+   "cagr_pct": null,
+   "sharpe": -3.97,
+   "max_dd_pct": -7.3,
+   "worst_month_pct": -3.4,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -1.0,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-30",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -1.049,
+   "all_signals_win_rate_pct": 33.3
+  },
+  "atip_buy|flat_4|hold10|slots5": {
+   "years": 0.17,
+   "trades": 19,
+   "trades_per_year": 111.9,
+   "successful_per_year": 29.5,
+   "win_rate_pct": 26.3,
+   "avg_win_pct": 3.29,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -1.845,
+   "expectancy_rs": -84.1,
+   "profit_factor": 0.3,
+   "net_pnl_rs": -1599.0,
+   "cagr_pct": null,
+   "sharpe": -5.81,
+   "max_dd_pct": -5.9,
+   "worst_month_pct": -4.2,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -0.8,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-29",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -1.321,
+   "all_signals_win_rate_pct": 28.6
+  },
+  "atip_buy|hold|hold10|slots5": {
+   "years": 0.18,
+   "trades": 17,
+   "trades_per_year": 97.0,
+   "successful_per_year": 11.4,
+   "win_rate_pct": 11.8,
+   "avg_win_pct": 10.85,
+   "avg_loss_pct": -3.67,
+   "expectancy_pct": -1.966,
+   "expectancy_rs": -95.1,
+   "profit_factor": 0.35,
+   "net_pnl_rs": -1616.0,
+   "cagr_pct": null,
+   "sharpe": -2.57,
+   "max_dd_pct": -9.2,
+   "worst_month_pct": -3.3,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -0.3,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-01",
+   "signals_with_full_path": 21,
+   "all_signals_avg_net_pct": -0.226,
+   "all_signals_win_rate_pct": 19.0
+  },
+  "atip_buy|atip_3|hold20|slots5": {
+   "years": 0.21,
+   "trades": 16,
+   "trades_per_year": 74.9,
+   "successful_per_year": 23.4,
+   "win_rate_pct": 31.2,
+   "avg_win_pct": 3.27,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -1.507,
+   "expectancy_rs": -68.6,
+   "profit_factor": 0.39,
+   "net_pnl_rs": -1098.0,
+   "cagr_pct": null,
+   "sharpe": -2.31,
+   "max_dd_pct": -6.9,
+   "worst_month_pct": -2.0,
+   "worst_month": "2026-09-30",
+   "best_month_pct": 0.1,
+   "months_negative_pct": 75.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-15",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": -0.693,
+   "all_signals_win_rate_pct": 35.0
+  },
+  "atip_buy|flat_4|hold20|slots5": {
+   "years": 0.16,
+   "trades": 18,
+   "trades_per_year": 115.3,
+   "successful_per_year": 32.0,
+   "win_rate_pct": 27.8,
+   "avg_win_pct": 3.29,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -1.744,
+   "expectancy_rs": -79.3,
+   "profit_factor": 0.33,
+   "net_pnl_rs": -1427.0,
+   "cagr_pct": null,
+   "sharpe": -5.4,
+   "max_dd_pct": -5.9,
+   "worst_month_pct": -3.5,
+   "worst_month": "2026-09-30",
+   "best_month_pct": -0.8,
+   "months_negative_pct": 100.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-09-24",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": -1.221,
+   "all_signals_win_rate_pct": 30.0
+  },
+  "atip_buy|hold|hold20|slots5": {
+   "years": 0.22,
+   "trades": 16,
+   "trades_per_year": 74.0,
+   "successful_per_year": 9.2,
+   "win_rate_pct": 12.5,
+   "avg_win_pct": 16.73,
+   "avg_loss_pct": -3.68,
+   "expectancy_pct": -1.126,
+   "expectancy_rs": -62.2,
+   "profit_factor": 0.57,
+   "net_pnl_rs": -995.0,
+   "cagr_pct": null,
+   "sharpe": -1.24,
+   "max_dd_pct": -8.5,
+   "worst_month_pct": -2.6,
+   "worst_month": "2026-09-30",
+   "best_month_pct": 0.8,
+   "months_negative_pct": 75.0,
+   "first_entry": "2026-07-29",
+   "last_exit": "2026-10-16",
+   "signals_with_full_path": 20,
+   "all_signals_avg_net_pct": 1.412,
+   "all_signals_win_rate_pct": 20.0
+  }
+ },
+ "projection_to_2027_12_31": {
+  "sessions": 293,
+  "method": "20-session block bootstrap of the backtested daily equity returns, 5,000 paths",
+  "results": {
+   "dip|hold|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -5191.0,
+      "P50": 110.0,
+      "P90": 6313.0
+     },
+     "pnl_post_tax": {
+      "P10": -5191.0,
+      "P50": 87.0,
+      "P90": 5000.0
+     },
+     "prob_loss_pct": 49.1,
+     "max_dd_pct": {
+      "P50": -19.8,
+      "P95_worst": -33.7
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -51907.0,
+      "P50": 1100.0,
+      "P90": 63126.0
+     },
+     "pnl_post_tax": {
+      "P10": -51907.0,
+      "P50": 872.0,
+      "P90": 49996.0
+     },
+     "prob_loss_pct": 49.1,
+     "max_dd_pct": {
+      "P50": -19.8,
+      "P95_worst": -33.7
+     }
+    }
+   },
+   "momentum|atip_4|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -4734.0,
+      "P50": -1546.0,
+      "P90": 2052.0
+     },
+     "pnl_post_tax": {
+      "P10": -4734.0,
+      "P50": -1546.0,
+      "P90": 1625.0
+     },
+     "prob_loss_pct": 71.3,
+     "max_dd_pct": {
+      "P50": -14.9,
+      "P95_worst": -27.6
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -47342.0,
+      "P50": -15461.0,
+      "P90": 20518.0
+     },
+     "pnl_post_tax": {
+      "P10": -47342.0,
+      "P50": -15461.0,
+      "P90": 16250.0
+     },
+     "prob_loss_pct": 71.3,
+     "max_dd_pct": {
+      "P50": -14.9,
+      "P95_worst": -27.6
+     }
+    }
+   },
+   "breakout|hold|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -11634.0,
+      "P50": -5512.0,
+      "P90": 4386.0
+     },
+     "pnl_post_tax": {
+      "P10": -11634.0,
+      "P50": -5512.0,
+      "P90": 3474.0
+     },
+     "prob_loss_pct": 78.6,
+     "max_dd_pct": {
+      "P50": -35.8,
+      "P95_worst": -55.1
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -116344.0,
+      "P50": -55117.0,
+      "P90": 43864.0
+     },
+     "pnl_post_tax": {
+      "P10": -116344.0,
+      "P50": -55117.0,
+      "P90": 34740.0
+     },
+     "prob_loss_pct": 78.6,
+     "max_dd_pct": {
+      "P50": -35.8,
+      "P95_worst": -55.1
+     }
+    }
+   },
+   "dip|atip_3|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -10977.0,
+      "P50": -7412.0,
+      "P90": -2669.0
+     },
+     "pnl_post_tax": {
+      "P10": -10977.0,
+      "P50": -7412.0,
+      "P90": -2669.0
+     },
+     "prob_loss_pct": 97.1,
+     "max_dd_pct": {
+      "P50": -33.3,
+      "P95_worst": -48.8
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -109774.0,
+      "P50": -74123.0,
+      "P90": -26689.0
+     },
+     "pnl_post_tax": {
+      "P10": -109774.0,
+      "P50": -74123.0,
+      "P90": -26689.0
+     },
+     "prob_loss_pct": 97.1,
+     "max_dd_pct": {
+      "P50": -33.3,
+      "P95_worst": -48.8
+     }
+    }
+   },
+   "random|hold|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -11384.0,
+      "P50": -6231.0,
+      "P90": 1654.0
+     },
+     "pnl_post_tax": {
+      "P10": -11384.0,
+      "P50": -6231.0,
+      "P90": 1310.0
+     },
+     "prob_loss_pct": 85.5,
+     "max_dd_pct": {
+      "P50": -35.0,
+      "P95_worst": -53.7
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -113837.0,
+      "P50": -62307.0,
+      "P90": 16536.0
+     },
+     "pnl_post_tax": {
+      "P10": -113837.0,
+      "P50": -62307.0,
+      "P90": 13097.0
+     },
+     "prob_loss_pct": 85.5,
+     "max_dd_pct": {
+      "P50": -35.0,
+      "P95_worst": -53.7
+     }
+    }
+   },
+   "dip|atip_4|slots5": {
+    "one_session": {
+     "capital": 25000.0,
+     "pnl_pre_tax": {
+      "P10": -13056.0,
+      "P50": -9208.0,
+      "P90": -4477.0
+     },
+     "pnl_post_tax": {
+      "P10": -13056.0,
+      "P50": -9208.0,
+      "P90": -4477.0
+     },
+     "prob_loss_pct": 99.0,
+     "max_dd_pct": {
+      "P50": -39.6,
+      "P95_worst": -57.1
+     }
+    },
+    "ten_identical_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -130558.0,
+      "P50": -92085.0,
+      "P90": -44767.0
+     },
+     "pnl_post_tax": {
+      "P10": -130558.0,
+      "P50": -92085.0,
+      "P90": -44767.0
+     },
+     "prob_loss_pct": 99.0,
+     "max_dd_pct": {
+      "P50": -39.6,
+      "P95_worst": -57.1
+     }
+    }
+   },
+   "mix_of_distinct_books": {
+    "books": [
+     "dip|hold|slots5",
+     "momentum|atip_4|slots5",
+     "breakout|hold|slots5",
+     "random|hold|slots5"
+    ],
+    "ten_sessions": {
+     "capital": 250000.0,
+     "pnl_pre_tax": {
+      "P10": -77213.0,
+      "P50": -32821.0,
+      "P90": 27302.0
+     },
+     "pnl_post_tax": {
+      "P10": -77213.0,
+      "P50": -32821.0,
+      "P90": 21623.0
+     },
+     "prob_loss_pct": 77.1,
+     "max_dd_pct": {
+      "P50": -23.3,
+      "P95_worst": -38.6
+     }
+    },
+    "corr": {
+     "dip|hold|slots5": {
+      "dip|hold|slots5": 1.0,
+      "momentum|atip_4|slots5": 0.37,
+      "breakout|hold|slots5": 0.4,
+      "random|hold|slots5": 0.54
+     },
+     "momentum|atip_4|slots5": {
+      "dip|hold|slots5": 0.37,
+      "momentum|atip_4|slots5": 1.0,
+      "breakout|hold|slots5": 0.49,
+      "random|hold|slots5": 0.38
+     },
+     "breakout|hold|slots5": {
+      "dip|hold|slots5": 0.4,
+      "momentum|atip_4|slots5": 0.49,
+      "breakout|hold|slots5": 1.0,
+      "random|hold|slots5": 0.5
+     },
+     "random|hold|slots5": {
+      "dip|hold|slots5": 0.54,
+      "momentum|atip_4|slots5": 0.38,
+      "breakout|hold|slots5": 0.5,
+      "random|hold|slots5": 1.0
+     }
+    }
+   }
+  }
+ }
+}

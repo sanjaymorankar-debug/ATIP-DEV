@@ -1,0 +1,87 @@
+[
+ {
+  "case": "NIFTY Nov FUT, 1 lot, BUY",
+  "security_id": 61471,
+  "lot": 65,
+  "price_used": 22891.4,
+  "price_date": "2026-10-26",
+  "notional": 1487941,
+  "http": 200,
+  "margin": {
+   "totalMargin": 167593.27,
+   "spanMargin": 0.0,
+   "exposureMargin": 0.0,
+   "variableMargin": 0.0,
+   "leverage": "8.88X"
+  },
+  "raw_error": null
+ },
+ {
+  "case": "NIFTY 03-Nov 22750 CE, 1 lot, SELL (write)",
+  "security_id": 53792,
+  "lot": 65,
+  "price_used": 261.1,
+  "price_date": "2026-10-26",
+  "notional": 16972,
+  "http": 200,
+  "margin": {
+   "totalMargin": 158395.38,
+   "spanMargin": 0.0,
+   "exposureMargin": 0.0,
+   "variableMargin": 0.0,
+   "leverage": "9.44X"
+  },
+  "raw_error": null
+ },
+ {
+  "case": "NIFTY 03-Nov 22750 CE, 1 lot, BUY",
+  "security_id": 53792,
+  "lot": 65,
+  "price_used": 261.1,
+  "price_date": "2026-10-26",
+  "notional": 16972,
+  "http": 200,
+  "margin": {
+   "totalMargin": 16971.5,
+   "spanMargin": 0.0,
+   "exposureMargin": 0.0,
+   "variableMargin": 0.0,
+   "leverage": "1X"
+  },
+  "raw_error": null
+ },
+ {
+  "case": "BANKNIFTY Nov FUT, 1 lot, BUY",
+  "security_id": 61466,
+  "lot": 30,
+  "price_used": 54772.6,
+  "price_date": "2026-10-26",
+  "notional": 1643178,
+  "http": 200,
+  "margin": {
+   "totalMargin": 185674.86,
+   "spanMargin": 0.0,
+   "exposureMargin": 0.0,
+   "variableMargin": 0.0,
+   "leverage": "8.85X"
+  },
+  "raw_error": null
+ },
+ {
+  "case": "RELIANCE Nov FUT, 1 lot, BUY",
+  "security_id": 61697,
+  "lot": 500,
+  "price_used": 1207.0,
+  "price_date": "2026-10-26",
+  "notional": 603500,
+  "http": 200,
+  "margin": {
+   "totalMargin": 106247.5,
+   "spanMargin": 0.0,
+   "exposureMargin": 0.0,
+   "variableMargin": 0.0,
+   "leverage": "5.68X"
+  },
+  "raw_error": null
+ }
+]
