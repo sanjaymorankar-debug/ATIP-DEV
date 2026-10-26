@@ -37,7 +37,7 @@
 ## Project Structure
 
 ```
-/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev/    ← RUN ALL COMMANDS FROM HERE
+/Users/agtci/Documents/GIT_ATIP/ATIP/    ← RUN ALL COMMANDS FROM HERE
 │
 ├── main.py                         ← SINGLE ENTRY POINT
 ├── requirements.txt
@@ -45,6 +45,7 @@
 ├── config_template.json            ← Copy to atip_data/config.json
 │
 │   macOS / Linux launchers
+├── setup_atip.sh                   ← macOS: check, install, migrate, auto-start, verify
 ├── start_atip.sh                   ← Start ATIP
 ├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
 ├── deploy/launchd/                 ← LaunchAgents: auto-start, 5-min snapshot, Dhan token
@@ -91,10 +92,27 @@
 
 ## Quick Setup (macOS)
 
-The project lives at `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev`.
+The project lives at `/Users/agtci/Documents/GIT_ATIP/ATIP`.
 Any folder name works, because the scripts find the project from their own
 location. Inside `~/Documents`, read the privacy and iCloud items under
 [Mac checks](#mac-checks) first.
+
+### The setup script (recommended)
+
+`setup_atip.sh` does the whole setup below and the move from an older folder,
+step by step or in one go. The full plan, with what to check after each step,
+is [docs/MAC_DEPLOYMENT.md](docs/MAC_DEPLOYMENT.md).
+
+```bash
+cd /Users/agtci/Documents/GIT_ATIP/ATIP
+./setup_atip.sh check        # read-only: what is ready, what is missing
+./setup_atip.sh all --from /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
+                             # or just `all` for a fresh database
+./setup_atip.sh verify       # running from this folder, healthy, no second copy
+```
+
+`./setup_atip.sh help` lists the single steps (`install`, `migrate`, `data`,
+`agents`, `start`, `stop`). The manual equivalent follows.
 
 ### Python 3.11 or newer — not the one macOS ships
 
@@ -109,7 +127,7 @@ brew install python@3.13
 
 ### Option A — one-time setup
 ```bash
-cd /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
+cd /Users/agtci/Documents/GIT_ATIP/ATIP
 
 # Step 1: a virtualenv from Homebrew's Python, and the packages
 "$(brew --prefix)/bin/python3.13" -m venv .venv

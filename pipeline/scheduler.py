@@ -1376,7 +1376,11 @@ def print_status():
     print(f"  {'-'*32} {'-'*10} {'-'*6}  {'-'*20}")
     for r in rows:
         icon = "✅" if r["status"] == "SUCCESS" else "❌" if r["status"] == "FAILED" else "⚠️"
-        print(f"  {icon} {r['job_name']:<30} {r['status']:<10} {r['rows_processed']:>6}  {str(r['start_time'])[:19]}")
+        # status and rows_processed are nullable (close_indexes logs rows as NULL); a None
+        # here used to crash the whole report with "unsupported format string".
+        n = r["rows_processed"]
+        print(f"  {icon} {r['job_name']:<30} {r['status'] or '-':<10} {'-' if n is None else n:>6}  "
+              f"{str(r['start_time'])[:19]}")
 
     # Table row counts
     print(f"\n  Database Row Counts:")

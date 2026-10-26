@@ -2,6 +2,8 @@
 # Runtime data: the live SQLite database, logs, cached downloads and
 # dashboard state. Machine-specific and far too large for git.
 atip_data/
+# setup_atip.sh migrate keeps a folder's previous atip_data/ aside under this name
+atip_data.before-migrate-*/
 
 # Secrets - never commit these.
 .env
