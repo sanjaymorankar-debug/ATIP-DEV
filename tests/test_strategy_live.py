@@ -385,7 +385,7 @@ def test_exit_fills_at_the_price_the_decision_was_made_on(temp_db, cfg, monkeypa
     monkeypatch.setattr(L, "momentum_for", lambda s, conn=None: A.Momentum())
 
     b = paper.PaperBroker(conn=get_connection(),
-                          overrides={"paper_slippage_bps": 0.0, "paper_brokerage_pct": 0.0})
+                          overrides={"paper_slippage_bps": 0.0, "paper_cost_model": "zero"})
     b.reset(1000000.0)
     # orders.broker does `from orders.environment import get_execution_client`,
     # so the name is already bound there — patching the environment module would

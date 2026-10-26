@@ -56,14 +56,14 @@ def test_plan_orders_steps_dedupes_and_limits_attempts(conn):
              Problem("News (midday)", "MISSED", "", ()), Problem("News (morning)", "MISSED", "", ()),
              Problem("Global markets (pre-market)", "MISSED", "", ()),
              Problem("NSE index closes", "MISSED", "", ())]                     # no remedy: reported only
-    now = dt.datetime(2026, 10, 2, 10, 0)
+    now = dt.datetime(2026, 10, 1, 9, 0)          # a trading day, inside the brief's 08:30-09:15 window
     p = plan(conn, probs, now)
     assert [s["step"] for s in p] == ["global", "news", "brief"]
     assert len(p[1]["labels"]) == 2 and all(s["allowed"] for s in p)
     conn.execute("INSERT INTO job_recovery (day,step,attempts,last_at) VALUES (?,?,?,?)",
-                 ("2026-10-02", "news", 1, dt.datetime(2026, 10, 2, 9, 50)))
+                 ("2026-10-01", "news", 1, dt.datetime(2026, 10, 1, 8, 50)))
     conn.execute("INSERT INTO job_recovery (day,step,attempts,last_at) VALUES (?,?,?,?)",
-                 ("2026-10-02", "brief", MAX_ATTEMPTS, dt.datetime(2026, 10, 2, 8, 0)))
+                 ("2026-10-01", "brief", MAX_ATTEMPTS, dt.datetime(2026, 10, 1, 8, 0)))
     conn.commit()
     p = {s["step"]: s for s in plan(conn, probs, now)}
     assert p["global"]["allowed"]
@@ -85,6 +85,7 @@ def test_check_and_recover_runs_the_remedy_records_it_and_rechecks(conn, monkeyp
         c.close()
         return {"status": "FAILED", "error": "token expired"} if step == "portfolio" else {"status": "SUCCESS"}
     monkeypatch.setattr(R, "_run_step", fake_step)
+    monkeypatch.setattr("alerts.telegram.morning_brief_window", lambda now=None: (True, ""))   # whatever the clock says
     out = R.check_and_recover()
     assert calls[0] == "global" and calls[-1] == "brief"
     assert "Global markets (pre-market)" in out["recovered"]

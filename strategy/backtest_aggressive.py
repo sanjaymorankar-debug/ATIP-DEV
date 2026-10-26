@@ -12,10 +12,11 @@ backtest that flatters itself is worse than no backtest:
     its high hits the target, we assume the stop went first. Intraday order is
     unknowable from a daily bar, and assuming the favourable order is how a
     losing strategy is made to look profitable.
-  * **Costs are charged on every leg.** `cost_pct` is a round-trip percentage of
-    turnover applied to the partial exit and the final exit separately. Last
-    session's work on this database put a realistic figure near 0.25%, and a 3%
-    target does not survive being measured without it.
+  * **Costs are charged on every leg.** `cost_pct` is a round trip, charged on the
+    partial exit and the final exit separately: half on the shares' entry value,
+    half on their exit value (backtest.costs.round_trip_cost, via realised_pnl).
+    Last session's work on this database put a realistic figure near 0.25%, and
+    a 3% target does not survive being measured without it.
 
 The strategy being replayed is the one in `strategy.aggressive`: stop protects
 100% until +3%, +3% books half and starts the trail, +6% is a momentum
@@ -27,6 +28,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 
+from backtest.costs import ROUND_TRIP_PCT
 from strategy.aggressive import (
     Momentum, checkpoint_decision, config, partial_exit_quantity, ratchet,
     realised_pnl, target_price, trail_distance_pct,
@@ -81,7 +83,7 @@ class Trade:
 
 def simulate(entry_price: float, quantity: int, bars: list[Bar],
              momentum: Momentum = None, cfg: dict = None,
-             stop_pct: float = 3.0, cost_pct: float = 0.25,
+             stop_pct: float = 3.0, cost_pct: float = ROUND_TRIP_PCT,
              symbol: str = "SIM", exit_all_at_t1: bool = False,
              atr_pct: float = None) -> Trade:
     """
@@ -262,7 +264,7 @@ WEAK = Momentum(zpi=22, msi=28, cri=78, mri=28, rsi_14=36, macd_hist=-0.4, volum
 NEUTRAL = Momentum(zpi=50, msi=50, cri=50, mri=50, rsi_14=50, macd_hist=0.0, volume_ratio=1.0)
 
 
-def scenarios(cfg: dict = None, cost_pct: float = 0.25) -> dict:
+def scenarios(cfg: dict = None, cost_pct: float = ROUND_TRIP_PCT) -> dict:
     """The seven deterministic scenarios the specification asks for."""
     cfg = cfg or config()
     out = {}
@@ -301,7 +303,7 @@ def scenarios(cfg: dict = None, cost_pct: float = 0.25) -> dict:
     return out
 
 
-def run(cfg: dict = None, cost_pct: float = 0.25) -> dict:
+def run(cfg: dict = None, cost_pct: float = ROUND_TRIP_PCT) -> dict:
     """Run every scenario and summarise. Returns {'scenarios':…, 'metrics':…}."""
     sc = scenarios(cfg, cost_pct)
     flat: list[Trade] = []
@@ -310,7 +312,7 @@ def run(cfg: dict = None, cost_pct: float = 0.25) -> dict:
     return {"scenarios": sc, "metrics": metrics(flat), "cost_pct": cost_pct}
 
 
-def print_report(cfg: dict = None, cost_pct: float = 0.25):
+def print_report(cfg: dict = None, cost_pct: float = ROUND_TRIP_PCT):
     r = run(cfg, cost_pct)
     print(f"\n{'=' * 72}")
     print(f"  Aggressive strategy — deterministic scenarios (costs {cost_pct}% round trip)")

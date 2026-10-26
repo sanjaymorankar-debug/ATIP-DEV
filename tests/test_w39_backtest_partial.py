@@ -409,9 +409,12 @@ def _digest(res) -> str:
 
 
 # Full-result digests from the engine BEFORE PF-06 (same data, same requests).
+# P1-5 (2026-10-26): the runs on the default nse_delivery costs now pay the DP charge on every sell
+# (backtest.costs.DP_CHARGE_PER_SELL, Rs 15.93; it was 0) and were re-digested. With dp_charge_per_sell 0
+# they reproduce the previous digests exactly (dip was b8232ed7...); trade counts are unchanged.
 LEGACY_RUNS = {
     "dip": ({"strategy_id": "dip", "universe": list(WAVES)},
-            30, "b8232ed79bf5e308437a1f19d7793115803876f952eb1fd7b2910f22dc3588c8"),
+            30, "6f449bc6f4cb171fef3553c204418c93ff150bc7b8ff225d8f26300b2b0ab921"),
     "dip_flat_liq": ({"strategy_id": "dip", "universe": list(WAVES), "cost_model": "flat",
                       "liquidity": {"max_participation_pct": 0.2}, "close_out_at_end": False},
                      29, "afa78a9843d9986349fb10bafc1f4518f9ba16774ac2891d198c4488782d6bb7"),
@@ -863,12 +866,15 @@ def test_event_driven_strategy_version_reduces_and_stores_partial_rows(db):
 # Trades, equity, metrics, events and the bias report are identical; the skipped-decision reporting
 # added at the same time (outside-universe events, a version's not_simulated decisions) adds nothing
 # here. dip_short_hold_open_end (close_out_at_end false) is untouched.
+# P1-5 (2026-10-26): the runs on the default nse_delivery costs now pay the DP charge on every sell
+# (backtest.costs.DP_CHARGE_PER_SELL, Rs 15.93; it was 0) and were re-digested. With dp_charge_per_sell 0
+# they reproduce the previous digests exactly (dip was 5d38d6ec...); trade counts are unchanged.
 ED_LEGACY_RUNS = {
     "dip": ({"strategy_id": "dip", "universe": list(WAVES)}, {},
-            30, "5d38d6ec7d7ffb2952aaf19ceba0b2027b5df3c986404d6eed82f76d70e17ef9"),
+            30, "33ea4564ab7a87f80586c337f40bd773a4747b7d5efe7b14cece8624a45fa40a"),
     "dip_sliced_capped": ({"strategy_id": "dip", "universe": list(WAVES)},
                           {"slices": 3, "latency_bars": 2, "ttl_bars": 5, "participation_cap": 0.001},
-                          30, "dda38ec626a96195e9a94a2cd2b5cb965ca3bdcc17b851ef237ec0bfe1654ddf"),
+                          30, "80bf45dbe96785851c9a165d75a5f60be032498963badc74dc82048683adb295"),
     "dip_short_hold_open_end": ({"strategy_id": "dip", "universe": list(WAVES), "close_out_at_end": False,
                                  "params": {"max_hold_sessions": 2, "target_pct": 2, "stop_pct": 1.5}},
                                 {"slices": 2, "participation_cap": 0.0003, "ttl_bars": 2, "impact": "none"},
@@ -876,7 +882,7 @@ ED_LEGACY_RUNS = {
                                 # queued again each session and over-charged. CCC 2025-01-31 now pays 45.04 instead
                                 # of 59.26, so 14.22 more cash lets AAA buy 521 shares instead of 520; nothing else
                                 # changed (same 117 trades, same events). The other three pins are untouched.
-                                117, "41ab6884b4a0651e0b7363b37131d8d6a905850da74381e16bcd344f3a219ea1"),
+                                117, "67328db2e5d9359959fcf785bd3fbbe629325a8f416407ed6c90a84a61e8b3bc"),
     "buy_and_hold": ({"strategy_id": "buy_and_hold", "universe": ["UPP", "DWN", "RUN"], "cost_model": "flat"},
                      {"impact": "none"}, 3, "e66b3dcc9e0ef12e560529005a18f19cf618f3e3beab6ce691e181290bc08394"),
 }

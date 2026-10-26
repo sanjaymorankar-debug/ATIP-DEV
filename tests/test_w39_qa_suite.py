@@ -60,7 +60,7 @@ class Feed:
 
 @pytest.fixture
 def paper(temp_db, tmp_path, monkeypatch):
-    """broker_env PAPER (explicitly), a 1,00,000 paper account with no slippage and no brokerage,
+    """broker_env PAPER (explicitly), a 1,00,000 paper account with no slippage and no charges,
     no halt flag, no risk limits; security ids for KNOWN only; every quote from Feed; the real
     Dhan client unreachable. Orders go orders.rules -> orders.broker -> orders.paper for real."""
     import data.dhan as D
@@ -74,7 +74,7 @@ def paper(temp_db, tmp_path, monkeypatch):
     rules.init_orders_table()
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"broker_env": "PAPER", "paper_opening_balance": 100000.0,
-                               "paper_slippage_bps": 0.0, "paper_brokerage_pct": 0.0}), encoding="utf-8")
+                               "paper_slippage_bps": 0.0, "paper_cost_model": "zero"}), encoding="utf-8")
     for mod in (E, R, P):
         monkeypatch.setattr(mod, "CONFIG_PATH", cfg)
     monkeypatch.setattr(R, "HALT_FLAG", tmp_path / "TRADING_HALTED")

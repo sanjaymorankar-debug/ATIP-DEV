@@ -42,9 +42,9 @@ DAILY BARS CANNOT SAY WHICH CAME FIRST, so two conventions are run:
   (better) open -- which is what a resting order or the 15-minute live loop would get.
 
 COSTS   COST_PCT round trip on every rupee that goes in and comes out (half on entry, half on each
-        exit leg). 0.25 % is ATIP's assumption; the statutory delivery cost alone is ~0.24 %.
-        NOTE: strategy/backtest_history.py charges its 0.25 % on BOTH legs' turnover
-        (realised_pnl), i.e. ~0.5 % round trip -- run --cost 0.5 to reproduce its scale.
+        exit leg). 0.25 % is ATIP's assumption (backtest.costs.ROUND_TRIP_PCT); the statutory
+        delivery cost alone is ~0.24 %. strategy/backtest_history.py (realised_pnl) charges it the
+        same way since P1-5; it used to charge the 0.25 % on BOTH legs, ~0.5 % a round trip.
 
 PORTFOLIO  The per-trade average hides the point of a lower target: capital comes back sooner and
         takes the next signal. So each policy is also run as ATIP would trade it -- MAX_POSITIONS
@@ -83,7 +83,7 @@ log = logging.getLogger("atip.research.exit_study")
 # ── ATIP's parameters (strategy/aggressive.py DEFAULTS, scores/backtest.py, scores/engine.py) ──
 STOP_PCT = 3.0              # initial stop; live defaults it to target_1_pct (3) -- strategy/live.py
 HOLD = 30                   # sessions; backtest_history HOLD_BARS / signal_log MAX_TRACK_SESSIONS
-COST_PCT = 0.25             # round trip
+COST_PCT = 0.25             # round trip, = backtest.costs.ROUND_TRIP_PCT (tests/test_statutory_costs.py)
 PARTIAL = 0.50              # target_1_exit_pct
 TRAIL_ATR_MULT = 4.0
 TRAIL_MIN, TRAIL_MAX = 3.0, 20.0

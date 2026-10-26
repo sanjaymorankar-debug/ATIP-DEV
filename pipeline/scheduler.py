@@ -976,6 +976,15 @@ def run_postmarket(force=False, target_date=None, backfill=False):
         log.info(f"  ✓ EOD freshness for {td}: {n_same}/{n_chk} bars identical to the "
                  f"previous session")
 
+    # P1-6: PAPER orders that waited for this session's open fill now, from the Bhavcopy just
+    # checked -- before the book is valued (daily P&L) or strategies decide on it
+    if not backfill:
+        try:
+            from execution.paper_matching import run_eod_matching
+            run_job("paper_next_open_fills", run_eod_matching, td)
+        except Exception as e:
+            log.warning(f"  Paper next-open fills: {e}")
+
     # 4:45 PM — Compute 35 technical indicators
     from data.technical import run_technical_pipeline
     run_job("technical_indicators", run_technical_pipeline, td)
@@ -1281,11 +1290,16 @@ def _rebuild_dashboard(td):
 #  REFRESH: US market close data, commodities, FX
 # ═════════════════════════════════════════════════════════════════════════
 
-def run_morning_digest():
+def run_morning_digest(now=None):
     """8:30 AM Morning Brief. Skips non-trading days — there is no 'what should
-    I do today' on a Sunday."""
+    I do today' on a Sunday — and (P1-3) never goes out after the 09:15 open:
+    `schedule` runs a missed 08:30 slot when the Mac wakes, whatever the time."""
     if not is_market_day():
         log.info("⏩  Not a trading day — skipping morning brief"); return
+    from alerts.telegram import morning_brief_window
+    ok, why = morning_brief_window(now)
+    if not ok:
+        log.warning(f"⏩  Morning brief not sent: {why}"); return
     log.info(f"\n{'='*55}\n  MORNING BRIEF — {date.today()}\n{'='*55}")
     try:
         from alerts.telegram import send_morning_digest
@@ -1909,14 +1923,17 @@ def _broker_health_now():
 
 def _w29_paper_match_tick():
     """EX-02 / W4-R4: fill resting paper LIMIT / SL / SL-M orders that have crossed. Logged only
-    when something is pending."""
+    when something is pending (orders waiting for a next open fill post-market instead, P1-6)."""
     if not is_market_hours():
         return
     try:
         from db.schema import get_connection
+        from execution.paper_matching import LIVE_PENDING
+        from orders.paper import ensure_tables
         c = get_connection()
         try:
-            n = c.execute("SELECT COUNT(*) FROM paper_order WHERE status='PENDING'").fetchone()[0]
+            ensure_tables(c)                       # P1-6 columns, on an install that has not placed an order since
+            n = c.execute(f"SELECT COUNT(*) FROM paper_order WHERE {LIVE_PENDING}").fetchone()[0]
         finally:
             c.close()
         if n:

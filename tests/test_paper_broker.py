@@ -30,7 +30,7 @@ def broker(temp_db, monkeypatch):
     b = paper.PaperBroker(conn=get_connection(),
                           overrides={"paper_opening_balance": 100000.0,
                                      "paper_slippage_bps": 0.0,
-                                     "paper_brokerage_pct": 0.0})
+                                     "paper_cost_model": "zero"})
     b.reset(100000.0)
     return b
 
@@ -140,7 +140,7 @@ def test_slippage_always_hurts(temp_db, monkeypatch):
     from db.schema import get_connection
     monkeypatch.setattr(paper.PaperBroker, "_ltp", lambda self, s: 100.0)
     b = paper.PaperBroker(conn=get_connection(),
-                          overrides={"paper_slippage_bps": 50.0, "paper_brokerage_pct": 0.0})
+                          overrides={"paper_slippage_bps": 50.0, "paper_cost_model": "zero"})
     b.reset(100000.0)
     buy = b.place_order(transaction_type="BUY", quantity=1, symbol="ACME")
     assert buy["data"]["averageTradedPrice"] > 100.0, "a buy must fill higher"
@@ -227,7 +227,7 @@ def test_quote_is_cached_within_ttl(temp_db, monkeypatch):
 
     monkeypatch.setattr("data.dhan.fetch_live_quotes", fake_fetch)
     b = paper.PaperBroker(conn=get_connection(),
-                          overrides={"paper_slippage_bps": 0.0, "paper_brokerage_pct": 0.0})
+                          overrides={"paper_slippage_bps": 0.0, "paper_cost_model": "zero"})
     b.reset(100000.0)
     b._quote_cache.clear()
 
@@ -251,7 +251,7 @@ def test_stale_cache_entry_is_refetched(temp_db, monkeypatch):
     monkeypatch.setattr("data.dhan.fetch_live_quotes", fake_fetch)
     monkeypatch.setattr(paper.PaperBroker, "QUOTE_TTL_SECONDS", 0.0)
     b = paper.PaperBroker(conn=get_connection(),
-                          overrides={"paper_slippage_bps": 0.0, "paper_brokerage_pct": 0.0})
+                          overrides={"paper_slippage_bps": 0.0, "paper_cost_model": "zero"})
     b.reset(100000.0)
     b._quote_cache.clear()
 

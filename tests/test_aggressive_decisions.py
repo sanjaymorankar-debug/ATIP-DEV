@@ -277,8 +277,9 @@ def test_realised_pnl_is_reduced_by_costs():
     gross = A.realised_pnl(100.0, 103.0, 50, cost_pct=0.0)
     net = A.realised_pnl(100.0, 103.0, 50, cost_pct=0.25)
     assert net < gross
-    # Rounded to paise, as money is.
-    assert net == round(150.0 - (100.0 + 103.0) * 50 * 0.0025, 2)
+    # 0.25% is the whole round trip: half on the entry value, half on the exit
+    # value (P1-5 -- it used to be charged in full on both). Rounded to paise.
+    assert net == round(150.0 - (100.0 + 103.0) * 50 * 0.0025 / 2, 2)
 
 
 def test_realised_pnl_mirrors_for_a_short():

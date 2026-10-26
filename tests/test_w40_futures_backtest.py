@@ -856,32 +856,35 @@ ALL6 = list(WAVES) + ["UPP", "DWN", "RUN"]
 # None of these strategies emits a SHORT reaching the engine (pairs / portfolios without F&O data take
 # the old SELL path), so W40 must not change a byte of them. ("ed_" = the event-driven engine, whose
 # result embeds the resolved snapshot: the snapshot must not change either.)
+# P1-5 (2026-10-26): the runs on the default nse_delivery costs now pay the DP charge on every sell
+# (backtest.costs.DP_CHARGE_PER_SELL, Rs 15.93; it was 0) and were re-digested. With dp_charge_per_sell 0
+# they reproduce the previous digests exactly (e.g. 47b3ea9d... and 72515ab8...); trade counts are unchanged.
 LEGACY_W40 = {
     "momentum": ({"strategy_id": "momentum", "universe": ALL6},
                  0, "7f8b45aeefc564aa3fbb7ecce14a4d38abdcd18c4cb28d4d2e741668094ba689"),
     "mean_reversion_rsi": ({"strategy_id": "mean_reversion_rsi", "universe": list(WAVES)},
                            0, "f28d3dd58b51777e1edd0f3e67a1673422b80487fe54a433d285415453bdc1d5"),
     "dip_open_end": ({"strategy_id": "dip", "universe": list(WAVES), "close_out_at_end": False},
-                     29, "47b3ea9d983232036a5acdedd22c3ebcc7b24cacc78a68557dcc40bf757bbe2c"),
+                     29, "99966a8a2f7561b7b2dd178405cecca30fe44fc3bd13a08ccc150deea365acc5"),
     "mf_reduce": ({"strategy_id": "mf_reduce", "universe": list(WAVES)},
-                  19, "72515ab8de678d451fde7215e28d7e8fcb500ea920d1cd44294e9724593d1cb8"),
+                  19, "e74f435e74395480a418e040197791ff3dc40695c3857999a080496424f72505"),
     "pr_single": ({"strategy_id": "pr_single", "universe": ["AAA", "BBB"]},
-                  28, "75fb78d0c879d18b3cf90719a662b1565f78e2d74a15ff5bd8926217902c941c"),
+                  28, "57dfc0769106a56f8be72be6541940c28d337aded3567d18e2f61659f8c1a7f1"),
     "pr_fut_nofno": ({"strategy_id": "pr_fut_nofno", "universe": ["AAA", "BBB"]},
                      0, "84b24511703fd887904b68725cbfb9a00e9f7d542f85d7640b33329b2d1bf139"),
     "pr_fut_single_nofno": ({"strategy_id": "pr_fut_single_nofno", "universe": ["AAA", "BBB"]},
-                            28, "3e90f5680fdd183364dd60b5dd9a3a0bd976f93a08aeddc3c8db0d4a324d46f2"),
+                            28, "0a1cb8c2f0a32e756b6e3caf931ed7c113d90d63a952aed8a73dd412a0e2a439"),
     "pf_ls_lo": ({"strategy_id": "pf_ls_lo", "universe": ALL6},
-                 2, "cbd709b1ced8eb8f06b39d71f153a30218a94377ad53322c1618e3d95c238f7f"),
+                 2, "0eaff6e24aae3d27deabb67a224db5338735890363056f7cf5da2e179b239e78"),
     "pf_fut_nofno": ({"strategy_id": "pf_fut_nofno", "universe": ALL6},
-                     2, "68a431a00de983165f939174ed2b77c22922a00fb1cec5ea2ffc1e20d919c918"),
+                     2, "92639c90237bcc4fe8e2ebb4289e499867161bc20b792da0c509c0de5c530716"),
     "ed_pr_single": ({"strategy_id": "pr_single", "universe": ["AAA", "BBB"]},
-                     28, "d3198e9d3640e330ccf1caba73f672e284296ab3803a3ae9a599f072de0060fd"),
+                     28, "97052eeb4947b4acd9630735a6f29d994597cd11dad7127f02db5ecdd59d73f4"),
     # re-pinned on merging BT-17's close-out fix (was b920c72d...): the event engine's last equity row now
     # carries the end-of-window close-out in its daily_return; the full result differs in exactly that one
     # leaf (equity[186].daily_return 4.418e-05 -> -4.59e-05). Nothing of the W40 futures work changes it.
     "ed_pf_fut_nofno": ({"strategy_id": "pf_fut_nofno", "universe": ALL6},
-                        2, "f39275a58471f4341a135abc124d03d282bc53fdfbde626788e675ef9a71e133"),
+                        2, "c47d411c17b33d1e06371025c35b3c2408e8d7a6aefe0e99472d7db322c7b678"),
 }
 
 

@@ -30,13 +30,14 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from backtest.costs import ROUND_TRIP_PCT
 from db.schema import get_connection
 from strategy.aggressive import Momentum, config, validate_config
 from strategy.backtest_aggressive import Bar, metrics, simulate
 
 log = logging.getLogger("atip.strategy")
 
-DEFAULT_COST_PCT = 0.25      # round-trip brokerage + STT + slippage
+DEFAULT_COST_PCT = ROUND_TRIP_PCT   # round-trip brokerage + STT + slippage (backtest/costs.py)
 HOLD_BARS = 30               # tracking window, matching the signal log's
 STOP_PCT = 3.0
 

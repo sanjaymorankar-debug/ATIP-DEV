@@ -50,8 +50,9 @@ def r_database(conn):
 
 def r_data_stale(conn):
     from ops.data_health import sources
-    bad = [f"{s['source']} {s['status']} ({s['sessions_behind']} sessions)" for s in sources(conn)
-           if s["status"] != "OK"]
+    bad = [f"{s['source']} {s['status']} ("
+           + (f"{s['age_minutes']} min old" if s.get("basis") == "minutes" else f"{s['sessions_behind']} sessions")
+           + ")" for s in sources(conn) if s["status"] != "OK"]
     return bool(bad), "warning", "stale market data: " + ", ".join(bad)
 
 

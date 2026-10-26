@@ -39,6 +39,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
 
+from backtest.costs import round_trip_cost
 from db.schema import get_connection
 
 log = logging.getLogger("atip.strategy")
@@ -405,14 +406,17 @@ def realised_pnl(entry_price: float, exit_price: float, qty: int,
     """
     Booked P&L on `qty` shares, optionally net of round-trip costs.
 
-    cost_pct is the full round-trip (brokerage + STT + slippage) as a percentage
-    of turnover — last session's backtest put a realistic figure near 0.25%, and
-    a 3% target does not survive being measured without it.
+    cost_pct is the full round trip (brokerage + STT + slippage) -- last session's
+    backtest put a realistic figure near 0.25%, and a 3% target does not survive
+    being measured without it. P1-5: it is charged as every harness charges it
+    (backtest.costs.round_trip_cost: half on the entry value, half on the exit
+    value). It used to be charged in full on BOTH legs, ~0.5% a round trip, while
+    scores/backtest.py charged 0.25% once.
     """
     gross = (exit_price - entry_price) * qty
     if not long_side:
         gross = -gross
-    costs = (entry_price + exit_price) * qty * (cost_pct / 100.0)
+    costs = round_trip_cost(entry_price * qty, exit_price * qty, cost_pct)
     return round(gross - costs, 2)
 
 

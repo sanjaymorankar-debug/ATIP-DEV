@@ -14,7 +14,9 @@ Seeding notes:
   * commit before alerts.telegram.notify: it writes alert_log on its own connection, and an open
     write transaction on the fixture's connection would make it wait out the 60 s busy timeout;
   * the paper broker prices a fill from a live quote (data.dhan) -- PaperBroker._ltp is replaced,
-    as tests/test_paper_broker.py does, so the OMS order really FILLs and /api/oms/fills has a row;
+    as tests/test_paper_broker.py does, and execution.paper_fill_price is "live" inside the session
+    (the default, next_open, rests the order until the next Bhavcopy), so the OMS order really FILLs
+    and /api/oms/fills has a row;
   * ml_prediction rows are written with ml/predict.py's own INSERT column list (a trained artifact
     is out of scope here), the model itself through ml.registry.create_model.
 """
@@ -138,7 +140,8 @@ def v1(temp_db, tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"enterprise": {"enabled": True},
-                               "execution": {"order_type": "MARKET", "max_market_data_age_sessions": None},
+                               "execution": {"order_type": "MARKET", "max_market_data_age_sessions": None,
+                                             "paper_fill_price": "live"},
                                "w4_risk_limits": {"max_sector_exposure_pct": None, "daily_loss_limit_pct": None,
                                                   "portfolio_drawdown_limit_pct": None,
                                                   "strategy_drawdown_limit_pct": None}}), encoding="utf-8")
@@ -147,6 +150,7 @@ def v1(temp_db, tmp_path, monkeypatch):
     monkeypatch.setattr(security, "TOKEN_PATH", tmp_path / "dashboard_token.txt")
     monkeypatch.setattr(risk, "HALT_FLAG", tmp_path / "TRADING_HALTED")
     monkeypatch.setattr(paper.PaperBroker, "_ltp", lambda self, symbol: 113.2)
+    monkeypatch.setattr("execution.order_manager._in_market_session", lambda now=None: True)
     conn, sessions = fresh(temp_db)
     last = str(sessions[-1])
     service.ensure_seeded(conn)

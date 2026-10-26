@@ -2,10 +2,12 @@
 Broker-independent execution interface.
 
     BrokerAdapter            submit / cancel / status -> BrokerResult
-      PaperBrokerAdapter     orders/paper.py PaperBroker: simulated fills priced
-                             from the live Dhan quote (or the decision close, when
-                             execution.paper_fill_price is "reference"). No code
-                             path here reaches Dhan's trading API.
+      PaperBrokerAdapter     orders/paper.py PaperBroker: simulated fills at the open
+                             of the session after the order, from the NSE Bhavcopy
+                             (execution.paper_fill_price "next_open", the default), or
+                             at the live Dhan quote while the NSE session is open
+                             ("live"; outside it, the next open). No code path here
+                             reaches Dhan's trading API.
       DhanBrokerAdapter      placeholder for LIVE. Every call raises
                              LiveTradingDisabled in W4: live execution is not
                              built, whatever the configuration says.
@@ -51,10 +53,10 @@ class PaperBrokerAdapter(BrokerAdapter):
         self.conn = conn
         self.fill_price = execution_settings()["paper_fill_price"]
 
-    def _broker(self):
+    def _broker(self, live: bool = False):
         from orders.paper import PaperBroker
         quotes = None
-        if self.fill_price == "live":
+        if live:
             try:
                 from data.dhan import get_dhan_client
                 quotes, _ = get_dhan_client()        # market data only
@@ -62,16 +64,32 @@ class PaperBrokerAdapter(BrokerAdapter):
                 log.warning(f"  paper adapter: no Dhan market-data client ({e})")
         return PaperBroker(quote_source=quotes, conn=self.conn)
 
+    def _fill_at(self) -> str:
+        """P1-6 (W4-R9): a live LTP only while the NSE session is open. After the close -- where the
+        post-market cycle runs -- the LTP is the signal day's close, so the order takes the next open."""
+        from execution.order_manager import _in_market_session
+        return "live_or_next_open" if self.fill_price == "live" and _in_market_session() else "next_open"
+
+    def _fill_after(self, order: dict):
+        """A protective stop for a next-open entry watches the bars from the entry's own session on:
+        it would have been placed right after that open fill. None: from when it is placed."""
+        if not order.get("parent_order_id"):
+            return None
+        from orders.paper import NEXT_OPEN
+        r = self.conn.execute("SELECT p.fill_after FROM oms_order o JOIN paper_order p ON p.order_id=o.broker_order_id "
+                              "WHERE o.order_id=? AND p.fill_basis=?", (order["parent_order_id"], NEXT_OPEN)).fetchone()
+        return r[0] if r else None
+
     def submit(self, order: dict) -> BrokerResult:
-        b = self._broker()
-        ref = order.get("reference_price") if self.fill_price == "reference" else None
+        fill_at = self._fill_at()
+        b = self._broker(live=fill_at != "next_open")
         try:
             resp = b.place_order(security_id=None, exchange_segment="NSE_EQ", transaction_type=order["side"],
                                  quantity=int(order["quantity"]), order_type=order["order_type"],
                                  product_type=order.get("product_type") or "CNC",
                                  price=order.get("limit_price") or 0, symbol=order["symbol"],
-                                 tag=order["order_id"], reference_price=ref,
-                                 trigger_price=order.get("trigger_price"))
+                                 tag=order["order_id"], trigger_price=order.get("trigger_price"),
+                                 fill_at=fill_at, fill_after=self._fill_after(order))
         except Exception as e:
             raise BrokerError(f"paper broker raised: {e}") from e
         data = (resp or {}).get("data") or {}
@@ -84,14 +102,15 @@ class PaperBrokerAdapter(BrokerAdapter):
             msg = rem.get("error_message") if isinstance(rem, dict) else rem
             return BrokerResult("REJECTED", oid, message=str(msg or data.get("reason") or resp), raw=resp)
         fees = self._fees(oid)
-        src = "decision close" if ref else "live LTP"
+        src = "live LTP"
         if st == "TRADED":
             return BrokerResult("FILLED", oid, int(data.get("filledQty") or order["quantity"]),
                                 data.get("averageTradedPrice"), fees, src, raw=resp)
         if st == "PARTIALLY_FILLED":
             return BrokerResult("PARTIALLY_FILLED", oid, int(data.get("filledQty") or 0),
                                 data.get("averageTradedPrice"), fees, src, raw=resp)
-        return BrokerResult("ACCEPTED", oid, message=f"paper order {st}", raw=resp)
+        wait = f": fills at the open of the first session after {data['fillAfter']}" if data.get("fillAfter") else ""
+        return BrokerResult("ACCEPTED", oid, message=f"paper order {st}{wait}", raw=resp)
 
     def _fees(self, broker_order_id):
         try:
@@ -119,7 +138,7 @@ class PaperBrokerAdapter(BrokerAdapter):
                             message=(resp or {}).get("remarks"), raw=resp)
 
     def modify(self, order: dict, changes: dict) -> BrokerResult:
-        b = self._broker()
+        b = self._broker(live=self.fill_price == "live")
         resp = b.modify_order(order["broker_order_id"], order_type=changes.get("order_type"),
                               quantity=changes.get("quantity"), price=changes.get("limit_price"),
                               trigger_price=changes.get("trigger_price"))
@@ -138,9 +157,15 @@ class PaperBrokerAdapter(BrokerAdapter):
         st = data.get("orderStatus") or data.get("status")
         mapping = {"TRADED": "FILLED", "PARTIALLY_FILLED": "PARTIALLY_FILLED", "PENDING": "ACCEPTED",
                    "CANCELLED": "CANCELLED", "REJECTED": "REJECTED"}
+        # A resting order fills here, not in submit(): its fees and price source come with it (they used to
+        # be dropped, so a resting fill reached oms_fill with no fees).
+        from orders.paper import NEXT_OPEN
+        src = (f"next open, NSE Bhavcopy {data.get('fill_session') or ''}".strip()
+               if data.get("fill_basis") == NEXT_OPEN else "live LTP")
         return BrokerResult(mapping.get(st, "ACCEPTED"), order["broker_order_id"],
                             int(data.get("filledQty") or data.get("filled_qty") or 0),
-                            data.get("averageTradedPrice") or data.get("fill_price"), raw=resp)
+                            data.get("averageTradedPrice") or data.get("fill_price"),
+                            float(data.get("brokerage") or 0), src, message=data.get("reason"), raw=resp)
 
 
 class FuturesPaperAdapter(BrokerAdapter):

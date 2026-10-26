@@ -34,7 +34,10 @@ COSTS
     STT + exchange + GST + stamp + slippage). This matters more than the hit
     rate: a 1-2 day median hold at ~0.25% round trip needs ~0.25% of edge per
     trade just to break even, which is larger than the gross edge of most
-    fixed-target strategies.
+    fixed-target strategies. P1-5: the round trip is backtest.costs.ROUND_TRIP_PCT,
+    charged by net_of_costs() the way strategy/aggressive.py's realised_pnl charges
+    it (half on the entry value, half on the exit value) -- the two used to differ
+    by 2x.
 
 USAGE
     python -m scores.backtest                          # dip mode, 3% and 6% targets
@@ -50,6 +53,7 @@ import math
 import statistics
 from collections import defaultdict
 
+from backtest.costs import ROUND_TRIP_PCT, round_trip_cost
 from db.schema import get_connection
 
 log = logging.getLogger(__name__)
@@ -60,8 +64,13 @@ RANGE_LOOKBACK = 20        # window defining "its low" for dip mode
 DIP_ZONE_PCT = 25.0        # dip entry: price in bottom X% of that range
 MIN_TURNOVER_CR = 5.0      # liquidity floor — below this you can't get 3% out cleanly
 TOP_N = 50                 # positions considered per entry date
-COST_PCT = 0.25            # round-trip cost assumption, %
+COST_PCT = ROUND_TRIP_PCT  # round-trip cost assumption, % (backtest/costs.py)
 DEFAULT_TARGETS = (3.0, 6.0)
+
+
+def net_of_costs(ret_pct: float, cost_pct: float = COST_PCT) -> float:
+    """A trade's return (% of entry) net of the round trip, charged as every harness charges it."""
+    return ret_pct - round_trip_cost(100.0, 100.0 + ret_pct, cost_pct)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -224,7 +233,7 @@ def simulate(bars, feats, signals, dates, mode, target_pct, stop_pct,
     if n:
         gross = sum(res["rets"]) / n
         res["gross_avg"] = round(gross, 4)
-        res["net_avg"] = round(gross - cost_pct, 4)
+        res["net_avg"] = round(sum(net_of_costs(r, cost_pct) for r in res["rets"]) / n, 4)
         res["hit_rate"] = round(res["TARGET"] / n * 100, 1)
         res["stop_rate"] = round(res["STOP"] / n * 100, 1)
         res["timeout_rate"] = round(res["TIMEOUT"] / n * 100, 1)

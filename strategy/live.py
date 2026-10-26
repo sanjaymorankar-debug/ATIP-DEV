@@ -36,7 +36,8 @@ Where it will not act
   * LIVE, unless `broker_env` says LIVE. PAPER is the default everywhere.
   * Unattended (the scheduled pass), a position whose recorded mode is not where
     orders now go: one opened in PAPER is never sold through a LIVE broker, nor the
-    reverse. It is skipped and reported (status MODE_MISMATCH) for a person to settle.
+    reverse. It is skipped and reported (status MODE_MISMATCH) for a person to settle,
+    with an alert once a day (P1-7).
 
 When it runs
 ------------
@@ -507,7 +508,28 @@ def scheduled_pass(run_job, now: datetime = None):
     r = run_job("aggressive_manage", run_once, only_mode=orders_mode())
     if isinstance(r, dict) and r.get("status") in ("NO_QUOTES", "STALE_QUOTES") and r.get("positions"):
         _alert_unmanaged(r, now)
+    if isinstance(r, dict) and r.get("mode_mismatch"):
+        _alert_mode_mismatch(r)
     return r
+
+
+def _alert_mode_mismatch(r: dict):
+    """
+    P1-7: a position opened in one mode while orders now go to the other (MODE_MISMATCH) is skipped
+    by every unattended pass, so its stop, target and trail are not enforced -- and run_job alerts
+    only on FAILED. Raised at once as the job-health problem pipeline/health.py's 30-minute check
+    reports for it ("Aggressive exits", DEGRADED), under the same key: one alert a day either way.
+    """
+    try:
+        from alerts.telegram import send_job_health_alerts
+        from pipeline.health import EXPECTATIONS, Problem
+        exp = next(x for x in EXPECTATIONS if x.label == "Aggressive exits")
+        names = ", ".join(f"{m['symbol']} ({m['mode']})" for m in r["mode_mismatch"])
+        send_job_health_alerts([Problem(exp.label, "DEGRADED",
+                                        f"{r.get('error') or 'MODE_MISMATCH'}: {names}. Close or re-open them by "
+                                        f"hand, or set broker_env back to their mode.", exp.jobs)])
+    except Exception as e:
+        log.warning(f"  strategy: mode-mismatch alert failed: {e}")
 
 
 def _alert_unmanaged(r: dict, now: datetime = None):
