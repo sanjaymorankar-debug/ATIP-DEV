@@ -8,6 +8,11 @@ module holds what each important job is EXPECTED to do and compares the two:
   STALLED  an intraday job's last run is too old during market hours
   FAILING  a job's last FAILING_STREAK runs all failed
   EMPTY    a job that should produce rows ran and produced none
+  DEGRADED a job ran but reported a status that means it did not do its work
+           (P1-7): the Dhan quote refresh came back PARTIAL (no quotes), the
+           aggressive exit manager skipped positions it may not manage
+           (MODE_MISMATCH). Such a run used to count as working, and run_job
+           alerts only on FAILED.
 
 Nothing used to make this comparison. The news job logged nothing from
 2026-09-10 for eleven days and no surface reported it; portfolio sync failed
@@ -38,16 +43,22 @@ class Expect:
     daily_by   on each trading day, a run must have started by this time
     every_min  during market hours, a run at least this often
     weekly_by  (weekday, time): a run in the 8 days before that moment
+    watch_min  a job that runs only when it has work (the exit manager, while a position
+               is open): during market hours its latest run in this many minutes must not
+               be degraded; no run is not a problem
     need_rows  a run that processed nothing does not count as the job working
+    degraded   statuses meaning the job ran without doing its work: DEGRADED, not working
     """
     label: str
     jobs: tuple
     daily_by: time | None = None
     every_min: int | None = None
     weekly_by: tuple | None = None
+    watch_min: int | None = None
     need_rows: bool = False
     need_success: bool = False   # only SUCCESS / EMPTY count (SKIPPED does not)
     from_time: time | None = None  # a run on the due day counts only from this time (midday news)
+    degraded: tuple = ()
 
 
 # Deadlines are the scheduled time plus a margin for the job to finish; for the
@@ -74,6 +85,14 @@ EXPECTATIONS = (
     Expect("Data quality", ("data_quality",), daily_by=time(18, 45), need_rows=True),
     Expect("Daily P&L", ("daily_pnl",), daily_by=time(18, 45)),
     Expect("Accuracy audit (weekly)", ("accuracy_audit",), weekly_by=(5, time(9, 30))),
+    # P1-7: the 15-minute Dhan quote refresh (scheduler run_intraday_15min) -- PARTIAL is Dhan
+    # returning no quotes, as on every run while the Data API plan is inactive
+    Expect("Live quotes (Dhan)", ("dhan_quotes_intraday", "dhan_quotes_catchup", "dhan_quotes_preclose"),
+           every_min=30, need_rows=True, degraded=("PARTIAL",)),
+    # P1-7: the aggressive exit manager (strategy/live.py) runs only while a position is open;
+    # MODE_MISMATCH is a position it will not manage. It alerts at once under this problem's key;
+    # its NO_QUOTES / STALE_QUOTES alert of its own (_alert_unmanaged) is not repeated here.
+    Expect("Aggressive exits", ("aggressive_manage",), watch_min=30, degraded=("MODE_MISMATCH",)),
 )
 
 MARKET_OPEN, MARKET_CLOSE = time(9, 15), time(15, 30)
@@ -104,14 +123,21 @@ def _runs(conn, jobs, since=None, limit=None):
     return [dict(r) for r in conn.execute(q, args)]
 
 
-def _ok(run, need_rows, need_success=False):
-    if run["status"] in BAD:
+def _ok(run, need_rows, need_success=False, degraded=()):
+    if run["status"] in BAD or run["status"] in degraded:
         return False
     if need_success and run["status"] not in ("SUCCESS", "EMPTY"):
         return False
     if need_rows and run["status"] in ("EMPTY",):
         return False
     return True
+
+
+def _degraded_detail(run) -> str:
+    rows = run["rows_processed"]
+    return (f"last run {run['status']} at {str(run['start_time'])[11:16]}"
+            + (f" ({rows} rows)" if rows is not None else "")
+            + (f": {run['error_msg']}" if run["error_msg"] else ""))
 
 
 def _last_due_day(deadline: time, now: datetime) -> date | None:
@@ -157,9 +183,10 @@ def check_job_health(conn, now: datetime | None = None) -> list[Problem]:
             if not runs:
                 problems.append(Problem(e.label, "MISSED",
                                         f"no run on {day} by {e.daily_by:%H:%M}", e.jobs))
-            elif not any(_ok(r, e.need_rows, e.need_success) for r in runs):
+            elif not any(_ok(r, e.need_rows, e.need_success, e.degraded) for r in runs):
                 last = runs[0]
-                kind = "EMPTY" if last["status"] == "EMPTY" else "FAILING"
+                kind = ("EMPTY" if last["status"] == "EMPTY" else "DEGRADED" if last["status"] in e.degraded
+                        else "FAILING")
                 problems.append(Problem(e.label, kind,
                                         f"{len(runs)} run(s) on {day}, none worked — last {last['status']}"
                                         + (f": {last['error_msg']}" if last["error_msg"] else ""), e.jobs))
@@ -171,14 +198,24 @@ def check_job_health(conn, now: datetime | None = None) -> list[Problem]:
                 continue
             if since > now - timedelta(minutes=e.every_min):
                 continue
-            last_ok = next((r for r in _runs(conn, e.jobs, since=now - timedelta(minutes=e.every_min))
-                            if _ok(r, e.need_rows, e.need_success)), None)
-            if not last_ok:
+            recent = _runs(conn, e.jobs, since=now - timedelta(minutes=e.every_min))
+            if not any(_ok(r, e.need_rows, e.need_success, e.degraded) for r in recent):
+                if recent and recent[0]["status"] in e.degraded:
+                    problems.append(Problem(e.label, "DEGRADED", _degraded_detail(recent[0]), e.jobs))
+                    continue
                 prev = _runs(conn, e.jobs, limit=1)
                 problems.append(Problem(e.label, "STALLED",
                                         f"no working run in the last {e.every_min} min"
                                         + (f" — last {prev[0]['status']} at {str(prev[0]['start_time'])[11:16]}"
                                            if prev else " — never run"), e.jobs))
+        elif e.watch_min:
+            d = now.date()
+            if not (is_trading_day(d) and datetime.combine(d, MARKET_OPEN) <= now
+                    <= datetime.combine(d, MARKET_CLOSE) + timedelta(minutes=e.watch_min)):
+                continue
+            last = _runs(conn, e.jobs, since=now - timedelta(minutes=e.watch_min), limit=1)
+            if last and last[0]["status"] in e.degraded:
+                problems.append(Problem(e.label, "DEGRADED", _degraded_detail(last[0]), e.jobs))
         elif e.weekly_by:
             wd, t = e.weekly_by
             due = now.date() - timedelta(days=(now.date().weekday() - wd) % 7)

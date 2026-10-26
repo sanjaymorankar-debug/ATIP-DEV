@@ -1256,7 +1256,8 @@ def run_live_quote_refresh(symbols: list = None) -> dict:
 
     df = fetch_live_quotes(symbols, dhan)
     if df.empty:
-        return {"status": "PARTIAL", "rows": 0}
+        # PARTIAL is a degraded run (pipeline/health.py "Live quotes (Dhan)"): the error is what the alert says
+        return {"status": "PARTIAL", "rows": 0, "error": f"Dhan returned no quotes for {len(symbols)} symbols"}
 
     # Also update live prices in prices_daily (today's intraday latest)
     conn  = get_connection()

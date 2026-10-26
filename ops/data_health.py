@@ -8,11 +8,16 @@ sources(conn) -> one row per market-data source:
 Thresholds are in NSE sessions (utils/trading_calendar; weekdays if unavailable).
 The latest W1 data-quality results (data_quality, check DQS = the session score)
 come from quality().
+
+P1-7: the intraday sources (live quotes, index levels) also carry age_minutes, the
+minutes since their newest row. While the NSE session is open they are judged on it
+(basis "minutes": STALE beyond max_age_minutes) -- counted in sessions, quotes that
+stopped at 10:00 looked current until the next day.
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 # source, table, time expression, max sessions behind before STALE, intraday?
 SOURCES = (
@@ -25,6 +30,19 @@ SOURCES = (
     ("live_quotes", "live_quotes", "MAX(timestamp)", 1, True),
     ("news", "news_articles", "MAX(fetched_at)", 2, False),
 )
+
+# P1-7: intraday source -> (its newest row's timestamp, max minutes old while the session is open).
+# Both refresh every 15 minutes; live_quotes rows from the WebSocket writer carry a 'T'.
+INTRADAY_MINUTES = {
+    "live_quotes": ("MAX(REPLACE(SUBSTR(timestamp,1,19),'T',' '))", 20),
+    "index_levels": ("MAX(date || ' ' || time)", 30),
+}
+SESSION_OPEN, SESSION_CLOSE = time(9, 15), time(15, 30)
+
+
+def in_session(now: datetime | None = None) -> bool:
+    now = now or datetime.now()
+    return _is_session(now.date()) and SESSION_OPEN <= now.time() <= SESSION_CLOSE
 
 
 def _is_session(d: date) -> bool:
@@ -94,8 +112,26 @@ def sources(conn, now: datetime | None = None) -> list:
             row["age_days"] = (now.date() - d).days
             row["sessions_behind"] = sessions_between(d, ref)
             row["status"] = "OK" if row["sessions_behind"] <= max_behind else "STALE"
+        row["basis"] = "sessions"
+        if name in INTRADAY_MINUTES:
+            _minutes(conn, row, name, table, now)
         out.append(row)
     return out
+
+
+def _minutes(conn, row, name, table, now):
+    """age_minutes / max_age_minutes for an intraday source; in the session, once its first refresh is
+    due, its status is decided on them."""
+    expr, limit = INTRADAY_MINUTES[name]
+    row["max_age_minutes"] = limit
+    try:
+        ts = datetime.fromisoformat(str(conn.execute(f"SELECT {expr} FROM {table}").fetchone()[0])[:19])
+    except Exception:
+        ts = None
+    row["age_minutes"] = round((now - ts).total_seconds() / 60) if ts else None
+    if ts and in_session(now) and now >= datetime.combine(now.date(), SESSION_OPEN) + timedelta(minutes=limit):
+        row["status"] = "OK" if row["age_minutes"] <= limit else "STALE"
+        row["basis"] = "minutes"
 
 
 def quality(conn, limit_days=3) -> list:
