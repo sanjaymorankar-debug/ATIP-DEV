@@ -38,7 +38,7 @@
 ## Project Structure
 
 ```
-/Users/agtci/Documents/ATIP/    ← RUN ALL COMMANDS FROM HERE
+/Users/agtci/ATIP/    ← RUN ALL COMMANDS FROM HERE
 │
 ├── main.py                         ← SINGLE ENTRY POINT
 ├── requirements.txt
@@ -93,7 +93,7 @@
 
 ## Quick Setup (macOS)
 
-The project lives at `/Users/agtci/Documents/ATIP`.
+The project lives at `/Users/agtci/ATIP`.
 Any folder name works, because the scripts find the project from their own
 location. Inside `~/Documents`, read the privacy and iCloud items under
 [Mac checks](#mac-checks) first.
@@ -105,7 +105,7 @@ step by step or in one go. The full plan, with what to check after each step,
 is [docs/MAC_DEPLOYMENT.md](docs/MAC_DEPLOYMENT.md).
 
 ```bash
-cd /Users/agtci/Documents/ATIP
+cd /Users/agtci/ATIP
 ./setup_atip.sh check        # read-only: what is ready, what is missing
 ./setup_atip.sh all --from /Volumes/MOSAM
                              # the drive holding the Windows atip_data/; plain `all`
@@ -129,7 +129,7 @@ brew install python@3.13
 
 ### Option A — one-time setup
 ```bash
-cd /Users/agtci/Documents/ATIP
+cd /Users/agtci/ATIP
 
 # Step 1: a virtualenv from Homebrew's Python, and the packages
 "$(brew --prefix)/bin/python3.13" -m venv .venv
