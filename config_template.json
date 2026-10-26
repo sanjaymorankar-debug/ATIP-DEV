@@ -73,7 +73,7 @@
     "sizing":             {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0, "max_positions": 10, "default_stop_pct": 5.0},
     "risk_free_rate_pct": 0.0
   },
-  "_backtest_note": "cost_model: nse_delivery | nse_intraday | flat | zero (rates in backtest/costs.py - verify against a contract note). slippage kind: none | fixed (Rs/share) | pct (basis points).",
+  "_backtest_note": "cost_model: nse_delivery | nse_intraday | flat | zero (rates in backtest/costs.py - verify against a contract note). Paper fills are charged through the same model (orders/paper.py; paper_cost_model overrides it for paper only). nse_delivery charges a DP charge of Rs 15.93 per sell, GST included: set cost_overrides {\"dp_charge_per_sell\": ...} from a Dhan contract note. slippage kind: none | fixed (Rs/share) | pct (basis points).",
 
   "_SECTION_11": "=== RISK ENGINE & EXECUTION (execution/config.py, W4) — PAPER by default; LIVE trading is disabled ===",
   "execution": {
@@ -182,7 +182,8 @@
   "_assistant_note": "enabled=true lets /assistant answer with Claude using read-only tools over ATIP data; needs ANTHROPIC_API_KEY. Own daily cap, separate from news AI. Off: rule-based answers.",
 
   "_SECTION_18": "W37 paper options book (off by default)",
-  "options": {"enabled": false, "max_premium_trade_pct": 2.0, "max_premium_total_pct": 10.0, "no_new_days_to_expiry": 1, "max_quote_age_minutes": 30, "slippage_bps": 50, "brokerage_per_order": 20, "sell_stt_pct": 0.1},
+  "options": {"enabled": false, "max_premium_trade_pct": 2.0, "max_premium_total_pct": 10.0, "no_new_days_to_expiry": 1, "max_quote_age_minutes": 30, "slippage_bps": 50, "brokerage_per_order": 20, "sell_stt_pct": 0.15, "cost_overrides": {}},
+  "_options_costs_note": "options fees: backtest/costs.py OptionsCostModel - brokerage_per_order, STT sell_stt_pct of the sell premium (0.15% from 2026-04-01), exchange 0.03503%, SEBI, stamp 0.003% on buys, GST 18%; STT 0.15% of the intrinsic value of a long option exercised at expiry. Any other field: cost_overrides.",
   "_options_note": "Paper only. Long premium (no option writing), whole lots, premium caps as % of paper cash. Broker credentials for other brokers go in the encrypted vault (Account page).",
 
   "_SECTION_19": "W38 database backend (SQLite unless all three switches are set)",

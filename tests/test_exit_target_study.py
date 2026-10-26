@@ -82,7 +82,8 @@ def test_split_matches_strategy_backtest_aggressive(cfg):
     On paths without gaps (each open = the previous close), the study's atip_3 must reproduce
     strategy.backtest_aggressive.simulate trade for trade. ATIP rounds levels to 2 decimals and
     the study does not, so a trade sitting exactly on a level may flip; allow 1 %.
-    The study's cost is a round trip; ATIP charges cost_pct per leg on turnover, hence 2 x 0.25.
+    Both charge cost_pct as one round trip, half on entry and half on exit (P1-5; ATIP used to
+    charge it on both legs, and this test ran the study at 2 x 0.25 to match).
     """
     rng = np.random.default_rng(1)
     n, length = 400, 30
@@ -100,7 +101,7 @@ def test_split_matches_strategy_backtest_aggressive(cfg):
         flat = [(100.0, 100.0, 100.0, 100.0)]          # the study's entry session
         bars = flat + list(zip(o, h, lo, c))
         r = S.simulate(_paths(bars, atr=atr, mom=mom), S.Policy("atip_3", "atip", 3.0, 6.0, 3.0),
-                       0.5, "pessimistic")
+                       0.25, "pessimistic")
         ours.append(float(r.net[0]))
     diff = np.abs(np.array(ours) - np.array(theirs))
     assert (diff > 0.05).mean() <= 0.01

@@ -17,7 +17,12 @@ PRICING
     the latest intraday option-chain snapshot (W35, option_chain_snapshot) when it is no older than
     `max_quote_age_minutes` during the session -- BUY at the ask (else LTP), SELL at the bid (else LTP);
     otherwise the latest EOD contract close (W35 fo_contract_daily), moved against the order by
-    slippage_bps. Fees: brokerage_per_order + STT on sell premium (sell_stt_pct).
+    slippage_bps. Fees (P1-5): backtest/costs.py OptionsCostModel (preset nse_options; rates and
+    sources there) -- brokerage_per_order, STT on the sell premium (sell_stt_pct), exchange
+    transaction charge, SEBI fee, stamp duty on the buy premium and GST; at expiry a long option in
+    the money pays STT on exercise (0.15% of the intrinsic value), a short one assigned pays no STT.
+    Any other field of the model: options.cost_overrides. It used to charge brokerage and the sell
+    STT only, the STT at 0.1% (raised to 0.15% from 2026-04-01).
 
 LEDGER   paper_options_position (underlying x expiry x strike x CE/PE; qty in units = lots x lot size)
          paper_options_trade    every fill and every expiry settlement
@@ -28,8 +33,8 @@ MTM      book(conn) values open positions at the same quotes the fills would use
 
 config.json "options": {"enabled": false, "max_premium_trade_pct": 2.0, "max_premium_total_pct": 10.0,
     "no_new_days_to_expiry": 1, "max_quote_age_minutes": 30, "slippage_bps": 50, "brokerage_per_order": 20,
-    "sell_stt_pct": 0.1, "naked_margin_pct": 15, "naked_stress_move_pct": 15, "max_margin_total_pct": 30,
-    "max_chain_age_sessions": 2}
+    "sell_stt_pct": 0.15, "cost_overrides": {}, "naked_margin_pct": 15, "naked_stress_move_pct": 15,
+    "max_margin_total_pct": 30, "max_chain_age_sessions": 2}
 Owner orders are entered by hand (POST /api/execution/options/order): long premium only, as above.
 
 W40 (ENT-15): STRATEGY POSITIONS -- option-overlay strategies (strategy_engine/option_overlay.py)
@@ -65,7 +70,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DEFAULTS = {"enabled": False, "max_premium_trade_pct": 2.0, "max_premium_total_pct": 10.0, "no_new_days_to_expiry": 1,
-            "max_quote_age_minutes": 30, "slippage_bps": 50.0, "brokerage_per_order": 20.0, "sell_stt_pct": 0.1,
+            "max_quote_age_minutes": 30, "slippage_bps": 50.0, "brokerage_per_order": 20.0, "sell_stt_pct": 0.15,
+            "cost_overrides": {},                    # P1-5: any other OptionsCostModel field (backtest/costs.py)
             # W40 strategy positions: the margin approximation and its limits (structure_metrics)
             "naked_margin_pct": 15.0, "naked_stress_move_pct": 15.0, "max_margin_total_pct": 30.0,
             "max_chain_age_sessions": 2}
@@ -227,8 +233,23 @@ def check(conn, o: dict, s=None) -> dict:
             "lot_size": lot, "qty": qty, "price": q["price"], "price_source": q["source"], "held_before": held}
 
 
-def _fees(side, premium, s):
-    return round(float(s["brokerage_per_order"]) + (premium * float(s["sell_stt_pct"]) / 100 if side == "SELL" else 0), 2)
+def cost_model(s=None):
+    """P1-5: the options leg of the one statutory model (backtest/costs.py), with this book's
+    brokerage_per_order and sell_stt_pct and any options.cost_overrides."""
+    from backtest.costs import options_cost_model
+    s = s or settings()
+    return options_cost_model("nse_options", {"brokerage_per_order": float(s["brokerage_per_order"]),
+                                              "stt_sell_pct": float(s["sell_stt_pct"]),
+                                              **(s.get("cost_overrides") or {})})
+
+
+def _fees(side, premium, s, settle=False):
+    """Every charge of one leg. settle=True: an expiry settlement at intrinsic value -- closing a long
+    (side SELL) is an exercise, STT on the intrinsic value; closing a short (BUY) an assignment, no STT."""
+    m = cost_model(s)
+    if settle:
+        return round((m.exercise(premium) if side == "SELL" else m.assignment(premium))["total"], 2)
+    return round(m.total(side, premium), 2)
 
 
 def _apply(conn, c, price, fees, reason, source):
@@ -292,7 +313,7 @@ def settle_expired(as_of=None, conn=None) -> dict:
             value = intrinsic(ot, k, spot)
             c = {"underlying": u, "expiry": str(exp), "strike": k, "option_type": ot, "side": "SELL",
                  "lots": int(qty / lot) if lot else 0, "lot_size": lot, "qty": qty}
-            fees = _fees("SELL", qty * value, s) if value > 0 else 0.0
+            fees = _fees("SELL", qty * value, s, settle=True) if value > 0 else 0.0
             _apply(conn, c, round(value, 2), fees, f"EXPIRY settlement at underlying {spot:g}", "intrinsic value")
             n += 1
         conn.commit()
@@ -420,7 +441,8 @@ def structure_metrics(legs: list, spot: float, lot_size: int, lots: int, *, cove
                    share-covered short call       0 (the held shares are the collateral)
                    naked short leg (unmatched short put, allowed naked call)
                                                   naked_margin_pct% (15) x spot x quantity, per leg
-    fees         per leg: brokerage_per_order + STT on SELL premium (sell_stt_pct), as the owner book
+    fees         per leg: the statutory options model (cost_model(): brokerage, STT on a SELL premium,
+                 exchange, SEBI, stamp on a BUY premium, GST), as the owner book
     profit_base  max profit; when unlimited, the debit paid (a profit-take is then % of premium paid)
     loss_base    -max loss; when unlimited, the credit received (a stop is then % of the credit)
     """
@@ -669,7 +691,7 @@ def _close(conn, pos, exits, reason, status, order_id, s):
     for leg, (px, src) in zip(pos["legs"], exits):
         side = CLOSING[leg["side"]]
         qty = int(leg["qty"])
-        f = _fees(side, qty * px, s) if px > 0 else 0.0
+        f = _fees(side, qty * px, s, settle=status == "SETTLED") if px > 0 else 0.0
         flow += SIGN[leg["side"]] * qty * px
         pnl += SIGN[leg["side"]] * qty * (px - float(leg["entry_price"]))
         fees += f

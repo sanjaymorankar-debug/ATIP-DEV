@@ -78,7 +78,12 @@ CONFIG_PATH = Path("atip_data") / "config.json"
 DEFAULTS = {
     "paper_opening_balance": 500000.0,
     "paper_slippage_bps": 5.0,      # 0.05% — always against the order
-    "paper_brokerage_pct": 0.05,    # per leg
+    # P1-5: every fill is charged through backtest/costs.py, the model backtests use
+    # (backtest.cost_model + cost_overrides: statutory NSE delivery charges and the DP
+    # charge by default). A preset name here (zero, flat, nse_delivery, nse_intraday)
+    # replaces it for paper only. The flat 0.05% a leg this used to charge was less
+    # than half the statutory cost.
+    "paper_cost_model": None,
     "paper_partial_fill_odds": 0.0, # 0 = always fill in full; raise to test partials
     "paper_reject_odds": 0.0,       # raise to exercise rejection handling
 }
@@ -163,6 +168,17 @@ def ensure_tables(conn):
 
 def _now():
     return datetime.now().isoformat()
+
+
+def paper_cost_model(cfg: dict = None, product_type=None):
+    """What a paper fill is charged through (P1-5, backtest/costs.py): paper_cost_model when set,
+    else the backtests' configured model; an intraday product pays intraday rates, not delivery's."""
+    from backtest.costs import cost_model, cost_model_from_config
+    name = (cfg or settings()).get("paper_cost_model")
+    m = cost_model(name) if name else cost_model_from_config()
+    if str(product_type or "").upper() in ("INTRADAY", "MIS") and m.name == "nse_delivery":
+        m = cost_model("nse_intraday")
+    return m
 
 
 def _as_date(d) -> date:
@@ -460,14 +476,14 @@ class PaperBroker:
                           float(price or 0), fill, status, None, brokerage, tag)
         self.conn.commit()
         log.info(f"  [PAPER] {transaction_type} {filled}/{qty} {sym} @ {fill} "
-                 f"(ltp {ltp}, brokerage {brokerage}) -> {oid}")
+                 f"(ltp {ltp}, charges {brokerage}) -> {oid}")
         return {"status": "success", "remarks": "",
                 "data": {"orderId": oid, "orderStatus": status,
                          "averageTradedPrice": fill, "filledQty": filled}}
 
     def _fees(self, side: str, value: float, product_type=None) -> float:
-        """What one fill of `value` costs, in rupees."""
-        return round(value * float(self.cfg["paper_brokerage_pct"]) / 100.0, 2)
+        """Every charge of one fill of `value`, in rupees (paper_order.brokerage holds this total)."""
+        return round(paper_cost_model(self.cfg, product_type).total(side, value), 2)
 
     def _queue_next_open(self, oid, sym, sec, exch, ttype, qty, otype, ptype, price, trigger_price, tag,
                          fill_after=None, why=None) -> dict:

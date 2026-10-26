@@ -563,13 +563,17 @@ def rebalance_plan(conn, target_weights: dict, book: str = "PAPER", *, band_pct:
     investable = eq * (1 - cash_buffer_pct / 100)
     tgt = {s: v / tot for s, v in target_weights.items() if v > 0}
     held = {p["symbol"]: p for p in snap["positions"]}
-    try:
-        from orders.paper import settings as paper_settings
+    try:                                        # P1-5: the paper book's own charges (backtest/costs.py) + slippage
+        from orders.paper import paper_cost_model, settings as paper_settings
         ps = paper_settings()
-        cost_rate = float(ps["paper_brokerage_pct"]) / 100 + float(ps["paper_slippage_bps"]) / 10000
+        cm, slip = paper_cost_model(ps), float(ps["paper_slippage_bps"]) / 10000
+
+        def cost(side, v):
+            return cm.total(side, v) + v * slip if v > 0 else 0.0
     except Exception:
-        cost_rate = 0.0013
-    trades, buy_v, sell_v = [], 0.0, 0.0
+        def cost(side, v):
+            return v * 0.0013
+    trades, buy_v, sell_v, costs = [], 0.0, 0.0, 0.0
     for s in sorted(set(tgt) | set(held)):
         px = (held.get(s) or {}).get("mark") or mark_price(conn, s)
         cur_v = (held.get(s) or {}).get("value") or 0.0
@@ -597,15 +601,17 @@ def rebalance_plan(conn, target_weights: dict, book: str = "PAPER", *, band_pct:
             buy_v += val
         elif action in ("REDUCE", "EXIT"):
             sell_v += val
+        c = cost("BUY" if action in ("NEW", "ADD") else "SELL", val)
+        costs += c
         trades.append({**row, "action": action, "quantity": q, "trade_value": round(val, 2),
-                       "drift_pct": round(drift, 3), "est_cost": round(val * cost_rate, 2)})
+                       "drift_pct": round(drift, 3), "est_cost": round(c, 2)})
     order = {"EXIT": 0, "REDUCE": 1, "NEW": 2, "ADD": 3, "HOLD": 4, "SKIP": 5}
     trades.sort(key=lambda t: (order[t["action"]], -t.get("trade_value", 0)))
-    cash_after = (snap.get("cash") or 0) + sell_v - buy_v - (buy_v + sell_v) * cost_rate
+    cash_after = (snap.get("cash") or 0) + sell_v - buy_v - costs
     out = {"book": book, "as_of": snap["as_of"], "equity": eq, "trades": trades,
            "summary": {"buys": round(buy_v, 2), "sells": round(sell_v, 2),
                        "turnover_pct": round((buy_v + sell_v) / eq * 100, 2),
-                       "est_costs": round((buy_v + sell_v) * cost_rate, 2),
+                       "est_costs": round(costs, 2),
                        "cash_after": round(cash_after, 2),
                        "n_trades": sum(1 for t in trades if t["action"] in ("NEW", "ADD", "REDUCE", "EXIT"))},
            "params": {"band_pct": band_pct, "min_trade_value": min_trade_value, "cash_buffer_pct": cash_buffer_pct},
