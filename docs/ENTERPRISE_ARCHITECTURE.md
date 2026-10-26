@@ -85,6 +85,8 @@ The owner's `default` tenant cannot leave ACTIVE.
 
 **Shared single paper book:**
 - ATIP has one paper book and one broker account. Only the default tenant may read or trade execution, orders and portfolio.
+- `enterprise/authz.py` `OWNER_BOOK` lists the routes that show or act on that book without going through `PAPER_BOOK`: `/api/orders` (rules, baskets, SIPs, broker status), `/api/oms/positions`, `/api/mobile/`, and the owner's risk limits, portfolio, emergency exit and evaluation under `/api/risk/`. Any other tenant gets 403 on them whatever its role, and `/` sends it to `/app`. Each refusal is audited.
+- Known gap: the install-wide dashboard token (`X-ATIP-Token`) is embedded in 18 pages another tenant's viewer can open. It is latent while enterprise mode is off. The master file tracks it (R12).
 - Other tenants can research, build strategies and models, and backtest.
 - Per-tenant books are future work.
 

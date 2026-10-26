@@ -77,6 +77,10 @@ trading (§7.6–7.8, roadmap §8).
    position through a broker other than the one it was opened with (PAPER vs LIVE). **Decided 2026-10-26:
    ATIP stays single-owner**, in line with PR #11's owner-only gate, so the prompt's multi-user phases
    (3, 5 and the per-user parts of 7 and 9) are not planned. See §6.
+4. **Open: the owner's dashboard token reaches other tenants.** Measured 2026-10-26: 18 pages give another
+   tenant's viewer the install-wide `X-ATIP-Token`, which guards the write routes. The owner-book read leak
+   found in the same review is fixed (`OWNER_BOOK`, `tests/test_enterprise_owner_book.py`). The token is latent
+   while enterprise mode is off; it should be scoped (R12) before that mode is switched on.
 
 ---
 
@@ -600,10 +604,11 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 | P3 | Auth | MFA | PRESENT | TOTP, secret AES-GCM-encrypted, recovery codes, admin reset (`enterprise/mfa.py`) | — |
 | P3 | Auth | ADMIN and USER roles | PARTIAL | 8 roles and 29 permissions per tenant (`enterprise/rbac.py:16-73`); no literal ADMIN / USER | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
 | P3 | Auth | Authorization middleware | PRESENT | `enterprise/authz.py:242-385`: `ROUTE_RULES` per route, unmatched → `system:operate` (default deny) | One install-wide `X-ATIP-Token` fits a single owner: keep it secret and rotate it after any leak (W40 runbook) |
-| P3 | Isolation | A user cannot read another user's data by changing an ID (IDOR) | PARTIAL | Tenant level: a foreign resource returns 404 (`enterprise/authz.py:160-169`), lists are filtered (`:351-406`) | Latent, enterprise mode only: `GET /api/orders` (and `/pending`, `/baskets`, `/sip`) needs only `execution:read` (`enterprise/authz.py:138`), in neither `PAPER_BOOK` (`:152`) nor `FILTER_PREFIX` (`:175`). Single-owner keeps enterprise mode off; fix it before it is ever switched on |
+| P3 | Isolation | A user cannot read another user's data by changing an ID (IDOR) | PARTIAL | Tenant level: a foreign resource returns 404 (`enterprise/authz.py:160-169`), lists are filtered (`:351-406`) | Fixed 2026-10-26: `OWNER_BOOK` in `enterprise/authz.py` refuses the owner's book to any other tenant, whatever its role (`/api/orders` with baskets, SIPs and broker status; `/api/oms/positions`; `/api/mobile/`; `/api/risk/` limits, portfolio, emergency exit and evaluation), and sends another tenant from `/` to `/app`. Before the fix, eight GET routes showed the owner's book to another tenant's viewer, and `PUT /api/risk/limits` and `POST /api/risk/emergency-exit` were open to a tenant's risk manager. `tests/test_enterprise_owner_book.py` checks every GET route with canary data in every owner table |
 | P3 | Isolation | Each user sees only their own holdings, positions, orders, P&L | ABSENT | Isolation is per tenant, not per user; `paper_account` is a single row (`CHECK(id=1)`); `portfolio_holdings`, `pnl_daily`, `order_rules` and `strategy_position` have no tenant or user column | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
 | P3 | Dhan | Each user maps to their own Dhan account | PARTIAL | `enterprise_vault_credential` unique on (tenant, user, broker, label), AES-256-GCM, 24 h expiry (`enterprise/vault.py:45-123`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26): the owner's credentials stay in `config.json` / the vault |
 | P3 | Secrets | Never expose Dhan tokens or secrets to the frontend, logs or source | PRESENT | Secrets from env / `.env` / `atip_data/secrets` / vault (`ops/secrets.py`); the snapshot strips the dashboard token (`publish_snapshot.py:58-69`) | Rotate the publish token an earlier snapshot leaked (`docs/W40_DEPLOY_RUNBOOK.md:71`) |
+| P3 | Secrets | The install-wide dashboard token must not reach another tenant | DEFECT | Measured 2026-10-26: 18 HTML pages return the token to another tenant's VIEWER (`/backtests`, `/strategies`, `/trading`, `/market`, `/execution-lab`, `/data-platform`, `/assistant`, `/strategy-builder`, `/brokers`, `/compliance`, `/research`, `/options-builder`, `/market-pulse`, `/signals`, `/screener`, `/baskets`, `/ml`, `/wealth`); the token is the `X-ATIP-Token` that guards the write routes (`dashboard/security.py`) | Open (R12). Per-user or per-session tokens, or no token in pages served to other tenants. Enterprise mode is off, so this is latent |
 | P3 | Personalization | Per-user widgets, layout, watchlist, theme, preferences | PARTIAL | Per-user watchlists, alerts and reports with ownership checks (`enterprise/workspace.py:33-135`); notification preferences; `preferences_json` stored but never read (`enterprise/users.py:160-170`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
 | P3 | Personalization | Ordinary users cannot change global formulas / config | PARTIAL | Default-deny permissions; `weight_config` changes need operator permissions | Not applicable with one owner |
 | P4 | Strategy | +3% sells 50% of the original quantity, runner kept, trail starts | PRESENT | `strategy/aggressive.py` (`partial_exit_quantity`, `ratchet`), `strategy/positions.py` (idempotent claims); `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py` | — |
@@ -617,7 +622,7 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 | P6 | State | Machine-readable exit reasons | PRESENT | The 8 constants in `strategy/aggressive.py` | — |
 | P7 | Tests | Aggressive strategy tests (config, entry, SL, +3%, runner, +6%, trail, idempotency, broker, edge cases) | PRESENT | `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py`, `test_aggressive_backtest.py`, `test_strategy_live.py`, `test_paper_broker.py` | — |
 | P7 | Tests | Authentication tests | ABSENT | Only route labels are checked (`tests/test_w39_ops_tests.py:722-750`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26); PR #11 tests the owner gate (`tests/test_owner_gate.py` there) |
-| P7 | Tests | Authorization / cross-user security tests | PARTIAL | `tests/test_wealth_api_security.py` (8), cross-owner wealth tests, tenant book test | Only if enterprise mode is ever switched on (with the `/api/orders` fix, row P3) |
+| P7 | Tests | Authorization / cross-user security tests | PARTIAL | `tests/test_wealth_api_security.py` (8), cross-owner wealth tests, tenant book test | `tests/test_enterprise_owner_book.py` (7) and `tests/test_wealth_api_security.py` (8); the owner-book scan covers every GET route |
 | P7 | Tests | Dhan isolation and personalization tests | ABSENT | — | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
 | P7 | Tests | Full regression stays green | PRESENT | 1,315 test functions in 85 files; CI `python -m pytest tests/ -v` + scenario replay | `master` green from run 169 (#16); this branch 1,578 passed, 0 failed |
 | P8 | Backtest | The 7 deterministic scenarios and the full metric list | PRESENT | `strategy/backtest_aggressive.scenarios()` and `metrics()`: win rate, PF, expectancy, drawdown, T1 / T2 rates, runner success, trailing / initial-stop exit rates, profit after +3% | — |
@@ -637,8 +642,9 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
   would duplicate working, tested code.
 - **Multi-user is not planned.** The owner decided on 2026-10-26 to keep ATIP single-owner. Trading data,
   the strategy and the broker connection are single-owner by design, which now matches the plan. The
-  enterprise layer (users, roles, MFA, the vault) stays switched off. Its `/api/orders` read leak is latent;
-  it should be fixed before enterprise mode is ever switched on.
+  enterprise layer (users, roles, MFA, the vault) stays switched off. Its owner-book read leak (`/api/orders` and
+  seven more routes) is fixed; the dashboard token that other tenants can still read is not, and should be
+  before enterprise mode is ever switched on (R12).
 - **Deployment to `/dhan` is blocked on hosting, not code.** The base-path work (absolute URLs in page
   JavaScript) is the one code item for any hosted sub-path.
 
@@ -860,7 +866,8 @@ the §7.6 levers 1–3 come before any exit work.
 | R8 | P1 | Align index names in the strategy library and the formulas workbook with §4 | Avoids wrong mental models of VPI / SPI | S |
 | R9 | — | **Dropped 2026-10-26:** multi-user items from §6. ATIP stays single-owner (owner decision) | Consolidated-prompt phases 3, 5 and the per-user parts of 7 and 9 | — |
 | R10 | P2 | Deploy the single-owner ATIP to `test.bkesari.com` behind the owner gate (PR #11), with the base-path fix, once hosting and secrets are decided | Consolidated-prompt phase 10, decision 6.1 (3) | M |
-| R11 | P2 | Close the latent `/api/orders` read leak in `enterprise/authz.py` (enterprise mode only) | Review row P3; matters only if enterprise mode is ever switched on | S |
+| R11 | — | **Done 2026-10-26:** close the owner-book read leak in `enterprise/authz.py` (`OWNER_BOOK`) | Review row P3 | S |
+| R12 | P2 | Stop the install-wide dashboard token reaching other tenants: per-session tokens, or no token in the 18 pages another tenant can open. Needed before enterprise mode is ever switched on | Review row P3 (secrets); the token guards the write routes | M |
 
 ---
 
