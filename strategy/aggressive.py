@@ -74,6 +74,20 @@ DEFAULTS = {
     # W39b (EX-17): exit everything still held when the stock's crash-risk index (CRI, 0-100,
     # high = bad) reaches this. None = off, the default: it changes live exits only once set.
     "cri_exit_threshold":        None,
+    # The initial stop scaled to volatility and fixed at entry:
+    # clamp(stop_atr_mult x ATR %, stop_min_pct, stop_max_pct). None = off, the default: the stop
+    # stays where it was (--stop-pct, else target_1_pct). research/exit_target_study.py found a
+    # fixed 3 % stop inside one ordinary day's range for 70 % of entries and hit on 50-70 % of
+    # trades; 2 x ATR within 2-10 % did better per unit of risk (docs/EXIT_TARGET_STUDY_2026-10.md).
+    # A wider stop is more risk per share, so size positions down to match (risk_sizing).
+    "stop_atr_mult":             None,
+    "stop_min_pct":              2.0,
+    "stop_max_pct":              10.0,
+    # Size an entry given no quantity so that its initial stop loses risk_per_trade_pct of
+    # capital (orders/risk.py size_for_account; config.json "position_sizing": capital,
+    # default the account's equity, risk_per_trade_pct 1, max_position_pct 10). False = off,
+    # the default: an entry without a quantity buys one share, as before.
+    "risk_sizing":               False,
 }
 
 _CONFIG_PATH = Path("atip_data") / "config.json"
@@ -127,6 +141,15 @@ def validate_config(cfg: dict) -> dict:
     cri = cfg.get("cri_exit_threshold")
     if cri is not None and (isinstance(cri, bool) or not isinstance(cri, (int, float)) or not 0 < cri <= 100):
         raise ConfigError(f"cri_exit_threshold must be null or within (0, 100], got {cri!r}")
+    mult = cfg.get("stop_atr_mult")
+    if mult is not None and (isinstance(mult, bool) or not isinstance(mult, (int, float)) or mult <= 0):
+        raise ConfigError(f"stop_atr_mult must be null or > 0, got {mult!r}")
+    smin = float(cfg.get("stop_min_pct", DEFAULTS["stop_min_pct"]))
+    smax = float(cfg.get("stop_max_pct", DEFAULTS["stop_max_pct"]))
+    if smin <= 0 or smax >= 100 or smin > smax:
+        raise ConfigError(f"stop_min_pct/stop_max_pct invalid: {smin}/{smax}")
+    if not isinstance(cfg.get("risk_sizing", False), bool):
+        raise ConfigError(f"risk_sizing must be true or false, got {cfg.get('risk_sizing')!r}")
     return cfg
 
 
@@ -301,6 +324,23 @@ def trail_distance_pct(atr_pct: float | None, cfg: dict = None) -> float:
     if atr_pct is None or atr_pct <= 0:
         return round(min(hi, max(lo, float(cfg["target_1_pct"]))), 2)
     return round(min(hi, max(lo, atr_pct * float(cfg["trail_atr_mult"]))), 2)
+
+
+def initial_stop_pct(atr_pct: float | None, cfg: dict = None) -> float | None:
+    """
+    The volatility-scaled initial stop distance in %, or None when it does not apply.
+
+    None when stop_atr_mult is off or the ATR is unknown: the caller then keeps the fixed stop it
+    always had rather than guessing a level. Clamped at both ends like the trail, so a quiet
+    stock is not stopped out by noise and a wild one does not put a fifth of the position at risk.
+    """
+    cfg = cfg or config()
+    mult = cfg.get("stop_atr_mult")
+    if mult is None or atr_pct is None or atr_pct <= 0:
+        return None
+    lo = float(cfg.get("stop_min_pct", DEFAULTS["stop_min_pct"]))
+    hi = float(cfg.get("stop_max_pct", DEFAULTS["stop_max_pct"]))
+    return round(min(hi, max(lo, float(atr_pct) * float(mult))), 2)
 
 
 def partial_exit_quantity(original_qty: int, cfg: dict = None) -> int:
