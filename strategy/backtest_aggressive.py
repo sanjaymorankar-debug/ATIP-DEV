@@ -257,8 +257,8 @@ def _path(prices, spread=0.006):
                 close=p) for p in prices]
 
 
-STRONG = Momentum(zpi=80, msi=75, cri=15, mri=20, rsi_14=66, macd_hist=0.6, volume_ratio=1.9)
-WEAK = Momentum(zpi=22, msi=28, cri=78, mri=72, rsi_14=36, macd_hist=-0.4, volume_ratio=0.6)
+STRONG = Momentum(zpi=80, msi=75, cri=15, mri=80, rsi_14=66, macd_hist=0.6, volume_ratio=1.9)
+WEAK = Momentum(zpi=22, msi=28, cri=78, mri=28, rsi_14=36, macd_hist=-0.4, volume_ratio=0.6)
 NEUTRAL = Momentum(zpi=50, msi=50, cri=50, mri=50, rsi_14=50, macd_hist=0.0, volume_ratio=1.0)
 
 

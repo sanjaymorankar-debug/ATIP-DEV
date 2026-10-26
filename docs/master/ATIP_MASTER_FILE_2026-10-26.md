@@ -3,7 +3,8 @@
 *Written 2026-10-26 from branch `claude/youthful-archimedes-mubyk3` at `bed2562` (ATIP-DEV = ATIP). Every figure is
 read from the code, the repository's own docs, or the simulations in §7, which are reproducible with
 `tools/master_file.py`. The full feature list (333 tracked features plus the new requirements) is in the
-workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`.*
+workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`. Updated the same day with the owner-approved
+MRI fix (finding 1).*
 
 Contents
 
@@ -57,13 +58,15 @@ exit. ATIP already has the tools to raise selection quality:
 What is missing is wiring these together for one +4% profile and proving it on real history and in paper
 trading (§7.6–7.8, roadmap §8).
 
-**Findings that need the owner's decision** (details in §6):
+**Findings for the owner** (details in §6):
 
-1. **Defect: MRI is read the wrong way round at the +6% runner checkpoint.** The score engine scores MRI
-   so that higher is more bullish (`scores/engine.py:470-487`). The signal engine sells on *low* MRI
-   (`scores/engine.py:807`). But `strategy/aggressive.py:177` and `:198-199` invert MRI as a risk
-   measure. As a result, strong momentum pushes a runner toward exit and weak momentum toward holding.
-   The tests encode the inverted reading (`tests/test_aggressive_decisions.py:164-168`).
+1. **Fixed (owner-approved, 2026-10-26): MRI was read the wrong way round at the +6% runner checkpoint.**
+   The score engine scores MRI so that higher is more bullish (`scores/engine.py:470-487`), and the signal
+   engine sells on *low* MRI (`scores/engine.py:807`). But `Momentum.composite` inverted MRI as a risk
+   measure, so strong momentum pushed a runner toward exit and weak momentum toward holding. MRI now
+   enters as it is (`strategy/aggressive.py:198-199`). The test fixtures are mirrored, so every existing
+   result is unchanged, and `test_mri_counts_as_strength_the_way_the_score_engine_reads_it` pins the
+   direction against `determine_signal`.
 2. **Index names disagree across documents.** The code defines VPI as Volatility-Potential and SPI as
    Stability Profit. The strategy library and the formulas workbook call them "value/profit" and
    "stock/sector strength". §4 fixes the canonical meanings from the code.
@@ -405,7 +408,7 @@ disagreement is noted.
 | Runner | The shares left after T1, managed by the trail | `ST_RUNNER` |
 | Trailing stop (TSL) | High-water × (1 − trail%); trail% = 4 × ATR%, clamped to 3–20%; only ever ratchets toward price | `trail_distance_pct`, `ratchet` |
 | HOLD_RUNNER / TIGHTEN_TRAIL / EXIT_RUNNER | The checkpoint verdicts at momentum ≥ 60 / 40–60 / < 40 | `checkpoint_decision` |
-| Momentum composite | Mean of the available ZPI, MSI, MRI*, CRI (inverse), MH, RSI, MACD sign and volume ratio (*see the MRI defect, §6) | `Momentum.composite` |
+| Momentum composite | Mean of the available ZPI, MSI, MRI, CRI (inverse), MH, RSI, MACD sign and volume ratio (MRI was inverted until the 2026-10-26 fix, §6) | `Momentum.composite` |
 | Exit reasons | INITIAL_STOP_LOSS, TARGET_1_PARTIAL_EXIT, TRAILING_STOP, TARGET_2_MOMENTUM_EXIT, MOMENTUM_REVERSAL, MARKET_RISK_EXIT, MANUAL_EXIT, END_OF_DAY_EXIT | `strategy/aggressive.py` |
 | Claim / reserve → place → apply | Idempotent order pattern: a UNIQUE event claim, then the order, then only the real fill changes state | `strategy/live.py`, `strategy/positions.py` |
 | Bracket / OCO | Entry + target leg + stop leg; one cancels the other | `orders/rules.py` |
@@ -560,7 +563,8 @@ completion %, key files, next action, blocker.
 The uploaded prompt (`ATIP-CLAUDE-IMPLEMENTATION-DEPLOYMENT-PROMPT.md`) asks for three things: the aggressive
 strategy, authentication with multi-user isolation, and testing and deployment to `test.bkesari.com/dhan`.
 Each phase below is marked PRESENT, PARTIAL, ABSENT or DEFECT, with evidence. The review was static. The
-claims with the largest consequences were re-read in the code; nothing was changed.
+claims with the largest consequences were re-read in the code. The one DEFECT it found, the MRI reading
+(row P4-4), was fixed the same day with the owner's approval; nothing else was changed.
 
 ### 6.1 Before anything is built: three owner decisions
 
@@ -570,8 +574,8 @@ claims with the largest consequences were re-read in the code; nothing was chang
    the owner with TOTP. That PR says "there is no multi-user portfolio and no broker linking". The
    consolidated prompt asks for the opposite: registration, per-user Dhan accounts and private portfolios.
    Both cannot be the plan for `test.bkesari.com`.
-2. **Is the MRI reading at the +6% checkpoint a defect?** The evidence says yes (row P4-4). Fixing it
-   changes live runner exits, so it should be the owner's call.
+2. **Is the MRI reading at the +6% checkpoint a defect?** Decided 2026-10-26: yes. The owner approved
+   the fix, and it is made in this change (row P4-4).
 3. **Where does the hosted ATIP run?** The prompt's target is `test.bkesari.com/dhan`. Today that host
    only receives the read-only snapshot at `/atip/api/snapshot` (`publish_snapshot.py:16-22`). A live ATIP
    needs a long-running Python host, a database (PRs #13 and #14 move server mode to PostgreSQL) and
@@ -599,7 +603,7 @@ claims with the largest consequences were re-read in the code; nothing was chang
 | P4 | Strategy | +3% sells 50% of the original quantity, runner kept, trail starts | PRESENT | `strategy/aggressive.py` (`partial_exit_quantity`, `ratchet`), `strategy/positions.py` (idempotent claims); `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py` | — |
 | P4 | Strategy | +6% is a momentum checkpoint, not a forced exit | PRESENT | `checkpoint_decision`: HOLD_RUNNER ≥ 60, TIGHTEN_TRAIL 40–60 or no data, EXIT_RUNNER < 40 | — |
 | P4 | Strategy | Levels configurable, validated (40/60, 60/40; invalid rejected) | PRESENT | `DEFAULTS` + `config.json` + `validate_config` (`strategy/aggressive.py:50-130`) | — |
-| P4 | Strategy | Reuse existing indicators; formulas unchanged | DEFECT | `strategy/live.py:57-83` reads ZPI, MSI, MRI, CRI, MH, RSI, MACD and volume from the stored scores, with no formula of its own. But `Momentum.composite` inverts MRI (`strategy/aggressive.py:177`, `:198-199`), while the engine scores MRI so that higher is more bullish (`scores/engine.py:470-487`) and sells on MRI < 40 (`:807`) | Owner decision 6.1 (2): stop inverting MRI and correct the STRONG / WEAK fixtures (`tests/test_aggressive_decisions.py:164-168`, `strategy/backtest_aggressive.py`) |
+| P4 | Strategy | Reuse existing indicators; formulas unchanged | PRESENT | `strategy/live.py:57-83` reads ZPI, MSI, MRI, CRI, MH, RSI, MACD and volume from the stored scores, with no formula of its own. **Fixed 2026-10-26:** `Momentum.composite` inverted MRI at `bed2562`, while the engine scores MRI so that higher is more bullish (`scores/engine.py:470-487`) and sells on MRI < 40 (`:807`); MRI now enters as it is (`strategy/aggressive.py:198-199`) | Done (owner decision 6.1 (2)): STRONG / WEAK fixtures mirrored, so scenario results are unchanged; a test pins the direction against `determine_signal` |
 | P4 | Strategy | Volatility-aware trail that never moves down | PRESENT | 4 × ATR%, clamped 3–20%; `ratchet` is one-way; tightens ×0.5 on fading momentum | — |
 | P4 | Strategy | Exits managed automatically while the market is open | ABSENT | Only `python -m strategy.live --manage` runs a management pass, one per call (`strategy/live.py:374-410`); no scheduler job or dashboard thread calls it | Schedule a paper management pass every few minutes in market hours, behind `aggressive_enabled` |
 | P5 | Per user | Same signal, private execution state per user (own entry, qty, trail) | ABSENT | `strategy_position` / `strategy_event` have no tenant or user column; config is global; orders go to the owner's book (`strategy/live.py:102-187`); runs only from the CLI (`python -m strategy.live`) and is not scheduled | Needs user / tenant columns, per-user config and per-user broker routing, after 6.1 (1) |
@@ -622,9 +626,9 @@ claims with the largest consequences were re-read in the code; nothing was chang
 
 ### 6.3 Reading of the review
 
-- **The aggressive strategy logic is done.** Phases 4, 6, 8 and 13 need nothing new, apart from the MRI
-  decision and a scheduled management pass (row P4). Re-implementing them, as the prompt literally asks,
-  would duplicate working, tested code.
+- **The aggressive strategy logic is done.** With the MRI fix made, phases 4, 6, 8 and 13 need nothing
+  new apart from a scheduled management pass (row P4). Re-implementing them, as the prompt literally
+  asks, would duplicate working, tested code.
 - **The multi-user product is a separate, larger project.** Users, roles, MFA and the vault exist, but trading
   data, the strategy and the broker connection are single-owner by design. It should start only after
   decision 6.1 (1). If the answer is "multi-user", fix the `/api/orders` read leak and the owner-credential
@@ -781,7 +785,7 @@ the 95.2% vs 46.6% episode shows how a ratio can mislead.
 | 4 | **Exit geometry for a high win rate** | T1 = +4% and book 60–70%; initial stop about 2–2.5 × ATR below structure (not a fixed 3%); move the stop to break-even + costs after T1; runner on the ATR trail; time stop at 15 sessions | `strategy/aggressive.py` (`target_1_pct` = 4, `target_1_exit_pct` = 70; break-even after T1 is new) | win ↑, E ↑ |
 | 5 | **Avoid event risk** | No entries 2 sessions before results, RBI or FOMC; no entries on gap-ups over 3% | `research/event_calendar.py`, `research/earnings_surprise.py` | loss tail ↓ |
 | 6 | **Liquidity and costs** | Turnover ≥ ₹10 Cr/day, ADV participation ≤ 1%, LIMIT orders inside the band | `orders/risk.py`, `execution/impact.py` | c ↓ |
-| 7 | **Fix the runner checkpoint** | Correct the MRI direction in `Momentum.composite` (§6) | `strategy/aggressive.py` | runner profit ↑ |
+| 7 | **Fix the runner checkpoint** | Done 2026-10-26: MRI now counts as strength in `Momentum.composite` (§6) | `strategy/aggressive.py` | runner profit ↑ |
 | 8 | **Size by risk, not by conviction** | Risk 0.5–1% of equity per trade (qty = equity × risk% ÷ stop distance); max 8 positions; daily loss limit | `orders/risk.py size_position`, `risk_limits` | drawdown ↓ |
 
 A candidate paper-only profile to measure. It is not a recommendation to trade. Keys marked "new" do not
@@ -840,7 +844,7 @@ the §7.6 levers 1–3 come before any exit work.
 
 | # | Priority | Item | Why | Effort |
 |---|---|---|---|---|
-| R1 | P0 | Owner decision, then fix: the MRI direction in `Momentum.composite` and its tests | The runner exits on strength and holds on weakness | S |
+| R1 | P0 | **Done 2026-10-26** (owner-approved): the MRI direction in `Momentum.composite` and its tests | The runner exited on strength and held on weakness | S |
 | R2 | P0 | Run §7.8 commands 1–3 on the real database and record the results in the tracker | The objective needs real evidence, not simulation | S |
 | R3 | P0 | Add a "+4% profile" to the aggressive config (break-even after T1, ATR-based initial stop, time stop), and schedule the paper management pass in market hours | Levers 4 and 7; review row P4 (nothing runs the exits today) | M |
 | R4 | P0 | Meta-label barriers configurable (+T% / −k × ATR / H) and trained for the +4% profile | Lever 2: the only direct win-rate lever | M |

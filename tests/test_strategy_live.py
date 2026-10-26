@@ -145,7 +145,7 @@ def test_stop_takes_precedence_within_one_pass(pos, cfg, orders):
 
 def test_checkpoint_runs_at_target_2_and_holds_on_strong_momentum(pos, cfg, orders, monkeypatch):
     monkeypatch.setattr(L, "momentum_for", lambda s, conn=None: A.Momentum(
-        zpi=85, msi=80, cri=10, mri=15, rsi_14=68, macd_hist=0.7, volume_ratio=2.0))
+        zpi=85, msi=80, cri=10, mri=85, rsi_14=68, macd_hist=0.7, volume_ratio=2.0))
     L.manage_position(pos, 103.0, cfg)
     L.manage_position(P.get_position(pos["id"]), 106.5, cfg)
     p = P.get_position(pos["id"])
@@ -156,7 +156,7 @@ def test_checkpoint_runs_at_target_2_and_holds_on_strong_momentum(pos, cfg, orde
 
 def test_weak_momentum_at_the_checkpoint_banks_the_runner(pos, cfg, orders, monkeypatch):
     monkeypatch.setattr(L, "momentum_for", lambda s, conn=None: A.Momentum(
-        zpi=15, msi=20, cri=85, mri=80, rsi_14=32, macd_hist=-0.6, volume_ratio=0.4))
+        zpi=15, msi=20, cri=85, mri=20, rsi_14=32, macd_hist=-0.6, volume_ratio=0.4))
     L.manage_position(pos, 103.0, cfg)
     L.manage_position(P.get_position(pos["id"]), 106.5, cfg)
     p = P.get_position(pos["id"])

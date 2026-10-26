@@ -174,7 +174,7 @@ class Momentum:
     """
     zpi: float | None = None            # momentum/trend composite
     msi: float | None = None            # market structure
-    mri: float | None = None            # momentum-reversal risk (INVERTED: high = bad)
+    mri: float | None = None            # momentum-reversal: a bullish turn, high = strong
     cri: float | None = None            # crash risk (INVERTED: high = bad)
     rsi_14: float | None = None
     macd_hist: float | None = None
@@ -186,9 +186,15 @@ class Momentum:
         Blend the available readings onto one 0-100 scale where higher is
         stronger. Returns (score, how_many_inputs_contributed).
 
-        MRI and CRI are risk measures, so they enter inverted — a CRI of 80 is
-        not strength, it is the opposite. Getting that backwards would make the
+        CRI is a risk measure, so it enters inverted — a CRI of 80 is not
+        strength, it is the opposite. Getting that backwards would make the
         runner hold hardest exactly when a crash is most likely.
+
+        MRI is NOT a risk measure, despite the name: scores/engine.py builds it
+        from bullish-turn inputs (MACD above zero, EMA 9 over 21, a volume
+        surge, RSI in the 40-55 band), the signal engine sells on a LOW MRI and
+        intraday_scan wants MRI >= 55. It enters as it is. It entered inverted
+        until 2026-10-26, which made strong momentum push the runner out.
         """
         parts: list[float] = []
         if self.zpi is not None:
@@ -196,7 +202,7 @@ class Momentum:
         if self.msi is not None:
             parts.append(_clamp(self.msi))
         if self.mri is not None:
-            parts.append(100.0 - _clamp(self.mri))
+            parts.append(_clamp(self.mri))
         if self.cri is not None:
             parts.append(100.0 - _clamp(self.cri))
         if self.mh_score is not None:
