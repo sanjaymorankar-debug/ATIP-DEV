@@ -113,6 +113,9 @@ def _sql_0005(conn):
         conn.execute(ddl)
 
 
+# (The docstring below is part of this migration's checksum, so it is left as written: its
+# MySQL remark is history -- that backend was removed and PostgreSQL is the server target.
+# entry_seq still matters there, as an entry order that is a real column.)
 def _sql_0006(conn):
     """W39 (PERF-001-01): give every existing perf_ledger row its entry order in entry_seq.
 

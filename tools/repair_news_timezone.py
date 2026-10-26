@@ -15,18 +15,17 @@ twice: a moved row no longer qualifies.
     python -m tools.repair_news_timezone            # dry run: counts only
     python -m tools.repair_news_timezone --apply    # after backing up atip.db
 
-SQLITE ONLY. Both statements use SQLite date modifiers that db.mysql and
-db.postgres do not translate: datetime(created_at, '+1 hour') and
+SQLITE ONLY. Both statements use SQLite date modifiers that db.postgres does
+not translate: datetime(created_at, '+1 hour') and
 strftime(fmt, fetched_at, '+5 hours', '+30 minutes'). The one that matters is
-safe -- strftime() is on both translators' unsupported list, so the --apply
+safe -- strftime() is on the translator's unsupported list, so the --apply
 UPDATE raises UnsupportedSQL and cannot half-convert the column. The dry run's
-datetime() passes through untranslated and fails at the server instead (MySQL
-has no datetime() function, so errno 1064), which is loud but not a refusal.
+datetime() passes through untranslated and fails at the server instead, which
+is loud but not a refusal.
 
 This is a one-off repair for rows written before 2026-09-24, so a database
-migrated to MySQL or PostgreSQL after that date has nothing for it to fix. If it
-is ever needed there, do the arithmetic in Python over a SELECT and write the
-rows back.
+migrated to PostgreSQL after that date has nothing for it to fix. If it is ever
+needed there, do the arithmetic in Python over a SELECT and write the rows back.
 """
 
 import argparse
