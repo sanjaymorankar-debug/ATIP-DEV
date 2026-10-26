@@ -57,8 +57,8 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/execution-lab", response_class=HTMLResponse)
     async def execution_lab():
         from dashboard.w34_page import render
-        from dashboard.security import token
-        return HTMLResponse(render(token()))
+        from dashboard.security import page_token
+        return HTMLResponse(render(page_token()))
 
     # ── EX-11 algos ──
     @app.get("/api/execution/algos")

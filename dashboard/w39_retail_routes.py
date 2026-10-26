@@ -50,9 +50,9 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/baskets", response_class=HTMLResponse)
     async def page_baskets():
-        from dashboard.security import token
+        from dashboard.security import page_token
         from dashboard.w39_retail_page import render
-        return HTMLResponse(render(token()))
+        return HTMLResponse(render(page_token()))
 
     # ── EX-18 baskets ──
     @app.get("/api/orders/baskets")

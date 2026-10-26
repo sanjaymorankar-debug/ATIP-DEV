@@ -858,7 +858,7 @@ def build_html(state):
     health_panel = alerts_panel_html()
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
     # Served with the page so the dashboard keeps working; see dashboard/security.py.
-    from dashboard.security import token as _dash_token
+    from dashboard.security import page_token as _dash_token
     token_js = json.dumps(_dash_token())
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
@@ -1327,11 +1327,11 @@ if HAS_FASTAPI:
     from enterprise.authz import install as _install_enterprise_authz
     _install_enterprise_authz(app)
     from fastapi import Depends, HTTPException, Request as _Req
-    from dashboard.security import TOKEN_HEADER, token_ok
+    from dashboard.security import TOKEN_HEADER, guard_ok
 
     async def _authorised(request: _Req):
         """Guards every route that can change something. See dashboard/security.py."""
-        if not token_ok(request.headers.get(TOKEN_HEADER)):
+        if not guard_ok(request.headers.get(TOKEN_HEADER)):
             raise HTTPException(status_code=401,
                                 detail=f"{TOKEN_HEADER} missing or wrong — this route can "
                                        f"place, confirm or cancel orders")
@@ -1634,7 +1634,7 @@ if HAS_FASTAPI:
     @app.get("/backtests", response_class=HTMLResponse)
     async def backtests_page():
         from dashboard.backtest_page import render
-        from dashboard.security import token as _tok
+        from dashboard.security import page_token as _tok
         return HTMLResponse(render(_tok()))
 
     # ── Strategy Engine (W3) ─────────────────────────────────────────────

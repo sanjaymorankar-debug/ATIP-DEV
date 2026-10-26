@@ -74,8 +74,8 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/brokers", response_class=HTMLResponse)
     async def brokers_page():
         from dashboard.w37_page import render
-        from dashboard.security import token
-        return HTMLResponse(render(token()))
+        from dashboard.security import page_token
+        return HTMLResponse(render(page_token()))
 
     # ── BR-07 ──
     @app.get("/api/brokers")

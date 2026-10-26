@@ -31,7 +31,7 @@
 | Session | HttpOnly SameSite=Strict cookie `atip_session`, or `Authorization: Bearer` | SHA-256 digest, expiry, IP, user agent |
 | API key | `Authorization: ApiKey atk_…` | SHA-256 digest, scopes, expiry |
 | Reset token | Admin-issued, one-time, 30 minutes | SHA-256 digest |
-| Legacy X-ATIP-Token | Accepted as the platform SUPER_ADMIN only if `accept_legacy_token` is true (default false: every page embeds it) | — |
+| Legacy X-ATIP-Token | Accepted as the platform SUPER_ADMIN only if `accept_legacy_token` is true (default false). The owner's pages carry the install's token; another tenant's pages carry only its own session's token. If this setting is turned on, the install's token is the owner's full credential: rotate it after any leak | — |
 
 **Account protection:**
 - Accounts lock after `max_failed_logins` (5) for `lockout_minutes` (15).
@@ -86,7 +86,7 @@ The owner's `default` tenant cannot leave ACTIVE.
 **Shared single paper book:**
 - ATIP has one paper book and one broker account. Only the default tenant may read or trade execution, orders and portfolio.
 - `enterprise/authz.py` `OWNER_BOOK` lists the routes that show or act on that book without going through `PAPER_BOOK`: `/api/orders` (rules, baskets, SIPs, broker status), `/api/oms/positions`, `/api/mobile/`, and the owner's risk limits, portfolio, emergency exit and evaluation under `/api/risk/`. Any other tenant gets 403 on them whatever its role, and `/` sends it to `/app`. Each refusal is audited.
-- Known gap: the install-wide dashboard token (`X-ATIP-Token`) is embedded in 18 pages another tenant's viewer can open. It is latent while enterprise mode is off. The master file tracks it (R12).
+- The install's dashboard token (`X-ATIP-Token`) is the owner's. Another signed-in tenant's pages carry a token of its own, derived from the install's and tied to its session (`session_token` in `dashboard/security.py`). The write guard takes that token for its session only, and refuses the install's token to it. Anonymous and public requests get none (R12).
 - Other tenants can research, build strategies and models, and backtest.
 - Per-tenant books are future work.
 

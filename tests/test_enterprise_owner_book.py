@@ -5,6 +5,9 @@ The routes in enterprise/authz.py OWNER_BOOK read or act on tables that have no 
 baskets, SIPs, the paper book, the mobile summary) or on the owner's global risk limits and risk decisions. A
 permission that a role holds in another tenant does not make those routes that tenant's. Enterprise mode is off
 for the single owner, so these tests switch it on, as a second tenant would meet the app.
+
+The install's dashboard token (X-ATIP-Token) is the owner's. Another tenant is served a token of its own, tied to
+its session, and the write guard takes that for its session only: the install's token does not pass for it.
 """
 
 import json
@@ -65,19 +68,27 @@ def app(temp_db, tmp_path, monkeypatch):
     users.create_user(conn, "acme.viewer", PASSWORD, "acme_fund", ["VIEWER"])
     users.create_user(conn, "acme.trader", PASSWORD, "acme_fund", ["TRADER"])
     users.create_user(conn, "acme.risk", PASSWORD, "acme_fund", ["RISK_MANAGER"])
+    users.create_user(conn, "acme.research", PASSWORD, "acme_fund", ["RESEARCHER"])
     users.create_user(conn, "owner.viewer", PASSWORD, "default", ["VIEWER"])
+    users.create_user(conn, "owner.admin", PASSWORD, "default", ["SUPER_ADMIN"])
     conn.commit()
 
     def bearer(username):
         return {"Authorization": f"Bearer {users.login(conn, username, PASSWORD)['token']}"}
+
+    acme_secret = users.login(conn, "acme.viewer", PASSWORD)["token"]
+    research_secret = users.login(conn, "acme.research", PASSWORD)["token"]
 
     owner_paths = ["/api/orders", "/api/orders/pending", "/api/orders/broker-status", "/api/orders/baskets",
                    f"/api/orders/baskets/{basket_id}", "/api/orders/sip", f"/api/orders/sip/{plan_id}",
                    "/api/oms/positions", "/api/risk/limits", "/api/risk/portfolio", "/api/risk/emergency-exit",
                    "/api/mobile/summary"]
     yield {"client": TestClient(server.app, raise_server_exceptions=False), "app": server.app, "conn": conn,
-           "acme": bearer("acme.viewer"), "acme_trader": bearer("acme.trader"), "acme_risk": bearer("acme.risk"),
-           "owner": bearer("owner.viewer"), "owner_paths": owner_paths}
+           "acme": {"Authorization": f"Bearer {acme_secret}"}, "acme_trader": bearer("acme.trader"),
+           "acme_risk": bearer("acme.risk"), "acme_research": {"Authorization": f"Bearer {research_secret}"},
+           "owner": bearer("owner.viewer"), "owner_admin": bearer("owner.admin"), "anonymous": {},
+           "token": security.token(), "acme_token": security.session_token(acme_secret),
+           "research_token": security.session_token(research_secret), "owner_paths": owner_paths}
     conn.close()
 
 
@@ -123,15 +134,54 @@ def test_each_refusal_is_audited(app):
     assert n == 1
 
 
+def _static_get_paths(app):
+    """Every GET route without a path parameter, but the long-running or side-effecting ones."""
+    for route in app.routes:
+        methods, path = getattr(route, "methods", None) or set(), getattr(route, "path", "")
+        if "GET" in methods and "{" not in path and not SKIP_GET.search(path):
+            yield path
+
+
 def test_no_get_route_shows_the_owner_book_to_another_tenant(app):
     leaks, checked = [], 0
-    for route in app["app"].routes:
-        methods, path = getattr(route, "methods", None) or set(), getattr(route, "path", "")
-        if "GET" not in methods or "{" in path or SKIP_GET.search(path):
-            continue
+    for path in _static_get_paths(app["app"]):
         r = app["client"].get(path, headers=app["acme"])
         checked += 1
         if r.status_code < 300 and any(c in r.text for c in CANARY):
             leaks.append((path, r.status_code))
     assert checked > 100, checked
     assert leaks == [], f"another tenant reads the owner's book on {len(leaks)} routes: {leaks}"
+
+
+@pytest.mark.parametrize("who", ["acme", "anonymous"])
+def test_no_get_route_serves_the_install_token_to_another_tenant_or_a_stranger(app, who):
+    leaks, checked = [], 0
+    for path in _static_get_paths(app["app"]):
+        r = app["client"].get(path, headers=app[who])
+        checked += 1
+        if r.status_code < 300 and app["token"] in r.text:
+            leaks.append((path, r.status_code))
+    assert checked > 100, checked
+    assert leaks == [], f"{who} is served the install token on {len(leaks)} routes: {leaks}"
+
+
+def test_the_owner_pages_still_carry_the_install_token(app):
+    for path in ["/", "/research", "/backtests"]:
+        r = app["client"].get(path, headers=app["owner"], follow_redirects=False)
+        assert r.status_code == 200 and app["token"] in r.text, (path, r.status_code)
+
+
+def test_another_tenant_pages_carry_its_own_session_token_and_not_the_install_token(app):
+    r = app["client"].get("/backtests", headers=app["acme"])
+    assert r.status_code == 200 and app["acme_token"] in r.text and app["token"] not in r.text, r.status_code
+
+
+def test_the_write_guard_takes_a_tenants_own_session_token_and_nothing_else(app):
+    # A researcher may run backtests, so the middleware lets this through; the guard still needs the session's own
+    # token. The run does not exist, so an accepted request reaches a handler that starts nothing.
+    path = "/api/backtests/no-such-run/pbo"
+    own = {**app["acme_research"], "X-ATIP-Token": app["research_token"]}
+    assert app["client"].post(path, headers=own).status_code == 404
+    assert app["client"].post(path, headers=app["acme_research"]).status_code == 401
+    assert app["client"].post(path, headers={**app["acme_research"], "X-ATIP-Token": app["token"]}).status_code == 401
+    assert app["client"].post(path, headers={**app["owner_admin"], "X-ATIP-Token": app["token"]}).status_code == 404

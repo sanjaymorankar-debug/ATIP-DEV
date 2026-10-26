@@ -49,9 +49,9 @@ def register(app, guard, Req, get_connection, json_safe):
         return b if isinstance(b, dict) else {}
 
     def page(module):
-        from dashboard.security import token
+        from dashboard.security import page_token
         import importlib
-        return HTMLResponse(importlib.import_module(module).render(token()))
+        return HTMLResponse(importlib.import_module(module).render(page_token()))
 
     # ── ML-16 assistant ──
     @app.get("/assistant", response_class=HTMLResponse)

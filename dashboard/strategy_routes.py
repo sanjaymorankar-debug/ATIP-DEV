@@ -421,6 +421,6 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/strategies", response_class=HTMLResponse)
     async def strategies_page():
-        from dashboard.security import token as _tok
+        from dashboard.security import page_token as _tok
         from dashboard.strategy_page import render
         return HTMLResponse(render(_tok()))

@@ -570,6 +570,6 @@ def register(app, guard, Req, get_connection, json_safe):
     # ── Page ────────────────────────────────────────────────────────────────
     @app.get("/wealth", response_class=HTMLResponse)
     async def wealth_page():
-        from dashboard.security import token as _tok
+        from dashboard.security import page_token as _tok
         from dashboard.wealth_page import render
         return HTMLResponse(render(_tok()))

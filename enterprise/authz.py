@@ -30,6 +30,10 @@ enterprise.enabled = true, per request:
       creation (POST strategies / models / pairs / experiments / portfolios): the new
       row is stamped with the caller's tenant; tenant limits checked first
     The platform administrator (SUPER_ADMIN of the default tenant) sees all tenants.
+ 7. DASHBOARD TOKEN: the install's X-ATIP-Token (dashboard/security.py) is the owner's: only the owner's pages
+    carry it, and only the owner's requests pass the write guard with it. Another signed-in tenant's pages carry
+    a token of its own, tied to its session, and the guard takes that for its session alone. A public or
+    anonymous request gets neither.
  7. AUDIT + METERING: every mutating request and every denial -> enterprise_audit;
     api_requests counted per tenant per day.
 
@@ -201,6 +205,33 @@ def _matches(patterns, path):
 VIA_STRATEGY = {"oms_order", "risk_decision", "strategy_position_intent"}   # owned through their strategy
 
 
+def _is_owner(p, s):
+    """The owner's own tenant, or a platform admin (who is in it): the only principals that see the owner's book
+    and get the install's dashboard token."""
+    return p["tenant_id"] == s["default_tenant"] or p["platform_admin"]
+
+
+def _session_secret(request) -> str:
+    """The signed-in session's secret, read the way resolve() reads it: the bearer token, else the browser cookie.
+    An API key is not a session, so it has none."""
+    auth = request.headers.get("authorization") or ""
+    if auth.lower().startswith("apikey "):
+        return ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return request.cookies.get(COOKIE) or ""
+
+
+def _page_credential(request, p, s) -> str:
+    """The dashboard credential for this principal (dashboard/security.py): the install's own for the owner, and the
+    session's own for any other tenant, so no other tenant is handed the install's token."""
+    from dashboard.security import session_token, token
+    if _is_owner(p, s):
+        return token()
+    secret = _session_secret(request)
+    return session_token(secret) if secret else ""
+
+
 def _owner_tenant(conn, key, value, cache):
     table, col = OWNERS[key]
     ck = (table, value)
@@ -255,10 +286,13 @@ def install(app):
     """Register the middleware on the FastAPI app (a no-op per request while disabled)."""
     from fastapi.responses import JSONResponse, RedirectResponse, Response
 
+    from dashboard.security import credential
+
     @app.middleware("http")
     async def enterprise_authz(request, call_next):
         if not settings()["enabled"]:
             return await call_next(request)
+        credential.set("")            # until the principal is known, no page carries a token and the guard refuses
         method, path = request.method.upper(), request.url.path
         if method == "OPTIONS" or _public(method, path):
             return await call_next(request)
@@ -276,6 +310,8 @@ def install(app):
                 q = request.url.query
                 return RedirectResponse("/login?next=" + quote(path + (f"?{q}" if q else ""), safe="/"),
                                         status_code=302)
+
+            credential.set(_page_credential(request, p, s))
 
             def deny(code, msg):
                 audit.record(conn, "authz.denied", tenant_id=p["tenant_id"], user_id=p.get("user_id"),
@@ -296,7 +332,7 @@ def install(app):
                 if perm not in p["permissions"]:
                     return deny(403, f"permission {perm} required")
                 owners_only = perm in PAPER_BOOK or _matches(OWNER_BOOK, path) or _matches(OWNER_PAGES, path)
-                if owners_only and p["tenant_id"] != s["default_tenant"] and not p["platform_admin"]:
+                if owners_only and not _is_owner(p, s):
                     if _matches(OWNER_PAGES, path):
                         audit.record(conn, "authz.denied", tenant_id=p["tenant_id"], user_id=p.get("user_id"),
                                      actor=p["username"], method=method, path=path, status_code=302, ip=ip,
