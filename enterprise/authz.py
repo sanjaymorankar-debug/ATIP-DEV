@@ -158,9 +158,10 @@ PAPER_BOOK = {"orders:manage", "portfolio:read", "portfolio:manage"}
 # risk decisions. Their tables have no tenant column, so a permission held in another tenant does not make them
 # that tenant's: a tenant other than the default one is refused them whatever its role, as PAPER_BOOK is refused.
 OWNER_BOOK = [r"^/api/orders(/|$)", r"^/api/oms/positions$", r"^/api/mobile/",
-              r"^/api/risk/(limits|portfolio|emergency-exit|evaluate)(/|$)"]
+              r"^/api/risk/(limits|portfolio|emergency-exit|evaluate)(/|$)",
+              r"^/api/command(/|$)", r"^/api/sessions(/|$)", r"^/api/risk/(halt|resume)$"]   # UXR-01..03
 # The owner's dashboard shows the owner's whole state, so another tenant is sent to its own app instead.
-OWNER_PAGES = [r"^/$"]
+OWNER_PAGES = [r"^/$", r"^/command$"]
 
 OWNERS = {"strategy_id": ("strategy", "strategy_id"), "model_id": ("ml_model", "model_id"),
           "run_id": ("backtest_run", "run_id"), "report_id": ("enterprise_report", "report_id"),
