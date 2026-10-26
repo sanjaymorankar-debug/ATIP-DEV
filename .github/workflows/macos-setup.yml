@@ -1,0 +1,75 @@
+name: macos-setup
+
+# setup_atip.sh runs on the owner's Mac under macOS's own /bin/bash 3.2 and the BSD
+# tools (ps, lsof, pgrep, cp, df), which the Linux test job cannot stand in for. This job
+# runs it on a real macOS runner: the script parsed by /bin/bash 3.2, its tests (which call
+# `bash` from /bin), then install, check, start and verify end to end. The runner's own
+# Homebrew bash 5 is never used for the script. LaunchAgents are not installed here: a CI
+# runner is not the owner's login session.
+#
+# macOS runner minutes cost more than Linux ones, so it runs only when the setup path changes.
+
+on:
+  pull_request:
+    paths:
+      - setup_atip.sh
+      - start_atip.sh
+      - deploy/launchd/**
+      - requirements.txt
+      - main.py
+      - tests/test_setup_atip_sh.py
+      - .github/workflows/macos-setup.yml
+  workflow_dispatch:
+
+jobs:
+  setup-script:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: macOS's own bash parses the script
+        run: |
+          /bin/bash --version | head -n 1
+          /bin/bash -n setup_atip.sh
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: install (finds Python 3.11+, builds .venv, packages, config, database)
+        run: /bin/bash setup_atip.sh install
+
+      - name: check reports the install (it exits 1 here only for the Dhan keys a runner has none of)
+        run: |
+          /bin/bash setup_atip.sh check | tee check.out || true
+          grep -q '✅  .venv: Python 3.13' check.out
+          grep -q '✅  packages: all of requirements.txt import' check.out
+          grep -q '✅  atip_data/atip.db' check.out
+          grep -q '❌  DHAN_CLIENT_ID not set' check.out
+
+      - name: script tests under /bin/bash 3.2
+        run: |
+          .venv/bin/python -m pip install --quiet pytest httpx
+          .venv/bin/python -m pytest tests/test_setup_atip_sh.py -v
+
+      - name: start, then verify finds ATIP running from this folder
+        run: |
+          /bin/bash setup_atip.sh start > start.out 2>&1 &
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/health/live)" = "200" ] && break
+            sleep 2
+          done
+          /bin/bash setup_atip.sh verify
+          # a second start must refuse rather than run a second scheduler
+          if /bin/bash setup_atip.sh start; then echo "second start was not refused"; exit 1; fi
+
+      - name: Logs
+        if: always()
+        run: |
+          tail -n 60 start.out 2>/dev/null || true
+          tail -n 60 atip_data/setup_init.log 2>/dev/null || true
+
+      - name: Stop ATIP
+        if: always()
+        run: pkill -f 'main\.py' || true

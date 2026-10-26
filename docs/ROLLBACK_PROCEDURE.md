@@ -47,13 +47,13 @@ Rollback has two parts, **code** and **database**. Schema changes in ATIP are ad
 ## Code rollback
 
 1. Stop ATIP.
-2. Find the target commit with `git -C /Users/agtci/Documents/Project_Documents/Projects/ATIP log --oneline --decorate -20`. Useful targets:
+2. Find the target commit with `git -C /Users/agtci/Documents/GIT_ATIP/ATIP log --oneline --decorate -20`. Useful targets:
    - the `backup/pre-<wave>-master` branch;
    - the tag `w5-final-prod-before-w6`.
 3. Move `master` back:
 
    ```bash
-   git -C /Users/agtci/Documents/Project_Documents/Projects/ATIP reset --hard backup/pre-w8-master
+   git -C /Users/agtci/Documents/GIT_ATIP/ATIP reset --hard backup/pre-w8-master
    ```
 
    This is destructive for commits after that point. They stay reachable on their feature branch, for example `w8-production-hardening`.

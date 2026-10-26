@@ -2,7 +2,7 @@ r"""
 ATIP — AI Trading Intelligence Platform  v0.2
 ================================================
 Run ALL commands from the project root — the folder containing this file
-(e.g. /Users/agtci/Documents/Project_Documents/Projects/ATIP/).
+(e.g. /Users/agtci/Documents/GIT_ATIP/ATIP/).
 
 Layout: every package sits directly under the project root, named for what
 it does — data/ db/ scores/ orders/ dashboard/ pipeline/ portfolio/
