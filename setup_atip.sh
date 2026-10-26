@@ -661,9 +661,12 @@ cmd_verify() {
     esac
 
     step "Logs"
-    if [[ -f atip_data/launchd.err ]] && grep -q "Operation not permitted" atip_data/launchd.err; then
+    # launchd.err only grows: judge by its latest lines, and only while ATIP is not up, so a
+    # permission error that was fixed since does not keep reporting
+    if ! instance_running "$ROOT" && [[ -f atip_data/launchd.err ]] &&
+       tail -n 20 atip_data/launchd.err | grep -q "Operation not permitted"; then
         bad "launchd.err: 'Operation not permitted' — macOS blocks the agent in ~/Documents"
-        info "give /bin/bash Full Disk Access (docs/MAC_DEPLOYMENT.md, step 7), then ./setup_atip.sh agents platform"
+        info "give /bin/bash and Python Full Disk Access (docs/MAC_DEPLOYMENT.md, step 7), then ./setup_atip.sh agents"
     fi
     if [[ -f atip_data/atip.log ]]; then
         local today n
