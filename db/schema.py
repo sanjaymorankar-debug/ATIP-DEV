@@ -1826,6 +1826,7 @@ def seed_weights():
         ("MH","FII",0.10,"FII net 5d","ALL"),("MH","DII",0.10,"DII net","ALL"),
         ("MH","Global",0.10,"Global score","ALL"),("MH","Sector",0.10,"Sector breadth","ALL"),
         ("MH","AdvanceDecline",0.05,"A/D ratio","ALL"),
+        ("MH","Asia",0.05,"Asia Sentiment Score (Task 3)","ALL"),
         ("ATIP","VPI",0.20,"VPI","ALL"),("ATIP","SPI",0.15,"SPI","ALL"),
         ("ATIP","RRI",0.10,"RRI","ALL"),("ATIP","MRI",0.10,"MRI","ALL"),
         ("ATIP","MSI",0.10,"MSI","ALL"),("ATIP","ZPI",0.10,"ZPI","ALL"),

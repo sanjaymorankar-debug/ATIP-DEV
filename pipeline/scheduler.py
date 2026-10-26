@@ -40,6 +40,32 @@ NOTE ON FEED CADENCE (fix applied 2026-07-29):
   catch-up burst collapses to a single real run instead of firing
   4-6 times in a row.
 
+OPERATING WINDOW (Task 2, 2026-10-26) — pipeline/operating_schedule.py
+  ATIP is STOPPED 21:00 -> 06:00 IST. The loop below asks operating_schedule.tick()
+  every 15 s; inside the window every due job is skipped (moved to its next slot
+  WITHOUT running -- gate_pending), daily ones are recorded in deferred_jobs, and
+  run_job() itself refuses to run (a CLI or catch-up call in the window is
+  logged SKIPPED). At 06:00 the resume sequence runs once a day (backfill ->
+  collect -> sentiment -> analysis -> pre-market report -> live feeds), and a
+  machine that was off or asleep at 06:00 runs it on its first tick after
+  start/wake (resume_runs + job_lock: never twice).
+
+  Scheduling mechanism -- ONE, this in-process `schedule` loop. Not APScheduler:
+  moving ~120 job registrations, the debounce guard, the W8 job locks, the W9
+  leader lease and the wake detection to a new library would rewrite working
+  code for no gain, and APScheduler's own misfire handling is the same
+  "fires late after sleep" problem the guards here already solve. Not Windows
+  Task Scheduler: ATIP now runs on the owner's Mac (launchd only starts the
+  process, ops/MAC_DEPLOYMENT), and an OS scheduler next to this loop would be
+  the two-mechanism, duplicate-run setup this note exists to rule out. The
+  reliability caveats above (missed slots are not re-run, catch-up bursts after
+  sleep, a frozen loop runs nothing) still apply; the operating window adds its
+  own catch-up (the resume run) and a lock instead of relying on `schedule`.
+  Order-trigger monitoring stays OUT of this loop, in the dashboard process
+  (dashboard/server.py _order_monitor_loop), and checks the window itself.
+  All .at() times are the Mac's local clock, which ATIP assumes is IST; the
+  window itself is computed in Asia/Kolkata explicitly.
+
 Run:
     python main.py                          # start scheduler + dashboard
     python main.py --run postmarket         # run post-market pipeline now
@@ -389,6 +415,17 @@ def run_job(name, fn, *args, **kwargs):
     from ops.jobs import job_lock
     start = datetime.now()
     run_date = _job_run_date(args, kwargs)
+    # Task 2: nothing runs in the 21:00-06:00 IST stop window (or under a manual stop)
+    try:
+        from pipeline.operating_schedule import is_stopped, stop_reason
+        if is_stopped():
+            why = stop_reason()
+            log.info(f"⏸  [{now_ist()}]  {name} not run — {why}")
+            log_job(name, "SKIPPED", None, error=why, run_date=run_date, start_time=start,
+                    end_time=datetime.now(), kind="run")
+            return {"status": "SKIPPED", "reason": why}
+    except Exception as e:
+        log.warning(f"  operating-schedule gate unavailable ({e}) — running {name}")
     # W8: one runner per job name at a time (a second ATIP process, a CLI run, or
     # an overlapping catch-up SKIPS instead of running the job twice)
     with job_lock(name) as held:
@@ -523,7 +560,7 @@ def run_morning_catchup():
     from db.schema import get_connection
     conn = get_connection()
     try:
-        need_news = not _ran_ok_today(conn, ("news_premarket", "news_midday", "news_catchup"))
+        need_news = not _ran_ok_today(conn, ("news_premarket", "news_midday", "news_catchup", "news_resume"))
         need_book = now.hour >= 8 and not conn.execute(
             "SELECT 1 FROM portfolio_sync WHERE status='SUCCESS' AND date=?", (str(date.today()),)).fetchone()
     finally:
@@ -2097,6 +2134,19 @@ def start_scheduler():
     for t in ("08:20", "12:20"):
         schedule.every().day.at(t).do(run_morning_catchup)
 
+    # ── Task 2/3: Asia refreshes (Taiwan + Pakistan sessions mid-morning, everything after the close) and
+    # the pre-market report refresh before the 08:30 brief. The 06:00 resume sequence runs from the loop
+    # below (operating_schedule.tick), not from a slot, so a missed 06:00 is caught up on start/wake.
+    _schedule_operating_jobs()
+
+    # Task 2: started inside the stop window -> STOPPED now, and the catch-ups below are refused by run_job;
+    # started after 06:00 with no resume yet today -> the resume sequence runs here, before them.
+    try:
+        from pipeline.operating_schedule import tick as _ops_tick
+        _ops_tick(trigger="startup")
+    except Exception as e:
+        log.warning(f"  Operating schedule start-up tick failed: {e}", exc_info=True)
+
     # Market indicators whose slots passed while the PC was off (global markets,
     # indexes / VIX / GIFT Nifty, quotes, FII/DII, delivery, overnight) -- first,
     # because they are quick and the dashboard should be current while scoring catches up.
@@ -2145,7 +2195,7 @@ def start_scheduler():
                     time.sleep(30)
                 log.info("  scheduler leader lease re-acquired")
             last_lease = time.monotonic()
-        schedule.run_pending()
+        _run_pending_gated()
         if slept_from:
             # After run_pending has fired the overdue slots once: whatever is still
             # missing gets the same catch-up + recovery a restart would.
@@ -2170,12 +2220,64 @@ def start_scheduler():
 WAKE_GAP = timedelta(minutes=10)
 
 
+def _run_pending_gated():
+    """One loop pass under the operating window (Task 2): the clock tick (STOPPED at 21:00, the resume
+    sequence at 06:00 or on the first pass after it), then either the due jobs or -- while STOPPED --
+    nothing: each due job is moved to its next slot unrun and a daily one is deferred to the 06:00 replay."""
+    try:
+        from pipeline import operating_schedule as ops_sched
+        ops_sched.tick()
+        if ops_sched.is_stopped():
+            ops_sched.gate_pending(schedule)
+            return
+    except Exception as e:
+        log.warning(f"  operating schedule tick failed ({e}) — running due jobs", exc_info=True)
+    schedule.run_pending()
+
+
+def _schedule_operating_jobs():
+    """Task 2/3 slots, at the times in config (asia_markets.refresh_times_ist)."""
+    try:
+        from data import asia_markets
+        times = asia_markets.settings().get("refresh_times_ist") or {}
+    except Exception as e:
+        log.warning(f"  Asia refresh not scheduled: {e}")
+        times = {}
+    for label, t in times.items():
+        schedule.every().day.at(str(t)).do(_asia_refresh, label)
+        log.info(f"  Asia markets refresh ({label}) at {t} IST")
+    schedule.every().day.at("08:15").do(_premarket_report_refresh)
+
+
+def _asia_refresh(label):
+    """Asia refresh: informational signals only. Runs on weekends too -- the markets' own calendars decide
+    what is open; the session status column records it."""
+    try:
+        from data.asia_markets import run as asia_run
+        run_job(f"asia_markets_{label}", asia_run, label)
+    except Exception as e:
+        log.warning(f"  Asia markets ({label}): {e}")
+
+
+def _premarket_report_refresh():
+    try:
+        from pipeline.premarket_report import run_job as report_job
+        run_job("premarket_report", report_job, "08:15")
+    except Exception as e:
+        log.warning(f"  Pre-market report refresh: {e}")
+
+
 def _on_wake(slept_from):
     """The PC slept from `slept_from` until now. `schedule` fires each overdue slot once
     on wake, but jobs whose own guards skip late runs (morning brief, pre-market) and
     anything that failed meanwhile stay missed -- 2026-10-01 had the PC asleep 01:33-09:03.
     Run the start-up market catch-up, the morning catch-up and recovery."""
     log.warning(f"\n  ⏰ Woke after {datetime.now() - slept_from} asleep (since {slept_from:%H:%M}) — catching up")
+    try:                                     # Task 2: asleep through 06:00 -> the resume sequence runs now
+        from pipeline.operating_schedule import tick as _ops_tick
+        _ops_tick(trigger="wake")
+    except Exception as e:
+        log.warning(f"  Wake operating-schedule tick: {e}", exc_info=True)
     for fn in (run_startup_market_catchup, run_morning_catchup, run_postmarket_if_missing):
         try:
             fn()

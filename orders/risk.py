@@ -138,6 +138,14 @@ def halted() -> tuple[bool, str]:
         return True, f"{HALT_FLAG} exists but could not be read ({e})"
     if _config().get("trading_halted"):
         return True, 'config.json says "trading_halted": true'
+    # Task 2 (2026-10-26): the 21:00-06:00 IST stop window (or a manual stop) -- every order path that
+    # honours the kill switch is closed by it, so no order can be placed or triggered while ATIP is stopped.
+    try:
+        from pipeline.operating_schedule import is_stopped, stop_reason
+        if is_stopped():
+            return True, stop_reason()
+    except Exception as e:
+        log.warning(f"  operating-schedule check unavailable: {e}")
     return False, ""
 
 

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">ATIP</string>
+    <string name="tab_today">Today</string>
+    <string name="tab_command">Command</string>
+    <string name="tab_asia">Global &amp; Asia</string>
+    <string name="server_title">ATIP server address</string>
+</resources>

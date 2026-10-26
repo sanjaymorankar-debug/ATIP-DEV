@@ -67,7 +67,7 @@ class Expect:
 EXPECTATIONS = (
     Expect("Global markets (pre-market)", ("global_premarket", "global_catchup", "global_recover"),
            daily_by=time(7, 30), need_rows=True),
-    Expect("News (morning)", ("news_premarket", "news_catchup", "news_recover"), daily_by=time(8, 30),
+    Expect("News (morning)", ("news_premarket", "news_catchup", "news_recover", "news_resume"), daily_by=time(8, 30),
            need_rows=True),
     # Zerodha reports SKIPPED when it is not connected; that must not make a
     # failed Dhan sync look like a working portfolio sync.

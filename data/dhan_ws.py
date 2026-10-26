@@ -75,7 +75,13 @@ TICK_STALL_SECONDS = 600.0
 def feed_window_open(now=None) -> bool:
     """Is the Dhan index feed worth holding open right now?"""
     now = now or datetime.now()
-    return is_trading_day(now.date()) and FEED_OPEN <= now.time() <= FEED_CLOSE
+    if not (is_trading_day(now.date()) and FEED_OPEN <= now.time() <= FEED_CLOSE):
+        return False
+    try:                                     # Task 2: never inside the stop window / under a manual stop
+        from pipeline.operating_schedule import is_stopped
+        return not is_stopped()
+    except Exception:
+        return True
 
 try:
     from dhanhq.marketfeed import MarketFeed

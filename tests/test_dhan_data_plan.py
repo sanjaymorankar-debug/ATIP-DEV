@@ -145,4 +145,4 @@ def test_the_mobile_app_shows_the_data_feeds(temp_db):
     assert str(s["news"]["last_fetch"]).startswith("2026-10-26 07:00") and s["news"]["n"] == 2 and not s["news"]["ai"]
     page = render_mobile()
     assert "Data feeds" in page and "keyword only" in page
-    assert "atip-shell-v2" in SERVICE_WORKER          # installed PWAs pick up the new shell
+    assert "atip-shell-v3" in SERVICE_WORKER          # installed PWAs pick up the new shell (v3: Task 2/3 banner + Global & Asia)

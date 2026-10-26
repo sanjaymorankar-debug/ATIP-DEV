@@ -338,6 +338,10 @@ RULES = [
      r"broker_health_check|"
      r"live_feed_status|tick_capture_status|latency_rollup|audit_export)", "operational", False,
      "operational logs: kept / rotated by ops jobs"),
+    # Task 2/3 (2026-10-26): Asia signals, the pre-market report, the operating schedule's own log
+    (r"^(asia_|premarket_reports)", "research", False, "Asia index signals / pre-market report: 600 days (W1 purge)"),
+    (r"^(scheduler_status|scheduler_override|resume_runs|deferred_jobs|ema_gap_sessions)", "operational", False,
+     "operating-schedule log: 90 days (W1 purge)"),
 ]
 DSR_SLA_DAYS = 30
 

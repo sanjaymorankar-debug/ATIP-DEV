@@ -33,6 +33,14 @@ RSS_FEEDS=[
     {"name":"Hindu BusinessLine Markets","url":"https://www.thehindubusinessline.com/markets/feeder/default.rss","weight":0.8},
     {"name":"Financial Express Market","url":"https://www.financialexpress.com/market/feed/","weight":0.8},
 ]
+# Task 2/3 (2026-10-26): global, Asia and Pakistan news for the 06:00 IST resume backfill. Fetched in a run of
+# their own (run_news_pipeline(feeds=GLOBAL_FEEDS), job news_global), classified by the same Claude path; the
+# Pakistan geopolitical flag (data/asia_markets.pakistan_risk) reads these headlines.
+GLOBAL_FEEDS=[
+    {"name":"Google News Global Markets","url":"https://news.google.com/rss/search?q=%22Wall+Street%22+OR+%22global+markets%22+OR+%22US+stocks%22+OR+%22Treasury+yields%22+when:1d&hl=en-US&gl=US&ceid=US:en","weight":0.7},
+    {"name":"Google News Asia Markets","url":"https://news.google.com/rss/search?q=Nikkei+OR+TOPIX+OR+KOSPI+OR+KOSDAQ+OR+TAIEX+OR+%22Asian+markets%22+when:1d&hl=en-US&gl=US&ceid=US:en","weight":0.7},
+    {"name":"Google News Pakistan","url":"https://news.google.com/rss/search?q=Pakistan+(PSX+OR+KSE+OR+border+OR+military+OR+IMF+OR+India+OR+attack)+when:2d&hl=en-IN&gl=IN&ceid=IN:en","weight":0.6},
+]
 SYMBOLS={"RELIANCE":["Reliance","RIL"],"TCS":["TCS","Tata Consultancy"],"INFY":["Infosys"],
          "HDFCBANK":["HDFC Bank"],"ICICIBANK":["ICICI Bank"],"TATAMOTORS":["Tata Motors"],
          "TATASTEEL":["Tata Steel"],"ADANIENT":["Adani Enterprises"],"ZOMATO":["Zomato"],
@@ -49,7 +57,7 @@ def _local_time(utc_struct):
     import calendar
     return datetime.fromtimestamp(calendar.timegm(utc_struct))
 
-def fetch_feeds(hours_back=12):
+def fetch_feeds(hours_back=12, feeds=None):
     if not HAS_FP: return []
     # Times are IST local, like every other time ATIP stores. feedparser's
     # published_parsed is UTC; it used to be stored as it came, so
@@ -58,7 +66,7 @@ def fetch_feeds(hours_back=12):
     # than it was -- and the day windows scoring reads cut at UTC midnight.
     cutoff=datetime.now()-timedelta(hours=hours_back); articles=[]; seen=set()
     status={}
-    for feed in RSS_FEEDS:
+    for feed in (feeds or RSS_FEEDS):
         n=0; err=None
         try:
             from ops.resilience import breaker as _br     # W31 (OPS-10): a dead feed is skipped fast
@@ -254,11 +262,11 @@ def store_articles(articles, conn):
         except Exception as e: log.warning(f"  Article store: {e}")
     return count
 
-def run_news_pipeline(hours_back=12):
-    log.info(f"📰 News pipeline (last {hours_back}h)")
+def run_news_pipeline(hours_back=12, feeds=None):
+    log.info(f"📰 News pipeline (last {hours_back}h){' — global/Asia feeds' if feeds else ''}")
     conn=get_connection(); result={"rows":0,"status":"SUCCESS"}
     try:
-        fetched=fetch_feeds(hours_back)
+        fetched=fetch_feeds(hours_back, feeds)
         articles=classify_with_claude(unseen(fetched,conn))
         from data.news_weighting import enrich          # W28b (NS-05): novelty, half-life, source weight
         articles=enrich(articles,conn)

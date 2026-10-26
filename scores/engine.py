@@ -650,6 +650,14 @@ def compute_mh(td,conn,weights,breadth=None,backfilled=False,quiet=False):
     if fii.get("fii_net_cr") is not None: c["FII"]=minmax(fii["fii_net_cr"],-3000,3000)
     if fii.get("dii_net_cr") is not None: c["DII"]=minmax(fii["dii_net_cr"],-1000,2000)
     if glb.get("global_score") is not None: c["Global"]=glb["global_score"]
+    # Task 3: the Asia Sentiment Score for the session (data/asia_markets.py), weighted by
+    # weight_config ("MH","Asia"); absent -> left out and the score renormalises like any input
+    try:
+        from data.asia_markets import sentiment_for
+        asia=sentiment_for(conn,td)
+    except Exception:
+        asia=None
+    if asia is not None: c["Asia"]=asia
     mid=get_index_change(td,conn,"midcap150",idx); small=get_index_change(td,conn,"smallcap250",idx)
     if mid is not None and small is not None: c["Sector"]=minmax((mid+small)/2,-4,4)
     br=compute_breadth(td,conn) if breadth is None else breadth

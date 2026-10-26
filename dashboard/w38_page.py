@@ -164,10 +164,18 @@ MOBILE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon.svg">
 <title>ATIP</title><style>__STYLE__
 body{font-size:15px;padding-bottom:24px}.wrap{padding:12px}.big{font-size:26px;font-weight:700}.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #33415555}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.card{margin-bottom:8px}#off{display:none;background:#78350f;color:#fde68a;padding:6px 12px;font-size:12px}</style></head><body>
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.card{margin-bottom:8px}#off{display:none;background:#78350f;color:#fde68a;padding:6px 12px;font-size:12px}
+.seg{display:flex;gap:4px;padding:8px 12px 0}.seg button{flex:1;min-height:44px;margin:0;background:var(--panel);color:var(--muted);border:1px solid var(--line)}
+.seg button[aria-selected=true]{background:#2563eb;color:#fff;border-color:#2563eb}</style>__ASIACSS__</head><body>
 <div class="top"><b style="color:var(--accent)">📊 ATIP</b><span class="muted" id="upd">loading…</span></div>
+__OPBANNER__
 <div id="off">Offline — showing the last data received.</div>
+<div class="seg" role="tablist" aria-label="Screens"><button role="tab" id="tToday" aria-selected="true" onclick="mtab('today')">Today</button><button role="tab" id="tAsia" aria-selected="false" onclick="mtab('asia')">Global &amp; Asia</button><button role="tab" onclick="location.href='/command'">Command</button></div>
 <div class="wrap" id="app"></div>
+<div class="wrap" id="asiaPane" hidden><div id="gaBox" class="muted">Loading…</div></div>
+__ASIAJS__
+<script>function mtab(t){var a=t==='asia';document.getElementById('app').hidden=a;document.getElementById('asiaPane').hidden=!a;
+document.getElementById('tToday').setAttribute('aria-selected',String(!a));document.getElementById('tAsia').setAttribute('aria-selected',String(a));if(a)atipLoadAsia('gaBox');}</script>
 <script>
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const n=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});
@@ -201,7 +209,11 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catc
 
 
 def render_mobile(token: str = "") -> str:
-    return MOBILE.replace("__STYLE__", _STYLE)                 # token deliberately unused: see the module note
+    # token deliberately unused: see the module note. Task 2/3: the STOPPED / RUNNING banner and the
+    # Global & Asia screen (dashboard/global_asia.py), also what the Android / iOS shells (mobile/) load.
+    from dashboard.global_asia import status_banner_html, ASIA_CSS, ASIA_JS
+    return (MOBILE.replace("__STYLE__", _STYLE).replace("__OPBANNER__", status_banner_html())
+            .replace("__ASIACSS__", ASIA_CSS).replace("__ASIAJS__", ASIA_JS))
 
 
 MANIFEST = json.dumps({
@@ -211,7 +223,7 @@ MANIFEST = json.dumps({
 
 # Shell: cache-first. Data: network-only (the page keeps its own last-good copy); nothing else is cached,
 # so no API response with personal data lands in the cache storage.
-SERVICE_WORKER = r"""const C='atip-shell-v2';const SHELL=['/m','/manifest.webmanifest','/icon.svg'];
+SERVICE_WORKER = r"""const C='atip-shell-v3';const SHELL=['/m','/manifest.webmanifest','/icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;
