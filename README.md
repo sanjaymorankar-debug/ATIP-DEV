@@ -13,6 +13,7 @@
 | NSE index levels (Nifty, BankNifty etc.) | **Dhan + yfinance** | Every 15 min | 09:15 – 15:30 |
 | India VIX | **Dhan + yfinance** | Every 15 min | 09:15 – 15:30 |
 | Dhan WebSocket tick stream | **Dhan WS** | Real-time (every tick) | 09:15 – 15:30 |
+| Aggressive exit management (open strategy positions only; `manage_interval_minutes`) | **Dhan API** + computed | Every 2 min | 09:15 – 15:30 |
 | Intraday 15-min OHLC bars | **Dhan API** | Every 30 min | 09:15 – 15:30 |
 | Global markets (S&P, Dow, Gold, Crude) | **yfinance** | Every 30 min | 09:15 – 15:30 |
 | Pre-market GIFT Nifty + Global | **yfinance** | Once | 07:15 AM |

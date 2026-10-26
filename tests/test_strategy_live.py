@@ -350,3 +350,148 @@ def test_cri_threshold_is_validated():
     for bad in (0, 101, "80", True):
         with pytest.raises(A.ConfigError, match="cri_exit_threshold"):
             A.validate_config(dict(A.DEFAULTS, cri_exit_threshold=bad))
+
+
+# ── scheduled management in market hours ───────────────────────────────────
+
+class _Every:
+    def __init__(self, jobs, n):
+        self.jobs, self.n = jobs, n
+
+    @property
+    def minutes(self):
+        return self
+
+    def do(self, fn, *args):
+        self.jobs.append((self.n, fn, args))
+
+
+class _Schedule:
+    def __init__(self):
+        self.jobs = []
+
+    def every(self, n=1):
+        return _Every(self.jobs, n)
+
+
+TRADING_MON = (2026, 10, 26)     # a trading day (2026-10-31 is a Saturday, 2026-01-26 Republic Day)
+
+
+def _quotes(monkeypatch, price):
+    from datetime import datetime
+
+    import pandas as pd
+    monkeypatch.setattr("data.dhan.fetch_live_quotes", lambda symbols, dhan=None: pd.DataFrame(
+        [{"symbol": s, "ltp": price, "timestamp": pd.Timestamp(datetime.now())} for s in symbols]))
+
+
+def _run_job(calls):
+    def run_job(name, fn, *a, **k):
+        calls.append(name)
+        return fn(*a, **k)
+    return run_job
+
+
+def test_manager_is_scheduled_every_interval_and_can_be_switched_off(cfg):
+    run_job = object()
+    s = _Schedule()
+    lines = L.schedule_jobs(s, run_job, cfg=cfg)
+    assert s.jobs == [(2, L.scheduled_pass, (run_job,))] and "every 2 min, 09:15-15:30" in lines[0]
+    s = _Schedule()
+    L.schedule_jobs(s, run_job, cfg=A.validate_config(dict(cfg, manage_interval_minutes=5)))
+    assert s.jobs[0][0] == 5
+    s = _Schedule()
+    lines = L.schedule_jobs(s, run_job, cfg=dict(cfg, manage_interval_minutes=None))
+    assert s.jobs == [] and "not scheduled" in lines[0]
+
+
+def test_manage_interval_is_validated():
+    for good in (None, 1, 30):
+        A.validate_config(dict(A.DEFAULTS, manage_interval_minutes=good))
+    for bad in (0, 31, 2.5, "2", True):
+        with pytest.raises(A.ConfigError, match="manage_interval_minutes"):
+            A.validate_config(dict(A.DEFAULTS, manage_interval_minutes=bad))
+
+
+def test_market_hours_are_0915_to_1530_on_trading_days_only():
+    from datetime import datetime
+    assert not L.in_market_hours(datetime(*TRADING_MON, 9, 14, 59))
+    assert L.in_market_hours(datetime(*TRADING_MON, 9, 15))
+    assert L.in_market_hours(datetime(*TRADING_MON, 15, 30))
+    assert not L.in_market_hours(datetime(*TRADING_MON, 15, 30, 1))
+    assert not L.in_market_hours(datetime(2026, 10, 31, 11, 0))      # Saturday
+    assert not L.in_market_hours(datetime(2026, 1, 26, 11, 0))       # NSE holiday
+
+
+def test_scheduled_pass_does_nothing_outside_hours_or_with_nothing_open(temp_db, cfg, orders, monkeypatch):
+    from datetime import datetime
+    monkeypatch.setattr("data.dhan.fetch_live_quotes", lambda *a, **k: pytest.fail("no quote call expected"))
+    calls = []
+    assert L.scheduled_pass(_run_job(calls), now=datetime(*TRADING_MON, 11, 0)) is None     # nothing open
+    assert L.enter("ACME", 100, cfg=cfg)["opened"]
+    assert L.scheduled_pass(_run_job(calls), now=datetime(*TRADING_MON, 16, 0)) is None     # after the close
+    assert L.scheduled_pass(_run_job(calls), now=datetime(2026, 10, 31, 11, 0)) is None     # Saturday
+    assert calls == []
+
+
+def test_scheduled_pass_manages_open_positions_through_run_job(pos, cfg, orders, monkeypatch):
+    from datetime import datetime
+    monkeypatch.setattr(A, "config", lambda refresh=False: cfg)
+    monkeypatch.setattr("orders.environment.broker_env", lambda: "PAPER")
+    _quotes(monkeypatch, 96.0)                                          # through the 3% initial stop
+    calls = []
+    r = L.scheduled_pass(_run_job(calls), now=datetime(*TRADING_MON, 11, 0))
+    assert calls == ["aggressive_manage"] and r["status"] == "SUCCESS"
+    assert [(o["side"], o["qty"]) for o in orders["sent"] if o["side"] == "SELL"] == [("SELL", 100)]
+    p = P.get_position(pos["id"])
+    assert p["status"] == A.ST_CLOSED and p["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_unattended_pass_never_sells_a_position_opened_in_another_mode(pos, cfg, orders, monkeypatch):
+    """A PAPER position must not be sold through a LIVE broker because nobody was watching."""
+    from datetime import datetime
+    assert pos["mode"] == "PAPER"
+    monkeypatch.setattr(A, "config", lambda refresh=False: cfg)
+    monkeypatch.setattr("orders.environment.broker_env", lambda: "LIVE")
+    monkeypatch.setattr("data.dhan.fetch_live_quotes", lambda *a, **k: pytest.fail("no quote call expected"))
+    calls = []
+    r = L.scheduled_pass(_run_job(calls), now=datetime(*TRADING_MON, 11, 0))
+    assert calls == ["aggressive_manage"]
+    assert r["status"] == "MODE_MISMATCH" and r["mode_mismatch"][0]["symbol"] == "ACME"
+    assert "not managed" in r["error"]
+    assert not [o for o in orders["sent"] if o["side"] == "SELL"]
+    assert P.get_position(pos["id"])["status"] != A.ST_CLOSED
+
+
+def test_hand_run_pass_is_unchanged_by_the_mode_filter(pos, cfg, orders):
+    """`python -m strategy.live --manage` passes no only_mode: it manages everything, as before."""
+    r = L.run_once(cfg, prices={"ACME": 96.0})
+    assert r["status"] == "SUCCESS" and "mode_mismatch" not in r
+    assert P.get_position(pos["id"])["exit_reason"] == A.INITIAL_STOP_LOSS
+
+
+def test_a_mode_mismatch_lands_in_pipeline_log_through_the_real_run_job(pos, cfg, orders, monkeypatch):
+    """The scheduler's own run_job: the pass is recorded, the skipped position named in its error."""
+    from datetime import datetime
+
+    from db.schema import get_connection, init_db
+    from pipeline.scheduler import run_job
+    init_db()
+    monkeypatch.setattr(A, "config", lambda refresh=False: cfg)
+    monkeypatch.setattr("orders.environment.broker_env", lambda: "LIVE")
+    L.scheduled_pass(run_job, now=datetime(*TRADING_MON, 11, 0))
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT status, error_msg FROM pipeline_log WHERE job_name='aggressive_manage' "
+                           "AND kind='run'").fetchone()
+    finally:
+        conn.close()
+    assert row["status"] == "MODE_MISMATCH" and "not managed" in row["error_msg"]
+
+
+def test_schedule_jobs_speaks_the_schedule_librarys_api(cfg):
+    schedule = pytest.importorskip("schedule")
+    s = schedule.Scheduler()
+    L.schedule_jobs(s, lambda *a, **k: None, cfg=cfg)
+    (job,) = s.jobs
+    assert (job.interval, job.unit) == (2, "minutes") and job.job_func.func is L.scheduled_pass

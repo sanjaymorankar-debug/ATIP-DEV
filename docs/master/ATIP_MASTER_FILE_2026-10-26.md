@@ -3,8 +3,8 @@
 *Written 2026-10-26 from branch `claude/youthful-archimedes-mubyk3` at `bed2562` (ATIP-DEV = ATIP). Every figure is
 read from the code, the repository's own docs, or the simulations in §7, which are reproducible with
 `tools/master_file.py`. The full feature list (333 tracked features plus the new requirements) is in the
-workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`. Updated the same day with the owner-approved
-MRI fix (finding 1).*
+workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`. Updated the same day with two owner-approved
+changes: the MRI fix (finding 1) and the scheduled exit manager (finding 3).*
 
 Contents
 
@@ -71,9 +71,12 @@ trading (§7.6–7.8, roadmap §8).
    Stability Profit. The strategy library and the formulas workbook call them "value/profit" and
    "stock/sector strength". §4 fixes the canonical meanings from the code.
 3. The consolidated prompt's aggressive-strategy logic (phases 4, 6, 8, 13) is **already built and
-   tested**. Nothing schedules it, though: exits are managed only when `python -m strategy.live --manage`
-   is run by hand. The multi-user phases (3, 5, 9, 10, 12) are only partly in place, and open PR #11
-   (owner-only gate) points the other way. See §6 before any new implementation starts.
+   tested**. Nothing scheduled it: exits ran only when `python -m strategy.live --manage` was run by hand.
+   **Scheduled (owner-approved, 2026-10-26):** a management pass now runs every `manage_interval_minutes`
+   (default 2) from 09:15 to 15:30 on trading days while a position is open. Unattended, it never sells a
+   position through a broker other than the one it was opened with (PAPER vs LIVE). The multi-user phases
+   (3, 5, 9, 10, 12) are only partly in place, and open PR #11 (owner-only gate) points the other way. See
+   §6 before any new implementation starts.
 
 ---
 
@@ -229,7 +232,7 @@ flowchart TB
   end
   subgraph LIVE["Market hours 09:15-15:30"]
     direction LR
-    F["every 15 min: quotes, intraday scans; 30 min: bars; WebSocket ticks; order-rule monitor"] --> G["12:00 news, 12:30 ZPI scan, 14:45 pre-close scan"]
+    F["every 15 min: quotes, intraday scans; 30 min: bars; WebSocket ticks; order-rule monitor; every 2 min: aggressive exits while a position is open"] --> G["12:00 news, 12:30 ZPI scan, 14:45 pre-close scan"]
     G --> H["15:31 global close snapshot, 15:50 ticks EOD"]
   end
   subgraph POST["After the close"]
@@ -252,8 +255,9 @@ Weekly jobs:
 
 Catch-up runs at 18:30 and at startup, and covers the last 5 sessions, oldest first.
 
-The aggressive exit manager is **not** scheduled. It runs one pass each time
-`python -m strategy.live --manage` is called (`strategy/live.py:374-410`). See review row P4.
+The aggressive exit manager runs every `manage_interval_minutes` (default 2) from 09:15 to 15:30 on trading
+days, and only while a strategy position is open (`strategy/live.py` `schedule_jobs`, registered by
+`pipeline/scheduler.py`). `python -m strategy.live --manage` still runs one pass by hand. See review row P4.
 
 ### 3.2 Data to signal
 
@@ -605,8 +609,8 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 | P4 | Strategy | Levels configurable, validated (40/60, 60/40; invalid rejected) | PRESENT | `DEFAULTS` + `config.json` + `validate_config` (`strategy/aggressive.py:50-130`) | — |
 | P4 | Strategy | Reuse existing indicators; formulas unchanged | PRESENT | `strategy/live.py:57-83` reads ZPI, MSI, MRI, CRI, MH, RSI, MACD and volume from the stored scores, with no formula of its own. **Fixed 2026-10-26:** `Momentum.composite` inverted MRI at `bed2562`, while the engine scores MRI so that higher is more bullish (`scores/engine.py:470-487`) and sells on MRI < 40 (`:807`); MRI now enters as it is (`strategy/aggressive.py:198-199`) | Done (owner decision 6.1 (2)): STRONG / WEAK fixtures mirrored, so scenario results are unchanged; a test pins the direction against `determine_signal` |
 | P4 | Strategy | Volatility-aware trail that never moves down | PRESENT | 4 × ATR%, clamped 3–20%; `ratchet` is one-way; tightens ×0.5 on fading momentum | — |
-| P4 | Strategy | Exits managed automatically while the market is open | ABSENT | Only `python -m strategy.live --manage` runs a management pass, one per call (`strategy/live.py:374-410`); no scheduler job or dashboard thread calls it | Schedule a paper management pass every few minutes in market hours, behind `aggressive_enabled` |
-| P5 | Per user | Same signal, private execution state per user (own entry, qty, trail) | ABSENT | `strategy_position` / `strategy_event` have no tenant or user column; config is global; orders go to the owner's book (`strategy/live.py:102-187`); runs only from the CLI (`python -m strategy.live`) and is not scheduled | Needs user / tenant columns, per-user config and per-user broker routing, after 6.1 (1) |
+| P4 | Strategy | Exits managed automatically while the market is open | PRESENT | **Scheduled 2026-10-26 (owner-approved):** `strategy/live.py` `schedule_jobs` runs `run_once` through the scheduler's `run_job` every `manage_interval_minutes` (default 2, null = off), 09:15–15:30 on trading days, only while a position is open (no Dhan call otherwise). At `bed2562` only `python -m strategy.live --manage` ran a pass | The unattended pass manages only positions whose recorded mode (from the aggressive `execution_mode`) matches where orders now go (`broker_env`); the rest are reported as MODE_MISMATCH in `pipeline_log`, because the two switches can disagree |
+| P5 | Per user | Same signal, private execution state per user (own entry, qty, trail) | ABSENT | `strategy_position` / `strategy_event` have no tenant or user column; config is global; orders go to the owner's book (`strategy/live.py:102-187`); one scheduled pass manages every open position for the one owner | Needs user / tenant columns, per-user config and per-user broker routing, after 6.1 (1) |
 | P6 | State | Initial / remaining / partial quantity, T1 / T2 state, high water, trail, realised / unrealised P&L, exit reason | PRESENT | `strategy_position` columns (`strategy/positions.py:37-84`): `initial_qty`, `remaining_qty`, `t1_state/qty/price/at`, `t2_state/at`, `high_water`, `trail_pct/stop/moves`, `realized_pnl`, `unrealized_pnl`, `exit_reason`, `mode` | — |
 | P6 | State | Machine-readable exit reasons | PRESENT | The 8 constants in `strategy/aggressive.py` | — |
 | P7 | Tests | Aggressive strategy tests (config, entry, SL, +3%, runner, +6%, trail, idempotency, broker, edge cases) | PRESENT | `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py`, `test_aggressive_backtest.py`, `test_strategy_live.py`, `test_paper_broker.py` | — |
@@ -626,9 +630,9 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 
 ### 6.3 Reading of the review
 
-- **The aggressive strategy logic is done.** With the MRI fix made, phases 4, 6, 8 and 13 need nothing
-  new apart from a scheduled management pass (row P4). Re-implementing them, as the prompt literally
-  asks, would duplicate working, tested code.
+- **The aggressive strategy logic is done.** With the MRI fix and the scheduled management pass made
+  (rows P4), phases 4, 6, 8 and 13 need nothing new. Re-implementing them, as the prompt literally asks,
+  would duplicate working, tested code.
 - **The multi-user product is a separate, larger project.** Users, roles, MFA and the vault exist, but trading
   data, the strategy and the broker connection are single-owner by design. It should start only after
   decision 6.1 (1). If the answer is "multi-user", fix the `/api/orders` read leak and the owner-credential
@@ -846,7 +850,7 @@ the §7.6 levers 1–3 come before any exit work.
 |---|---|---|---|---|
 | R1 | P0 | **Done 2026-10-26** (owner-approved): the MRI direction in `Momentum.composite` and its tests | The runner exited on strength and held on weakness | S |
 | R2 | P0 | Run §7.8 commands 1–3 on the real database and record the results in the tracker | The objective needs real evidence, not simulation | S |
-| R3 | P0 | Add a "+4% profile" to the aggressive config (break-even after T1, ATR-based initial stop, time stop), and schedule the paper management pass in market hours | Levers 4 and 7; review row P4 (nothing runs the exits today) | M |
+| R3 | P0 | Add a "+4% profile" to the aggressive config (break-even after T1, ATR-based initial stop, time stop). The market-hours management pass is **done** (2026-10-26) | Lever 4; review row P4 | M |
 | R4 | P0 | Meta-label barriers configurable (+T% / −k × ATR / H) and trained for the +4% profile | Lever 2: the only direct win-rate lever | M |
 | R5 | P1 | Entry filter for the profile: regime gate OPEN, MH ≥ 60, confluence ≥ 4, ACS, CRI, liquidity, event blackout | Levers 1, 3, 5, 6 | M |
 | R6 | P1 | Walk-forward + CPCV report for the profile with a Monte Carlo band; KPI panel (win rate, expectancy, PF, drawdown, T1 hit) | Validation gates 2–4 | M |

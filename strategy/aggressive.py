@@ -74,6 +74,11 @@ DEFAULTS = {
     # W39b (EX-17): exit everything still held when the stock's crash-risk index (CRI, 0-100,
     # high = bad) reaches this. None = off, the default: it changes live exits only once set.
     "cri_exit_threshold":        None,
+    # How often the scheduler runs a management pass over the open positions, 09:15-15:30 on
+    # trading days (strategy/live.py schedule_jobs; one batched Dhan quote call per pass, none
+    # while nothing is open). None = not scheduled: exits then run only from
+    # `python -m strategy.live --manage`. Read at start-up, so a change needs a restart.
+    "manage_interval_minutes":   2,
 }
 
 _CONFIG_PATH = Path("atip_data") / "config.json"
@@ -127,6 +132,10 @@ def validate_config(cfg: dict) -> dict:
     cri = cfg.get("cri_exit_threshold")
     if cri is not None and (isinstance(cri, bool) or not isinstance(cri, (int, float)) or not 0 < cri <= 100):
         raise ConfigError(f"cri_exit_threshold must be null or within (0, 100], got {cri!r}")
+    every = cfg.get("manage_interval_minutes")
+    if every is not None and (isinstance(every, bool) or not isinstance(every, int) or not 1 <= every <= 30):
+        raise ConfigError(f"manage_interval_minutes must be null or a whole number of minutes in "
+                          f"[1, 30], got {every!r}")
     return cfg
 
 
