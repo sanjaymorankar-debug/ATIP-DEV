@@ -319,6 +319,19 @@ def _market_lines(conn, td, now=None):
         lines.append(f"<b>News tone:</b> {_html(tone)} · {ns['article_count'] or 0} headlines ({how}, {made:%d %b %H:%M})")
     else:
         lines.append("<b>News tone:</b> — (no news summary in the last 24 h)")
+    try:                                         # Task 3: the Asia Sentiment Score + each market, informational
+        from data.asia_markets import snapshot
+        a = snapshot(conn)
+        s = a.get("sentiment") or {}
+        if s.get("score") is not None:
+            mk = " · ".join(f"{m['name']} {m['chg_pct']:+.2f}%" for m in a["markets"] if m.get("chg_pct") is not None)
+            lines.append(f"<b>Asia:</b> {s['score']:.0f} ({_html(s.get('signal') or '—')}){asof(s['date'])}"
+                         + (f" · {_html(mk)}" if mk else "")
+                         + (f" · Pakistan risk {_html(s['pk_risk_level'])}" if s.get("pk_risk_level") not in (None, "NONE") else ""))
+        else:
+            lines.append("<b>Asia:</b> — (no Asia markets run stored)")
+    except Exception as e:
+        log.debug(f"  Asia line: {e}")
     return lines
 
 def send_morning_digest(trade_date=None):

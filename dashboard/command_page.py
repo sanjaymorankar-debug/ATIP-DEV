@@ -89,12 +89,14 @@ td{padding:8px 4px;border-top:1px solid var(--line)}.scroll{overflow-x:auto}
  <span id="pEnv" class="pill">…</span>
  <button id="killBtn" class="kill" type="button">Halt all trading</button>
 </header>
+__OPBANNER__
 <div id="haltBanner" class="banner bad" hidden></div>
 <div id="feedBanner" class="banner warn" role="alert" hidden></div>
 <div class="wrap">
 <nav aria-label="Main">
  <a class="on" href="/command" aria-current="page">Command Center</a>
  <a href="/">Signals &amp; scores</a>
+ <a href="/global-asia">Global &amp; Asia</a>
  <a href="/signals">Technical signals</a>
  <a href="/trading">Trading</a>
  <a href="/execution-lab">Execution</a>
@@ -260,4 +262,5 @@ load(); setInterval(load,15000);
 
 def render() -> str:
     from dashboard.security import page_token      # the credential this request may carry (per-session in enterprise mode)
-    return PAGE.replace("__TOKEN__", json.dumps(page_token()))
+    from dashboard.global_asia import status_banner_html   # Task 2: STOPPED / RESUMING / RUNNING banner
+    return PAGE.replace("__TOKEN__", json.dumps(page_token())).replace("__OPBANNER__", status_banner_html())

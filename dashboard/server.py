@@ -861,6 +861,9 @@ def build_html(state):
     from dashboard.security import page_token as _dash_token
     token_js = json.dumps(_dash_token())
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
+    # Task 2/3: the operating-status banner and the Global & Asia tab (dashboard/global_asia.py)
+    from dashboard.global_asia import status_banner_html as _op_banner, asia_tab_html as _asia_tab
+    op_banner=_op_banner(); asia_tab=_asia_tab()
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
 <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:10px;color:#475569;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
 .ob{{background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer}}.ob:hover{{background:#38bdf8;color:#0f172a}}
@@ -890,7 +893,8 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+{op_banner}
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
@@ -924,7 +928,7 @@ def build_html(state):
   <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div></div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this)">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
     <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history</span></div>
     <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -990,6 +994,7 @@ def build_html(state):
       <th>Qty</th><th>Status</th><th>Mode</th><th>Fill</th><th>Order ID</th><th>Action</th></tr></thead>
       <tbody>{order_rows_or_empty}</tbody></table>
   </div>
+  {asia_tab}
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
 
@@ -1326,6 +1331,9 @@ if HAS_FASTAPI:
     # config.json enterprise.enabled is true -- see enterprise/authz.py)
     from enterprise.authz import install as _install_enterprise_authz
     _install_enterprise_authz(app)
+    # Task 2: read-only while ATIP is STOPPED (21:00-06:00 IST or a manual stop) -- writes get 423
+    from pipeline.operating_schedule import install_readonly_guard as _install_readonly_guard
+    _install_readonly_guard(app)
     from fastapi import Depends, HTTPException, Request as _Req
     from dashboard.security import TOKEN_HEADER, guard_ok
 
@@ -1676,6 +1684,8 @@ if HAS_FASTAPI:
     _register_w40_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.command_routes import register as _register_command_routes          # UXR-01: Command Center
     _register_command_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
+    _register_global_asia(app, _guard, _Req, get_connection, json_safe)
 
     # ── AI / ML (W5) ─────────────────────────────────────────────────────
     from dashboard.ml_routes import register as _register_ml_routes
@@ -1839,9 +1849,11 @@ if HAS_FASTAPI:
         """
         import time
         from pipeline.scheduler import is_market_hours
+        from pipeline.operating_schedule import is_stopped
         while True:
             try:
-                if is_market_hours():
+                # Task 2: nothing is triggered while ATIP is stopped (21:00-06:00 IST / manual stop)
+                if is_market_hours() and not is_stopped():
                     events = oe.check_triggers()
                     if events:
                         log.info(f"  order_rules: {events}")

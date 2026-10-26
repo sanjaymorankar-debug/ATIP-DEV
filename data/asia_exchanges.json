@@ -1,0 +1,75 @@
+{
+  "_note": "Asia markets (Task 3, 2026-10-26). Exchange hours and holiday calendars live here, not in code. Times are the exchange's LOCAL time. atip_data/config.json \"asia_markets\" overrides any key (deep merge), so a holiday NSE-style circular can be added there without a release. Holiday lists are the best-known 2026 calendars and are checked against the data every refresh (asia_markets.calendar_check): a listed holiday that has a bar, or a weekday with no bar that is not listed, is flagged on /api/asia/sources. Lunar-calendar dates (Pakistan's Eids, Ashura, Eid Milad) depend on moon sighting and must be confirmed against the PSX notice each year.",
+  "exchanges": {
+    "JPX": {
+      "name": "Japan Exchange Group (TSE)", "tz": "Asia/Tokyo", "weekdays": [0, 1, 2, 3, 4],
+      "sessions": [["09:00", "11:30"], ["12:30", "15:30"]],
+      "holidays": ["2026-01-01", "2026-01-02", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20",
+                   "2026-04-29", "2026-05-04", "2026-05-05", "2026-05-06", "2026-07-20", "2026-08-11",
+                   "2026-09-21", "2026-09-22", "2026-09-23", "2026-10-12", "2026-11-03", "2026-11-23",
+                   "2026-12-31", "2027-01-01"],
+      "holidays_verified": false
+    },
+    "KRX": {
+      "name": "Korea Exchange", "tz": "Asia/Seoul", "weekdays": [0, 1, 2, 3, 4],
+      "sessions": [["09:00", "15:30"]],
+      "special_sessions": {},
+      "holidays": ["2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-01",
+                   "2026-05-05", "2026-05-25", "2026-06-03", "2026-08-17", "2026-09-24", "2026-09-25",
+                   "2026-10-05", "2026-10-09", "2026-12-25", "2026-12-31", "2027-01-01"],
+      "holidays_verified": false
+    },
+    "TWSE": {
+      "name": "Taiwan Stock Exchange", "tz": "Asia/Taipei", "weekdays": [0, 1, 2, 3, 4],
+      "sessions": [["09:00", "13:30"]],
+      "holidays": ["2026-01-01", "2026-02-12", "2026-02-13", "2026-02-16", "2026-02-17", "2026-02-18",
+                   "2026-02-19", "2026-02-20", "2026-02-27", "2026-04-03", "2026-04-06", "2026-05-01",
+                   "2026-06-19", "2026-09-25", "2026-09-28", "2026-10-09", "2026-10-23", "2026-10-26", "2026-12-25",
+                   "2027-01-01"],
+      "_closures_from_data": {"2026-10-23": "no TAIEX bar from TWSE, Yahoo or Naver (calendar_check, 2026-10-26)"},
+      "holidays_verified": false
+    },
+    "PSX": {
+      "name": "Pakistan Stock Exchange", "tz": "Asia/Karachi", "weekdays": [0, 1, 2, 3, 4],
+      "sessions": [["09:30", "15:30"]],
+      "sessions_by_weekday": {"4": [["09:15", "12:00"], ["14:30", "16:30"]]},
+      "holidays": ["2026-02-05", "2026-03-20", "2026-03-23", "2026-05-01", "2026-05-27", "2026-05-28",
+                   "2026-05-29", "2026-06-25", "2026-06-26", "2026-08-14", "2026-08-26", "2026-11-09",
+                   "2026-12-25"],
+      "holidays_verified": false
+    }
+  },
+  "indexes": {
+    "N225":   {"name": "Nikkei 225", "market": "Japan", "exchange": "JPX",
+               "sources": [{"kind": "naver_world", "ticker": ".N225"}, {"kind": "yahoo", "ticker": "^N225"}]},
+    "TOPIX":  {"name": "TOPIX", "market": "Japan", "exchange": "JPX",
+               "sources": [{"kind": "naver_world", "ticker": ".TOPX"}, {"kind": "yahoo", "ticker": "^TOPX"}]},
+    "KOSPI":  {"name": "KOSPI", "market": "South Korea", "exchange": "KRX",
+               "sources": [{"kind": "naver_kr", "ticker": "KOSPI"}, {"kind": "yahoo", "ticker": "^KS11"}]},
+    "KOSDAQ": {"name": "KOSDAQ", "market": "South Korea", "exchange": "KRX",
+               "sources": [{"kind": "naver_kr", "ticker": "KOSDAQ"}, {"kind": "yahoo", "ticker": "^KQ11"}]},
+    "TAIEX":  {"name": "TAIEX", "market": "Taiwan", "exchange": "TWSE",
+               "sources": [{"kind": "twse", "ticker": "TAIEX"}, {"kind": "yahoo", "ticker": "^TWII"},
+                           {"kind": "naver_world", "ticker": ".TWII"}]},
+    "KSE100": {"name": "KSE-100", "market": "Pakistan", "exchange": "PSX",
+               "sources": [{"kind": "investing", "ticker": "49677"}, {"kind": "psx_dps", "ticker": "KSE100"},
+                           {"kind": "yahoo", "ticker": "^KSE"}]}
+  },
+  "weights": {"N225": 0.25, "TOPIX": 0.10, "KOSPI": 0.20, "KOSDAQ": 0.05, "TAIEX": 0.25, "KSE100": 0.05,
+              "PK_GEO_RISK": 0.10},
+  "signal_weights": {"trend": 0.35, "momentum": 0.30, "volatility": 0.15, "gap": 0.20},
+  "thresholds": {"bullish": 20, "bearish": -20, "sentiment_bullish": 60, "sentiment_bearish": 40},
+  "mh_weight": 0.05,
+  "history_days": 260,
+  "stale_after_days": 7,
+  "refresh_times_ist": {"midday": "10:45", "close": "17:15"},
+  "pakistan_risk": {
+    "lookback_hours": 48,
+    "keywords": ["pakistan", "pakistani", "islamabad", "karachi", "lahore", "rawalpindi", "psx", "kse-100",
+                 "kse 100", "line of control", "loc ", "balochistan", "khyber", "waziristan", "isi "],
+    "risk_terms": ["attack", "strike", "border", "ceasefire", "military", "army", "terror", "blast", "tension",
+                   "clash", "missile", "drone", "sanction", "default", "imf", "protest", "unrest", "curfew",
+                   "shelling", "infiltration", "war", "escalat"],
+    "elevated_min": 1, "high_min": 3, "high_avg_sentiment": -0.3
+  }
+}

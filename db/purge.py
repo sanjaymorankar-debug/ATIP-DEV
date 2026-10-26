@@ -62,6 +62,10 @@ LONG_RETENTION_TABLES = {
     "intraday_scan_hit":    "session",   # W28
     "news_symbol_score":    "date",      # W28b (NS-05)
     "technical_snapshot":   "date",      # W39 (TA-05): recomputable from prices_daily; signals are kept
+    "global_indices_daily": "date",      # Task 3 (2026-10-26): Asia index OHLC + session status
+    "asia_signals":         "date",      # Task 3: per-market BULLISH / NEUTRAL / BEARISH
+    "asia_sentiment":       "date",      # Task 3: the Asia Sentiment Score
+    "premarket_reports":    "for_date",  # Task 2: the 06:00 / 08:15 pre-market report
 }
 
 SHORT_RETENTION_TABLES = {
@@ -81,6 +85,9 @@ SHORT_RETENTION_TABLES = {
     "fo_contract_daily": "date",         # W35 (DP-08); every contract stays in lake "fo_bhavcopy"
     "order_book_pressure": "ts",         # W39 (OB-01): intraday context, 15-minute polls
     "depth20_snapshot": "ts",            # W39 (DP-01): 20-level depth snapshots, every 15 s per stock
+    "scheduler_status": "at",            # Task 2: STOPPED / RESUMING / RUNNING transitions
+    "resume_runs":      "run_date",      # Task 2: one row per 06:00 resume
+    "deferred_jobs":    "window_date",   # Task 2: daily slots the stop window deferred
 }
 
 HISTORY_YEARS = 7

@@ -24,12 +24,14 @@ orders/sessions.py; the summary says so in "sessions.engine_enforced".
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
 import math
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 FEED_STALE_SECONDS = 60
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def _finite(obj):
@@ -186,7 +188,7 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.post("/api/risk/halt", dependencies=guard)
     async def api_risk_halt(request: Req):
         b = await body(request)
-        reason = str(b.get("reason") or "").strip()[:200] or f"halted from /command {date.today()}"
+        reason = str(b.get("reason") or "").strip()[:200] or f"halted from /command {datetime.now(IST):%Y-%m-%d %H:%M} IST"
 
         def go(conn):
             from orders import risk, sessions
