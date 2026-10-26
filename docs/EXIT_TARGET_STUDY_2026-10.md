@@ -42,10 +42,29 @@ different exits and changes nothing else. It can run on ATIP's own `prices_daily
 | Initial stop | 3 % (live: equal to `target_1_pct`) | **2 × ATR, kept within 2–10 %** |
 | Position size | fixed | **from risk:** qty = (equity × risk %) ÷ (entry × stop %), so a wider stop means fewer shares and the same rupee risk |
 
-`target_1_pct: 6` and `target_2_pct: 12` go in `atip_data/config.json`. **Watch out:**
-`strategy/live.py:229` defaults the live stop to `target_1_pct`. If you change T1 to 6 without
-passing `--stop-pct`, the live stop silently becomes 6 % as well. Live trading has no ATR stop
-option yet; that needs a small code change.
+All of it goes in `atip_data/config.json`:
+
+```json
+"target_1_pct": 6, "target_2_pct": 12,
+"stop_atr_mult": 2, "stop_min_pct": 2, "stop_max_pct": 10,
+"risk_sizing": true,
+"position_sizing": {"capital": null, "risk_per_trade_pct": 1.0, "max_position_pct": 10.0}
+```
+
+The ATR stop is worked out once per position, from the ATR at entry, and stored, so it never
+moves afterwards. Positions that are already open keep the stop they had. An explicit
+`--stop-pct` on `python -m strategy.live --manage` still overrides it.
+
+With `risk_sizing` on, `python -m strategy.live --enter SYMBOL` without `--qty` buys enough
+shares that hitting the initial stop loses `risk_per_trade_pct` of capital. The size is
+capped at `max_position_pct` of capital. Capital is `position_sizing.capital`, or the account's
+equity when that is null. The sizing uses a fresh quote and the same stop the position will
+use. That stop is stored, so a later change of target cannot change the risk. An explicit
+`--qty` is used as given.
+
+**Watch out:** with no stop chosen at entry (no `stop_atr_mult`, no ATR yet, no
+`--stop-pct`, no risk sizing), the live stop still falls back to `target_1_pct`. If you change
+T1 to 6 that way, the stop becomes 6 % as well.
 
 ---
 
@@ -202,8 +221,9 @@ also the setup that suffered most in 2025–26, so it is not recommended as the 
 
 ## Found along the way
 
-1. `strategy/live.py:229`: when `--stop-pct` is not given, the live initial stop falls back to
-   `target_1_pct`. Changing the target therefore changes the stop.
+1. `strategy/live.py`: when neither `--stop-pct` nor the ATR stop (`stop_atr_mult`) applies,
+   the live initial stop falls back to `target_1_pct`. Changing the target therefore changes the
+   stop.
 2. `strategy/backtest_history.py`: `realised_pnl` applies `cost_pct` to the turnover of both
    legs. The documented 0.25 % round trip is therefore really about 0.5 %.
 3. The breakout rule (`library/12_volume_breakout.json`) lost 0.3–0.7 % per trade with every exit

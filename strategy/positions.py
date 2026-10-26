@@ -26,12 +26,18 @@ from datetime import datetime
 
 from db.schema import get_connection
 from strategy.aggressive import (
-    Momentum, checkpoint_decision, config, is_live, partial_exit_quantity,
+    Momentum, checkpoint_decision, config, initial_stop_pct, is_live, partial_exit_quantity,
     ratchet, realised_pnl, trail_distance_pct, unrealised_pnl,
     ST_OPEN, ST_RUNNER, ST_CLOSED, TARGET_1_PARTIAL_EXIT,
 )
 
 log = logging.getLogger("atip.strategy")
+
+# Columns added after strategy_position first shipped; a fresh table gets them from the CREATE.
+#   initial_stop_pct  the stop fixed at entry (--stop-pct, the ATR stop, or the stop a risk-sized
+#                     entry was sized on); NULL = the position follows --stop-pct, else
+#                     target_1_pct, as every position did before it
+ADDED_COLUMNS = {"strategy_position": {"initial_stop_pct": "REAL"}}
 
 
 def ensure_tables(conn):
@@ -55,6 +61,7 @@ def ensure_tables(conn):
             trail_pct      REAL,
             trail_stop     REAL,
             trail_moves    INTEGER DEFAULT 0,
+            initial_stop_pct REAL,
             realized_pnl   REAL DEFAULT 0,
             unrealized_pnl REAL DEFAULT 0,
             cost_pct       REAL DEFAULT 0,
@@ -82,6 +89,12 @@ def ensure_tables(conn):
             UNIQUE (position_id, event_key)
         )
     """)
+    try:
+        from db.schema import _add_missing_columns
+        for table, cols in ADDED_COLUMNS.items():
+            _add_missing_columns(conn, table, cols)
+    except Exception as e:
+        log.debug(f"strategy_position column migration: {e}")
     conn.commit()
 
 
@@ -169,8 +182,16 @@ def event_log(position_id: str, conn=None) -> list[dict]:
 
 def open_position(symbol: str, entry_price: float, quantity: int, side: str = "BUY",
                   entry_rule_id: str = None, atr_pct: float = None,
-                  cost_pct: float = 0.0, conn=None, cfg: dict = None) -> dict:
-    """Track a filled entry. Trailing stays dormant until T1 books."""
+                  cost_pct: float = 0.0, conn=None, cfg: dict = None,
+                  stop_pct: float = None) -> dict:
+    """
+    Track a filled entry. Trailing stays dormant until T1 books.
+
+    The initial stop is fixed here and stored: `stop_pct` when the caller decided it, else the
+    ATR stop (stop_atr_mult) worked out once from the ATR at entry. A stop that moved with each
+    day's ATR could loosen, and switching a setting later must not move the stop of a position
+    already open. NULL = no stop was decided at entry; the position follows target_1_pct.
+    """
     cfg = cfg or config()
     own = conn is None
     conn = conn or get_connection()
@@ -179,13 +200,15 @@ def open_position(symbol: str, entry_price: float, quantity: int, side: str = "B
         pid = str(uuid.uuid4())
         conn.execute("""
             INSERT INTO strategy_position (id, entry_rule_id, symbol, side, entry_price,
-                initial_qty, remaining_qty, high_water, trail_pct, cost_pct, status,
-                mode, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                initial_qty, remaining_qty, high_water, trail_pct, initial_stop_pct, cost_pct,
+                status, mode, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (pid, entry_rule_id, symbol.upper(), side, float(entry_price),
               int(quantity), int(quantity), float(entry_price),
-              trail_distance_pct(atr_pct, cfg), float(cost_pct), ST_OPEN,
-              "LIVE" if is_live(cfg) else "PAPER", _now(), _now()))
+              trail_distance_pct(atr_pct, cfg),
+              float(stop_pct) if stop_pct is not None else initial_stop_pct(atr_pct, cfg),
+              float(cost_pct),
+              ST_OPEN, "LIVE" if is_live(cfg) else "PAPER", _now(), _now()))
         conn.commit()
         return get_position(pid, conn=conn)
     finally:

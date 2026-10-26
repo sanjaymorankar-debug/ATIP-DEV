@@ -156,13 +156,62 @@ def _act(pos: dict, event_key: str, event_type: str, quantity: int,
 #  ENTRY
 # ═══════════════════════════════════════════════════════════════════════════
 
-def enter(symbol: str, quantity: int, cfg: dict = None, cost_pct: float = 0.0) -> dict:
+def _last_price(symbol: str) -> float | None:
+    """A fresh LTP to size an entry on, or None: no quote, or one older than MAX_QUOTE_AGE_SECONDS."""
+    from data.dhan import fetch_live_quotes
+    try:
+        q = fetch_live_quotes([symbol])
+    except Exception as e:
+        log.warning(f"  {symbol}: quote fetch failed, cannot size the entry: {e}")
+        return None
+    if q is None or q.empty:
+        return None
+    age = _quote_age_seconds(q)
+    if age is not None and age > MAX_QUOTE_AGE_SECONDS:
+        log.warning(f"  {symbol}: quote is {age:.0f}s old (limit {MAX_QUOTE_AGE_SECONDS}s) — not sizing on it")
+        return None
+    prices = {r["symbol"]: r["ltp"] for _, r in q.iterrows() if r.get("ltp")}
+    px = prices.get(symbol)
+    return float(px) if px else None
+
+
+def size_entry(symbol: str, stop_pct: float, cfg: dict = None, price: float = None) -> dict:
+    """
+    Shares to buy so that the initial stop loses risk_per_trade_pct of capital: orders.risk's
+    size_for_account (config.json position_sizing; capital defaults to the account's equity),
+    on a fresh quote. {"quantity": 0, "reason": ...} when it cannot be sized.
+    """
+    price = price if price is not None else _last_price(symbol)
+    if not price:
+        return {"quantity": 0, "reason": f"no fresh quote for {symbol} to size on"}
+    from orders.risk import size_for_account
+    conn = get_connection()
+    try:
+        out = size_for_account(conn, price, stop_pct=stop_pct)
+    finally:
+        conn.close()
+    out["price"] = price
+    return out
+
+
+def enter(symbol: str, quantity: int = None, cfg: dict = None, cost_pct: float = 0.0,
+          stop_pct: float = None) -> dict:
     """
     Buy and start managing the position.
 
     The tracked entry price is the ACTUAL fill, not the last quote. Every level
     that follows — target, stop, trail — is measured from it, and measuring them
     from a price you did not get puts every one of them in the wrong place.
+
+    quantity: given, it is used as is. None with risk_sizing on: sized so the
+    initial stop loses risk_per_trade_pct of capital (size_entry). None with it
+    off: one share, as before.
+
+    The initial stop is decided here and stored on the position when anything
+    chose it at entry: `stop_pct` (--stop-pct), else the ATR stop
+    (stop_atr_mult), else, for a risk-sized entry, target_1_pct, because the
+    size was worked out on it and a later change of target must not change the
+    risk. Otherwise the position follows target_1_pct as it always has.
     """
     cfg = cfg or A.config()
     if not cfg.get("aggressive_enabled"):
@@ -173,18 +222,39 @@ def enter(symbol: str, quantity: int, cfg: dict = None, cost_pct: float = 0.0) -
                                            "(open positions are still managed)"}
     from orders.broker import place_buy_order
     symbol = symbol.upper()
+    atr = atr_for(symbol)
+    stop = float(stop_pct) if stop_pct is not None else A.initial_stop_pct(atr, cfg)
+    sizing = None
+    if quantity is None and cfg.get("risk_sizing"):
+        if stop is None:
+            stop = float(cfg["target_1_pct"])
+        sizing = size_entry(symbol, stop, cfg)
+        quantity = sizing["quantity"]
+        if quantity < 1:
+            log.warning(f"  {symbol}: no entry — risk sizing gave no position: {sizing['reason']}")
+            return {"opened": False, "reason": f"risk sizing gave no position: {sizing['reason']}",
+                    "sizing": sizing}
+        log.info(f"  {symbol}: risk-sized {quantity} sh at ~{sizing['price']} with a {stop}% stop — "
+                 f"risking Rs.{sizing['risk_amount']:,.0f} of {sizing['capital']:,.0f} "
+                 f"({sizing['capital_source']}), capped by {sizing['capped_by']}")
+    elif quantity is None:
+        quantity = 1
+
     resp = place_buy_order(symbol, quantity, confirm=True, tag=f"ENTRY:{symbol}")
     ok, fill, filled = _filled(resp)
     if not ok or not fill:
-        return {"opened": False, "reason": "entry order did not fill", "response": resp}
+        return {"opened": False, "reason": "entry order did not fill", "response": resp,
+                "sizing": sizing}
 
     pos = P.open_position(symbol, fill, filled or quantity, cfg=cfg,
-                          atr_pct=atr_for(symbol), cost_pct=cost_pct)
+                          atr_pct=atr, cost_pct=cost_pct, stop_pct=stop)
     log.info(f"  ✓ {symbol}: entered {filled or quantity} @ {fill} "
              f"(T1 {A.target_price(fill, cfg['target_1_pct'])}, "
              f"T2 {A.target_price(fill, cfg['target_2_pct'])}, "
-             f"trail {pos['trail_pct']}%)")
-    return {"opened": True, "position": pos, "fill_price": fill}
+             f"trail {pos['trail_pct']}%"
+             + (f", stop {pos['initial_stop_pct']}%" if pos.get("initial_stop_pct") else "")
+             + ")")
+    return {"opened": True, "position": pos, "fill_price": fill, "sizing": sizing}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -199,6 +269,10 @@ def manage_position(pos: dict, price: float, cfg: dict = None,
     Order matters and mirrors the backtest exactly, so live behaviour and
     measured behaviour cannot drift: stop before target, then the checkpoint,
     then the trail.
+
+    The initial stop is, in order: `initial_stop_pct` when given (--stop-pct),
+    else the stop stored on the position at entry (see enter), else
+    target_1_pct.
     """
     cfg = cfg or A.config()
     pid = pos["id"]
@@ -226,7 +300,11 @@ def manage_position(pos: dict, price: float, cfg: dict = None,
 
     # ── before T1: the initial stop protects the whole position ────────────
     if pos["t1_state"] == "PENDING":
-        stop_pct = initial_stop_pct if initial_stop_pct is not None else float(cfg["target_1_pct"])
+        stop_pct = initial_stop_pct
+        if stop_pct is None:
+            stop_pct = pos.get("initial_stop_pct")
+        if stop_pct is None:
+            stop_pct = float(cfg["target_1_pct"])
         stop_price = A.target_price(entry, -stop_pct) if long_side else A.target_price(entry, stop_pct)
         hit_stop = price <= stop_price if long_side else price >= stop_price
         if hit_stop:
@@ -365,6 +443,7 @@ def status() -> list[dict]:
             "t1": p["t1_state"], "t2": p["t2_state"] + (f" ({p['t2_verdict']})"
                                                         if p["t2_verdict"] else ""),
             "high_water": p["high_water"], "trail_stop": p["trail_stop"],
+            "stop_pct": p.get("initial_stop_pct"),
             "realized": p["realized_pnl"], "unrealized": p["unrealized_pnl"],
             "total_pnl": P.total_pnl(p), "mode": p["mode"],
         })
@@ -380,11 +459,14 @@ def _cli():
         description="Run the aggressive strategy against the configured broker "
                     "(PAPER by default — fills are simulated at live prices).")
     p.add_argument("--enter", metavar="SYMBOL", help="buy and start managing")
-    p.add_argument("--qty", type=int, default=1)
+    p.add_argument("--qty", type=int, default=None,
+                   help="shares to buy; omitted: risk-sized when risk_sizing is on, else 1")
     p.add_argument("--manage", action="store_true", help="one management pass")
     p.add_argument("--status", action="store_true")
     p.add_argument("--stop-pct", type=float, default=None,
-                   help="initial stop distance; defaults to target_1_pct")
+                   help="initial stop distance. With --enter: the stop stored on the new "
+                        "position (and sized on). With --manage: overrides every stored stop. "
+                        "Otherwise the stop set at entry, else target_1_pct")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -392,7 +474,7 @@ def _cli():
     print(f"  environment: {describe()}")
 
     if args.enter:
-        r = enter(args.enter, args.qty)
+        r = enter(args.enter, args.qty, stop_pct=args.stop_pct)
         print(json.dumps(r.get("position") or r, indent=2, default=str))
     if args.manage:
         print(json.dumps(run_once(initial_stop_pct=args.stop_pct), indent=2, default=str))
@@ -403,7 +485,9 @@ def _cli():
         for r in rows:
             print(f"  {r['symbol']:<12} {r['status']:<7} qty {r['qty']:<8} "
                   f"entry {r['entry']:<10} T1 {r['t1']:<8} T2 {r['t2']:<22} "
-                  f"trail {r['trail_stop']}  P&L {r['total_pnl']}")
+                  f"trail {r['trail_stop']}  "
+                  f"stop {str(r['stop_pct']) + '%' if r['stop_pct'] else 'target_1_pct'}  "
+                  f"P&L {r['total_pnl']}")
 
 
 if __name__ == "__main__":
