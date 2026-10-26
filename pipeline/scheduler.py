@@ -1930,6 +1930,8 @@ def start_scheduler():
   09:15 AM   Intraday ↺  : Dhan live quotes START
   09:15–     Every 15min : Dhan quotes + NSE indexes + Global markets + VIX
   09:15–     Every 30min : 15-min OHLC bars
+  09:15–     Every 2min  : Aggressive exits while a strategy position is open
+                           (manage_interval_minutes)
   12:00 PM   Midday      : News refresh
   12:30 PM   Midday      : ZPI buy-zone alert scan
   14:45 PM   Pre-close   : Power-hour snapshot
@@ -1964,6 +1966,15 @@ def start_scheduler():
     for hh in range(10, 16):
         for mm in [0, 30]:
             schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_intraday_30min)
+
+    # ── Aggressive exit manager: stops, +3% partial, +6% checkpoint and trail for the open
+    # strategy positions, every manage_interval_minutes in market hours (strategy/live.py) ──
+    try:
+        from strategy.live import schedule_jobs as _aggressive_jobs
+        for line in _aggressive_jobs(schedule, run_job):
+            log.info(f"  Aggressive exits: {line}")
+    except Exception as e:
+        log.warning(f"  Aggressive exit manager not scheduled: {e}")
 
     # ── Midday ──────────────────────────────────────────────────────────
     schedule.every().day.at("12:00").do(run_midday_news)

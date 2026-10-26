@@ -9,9 +9,9 @@ import pytest
 from strategy import aggressive as A
 from strategy import positions as P
 
-STRONG = A.Momentum(zpi=80, msi=75, cri=15, mri=20, rsi_14=65,
+STRONG = A.Momentum(zpi=80, msi=75, cri=15, mri=80, rsi_14=65,
                     macd_hist=0.5, volume_ratio=1.8)
-WEAK = A.Momentum(zpi=20, msi=25, cri=80, mri=75, rsi_14=35,
+WEAK = A.Momentum(zpi=20, msi=25, cri=80, mri=25, rsi_14=35,
                   macd_hist=-0.5, volume_ratio=0.5)
 
 

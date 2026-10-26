@@ -174,6 +174,25 @@ def test_risk_indices_are_inverted():
     assert calm > risky
 
 
+def test_mri_counts_as_strength_the_way_the_score_engine_reads_it():
+    """
+    MRI is a bullish-turn score, not a risk: the signal engine SELLs on a low
+    MRI (with CRI above 60). Read inverted at the checkpoint, strong momentum
+    pushed the runner out and weak momentum kept it in.
+    """
+    from scores.engine import determine_signal
+    scores = {"atip_score": 55, "vpi": 50, "zpi": 50, "acs": 50, "cri": 65}
+    mh = {"mh_score": 50, "regime": "NEUTRAL"}
+    assert determine_signal({**scores, "mri": 30}, mh) == "SELL"
+    assert determine_signal({**scores, "mri": 70}, mh) == "HOLD"
+
+    strong, _ = A.Momentum(mri=80).composite()
+    weak, _ = A.Momentum(mri=20).composite()
+    assert (strong, weak) == (80.0, 20.0)
+    others = {"zpi": 60, "msi": 55, "cri": 30, "rsi_14": 60, "macd_hist": 0.2, "volume_ratio": 1.3}
+    assert A.Momentum(mri=80, **others).composite()[0] > A.Momentum(mri=20, **others).composite()[0]
+
+
 def test_composite_ignores_missing_inputs():
     score, n = A.Momentum(zpi=80).composite()
     assert score == 80.0 and n == 1
@@ -188,9 +207,9 @@ def test_composite_is_bounded():
 
 # ── the +6% checkpoint ────────────────────────────────────────────────────
 
-STRONG = A.Momentum(zpi=80, msi=75, cri=15, mri=20, rsi_14=65,
+STRONG = A.Momentum(zpi=80, msi=75, cri=15, mri=80, rsi_14=65,
                     macd_hist=0.5, volume_ratio=1.8)
-WEAK = A.Momentum(zpi=20, msi=25, cri=80, mri=75, rsi_14=35,
+WEAK = A.Momentum(zpi=20, msi=25, cri=80, mri=25, rsi_14=35,
                   macd_hist=-0.5, volume_ratio=0.5)
 NEUTRAL = A.Momentum(zpi=50, msi=50, cri=50, mri=50, rsi_14=50,
                      macd_hist=0.01, volume_ratio=1.0)

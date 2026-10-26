@@ -34,12 +34,21 @@ Where it will not act
     and fires on a price from hours ago.
   * A closed position, a position with nothing left, or a symbol with no quote.
   * LIVE, unless `broker_env` says LIVE. PAPER is the default everywhere.
+  * Unattended (the scheduled pass), a position whose recorded mode is not where
+    orders now go: one opened in PAPER is never sold through a LIVE broker, nor the
+    reverse. It is skipped and reported (status MODE_MISMATCH) for a person to settle.
+
+When it runs
+------------
+`schedule_jobs` (called by pipeline/scheduler.py) runs a pass every
+`manage_interval_minutes` (default 2) from 09:15 to 15:30 on trading days, and only
+while a position is open; `python -m strategy.live --manage` runs one by hand.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, time
 
 from db.schema import get_connection
 from strategy import aggressive as A
@@ -48,6 +57,7 @@ from strategy import positions as P
 log = logging.getLogger("atip.strategy")
 
 MAX_QUOTE_AGE_SECONDS = 180
+MARKET_OPEN, MARKET_CLOSE = time(9, 15), time(15, 30)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -391,17 +401,30 @@ def _quote_age_seconds(quotes) -> float | None:
 
 
 def run_once(cfg: dict = None, prices: dict = None,
-             initial_stop_pct: float = None) -> dict:
+             initial_stop_pct: float = None, only_mode: str = None) -> dict:
     """
     One management pass over every open position.
 
     `prices` is for tests and replay; live, quotes come from Dhan.
+    `only_mode` ("PAPER" / "LIVE") manages only the positions opened in that mode
+    and reports the rest as MODE_MISMATCH -- the scheduled pass passes where orders
+    go now, so nobody's absence lets a PAPER position be sold for real.
     """
     cfg = cfg or A.config()
     open_pos = P.open_positions()
+    mismatched = []
+    if only_mode:
+        mismatched = [{"symbol": p["symbol"], "mode": p.get("mode") or "PAPER", "id": p["id"]}
+                      for p in open_pos if (p.get("mode") or "PAPER") != only_mode]
+        open_pos = [p for p in open_pos if (p.get("mode") or "PAPER") == only_mode]
+    if mismatched:
+        names = ", ".join(f"{m['symbol']} ({m['mode']})" for m in mismatched)
+        log.warning(f"  strategy: NOT managing {names}: orders now go to {only_mode}. "
+                    f"Close or re-open them by hand, or set broker_env back to their mode.")
     if not open_pos:
-        return {"positions": 0, "events": [], "status": "IDLE",
-                "aggressive_enabled": bool(cfg.get("aggressive_enabled"))}
+        return {"positions": 0, "events": [], "status": "MODE_MISMATCH" if mismatched else "IDLE",
+                "aggressive_enabled": bool(cfg.get("aggressive_enabled")),
+                **_mismatch_report(mismatched, only_mode)}
 
     if prices is None:
         from data.dhan import fetch_live_quotes
@@ -410,9 +433,11 @@ def run_once(cfg: dict = None, prices: dict = None,
             q = fetch_live_quotes(symbols)
         except Exception as e:
             log.warning(f"  strategy: quote fetch failed, skipping this pass: {e}")
-            return {"positions": len(open_pos), "events": [], "status": "NO_QUOTES"}
+            return {"positions": len(open_pos), "events": [], "status": "NO_QUOTES",
+                    **_mismatch_report(mismatched, only_mode)}
         if q is None or q.empty:
-            return {"positions": len(open_pos), "events": [], "status": "NO_QUOTES"}
+            return {"positions": len(open_pos), "events": [], "status": "NO_QUOTES",
+                    **_mismatch_report(mismatched, only_mode)}
         age = _quote_age_seconds(q)
         if age is not None and age > MAX_QUOTE_AGE_SECONDS:
             # Acting on an old price after a sleep or outage is this system's
@@ -420,7 +445,7 @@ def run_once(cfg: dict = None, prices: dict = None,
             log.warning(f"  strategy: quotes are {age:.0f}s old "
                         f"(limit {MAX_QUOTE_AGE_SECONDS}s) — skipping this pass")
             return {"positions": len(open_pos), "events": [], "status": "STALE_QUOTES",
-                    "quote_age_s": round(age)}
+                    "quote_age_s": round(age), **_mismatch_report(mismatched, only_mode)}
         prices = {r["symbol"]: r["ltp"] for _, r in q.iterrows() if r.get("ltp")}
 
     events = []
@@ -430,7 +455,67 @@ def run_once(cfg: dict = None, prices: dict = None,
             continue
         r = manage_position(pos, float(price), cfg, initial_stop_pct)
         events.extend(r["events"])
-    return {"positions": len(open_pos), "events": events, "status": "SUCCESS"}
+    return {"positions": len(open_pos), "events": events,
+            "status": "MODE_MISMATCH" if mismatched else "SUCCESS",
+            **_mismatch_report(mismatched, only_mode)}
+
+
+def _mismatch_report(mismatched: list, only_mode: str | None) -> dict:
+    """The skipped positions, and an `error` line run_job writes to pipeline_log."""
+    if not mismatched:
+        return {}
+    return {"mode_mismatch": mismatched,
+            "error": f"{len(mismatched)} open position(s) not managed: opened in "
+                     f"{'/'.join(sorted({m['mode'] for m in mismatched}))}, orders now go to {only_mode}"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  SCHEDULED MANAGEMENT  (pipeline/scheduler.py calls schedule_jobs)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def in_market_hours(now: datetime = None) -> bool:
+    """09:15-15:30 on an NSE trading day (utils/trading_calendar.py)."""
+    from utils.trading_calendar import is_trading_day
+    now = now or datetime.now()
+    return is_trading_day(now.date()) and MARKET_OPEN <= now.time() <= MARKET_CLOSE
+
+
+def orders_mode() -> str:
+    """Where an exit placed now would go, in a position's terms: LIVE for the real account
+    (orders.environment), PAPER otherwise -- PAPER and the Dhan SANDBOX hold no real shares."""
+    from orders.environment import is_live as env_is_live
+    return "LIVE" if env_is_live() else "PAPER"
+
+
+def scheduled_pass(run_job, now: datetime = None):
+    """
+    The scheduler's tick. Outside market hours, or with nothing open, it does nothing
+    at all -- no Dhan call and no pipeline_log row every few minutes for no reason.
+    Otherwise one run_once pass through run_job (job lock, pipeline_log, metrics,
+    failure alert), for the positions opened where orders go now.
+
+    A wake-up after a sleep is safe: `schedule` runs a missed interval job once,
+    not once per missed slot, and run_once refuses quotes older than
+    MAX_QUOTE_AGE_SECONDS. Positions are managed whatever aggressive_enabled says;
+    that flag gates new entries only (EX-17). The initial stop is the one stored at entry
+    (initial_stop_pct), else target_1_pct below entry: the same as `--manage` without `--stop-pct`.
+    """
+    if not in_market_hours(now):
+        return None
+    if not P.open_positions():
+        return None
+    return run_job("aggressive_manage", run_once, only_mode=orders_mode())
+
+
+def schedule_jobs(schedule, run_job, cfg: dict = None) -> list:
+    """Register the market-hours management pass; returns what was scheduled, for the log."""
+    every = (cfg or A.config()).get("manage_interval_minutes")
+    if not every:
+        return [("aggressive_manage not scheduled (manage_interval_minutes is null): "
+                 "exits run only from python -m strategy.live --manage")]
+    schedule.every(int(every)).minutes.do(scheduled_pass, run_job)
+    return [(f"aggressive_manage every {int(every)} min, {MARKET_OPEN:%H:%M}-{MARKET_CLOSE:%H:%M} "
+             "on trading days, while a position is open")]
 
 
 def status() -> list[dict]:

@@ -150,6 +150,13 @@ ROUTE_RULES = [
 # W9: execution:read / execution:trade act on the caller's OWN book (per-tenant paper books,
 # execution/tenant_books.py); W1 order rules and the portfolio are the owner's broker account.
 PAPER_BOOK = {"orders:manage", "portfolio:read", "portfolio:manage"}
+# Routes that read or act on the owner's broker account and paper book, or on the owner's global risk limits and
+# risk decisions. Their tables have no tenant column, so a permission held in another tenant does not make them
+# that tenant's: a tenant other than the default one is refused them whatever its role, as PAPER_BOOK is refused.
+OWNER_BOOK = [r"^/api/orders(/|$)", r"^/api/oms/positions$", r"^/api/mobile/",
+              r"^/api/risk/(limits|portfolio|emergency-exit|evaluate)(/|$)"]
+# The owner's dashboard shows the owner's whole state, so another tenant is sent to its own app instead.
+OWNER_PAGES = [r"^/$"]
 
 OWNERS = {"strategy_id": ("strategy", "strategy_id"), "model_id": ("ml_model", "model_id"),
           "run_id": ("backtest_run", "run_id"), "report_id": ("enterprise_report", "report_id"),
@@ -184,6 +191,11 @@ def permission_for(method: str, path: str) -> str:
 
 def _public(method, path):
     return any((m == method) and re.match(rx, path) for m, rx in PUBLIC)
+
+
+def _matches(patterns, path):
+    """True when the path matches one of the regular expressions."""
+    return any(re.match(rx, path) for rx in patterns)
 
 
 VIA_STRATEGY = {"oms_order", "risk_decision", "strategy_position_intent"}   # owned through their strategy
@@ -283,7 +295,13 @@ def install(app):
                 perm = permission_for(method, path)
                 if perm not in p["permissions"]:
                     return deny(403, f"permission {perm} required")
-                if perm in PAPER_BOOK and p["tenant_id"] != s["default_tenant"] and not p["platform_admin"]:
+                owners_only = perm in PAPER_BOOK or _matches(OWNER_BOOK, path) or _matches(OWNER_PAGES, path)
+                if owners_only and p["tenant_id"] != s["default_tenant"] and not p["platform_admin"]:
+                    if _matches(OWNER_PAGES, path):
+                        audit.record(conn, "authz.denied", tenant_id=p["tenant_id"], user_id=p.get("user_id"),
+                                     actor=p["username"], method=method, path=path, status_code=302, ip=ip,
+                                     details={"reason": "the owner's dashboard"})
+                        return RedirectResponse("/app", status_code=302)
                     return deny(403, "the paper book and broker account belong to the owner's tenant")
                 if perm == "execution:trade":
                     from execution.config import execution_settings

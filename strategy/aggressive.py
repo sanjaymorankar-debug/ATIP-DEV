@@ -74,6 +74,11 @@ DEFAULTS = {
     # W39b (EX-17): exit everything still held when the stock's crash-risk index (CRI, 0-100,
     # high = bad) reaches this. None = off, the default: it changes live exits only once set.
     "cri_exit_threshold":        None,
+    # How often the scheduler runs a management pass over the open positions, 09:15-15:30 on
+    # trading days (strategy/live.py schedule_jobs; one batched Dhan quote call per pass, none
+    # while nothing is open). None = not scheduled: exits then run only from
+    # `python -m strategy.live --manage`. Read at start-up, so a change needs a restart.
+    "manage_interval_minutes":   2,
     # The initial stop scaled to volatility and fixed at entry:
     # clamp(stop_atr_mult x ATR %, stop_min_pct, stop_max_pct). None = off, the default: the stop
     # stays where it was (--stop-pct, else target_1_pct). research/exit_target_study.py found a
@@ -141,6 +146,10 @@ def validate_config(cfg: dict) -> dict:
     cri = cfg.get("cri_exit_threshold")
     if cri is not None and (isinstance(cri, bool) or not isinstance(cri, (int, float)) or not 0 < cri <= 100):
         raise ConfigError(f"cri_exit_threshold must be null or within (0, 100], got {cri!r}")
+    every = cfg.get("manage_interval_minutes")
+    if every is not None and (isinstance(every, bool) or not isinstance(every, int) or not 1 <= every <= 30):
+        raise ConfigError(f"manage_interval_minutes must be null or a whole number of minutes in "
+                          f"[1, 30], got {every!r}")
     mult = cfg.get("stop_atr_mult")
     if mult is not None and (isinstance(mult, bool) or not isinstance(mult, (int, float)) or mult <= 0):
         raise ConfigError(f"stop_atr_mult must be null or > 0, got {mult!r}")
@@ -197,7 +206,7 @@ class Momentum:
     """
     zpi: float | None = None            # momentum/trend composite
     msi: float | None = None            # market structure
-    mri: float | None = None            # momentum-reversal risk (INVERTED: high = bad)
+    mri: float | None = None            # momentum-reversal: a bullish turn, high = strong
     cri: float | None = None            # crash risk (INVERTED: high = bad)
     rsi_14: float | None = None
     macd_hist: float | None = None
@@ -209,9 +218,15 @@ class Momentum:
         Blend the available readings onto one 0-100 scale where higher is
         stronger. Returns (score, how_many_inputs_contributed).
 
-        MRI and CRI are risk measures, so they enter inverted — a CRI of 80 is
-        not strength, it is the opposite. Getting that backwards would make the
+        CRI is a risk measure, so it enters inverted — a CRI of 80 is not
+        strength, it is the opposite. Getting that backwards would make the
         runner hold hardest exactly when a crash is most likely.
+
+        MRI is NOT a risk measure, despite the name: scores/engine.py builds it
+        from bullish-turn inputs (MACD above zero, EMA 9 over 21, a volume
+        surge, RSI in the 40-55 band), the signal engine sells on a LOW MRI and
+        intraday_scan wants MRI >= 55. It enters as it is. It entered inverted
+        until 2026-10-26, which made strong momentum push the runner out.
         """
         parts: list[float] = []
         if self.zpi is not None:
@@ -219,7 +234,7 @@ class Momentum:
         if self.msi is not None:
             parts.append(_clamp(self.msi))
         if self.mri is not None:
-            parts.append(100.0 - _clamp(self.mri))
+            parts.append(_clamp(self.mri))
         if self.cri is not None:
             parts.append(100.0 - _clamp(self.cri))
         if self.mh_score is not None:
