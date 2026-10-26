@@ -3,8 +3,8 @@
 *Written 2026-10-26 from branch `claude/youthful-archimedes-mubyk3` at `bed2562` (ATIP-DEV = ATIP). Every figure is
 read from the code, the repository's own docs, or the simulations in §7, which are reproducible with
 `tools/master_file.py`. The full feature list (333 tracked features plus the new requirements) is in the
-workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`. Updated the same day with two owner-approved
-changes: the MRI fix (finding 1) and the scheduled exit manager (finding 3).*
+workbook next to this file: `ATIP_MASTER_FILE_2026-10-26.xlsx`. Updated the same day with the owner's decisions:
+the MRI fix (finding 1), the scheduled exit manager (finding 3) and single-owner ATIP (§6.1).*
 
 Contents
 
@@ -74,9 +74,9 @@ trading (§7.6–7.8, roadmap §8).
    tested**. Nothing scheduled it: exits ran only when `python -m strategy.live --manage` was run by hand.
    **Scheduled (owner-approved, 2026-10-26):** a management pass now runs every `manage_interval_minutes`
    (default 2) from 09:15 to 15:30 on trading days while a position is open. Unattended, it never sells a
-   position through a broker other than the one it was opened with (PAPER vs LIVE). The multi-user phases
-   (3, 5, 9, 10, 12) are only partly in place, and open PR #11 (owner-only gate) points the other way. See
-   §6 before any new implementation starts.
+   position through a broker other than the one it was opened with (PAPER vs LIVE). **Decided 2026-10-26:
+   ATIP stays single-owner**, in line with PR #11's owner-only gate, so the prompt's multi-user phases
+   (3, 5 and the per-user parts of 7 and 9) are not planned. See §6.
 
 ---
 
@@ -213,7 +213,9 @@ flowchart LR
   EXA --> PB
 ```
 
-§6 sets out how much of this target exists today.
+**Not adopted.** The owner decided on 2026-10-26 that ATIP stays single-owner: one Dhan account, one
+portfolio, behind the central owner-only gate of PR #11. The diagram is kept as a record of what the
+consolidated prompt proposed; §6 sets out how much of it exists.
 
 ---
 
@@ -572,12 +574,12 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 
 ### 6.1 Before anything is built: three owner decisions
 
-1. **Single-owner or multi-user?** Open PR
+1. **Single-owner or multi-user?** **Decided 2026-10-26: single-owner.** Open PR
    [sanjaymorankar-debug/ATIP-DEV#11](https://github.com/sanjaymorankar-debug/ATIP-DEV/pull/11) puts an
    **owner-only** gate in front of a hosted ATIP: a central bkesari.com login, and a 404 for everyone except
    the owner with TOTP. That PR says "there is no multi-user portfolio and no broker linking". The
    consolidated prompt asks for the opposite: registration, per-user Dhan accounts and private portfolios.
-   Both cannot be the plan for `test.bkesari.com`.
+   Both could not be the plan for `test.bkesari.com`; the owner chose PR #11's direction.
 2. **Is the MRI reading at the +6% checkpoint a defect?** Decided 2026-10-26: yes. The owner approved
    the fix, and it is made in this change (row P4-4).
 3. **Where does the hosted ATIP run?** The prompt's target is `test.bkesari.com/dhan`. Today that host
@@ -589,38 +591,38 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 
 | Phase | Area | Requirement | Status | Evidence | Gap / action |
 |---|---|---|---|---|---|
-| P1 | Baseline | Baseline report and test result before changes | PRESENT | This file. CI on `master` (`bed2562`, run 164): 1,551 passed, 49 skipped, 1 failed (`test_w40_risk_model` tolerance). From 2026-10-26, `test_w40_option_intents::test_a_stop_loss_fires_on_a_big_move` also fails, because it depends on the date (reproduced here) | Both fixes exist in PR #16 and are carried in this PR so its CI can go green |
+| P1 | Baseline | Baseline report and test result before changes | PRESENT | This file. CI on `master` (`bed2562`, run 164): 1,551 passed, 49 skipped, 1 failed (`test_w40_risk_model` tolerance). From 2026-10-26, `test_w40_option_intents::test_a_stop_loss_fires_on_a_big_move` also fails, because it depends on the date (reproduced here) | Both fixes merged with #16; `master` is green again from run 169 |
 | P2 | Market data | One common Dhan market-data service, not one per user | PRESENT | One client from the owner's credentials (`data/dhan.py:67-116`) behind one circuit breaker; feeds are process-wide singletons (`data/dhan_ws.py:382-401`, `data/stock_feed.py:330-347`); quotes stored in global `live_quotes` / `live_ticks` | — |
 | P2 | Market data | Shared data reused across users (no per-user fetch load) | PARTIAL | `/api/live-quotes` is cached only outside market hours (`dashboard/server.py:1790-1829`); in market hours every open tab polls every 15 s and each poll is a fresh Dhan fetch | Serve in-session quotes from the shared feed / a symbol-keyed cache before adding users |
-| P3 | Auth | Registration | PARTIAL | Built but off: `enterprise.enabled` false (`enterprise/config.py:27`); self-registration off by default; creates a PENDING tenant (`dashboard/enterprise_routes.py:138-160`) | Decide on 6.1 (1) first |
-| P3 | Auth | Login, logout, session management | PARTIAL | Opaque `ats_` session token, SHA-256 stored, 12 h; refresh token rotates and reuse revokes all sessions (`enterprise/users.py:175-288`); cookie HttpOnly + SameSite=Strict, Secure only with `ops.tls_enabled` | No functional tests of login, logout, refresh or expiry; set Secure cookies on any hosted install |
+| P3 | Auth | Registration | PARTIAL | Built but off: `enterprise.enabled` false (`enterprise/config.py:27`); self-registration off by default; creates a PENDING tenant (`dashboard/enterprise_routes.py:138-160`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
+| P3 | Auth | Login, logout, session management | PARTIAL | Opaque `ats_` session token, SHA-256 stored, 12 h; refresh token rotates and reuse revokes all sessions (`enterprise/users.py:175-288`); cookie HttpOnly + SameSite=Strict, Secure only with `ops.tls_enabled` | Not planned: ATIP stays single-owner (owner decision 2026-10-26). The owner signs in through the central bkesari.com gate of PR #11 (`dashboard/owner_gate.py` there) |
 | P3 | Auth | Secure password hashing; no plaintext | PRESENT | PBKDF2-HMAC-SHA256, 390,000 iterations, 16-byte salt, constant-time verify; 12-character policy; lockout after 5 failures for 15 min (`enterprise/security.py:23-53`, `enterprise/users.py:191-199`) | — |
 | P3 | Auth | MFA | PRESENT | TOTP, secret AES-GCM-encrypted, recovery codes, admin reset (`enterprise/mfa.py`) | — |
-| P3 | Auth | ADMIN and USER roles | PARTIAL | 8 roles and 29 permissions per tenant (`enterprise/rbac.py:16-73`); no literal ADMIN / USER | Map ADMIN → SUPER_ADMIN of tenant `default`, USER → TRADER or VIEWER |
-| P3 | Auth | Authorization middleware | PRESENT | `enterprise/authz.py:242-385`: `ROUTE_RULES` per route, unmatched → `system:operate` (default deny) | `X-ATIP-Token` is one install-wide secret embedded in every page (`dashboard/server.py:860-862`), not per user |
-| P3 | Isolation | A user cannot read another user's data by changing an ID (IDOR) | PARTIAL | Tenant level: a foreign resource returns 404 (`enterprise/authz.py:160-169`), lists are filtered (`:351-406`) | **Leak:** `GET /api/orders` (and `/pending`, `/baskets`, `/sip`) needs only `execution:read` (`authz.py:138`), which is in neither `PAPER_BOOK` (`:152`) nor `FILTER_PREFIX` (`:175`), so any tenant's VIEWER reads the owner's order rules; `/` embeds the owner's portfolio. No test covers cross-tenant 404s or filtering |
-| P3 | Isolation | Each user sees only their own holdings, positions, orders, P&L | ABSENT | Isolation is per tenant, not per user; `paper_account` is a single row (`CHECK(id=1)`); `portfolio_holdings`, `pnl_daily`, `order_rules` and `strategy_position` have no tenant or user column | Add owner scoping per table, or keep one user per tenant |
-| P3 | Dhan | Each user maps to their own Dhan account | PARTIAL | `enterprise_vault_credential` unique on (tenant, user, broker, label), AES-256-GCM, 24 h expiry (`enterprise/vault.py:45-123`) | Only read-only connectors use it (`brokers/registry.py:37-72`); orders, market data and the strategy use the owner's global client (`orders/broker.py:157,272`); a default-tenant user without a vault entry silently gets the **owner's** credentials (`enterprise/vault.py:184-187`) |
+| P3 | Auth | ADMIN and USER roles | PARTIAL | 8 roles and 29 permissions per tenant (`enterprise/rbac.py:16-73`); no literal ADMIN / USER | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
+| P3 | Auth | Authorization middleware | PRESENT | `enterprise/authz.py:242-385`: `ROUTE_RULES` per route, unmatched → `system:operate` (default deny) | One install-wide `X-ATIP-Token` fits a single owner: keep it secret and rotate it after any leak (W40 runbook) |
+| P3 | Isolation | A user cannot read another user's data by changing an ID (IDOR) | PARTIAL | Tenant level: a foreign resource returns 404 (`enterprise/authz.py:160-169`), lists are filtered (`:351-406`) | Latent, enterprise mode only: `GET /api/orders` (and `/pending`, `/baskets`, `/sip`) needs only `execution:read` (`enterprise/authz.py:138`), in neither `PAPER_BOOK` (`:152`) nor `FILTER_PREFIX` (`:175`). Single-owner keeps enterprise mode off; fix it before it is ever switched on |
+| P3 | Isolation | Each user sees only their own holdings, positions, orders, P&L | ABSENT | Isolation is per tenant, not per user; `paper_account` is a single row (`CHECK(id=1)`); `portfolio_holdings`, `pnl_daily`, `order_rules` and `strategy_position` have no tenant or user column | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
+| P3 | Dhan | Each user maps to their own Dhan account | PARTIAL | `enterprise_vault_credential` unique on (tenant, user, broker, label), AES-256-GCM, 24 h expiry (`enterprise/vault.py:45-123`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26): the owner's credentials stay in `config.json` / the vault |
 | P3 | Secrets | Never expose Dhan tokens or secrets to the frontend, logs or source | PRESENT | Secrets from env / `.env` / `atip_data/secrets` / vault (`ops/secrets.py`); the snapshot strips the dashboard token (`publish_snapshot.py:58-69`) | Rotate the publish token an earlier snapshot leaked (`docs/W40_DEPLOY_RUNBOOK.md:71`) |
-| P3 | Personalization | Per-user widgets, layout, watchlist, theme, preferences | PARTIAL | Per-user watchlists, alerts and reports with ownership checks (`enterprise/workspace.py:33-135`); notification preferences; `preferences_json` stored but never read (`enterprise/users.py:160-170`) | No per-user layout, widgets or theme; the main page is rendered without knowing the user (`dashboard/server.py:1339-1341`) |
-| P3 | Personalization | Ordinary users cannot change global formulas / config | PARTIAL | Default-deny permissions; `weight_config` changes need operator permissions | No test that a non-admin is refused |
+| P3 | Personalization | Per-user widgets, layout, watchlist, theme, preferences | PARTIAL | Per-user watchlists, alerts and reports with ownership checks (`enterprise/workspace.py:33-135`); notification preferences; `preferences_json` stored but never read (`enterprise/users.py:160-170`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
+| P3 | Personalization | Ordinary users cannot change global formulas / config | PARTIAL | Default-deny permissions; `weight_config` changes need operator permissions | Not applicable with one owner |
 | P4 | Strategy | +3% sells 50% of the original quantity, runner kept, trail starts | PRESENT | `strategy/aggressive.py` (`partial_exit_quantity`, `ratchet`), `strategy/positions.py` (idempotent claims); `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py` | — |
 | P4 | Strategy | +6% is a momentum checkpoint, not a forced exit | PRESENT | `checkpoint_decision`: HOLD_RUNNER ≥ 60, TIGHTEN_TRAIL 40–60 or no data, EXIT_RUNNER < 40 | — |
 | P4 | Strategy | Levels configurable, validated (40/60, 60/40; invalid rejected) | PRESENT | `DEFAULTS` + `config.json` + `validate_config` (`strategy/aggressive.py:50-130`) | — |
 | P4 | Strategy | Reuse existing indicators; formulas unchanged | PRESENT | `strategy/live.py:57-83` reads ZPI, MSI, MRI, CRI, MH, RSI, MACD and volume from the stored scores, with no formula of its own. **Fixed 2026-10-26:** `Momentum.composite` inverted MRI at `bed2562`, while the engine scores MRI so that higher is more bullish (`scores/engine.py:470-487`) and sells on MRI < 40 (`:807`); MRI now enters as it is (`strategy/aggressive.py:198-199`) | Done (owner decision 6.1 (2)): STRONG / WEAK fixtures mirrored, so scenario results are unchanged; a test pins the direction against `determine_signal` |
 | P4 | Strategy | Volatility-aware trail that never moves down | PRESENT | 4 × ATR%, clamped 3–20%; `ratchet` is one-way; tightens ×0.5 on fading momentum | — |
 | P4 | Strategy | Exits managed automatically while the market is open | PRESENT | **Scheduled 2026-10-26 (owner-approved):** `strategy/live.py` `schedule_jobs` runs `run_once` through the scheduler's `run_job` every `manage_interval_minutes` (default 2, null = off), 09:15–15:30 on trading days, only while a position is open (no Dhan call otherwise). At `bed2562` only `python -m strategy.live --manage` ran a pass | The unattended pass manages only positions whose recorded mode (from the aggressive `execution_mode`) matches where orders now go (`broker_env`); the rest are reported as MODE_MISMATCH in `pipeline_log`, because the two switches can disagree |
-| P5 | Per user | Same signal, private execution state per user (own entry, qty, trail) | ABSENT | `strategy_position` / `strategy_event` have no tenant or user column; config is global; orders go to the owner's book (`strategy/live.py:102-187`); one scheduled pass manages every open position for the one owner | Needs user / tenant columns, per-user config and per-user broker routing, after 6.1 (1) |
+| P5 | Per user | Same signal, private execution state per user (own entry, qty, trail) | ABSENT | `strategy_position` / `strategy_event` have no tenant or user column; config is global; orders go to the owner's book (`strategy/live.py:102-187`); one scheduled pass manages every open position for the one owner | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
 | P6 | State | Initial / remaining / partial quantity, T1 / T2 state, high water, trail, realised / unrealised P&L, exit reason | PRESENT | `strategy_position` columns (`strategy/positions.py:37-84`): `initial_qty`, `remaining_qty`, `t1_state/qty/price/at`, `t2_state/at`, `high_water`, `trail_pct/stop/moves`, `realized_pnl`, `unrealized_pnl`, `exit_reason`, `mode` | — |
 | P6 | State | Machine-readable exit reasons | PRESENT | The 8 constants in `strategy/aggressive.py` | — |
 | P7 | Tests | Aggressive strategy tests (config, entry, SL, +3%, runner, +6%, trail, idempotency, broker, edge cases) | PRESENT | `tests/test_aggressive_decisions.py`, `test_aggressive_lifecycle.py`, `test_aggressive_backtest.py`, `test_strategy_live.py`, `test_paper_broker.py` | — |
-| P7 | Tests | Authentication tests | ABSENT | Only route labels are checked (`tests/test_w39_ops_tests.py:722-750`) | Write them once 6.1 (1) is decided |
-| P7 | Tests | Authorization / cross-user security tests | PARTIAL | `tests/test_wealth_api_security.py` (8), cross-owner wealth tests, tenant book test | Add cross-tenant 404 / filter tests, including `/api/orders` |
-| P7 | Tests | Dhan isolation and personalization tests | ABSENT | — | After P3 / P5 |
-| P7 | Tests | Full regression stays green | PARTIAL | 1,315 test functions in 85 files; CI `python -m pytest tests/ -v` + scenario replay | `master` is red on the two tests in row P1 |
+| P7 | Tests | Authentication tests | ABSENT | Only route labels are checked (`tests/test_w39_ops_tests.py:722-750`) | Not planned: ATIP stays single-owner (owner decision 2026-10-26); PR #11 tests the owner gate (`tests/test_owner_gate.py` there) |
+| P7 | Tests | Authorization / cross-user security tests | PARTIAL | `tests/test_wealth_api_security.py` (8), cross-owner wealth tests, tenant book test | Only if enterprise mode is ever switched on (with the `/api/orders` fix, row P3) |
+| P7 | Tests | Dhan isolation and personalization tests | ABSENT | — | Not planned: ATIP stays single-owner (owner decision 2026-10-26) |
+| P7 | Tests | Full regression stays green | PRESENT | 1,315 test functions in 85 files; CI `python -m pytest tests/ -v` + scenario replay | `master` green from run 169 (#16); this branch 1,578 passed, 0 failed |
 | P8 | Backtest | The 7 deterministic scenarios and the full metric list | PRESENT | `strategy/backtest_aggressive.scenarios()` and `metrics()`: win rate, PF, expectancy, drawdown, T1 / T2 rates, runner success, trailing / initial-stop exit rates, profit after +3% | — |
 | P8 | Backtest | Do not claim profitability unless shown after costs | PRESENT | Costs on every leg, same-bar ambiguity against the strategy; the real-bars comparison is `strategy/backtest_history.py` | Run it on the real database (§7.8) |
-| P9 | UI | Private dashboard at `/dhan` after login, with aggressive-trade state | ABSENT | No `/dhan` base path anywhere; `strategy_position` is not shown in any page or API, only via `python -m strategy.live status` | Add a read-only "Aggressive positions" panel and API |
+| P9 | UI | Private dashboard at `/dhan` after login, with aggressive-trade state | ABSENT | No `/dhan` base path anywhere; `strategy_position` is not shown in any page or API, only via `python -m strategy.live status` | Single-owner: the existing dashboard behind the owner gate. Still worth adding: a read-only "Aggressive positions" panel and API |
 | P9 | Routing | App works under a base path | PARTIAL | `ATIP_ROOT_PATH` / `dashboard_root_path` (`dashboard/security.py:86-102`, `main.py:481-487`); docs use `/ATIP` | Page JavaScript calls absolute `/api/...` and the login redirect is a bare `/login` (`enterprise/authz.py:265`), so the browser leaves the prefix (also PR #14's open D10) |
 | P10 | Deploy | Container, health check, test/production separation, externalized secrets | PARTIAL | `Dockerfile` (non-root, HEALTHCHECK), `docker-compose.yml` on 127.0.0.1, `/health/live` and `/health/ready`; CI builds and boots the image | No deploy workflow, no TLS proxy, no trusted-hosts check, rate limiting off; HSTS / Secure cookies only with `ops.tls_enabled`; Python 3.12 in CI vs 3.14 in Docker |
 | P10 | Deploy | Deploy to `test.bkesari.com/dhan` | ABSENT | test.bkesari.com receives only the snapshot | Needs 6.1 (3) and the owner's hosting credentials |
@@ -633,12 +635,12 @@ claims with the largest consequences were re-read in the code. The one DEFECT it
 - **The aggressive strategy logic is done.** With the MRI fix and the scheduled management pass made
   (rows P4), phases 4, 6, 8 and 13 need nothing new. Re-implementing them, as the prompt literally asks,
   would duplicate working, tested code.
-- **The multi-user product is a separate, larger project.** Users, roles, MFA and the vault exist, but trading
-  data, the strategy and the broker connection are single-owner by design. It should start only after
-  decision 6.1 (1). If the answer is "multi-user", fix the `/api/orders` read leak and the owner-credential
-  fallback before any second user is created.
+- **Multi-user is not planned.** The owner decided on 2026-10-26 to keep ATIP single-owner. Trading data,
+  the strategy and the broker connection are single-owner by design, which now matches the plan. The
+  enterprise layer (users, roles, MFA, the vault) stays switched off. Its `/api/orders` read leak is latent;
+  it should be fixed before enterprise mode is ever switched on.
 - **Deployment to `/dhan` is blocked on hosting, not code.** The base-path work (absolute URLs in page
-  JavaScript) is the one code item. It is needed whichever product decision is taken.
+  JavaScript) is the one code item for any hosted sub-path.
 
 ---
 
@@ -856,8 +858,9 @@ the §7.6 levers 1–3 come before any exit work.
 | R6 | P1 | Walk-forward + CPCV report for the profile with a Monte Carlo band; KPI panel (win rate, expectancy, PF, drawdown, T1 hit) | Validation gates 2–4 | M |
 | R7 | P1 | 60-session paper run on the Mac with weekly review | Gate 4 | calendar time |
 | R8 | P1 | Align index names in the strategy library and the formulas workbook with §4 | Avoids wrong mental models of VPI / SPI | S |
-| R9 | P2 | Multi-user items from §6 (only if a multi-user product is wanted) | Consolidated-prompt phases 3, 5, 9, 10 | L |
-| R10 | P2 | Deploy to `test.bkesari.com/dhan` once hosting and secrets are decided | Consolidated-prompt phase 10 | M |
+| R9 | — | **Dropped 2026-10-26:** multi-user items from §6. ATIP stays single-owner (owner decision) | Consolidated-prompt phases 3, 5 and the per-user parts of 7 and 9 | — |
+| R10 | P2 | Deploy the single-owner ATIP to `test.bkesari.com` behind the owner gate (PR #11), with the base-path fix, once hosting and secrets are decided | Consolidated-prompt phase 10, decision 6.1 (3) | M |
+| R11 | P2 | Close the latent `/api/orders` read leak in `enterprise/authz.py` (enterprise mode only) | Review row P3; matters only if enterprise mode is ever switched on | S |
 
 ---
 
