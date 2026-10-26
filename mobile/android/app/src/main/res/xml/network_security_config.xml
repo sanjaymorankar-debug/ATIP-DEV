@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ATIP runs on the owner's Mac on the home network (http://<mac-ip>:8000). Android cannot scope cleartext
+     to an IP range, so it is allowed app-wide; the app only ever loads the one server address set in it.
+     Use an https address once ATIP is hosted (Test / Prod servers) and set this to false. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

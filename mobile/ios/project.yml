@@ -1,0 +1,27 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen` in mobile/ios creates ATIP.xcodeproj (needs Xcode 15+).
+name: ATIP
+options:
+  bundleIdPrefix: com.atip
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  ATIP:
+    type: application
+    platform: iOS
+    sources: [ATIP]
+    info:
+      path: ATIP/Info.plist
+      properties:
+        CFBundleDisplayName: ATIP
+        CFBundleShortVersionString: "2026.10.26"
+        CFBundleVersion: "2"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # ATIP runs on the owner's Mac on the home network over plain http (port 8000)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: ATIP connects to the ATIP server on your Mac.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.atip.mobile
+        SWIFT_VERSION: "5.9"
