@@ -22,7 +22,7 @@
 
 ## Manual commands
 
-Run all of these from `/Users/agtci/Documents/GIT_ATIP/ATIP`.
+Run all of these from `/Users/agtci/Documents/ATIP`.
 
 Take a verified backup now:
 
