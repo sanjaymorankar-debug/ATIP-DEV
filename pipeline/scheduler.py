@@ -205,6 +205,25 @@ def _eod_freshness(td):
 
 
 CATCHUP_LOOKBACK_SESSIONS = 5
+# Sessions scanned for holes in prices_daily: a session with no bars although a later one has them.
+# ATIP was off from 2026-10-13 to the 26th (the Windows to Mac move) and 9 sessions never got bars:
+# the catch-up only re-ran sessions whose bars were already stored, so every indicator and score of
+# the 23rd and 26th was computed across a two-week hole. NSE's Bhavcopy archive serves past sessions,
+# so a hole is filled from it in seconds.
+GAP_SCAN_SESSIONS = 30
+
+
+def _price_holes(conn, upto, n=GAP_SCAN_SESSIONS):
+    """Trading sessions among the last n up to `upto` with no prices_daily bars, after the first
+    stored one -- before it is a fresh install's missing history, not a hole."""
+    sessions = _recent_sessions(n, upto)
+    stored = {str(r[0])[:10] for r in conn.execute(
+        "SELECT DISTINCT date FROM prices_daily WHERE date >= ? AND source IN ('bhavcopy','dhan')",
+        (str(sessions[0]),))}
+    if not stored:
+        return []
+    first, last = min(stored), max(stored)
+    return [d for d in sessions if str(d) not in stored and first < str(d) < last]
 
 
 def _recent_sessions(n, upto):
@@ -230,9 +249,11 @@ def run_postmarket_if_missing():
     calendar moved past them nothing would ever have revisited them: the 18:30
     catch-up resolves one date, and by the next evening that date is yesterday.
 
-    An older session is only re-run when its bars are already stored, so a fresh
-    install does not fan out five days of downloads; the newest session is run
-    regardless, because "EOD not published yet" is exactly what it is for.
+    An older session is only re-run when its bars are already stored, or when it
+    is a hole (no bars, but a later session has them), so a fresh install does
+    not fan out five days of downloads; the newest session is run regardless,
+    because "EOD not published yet" is exactly what it is for. Holes further back
+    (GAP_SCAN_SESSIONS) get their bars and delivery from NSE without a re-score.
     Called at scheduler start and again at POSTMARKET_CATCHUP_TIME; a no-op when
     everything is scored, so it is safe to call as often as the process restarts.
     """
@@ -256,12 +277,37 @@ def run_postmarket_if_missing():
             "SELECT DISTINCT date FROM ai_scores WHERE date >= ?", (str(sessions[0]),))}
         has_bars = {str(r[0]) for r in conn.execute(
             "SELECT DISTINCT date FROM prices_daily WHERE date >= ?", (str(sessions[0]),))}
+        holes = _price_holes(conn, td)
     finally:
         conn.close()
 
+    # Holes older than the scoring window only need their bars: indicators read them, and a
+    # re-score of every old session would hold the scheduler's start for a minute each.
+    older = [d for d in holes if d < sessions[0]]
+    if older:
+        log.warning(f"  ⚠ prices_daily has no bars for {', '.join(str(d) for d in older)} — "
+                    f"fetching them from NSE's Bhavcopy archive")
+        from data.bhavcopy import run_bhavcopy_pipeline, run_delivery_pipeline
+        for d in older:
+            run_job("bhavcopy_gap_fill", run_bhavcopy_pipeline, d)
+        run_job("delivery_gap_fill", run_delivery_pipeline, older[-1], GAP_SCAN_SESSIONS)
+    if holes:
+        try:
+            from alerts.telegram import notify
+            notify(f"⚠️ <b>Price history had holes</b>: {len(holes)} session(s) with no bars "
+                   f"({holes[0]} … {holes[-1]}). Fetched from NSE and re-scored where recent.",
+                   category="job_health", severity="warning", key=f"price_holes:{date.today()}")
+        except Exception as e:
+            log.warning(f"  price-hole alert: {e}")
+
     release_held_signals()
+    # A session inside the window with no bars of its own, but older than one that has them, is
+    # a hole too: run_postmarket fetches its Bhavcopy first. Before the newest stored session
+    # (a fresh install) nothing is fanned out.
+    newest = max(has_bars) if has_bars else None
     missing = [d for d in sessions
-               if str(d) not in scored and (d == td or str(d) in has_bars)]
+               if str(d) not in scored and (d == td or str(d) in has_bars
+                                            or (newest is not None and str(d) < newest))]
     if not missing:
         log.info(f"  ✓ Every recent session through {sessions[-1]} is scored — "
                  f"no catch-up needed")
