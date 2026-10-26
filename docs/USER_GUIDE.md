@@ -9,7 +9,7 @@ This guide is for the owner running ATIP day to day: what runs when, what each p
 
 | What | Command |
 |---|---|
-| Normal start: scheduler, dashboard and live feeds | `python main.py` (from `/Users/agtci/Documents/GIT_ATIP/ATIP`) |
+| Normal start: scheduler, dashboard and live feeds | `python main.py` (from `/Users/agtci/Documents/ATIP`) |
 | Dashboard | http://127.0.0.1:8000 |
 | Pipeline status today | `python main.py --status` |
 | Run one job now | `python main.py --run postmarket` (also `premarket`, `intraday`, `weekly`, `overnight`) |

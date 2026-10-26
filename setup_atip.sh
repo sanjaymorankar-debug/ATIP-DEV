@@ -4,7 +4,7 @@
 #
 # Like start_atip.sh it resolves the project from its OWN location, never a
 # hardcoded path, so it works wherever the clone lives (now
-# /Users/agtci/Documents/GIT_ATIP/ATIP) and from any subfolder: calling
+# /Users/agtci/Documents/ATIP) and from any subfolder: calling
 # ../setup_atip.sh from dashboard/ or pipeline/ still acts on the project root.
 #
 # Usage: ./setup_atip.sh <command>

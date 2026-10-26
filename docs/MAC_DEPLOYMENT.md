@@ -1,14 +1,14 @@
 # ATIP on the Mac — deployment plan
 
-The plan for running ATIP from its new home, **`/Users/agtci/Documents/GIT_ATIP/ATIP`**,
+The plan for running ATIP from its new home, **`/Users/agtci/Documents/ATIP`**,
 on the owner's Mac. Every step has a command in `setup_atip.sh`, the macOS setup
 script at the project root (the counterpart of the Windows `setup_atip.ps1`).
 
 | | |
 |---|---|
-| Project folder (the one holding `main.py`) | `/Users/agtci/Documents/GIT_ATIP/ATIP` |
-| Previous Mac folder | `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev` |
-| Previous machine | Windows, `D:\Projects\ATIP` |
+| Project folder (the one holding `main.py`) | `/Users/agtci/Documents/ATIP` |
+| Previous machine | Windows, `D:\Projects\ATIP` (its data, about 3 GB, came over on the USB drive as `/Volumes/MOSAM/atip_data`) |
+| Earlier Mac folders, not used | `/Users/agtci/Documents/GIT_ATIP/ATIP` (a copy of the Windows git worktree, see step 2) and `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev` |
 | Code | git clone of `sanjaymorankar-debug/ATIP-DEV`, branch `master` |
 | Runtime data | `atip_data/` in the project folder: database, `config.json`, logs, `publish.json`, `secrets/`. Not in git |
 | Secrets outside `atip_data/` | `.env` in the project folder (`ANTHROPIC_API_KEY`, optionally others). Not in git |
@@ -18,21 +18,23 @@ script at the project root (the counterpart of the Windows `setup_atip.ps1`).
 **Always work in the project folder.** `dashboard/`, `pipeline/`, `data/` and the rest are
 Python packages inside it, not places to start ATIP from. The script finds the project
 from its own location, so `../setup_atip.sh check` from `dashboard/` still acts on
-`/Users/agtci/Documents/GIT_ATIP/ATIP`.
+`/Users/agtci/Documents/ATIP`.
 
 ## The short version
 
 ```bash
-cd /Users/agtci/Documents/GIT_ATIP/ATIP
+cd /Users/agtci/Documents/ATIP
 ./setup_atip.sh check                 # what is ready, what is missing (changes nothing)
-./setup_atip.sh all --from /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
-#   copies atip_data/ and .env from the old folder, builds .venv, installs packages,
+./setup_atip.sh all --from /Volumes/MOSAM    # the drive holding the Windows atip_data/
+#   copies atip_data/ (and .env) from there, builds .venv, installs packages,
 #   upgrades the database, fetches first data if missing, installs the LaunchAgents
 #   for THIS folder, and verifies. Re-running it skips what is already done.
 ./setup_atip.sh verify
 ```
 
-No old data to bring over? Leave out `--from`: `./setup_atip.sh all` starts a fresh database.
+Already copied `atip_data/` into the project by hand? Check the copy (step 5), then run
+`./setup_atip.sh all` without `--from`. No old data at all? `all` without `--from` starts a
+fresh database.
 
 The steps below are the same plan, one piece at a time, with what to check after each.
 
@@ -40,9 +42,11 @@ The steps below are the same plan, one piece at a time, with what to check after
 
 ## 1. Prerequisites
 
-- [x] **Python 3.11+ from Homebrew.** Installed. `./setup_atip.sh check` finds it
-  (Homebrew's 3.13 first, then any 3.11+). The `python3` that ships with macOS is 3.9
-  and too old. To use a particular interpreter: `ATIP_PYTHON=/path/to/python3.x ./setup_atip.sh install`.
+- [x] **Python 3.11+.** Installed: 3.15.2 at `/usr/local/bin/python3`, which `check` finds (it
+  prefers Homebrew's 3.13, then any 3.11+). The `python3` that ships with macOS is 3.9 and too
+  old. ATIP is tested on 3.12–3.14: if `install` fails building a package on 3.15,
+  `brew install python@3.13`, `rm -rf .venv`, then
+  `ATIP_PYTHON="$(brew --prefix)/bin/python3.13" ./setup_atip.sh install`.
 - [ ] **git**, from the Xcode Command Line Tools (`xcode-select --install`, already there if Homebrew is).
 - [ ] **Keys at hand:** Dhan client ID and access token (required), Dhan PIN and TOTP secret
   (automatic token renewal), Telegram bot token and chat ID, Anthropic API key, Alpha Vantage
@@ -53,19 +57,24 @@ The steps below are the same plan, one piece at a time, with what to check after
 The first time:
 
 ```bash
-mkdir -p /Users/agtci/Documents/GIT_ATIP
-cd /Users/agtci/Documents/GIT_ATIP
+cd /Users/agtci/Documents
 git clone https://github.com/sanjaymorankar-debug/ATIP-DEV.git ATIP
 ```
 
-If the folder is already a clone: `cd /Users/agtci/Documents/GIT_ATIP/ATIP && git pull`.
+**Clone; don't copy the code from Windows.** `D:\Projects\ATIP\ATIP-dev` was a git *worktree*:
+its `.git` is a one-line file, `gitdir: D:/Projects/ATIP/.git/worktrees/ATIP-dev`, pointing at
+history on the Windows drive. Copied to the Mac, every git command in it fails with
+`fatal: not a git repository: …/D:/Projects/ATIP/.git/worktrees/ATIP-dev`. That is what
+`/Users/agtci/Documents/GIT_ATIP/ATIP` is. Only `atip_data/` and `.env` come from Windows.
 
-Check: `ls /Users/agtci/Documents/GIT_ATIP/ATIP/main.py` exists, and `setup_atip.sh` is next to it.
+If the folder is already a clone: `cd /Users/agtci/Documents/ATIP && git pull`.
+
+Check: `ls /Users/agtci/Documents/ATIP/main.py` exists, and `setup_atip.sh` is next to it.
 
 ## 3. Preflight
 
 ```bash
-cd /Users/agtci/Documents/GIT_ATIP/ATIP
+cd /Users/agtci/Documents/ATIP
 ./setup_atip.sh check
 ```
 
@@ -80,21 +89,38 @@ Every ❌ line names the command that fixes it. On a fresh clone, expect ❌ for
 Two copies running at once each run the schedule, each send every Telegram alert and each
 publish snapshots, against two different databases. Before the switch:
 
-- **The old Mac folder.** You don't need to do anything here: the script refuses to copy a
-  folder whose ATIP is still running, and offers to stop its LaunchAgent for you. To stop it
-  by hand: `launchctl bootout gui/$UID/com.atip.platform`, or Ctrl+C in the Terminal it runs in.
+- **An earlier Mac folder.** `check` lists any ATIP running from another folder, and the script
+  refuses to copy from a running one. To stop it: `launchctl bootout gui/$UID/com.atip.platform`,
+  or Ctrl+C in the Terminal it runs in.
 - **The Windows machine**, if it still runs: `.\setup_atip.ps1 -UnregisterStartup`, disable
   the "ATIP publish snapshot" and `ATIP_DhanTokenRefresh` tasks in Task Scheduler, and remove
   `atip_autostart.vbs` from the Startup folder (`Win+R` → `shell:startup`).
 
 ## 5. Install and bring the data over
 
+The Windows `atip_data\` (about 3 GB) is on the USB drive as `/Volumes/MOSAM/atip_data`.
+
+**Let the script copy and check it:**
+
 ```bash
-./setup_atip.sh migrate --from /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev
+cd /Users/agtci/Documents/ATIP
+./setup_atip.sh migrate --from /Volumes/MOSAM      # the folder that CONTAINS atip_data/
 ./setup_atip.sh install
 ```
 
-(`all --from …` runs both, then steps 6–9.)
+(`all --from /Volumes/MOSAM` runs both, then steps 6–9.)
+
+**Or, if you already copied it into the project by hand**, check the copy against the drive
+before using it. Compare first: opening the database can fold its `-wal` file in, and the
+file then no longer matches the original byte for byte.
+
+```bash
+cd /Users/agtci/Documents/ATIP
+cmp /Volumes/MOSAM/atip_data/atip.db atip_data/atip.db && echo "atip.db identical"
+ls -l /Volumes/MOSAM/atip_data/atip.db-wal atip_data/atip.db-wal   # a -wal on the drive must be copied too
+sqlite3 atip_data/atip.db "PRAGMA quick_check;"                    # must print: ok
+./setup_atip.sh install
+```
 
 `migrate`:
 
@@ -108,8 +134,8 @@ publish snapshots, against two different databases. Before the switch:
 - leaves the old folder untouched. It is the rollback (step 10);
 - does not copy `.venv`: a virtualenv cannot move between folders.
 
-The data on the Windows machine (or a USB copy of it) works the same way: put its `atip_data\`
-(and `.env`) in a folder on the Mac and pass that folder as `--from`.
+`.env` from Windows (`D:\Projects\ATIP\.env`, if there is one) belongs next to `atip_data`
+on the drive, so `migrate` picks it up; or copy it into the project by hand.
 
 `install`:
 
@@ -154,7 +180,7 @@ The new folder is inside `~/Documents`, which macOS protects:
   → `+` → ⌘⇧G → `/bin/bash`. Without it the LaunchAgent cannot open the project and
   `atip_data/launchd.err` says `Operation not permitted`. If it still fails, add Homebrew's
   Python as well (`/opt/homebrew/bin/python3.13`). Moving the project out of `~/Documents`
-  (e.g. to `~/GIT_ATIP/ATIP`) avoids this altogether.
+  (e.g. to `~/ATIP`) avoids this altogether.
 - **iCloud "Desktop & Documents Folders" off.** System Settings → your name → iCloud → iCloud
   Drive. With it on, iCloud syncs `atip.db` while ATIP writes to it, and a database copied
   mid-write can be corrupt. `check` reports ❌ when it looks on.
@@ -214,37 +240,30 @@ today.
 
 ## 10. Rollback
 
-The old folder was left as it was, so going back means pointing the agents there again:
+The Windows machine still has its own `atip_data\`, untouched, so going back means running
+ATIP there again:
 
-```bash
-cd /Users/agtci/Documents/GIT_ATIP/ATIP
-./setup_atip.sh stop                                   # 1. stop the new copy
-
-# 2. only to keep the days the new folder ran: copy its data back into the old folder
-cp setup_atip.sh /Users/agtci/Documents/Project_Documents/Projects/ATIP-dev/
-/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev/setup_atip.sh \
-    migrate --from /Users/agtci/Documents/GIT_ATIP/ATIP --yes
-
-# 3. agents back to the old folder (same labels, so this replaces the new folder's)
-/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev/deploy/launchd/install.sh
-```
-
-Step 2 keeps the old folder's own `atip_data/` as `atip_data.before-migrate-<date>`. Without
-step 2 the old copy starts with the database it had at the switch.
+1. On the Mac: `./setup_atip.sh agents --uninstall` (stops ATIP and removes the auto-start).
+2. Only to keep the days the Mac ran: with ATIP stopped on both, copy the Mac's
+   `/Users/agtci/Documents/ATIP/atip_data` back over `D:\Projects\ATIP\atip_data` (USB drive),
+   keeping the Windows one aside first. Without this, Windows carries on from the day of the copy.
+3. On Windows: `.\setup_atip.ps1 -RegisterStartup`, and re-enable the snapshot and token tasks.
 
 ## 11. Retire the old folder
 
-After a week of clean runs from the new folder:
+After a week of clean runs from `/Users/agtci/Documents/ATIP`:
 
-- archive or delete `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev`;
-- delete any `atip_data.before-migrate-*` folder in the new one;
-- on Windows, delete the scheduled tasks for good.
+- delete `/Users/agtci/Documents/GIT_ATIP` and `/Users/agtci/Documents/Project_Documents/Projects/ATIP-dev`;
+- delete any `atip_data.before-migrate-*` folder in the project;
+- keep one copy of the Windows `atip_data` (the USB drive or the Windows disk) as an archive,
+  and delete the Windows scheduled tasks for good. ATIP's own verified daily backups are in
+  `atip_data/backups/` from then on.
 
 ---
 
 ## Day-to-day
 
-| What | Command (in `/Users/agtci/Documents/GIT_ATIP/ATIP`) |
+| What | Command (in `/Users/agtci/Documents/ATIP`) |
 |---|---|
 | Is everything fine? | `./setup_atip.sh verify` |
 | Update the code | `.venv/bin/python -m ops backup`, then `git pull`, `./setup_atip.sh install`, `launchctl kickstart -k gui/$UID/com.atip.platform`, `./setup_atip.sh verify` |
