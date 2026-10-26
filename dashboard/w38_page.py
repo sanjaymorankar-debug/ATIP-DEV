@@ -11,6 +11,7 @@ ENT-07 exposure; nothing here opens a port.
 
 import html
 import json
+from datetime import datetime, timedelta
 
 _STYLE = """
 :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#34d399;--bad:#f87171;--warn:#f59e0b}
@@ -139,6 +140,21 @@ def mobile_summary(conn) -> dict:
         out["pipeline_problems"] = [{"label": p.label, "kind": p.kind} for p in check_job_health(conn)]
     except Exception:
         out["pipeline_problems"] = []
+    # Whether the numbers above can be live at all: broker health's Dhan market-data reading (it names an
+    # inactive Data API plan), and when news was last fetched and by which classifier.
+    feed = one("SELECT checked_at, overall, checks_json FROM broker_health_check ORDER BY checked_at DESC LIMIT 1")
+    if feed:
+        try:
+            md = next((c for c in json.loads(feed.pop("checks_json") or "[]") if c.get("check") == "dhan_market_data"), {})
+        except Exception:
+            md = {}
+        feed["market_data"] = {"status": md.get("status"), "detail": md.get("detail")}
+    out["data_feed"] = feed
+    news = one("SELECT MAX(start_time) last_fetch FROM pipeline_log WHERE kind='run' AND status IN ('SUCCESS','NO_NEW') "
+               "AND job_name IN ('news_premarket','news_midday','news_catchup','news_recover')") or {}
+    since = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+    news.update(one("SELECT COUNT(*) n, SUM(classifier='claude') ai FROM news_articles WHERE fetched_at>=?", since) or {})
+    out["news"] = news
     return out
 
 
@@ -162,7 +178,7 @@ async function load(){let d,cached=false;
   document.getElementById('off').style.display=cached?'block':'none';
   if(!d){document.getElementById('app').innerHTML='<div class="card">ATIP is not reachable from this device.</div>';return}
   document.getElementById('upd').textContent=cached?('cached '+new Date(cached).toLocaleTimeString()):('scores '+(d.scores_date||'—'));
-  const m=d.market||{},ix=d.indexes||{},g=d.global||{};
+  const m=d.market||{},ix=d.indexes||{},g=d.global||{},f=d.data_feed||{},md=f.market_data||{},nw=d.news||{};
   const list=(xs,f)=>xs.length?xs.map(f).join(''):'<div class="muted">none</div>';
   document.getElementById('app').innerHTML=
    `<div class="grid"><div class="card"><div class="muted">Market health</div><div class="big">${n(m.mh_score,0)}</div><div>${esc(m.regime||'—')}</div></div>
@@ -173,6 +189,10 @@ async function load(){let d,cached=false;
     <div class="card"><h3>🔴 Exit / avoid</h3>${list(d.sells,s=>`<div class="row"><b>${esc(s.symbol)}</b><span>CRI ${n(s.cri,0)}</span></div>`)}</div>
     <div class="card"><h3>Portfolio</h3>${list(d.pnl,p=>`<div class="row"><span>${esc(p.env)} ${esc(String(p.date).slice(0,10))}</span><span>₹${n(p.equity,0)} · day ${p.day_pnl>=0?'<span class=ok>':'<span class=bad>'}₹${n(p.day_pnl,0)}</span></span></div>`)}</div>
     <div class="card"><h3>🩺 Pipeline</h3>${d.pipeline_problems.length?list(d.pipeline_problems,p=>`<div class="row bad"><span>${esc(p.kind)}</span><span>${esc(p.label)}</span></div>`):'<div class="ok">all monitored jobs ran</div>'}</div>
+    <div class="card"><h3>🛰 Data feeds</h3><div class="row"><span>Dhan market data</span><span class="${md.status==='OK'?'ok':'bad'}">${esc(md.status||'—')}</span></div>
+    ${md.detail&&md.status!=='OK'?`<div class="muted">${esc(md.detail)}</div>`:''}
+    <div class="row"><span>Broker health</span><span>${esc(f.overall||'—')} <span class="muted">${esc(String(f.checked_at||'').slice(5,16))}</span></span></div>
+    <div class="row"><span>News fetched</span><span>${esc(nw.last_fetch?String(nw.last_fetch).slice(5,16):'never')} · ${nw.n?(nw.ai?`AI ${nw.ai}/${nw.n}`:'keyword only'):'—'}</span></div></div>
     <div class="card"><h3>🔔 Alerts</h3>${list(d.alerts,a=>`<div class="row"><span class="muted">${esc(String(a.created_at).slice(5,16))}</span><span>${esc(a.title)}</span></div>`)}</div>
     <div class="muted" style="text-align:center">Read-only · model output, not advice · <a href="/" style="color:var(--accent)">full dashboard</a></div>`}
 load();setInterval(load,5*60*1000);
@@ -191,7 +211,7 @@ MANIFEST = json.dumps({
 
 # Shell: cache-first. Data: network-only (the page keeps its own last-good copy); nothing else is cached,
 # so no API response with personal data lands in the cache storage.
-SERVICE_WORKER = r"""const C='atip-shell-v1';const SHELL=['/m','/manifest.webmanifest','/icon.svg'];
+SERVICE_WORKER = r"""const C='atip-shell-v2';const SHELL=['/m','/manifest.webmanifest','/icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;

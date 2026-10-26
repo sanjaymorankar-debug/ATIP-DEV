@@ -84,6 +84,33 @@ def load_dhan_config() -> dict:
     return cfg
 
 
+def data_plan_status(timeout: float = 10) -> dict:
+    """
+    Dhan's own word on market data: /v2/profile's dataPlan ("Active" / "Deactive") and dataValidity.
+
+    Quotes, the WebSocket feeds, intraday bars and history all need Dhan's Data API plan. Without it
+    Dhan answers 806 "Data APIs not Subscribed" (DH-902 on history), which the SDK reduces to an empty
+    failure -- so from 2026-09-18 broker health said "empty quote response" and nobody could see why.
+    Read-only; the profile call is a trading API and works without the plan.
+    """
+    cfg = load_dhan_config()
+    if not cfg.get("dhan_client_id") or not cfg.get("dhan_access_token"):
+        return {"ok": False, "error": "no Dhan credentials"}
+    try:
+        import requests
+        r = requests.get("https://api.dhan.co/v2/profile", timeout=timeout,
+                         headers={"access-token": cfg["dhan_access_token"], "client-id": str(cfg["dhan_client_id"]),
+                                  "Accept": "application/json"})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"HTTP {r.status_code}"}
+        p = r.json() or {}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    plan = p.get("dataPlan")
+    return {"ok": True, "data_plan": plan, "active": str(plan or "").strip().lower() == "active",
+            "data_validity": p.get("dataValidity"), "token_validity": p.get("tokenValidity")}
+
+
 def _guarded(fn, *a, **k):
     """
     W31 (OPS-10): every Dhan MARKET-DATA call goes through one circuit breaker

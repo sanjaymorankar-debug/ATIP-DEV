@@ -60,7 +60,7 @@ def _dhan_checks(network: bool) -> list:
         df = fetch_index_quotes(["nifty50"], dhan)
         ms = round((time.monotonic() - t0) * 1000)
         out.append(_c("dhan_market_data", "OK" if not df.empty else "DOWN",
-                      "NIFTY quote" if not df.empty else "empty quote response", latency_ms=ms))
+                      "NIFTY quote" if not df.empty else _empty_quote_reason(), latency_ms=ms))
     except Exception as e:
         out.append(_c("dhan_market_data", "DOWN", f"{type(e).__name__}: {e}"))
     try:
@@ -75,6 +75,19 @@ def _dhan_checks(network: bool) -> list:
     except Exception as e:
         out.append(_c("dhan_token", "DEGRADED", f"{type(e).__name__}: {e}"))
     return out
+
+
+def _empty_quote_reason() -> str:
+    """Why Dhan returned no quote, when Dhan can say: the Data API plan is the usual cause."""
+    try:
+        from data.dhan import data_plan_status
+        plan = data_plan_status()
+    except Exception:
+        return "empty quote response"
+    if plan.get("ok") and not plan.get("active"):
+        return (f"Dhan Data API plan is {plan.get('data_plan') or 'not active'}: quotes, WebSocket feeds, "
+                "intraday bars and history need it (subscribe at web.dhan.co)")
+    return "empty quote response"
 
 
 def _feeds(now, in_session) -> list:

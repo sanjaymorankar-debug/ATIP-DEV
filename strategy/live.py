@@ -504,7 +504,35 @@ def scheduled_pass(run_job, now: datetime = None):
         return None
     if not P.open_positions():
         return None
-    return run_job("aggressive_manage", run_once, only_mode=orders_mode())
+    r = run_job("aggressive_manage", run_once, only_mode=orders_mode())
+    if isinstance(r, dict) and r.get("status") in ("NO_QUOTES", "STALE_QUOTES") and r.get("positions"):
+        _alert_unmanaged(r, now)
+    return r
+
+
+def _alert_unmanaged(r: dict, now: datetime = None):
+    """
+    A pass with open positions and no usable quote enforces no stop, target or trail. run_job alerts
+    only on FAILED, so NO_QUOTES / STALE_QUOTES went to pipeline_log and nowhere else -- and Dhan's
+    Data API plan, which every quote needs, had lapsed on 2026-09-18. Once a day, with the reason.
+    """
+    now = now or datetime.now()
+    why = ("no quotes from Dhan" if r["status"] == "NO_QUOTES"
+           else f"quotes {r.get('quote_age_s')}s old (limit {MAX_QUOTE_AGE_SECONDS}s)")
+    try:
+        from data.dhan import data_plan_status
+        plan = data_plan_status()
+        if plan.get("ok") and not plan.get("active"):
+            why += f"; Dhan Data API plan is {plan.get('data_plan') or 'not active'}"
+    except Exception:
+        pass
+    try:
+        from alerts.telegram import notify
+        notify(f"🔴 <b>Aggressive exits NOT running</b>: {r['positions']} open position(s) unmanaged ({why}). "
+               "Their stops, targets and trail are not being enforced: manage them by hand or restore quotes.",
+               category="strategy", severity="error", key=f"aggressive_unmanaged:{now:%Y-%m-%d}")
+    except Exception as e:
+        log.warning(f"  strategy: unmanaged-position alert failed: {e}")
 
 
 def schedule_jobs(schedule, run_job, cfg: dict = None) -> list:
