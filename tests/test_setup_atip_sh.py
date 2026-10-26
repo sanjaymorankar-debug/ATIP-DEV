@@ -49,7 +49,7 @@ def test_status_report_survives_null_rows_and_status(temp_db, capsys):
 
 def _run(project, *args, home):
     env = {"HOME": str(home), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "ATIP_PYTHON": sys.executable,
-           "LANG": "C.UTF-8"}
+           "LANG": "C.UTF-8", "ATIP_PORT": "9"}      # never probe a real ATIP on 8000
     return subprocess.run(["bash", str(project / "setup_atip.sh"), *args], cwd=project, env=env,
                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
 
@@ -162,3 +162,16 @@ def test_migrate_rejects_its_own_folder_and_a_folder_without_data(folders, tmp_p
     (tmp_path / "empty").mkdir()
     assert "nothing to migrate" in _run(new, "migrate", "--from", str(tmp_path / "empty"), home=home).stderr
     assert "usage" in _run(new, "migrate", home=home).stderr
+
+
+@needs_bash
+def test_verify_reports_only_a_recent_launchd_permission_error(folders):
+    """launchd.err only grows: a permission error fixed long ago must not keep failing verify."""
+    _old, new, home = folders
+    (new / "atip_data").mkdir()
+    err = new / "atip_data" / "launchd.err"
+    msg = "Operation not permitted"
+    err.write_text(f"/bin/bash: start_atip.sh: {msg}\n")
+    assert msg in _run(new, "verify", home=home).stdout                  # the latest lines: reported
+    err.write_text(f"/bin/bash: start_atip.sh: {msg}\n" + "ATIP started\n" * 30)
+    assert msg not in _run(new, "verify", home=home).stdout              # 30 lines back: history
