@@ -149,3 +149,8 @@ triggers, through the same path as `require_confirmation=False` (refused on a qu
 minutes, then the halt, funds, circuit and risk-limit checks in orders/broker.py). Turning it on needs the
 "I understand" tick, is refused while halted and, for LIVE, without a SEBI Algo ID; every change is
 logged in `session_events` (AUTO_SEND). CONFIRM sessions and rules without a session keep asking.
+
+**PAPER only** (owner, 27 Oct 2026): the switch cannot be turned on unless `broker_env` is PAPER, and
+whenever it is not PAPER the engine makes every entry ask -- auto send, an AUTO session or a rule's own
+`require_confirmation=False` alike. Bracket exit legs keep their own setting, so a stop protecting a
+real position still fires without waiting for a tap.

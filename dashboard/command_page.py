@@ -131,7 +131,7 @@ __OPBANNER__
   <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h2>Sessions</h2><span id="sesSum" class="muted" style="font-size:13px"></span></div>
   <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. <b>Halt all trading</b> stops everything.</div>
   <div class="item" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px">
-   <div class="grow"><b>When an AUTO session's rule triggers</b><div id="asNote" class="sub" style="margin:2px 0 0"></div></div>
+   <div class="grow"><b>When an AUTO session's rule triggers</b> <span class="pill warn" style="padding:1px 8px">PAPER only</span><div id="asNote" class="sub" style="margin:2px 0 0"></div></div>
    <div class="seg" role="radiogroup" aria-label="AUTO send" id="asSeg" style="grid-template-columns:repeat(2,minmax(150px,1fr));margin:0">
     <button type="button" role="radio" data-as="OFF" aria-checked="true"><b>Ask me first</b><span class="sub" style="margin:0">You confirm every order</span></button>
     <button type="button" role="radio" data-as="ON" class="AUTO" aria-checked="false"><b>Send without asking</b><span class="sub" style="margin:0">Within the session's limits</span></button>
@@ -139,7 +139,7 @@ __OPBANNER__
   </div>
   <div id="asBox" class="autobox">
    <b>Let AUTO sessions send orders without asking you?</b>
-   <div style="font-size:13px;margin-top:6px">Only entry rules of sessions that are RUNNING in AUTO mode are affected. Each order still passes the halt, funds, circuit, risk-limit and session-limit checks, and is refused on a price older than 3 minutes. Other sessions keep asking. You can switch back here, or halt everything, at any time.</div>
+   <div style="font-size:13px;margin-top:6px">Only entry rules of sessions that are RUNNING in AUTO mode are affected. Each order still passes the halt, funds, circuit, risk-limit and session-limit checks, and is refused on a price older than 3 minutes. Other sessions keep asking. PAPER only: with real money (LIVE) every order asks you, whatever this switch says. You can switch back here, or halt everything, at any time.</div>
    <label><input type="checkbox" id="asAck"> I understand orders can go out without asking me.</label>
    <div class="actions"><button type="button" id="asCancel">Keep asking me</button><button type="button" id="asGo" class="primary" disabled>Send without asking</button></div>
   </div>
@@ -219,6 +219,7 @@ function render(d){
  $('sesSum').textContent=ses.running+' running · '+ses.auto+' on AUTO · '+(ses.auto_bypass?'AUTO sends without asking':'AUTO asks first');
  document.querySelectorAll('#asSeg [data-as]').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.as==='ON')===!!ses.auto_bypass)));
  $('asNote').textContent=ses.auto_bypass?'Orders go out without asking for '+ses.sessions.filter(t=>t.mode==='AUTO'&&t.status==='RUNNING').length+' running AUTO session(s). Every change is logged.':'Every AUTO rule still waits for your Confirm. Sessions in CONFIRM always ask.';
+ if(b.is_live)$('asNote').textContent='LIVE: real money, so every order asks you. Sending without asking works in PAPER only.';
  $('tiles').innerHTML=ses.sessions.map(t=>`<button type="button" class="tile" data-sid="${esc(t.id)}" aria-pressed="${sel===t.id}"><span style="display:flex;justify-content:space-between;width:100%"><b>${esc(t.id)} ${esc(t.name)}</b><span class="mode ${esc(t.mode)}">${esc(t.mode)}</span></span><span class="sub" style="margin:0">${esc(t.status)}${t.stats.awaiting?' · '+t.stats.awaiting+' waiting':''}</span><span class="sub num" style="margin:0">${t.stats.today} today · ${t.stats.watching} watching · ${t.stats.executed} done</span></button>`).join('');
  if(sel)openSession(sel,false);
  // recent

@@ -732,6 +732,9 @@ def check_triggers() -> list[dict]:
     price_by_symbol = {row["symbol"]: row["ltp"] for _, row in quotes.iterrows() if row.get("ltp")}
     # Freshness of this quote batch, for the auto-execution guard below.
     quote_age = _quote_batch_age_seconds(quotes)
+    # Owner rule (27 Oct 2026): an entry goes out without the confirmation tap in PAPER only.
+    from orders.environment import PAPER, broker_env
+    paper_only_ok = broker_env() == PAPER
 
     # Ratchet trailing stops BEFORE testing triggers, on this same quote batch,
     # so a stop that should have moved up this tick isn't tested at its old,
@@ -772,7 +775,14 @@ def check_triggers() -> list[dict]:
                 log.warning(f"  {rule['symbol']}: auto send check failed, asking instead: {e}")
                 auto = False
 
-            if rule["require_confirmation"] and not auto:
+            no_tap = auto or not rule["require_confirmation"]
+            if no_tap and not paper_only_ok and (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY:
+                # Real money: this entry asks, whatever its own setting or its session says. Exit
+                # legs keep theirs -- a stop protecting a real position must not wait for a tap.
+                log.info(f"  {rule['symbol']}: not PAPER -- entry asks for confirmation instead of sending")
+                no_tap = False
+
+            if not no_tap:
                 now = datetime.now()
                 expires = (now + timedelta(seconds=CONFIRMATION_WINDOW_SECONDS)).isoformat()
                 conn.execute(
