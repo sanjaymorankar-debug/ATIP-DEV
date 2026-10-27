@@ -321,6 +321,10 @@ def inventory() -> list:
 # Explicit INVENTORY entries win; these prefix rules classify the rest. A table matched by neither is
 # an inventory gap (ops/compliance.py data_inventory check) -- new tables must be classified here.
 RULES = [
+    # NI (2026-10-27): the News Impact Estimate -- public headlines and model output, no personal data; ahead of the
+    # generic news_ rule below, which would file them as rolling market data
+    (r"^news_impact_(daily|eval)$", "research", False, "news impact estimate + track record: 600 days (W1 purge)"),
+    (r"^news_impact$", "research", False, "per-headline news impact assessments: 90 days (W1 purge)"),
     (r"^assistant_", "personal", True, "conversation history: account lifetime; removed on a delete request"),
     (r"^(investor_profile|wealth_|perf_)", "financial", True, "owner's financial records: kept (audit, tax)"),
     (r"^(portfolio_|broker_import_run|live_pnl_snapshot)", "financial", True, "holdings / imports: kept"),
