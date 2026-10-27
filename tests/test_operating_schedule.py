@@ -403,6 +403,7 @@ def test_a_bad_override_action_is_refused(ops):
 def test_keyword_fallback_in_sentiment_alerts_loudly(ops, monkeypatch):
     from db.schema import get_connection
     import data.news_ai as NA
+    monkeypatch.setattr(ops, "_news_ai_on", lambda: True)        # news AI switched on, then fell back
     monkeypatch.setattr(NA, "run_summary_job", lambda hours=None: {"status": "SUCCESS", "rows": 1})
     start = at(6, 0).replace(tzinfo=None)
     c = get_connection()
@@ -416,6 +417,23 @@ def test_keyword_fallback_in_sentiment_alerts_loudly(ops, monkeypatch):
     assert out["status"] == "DEGRADED" and out["rule_classified"] == 2 and out["ai_classified"] == 1
     crit = _rows("SELECT severity, title FROM alert_log WHERE severity='critical'")
     assert crit and "NEWS SENTIMENT FALLBACK" in crit[0][1]
+
+
+def test_keyword_rules_by_choice_raise_no_alert(ops, monkeypatch):
+    """news.ai_enabled false: ATIP's keyword classifier is the engine, not a fall-back."""
+    from db.schema import get_connection
+    import data.news_ai as NA
+    monkeypatch.setattr(NA, "run_summary_job", lambda hours=None: {"status": "SUCCESS", "rows": 1})
+    monkeypatch.setattr(ops, "_news_ai_on", lambda: False)
+    start = at(6, 0).replace(tzinfo=None)
+    c = get_connection()
+    c.execute("INSERT INTO news_articles (headline, fetched_at, classifier, sentiment) VALUES (?,?,?,?)",
+              ("h", start + timedelta(minutes=1), "rule", 0.2))
+    c.commit()
+    c.close()
+    out = ops.step_sentiment({"started": start, "run_date": str(DAY)})
+    assert out["status"] == "SUCCESS" and not out["fallback"] and out["rule_classified"] == 1
+    assert not _rows("SELECT 1 FROM alert_log WHERE severity='critical'")
 
 
 def test_claude_only_sentiment_is_clean(ops, monkeypatch):

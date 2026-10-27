@@ -15,7 +15,8 @@ States, recorded with every transition in scheduler_status and served by GET /ap
                   job whose slot fell inside the window (deferred_jobs)
                 2 collect market data and news: Asia (Japan/Korea opened at 05:30 IST -- this run captures
                   their opening move), Indian news, the Dhan security list if missing
-                3 news sentiment (Claude); a fall-back to the keyword classifier alerts LOUDLY
+                3 news sentiment (ATIP keyword rules when news.ai_enabled is false; with it true, a
+                  fall-back to the keyword classifier alerts LOUDLY)
                 4 analysis: any unscored session is scored (VPI, ZPI, MRI, RRI, CRI, MSI, ACS, Market Health,
                   technicals), the null-EMA history gap is filled for short-history small/mid-caps
                 5 signals and the pre-market report, stored before 08:30 IST (refreshed again at 08:15)
@@ -548,6 +549,14 @@ def step_collect(ctx) -> dict:
     return _rollup(res)
 
 
+def _news_ai_on() -> bool:
+    try:
+        from data.news_ai import settings
+        return bool(settings()["ai_enabled"])
+    except Exception:
+        return False
+
+
 def classifier_check(conn, since) -> dict:
     """How the news fetched since `since` was classified, and the latest summary's classifier."""
     try:
@@ -562,6 +571,10 @@ def classifier_check(conn, since) -> dict:
     except Exception:
         s = {}
     rule = by.get("rule", 0)
+    if not _news_ai_on():                         # keyword rules by choice (news.ai_enabled false): not a fall-back
+        return {"by_classifier": by, "rule_classified": rule, "ai_classified": by.get("claude", 0),
+                "summary_classifier": s.get("classifier"), "summary_fallback_reason": None, "fallback": False,
+                "engine": "rules"}
     fallback = bool(rule) or (s.get("classifier") == "rule" and str(s.get("created_at") or "") >= str(since))
     return {"by_classifier": by, "rule_classified": rule, "ai_classified": by.get("claude", 0),
             "summary_classifier": s.get("classifier"), "summary_fallback_reason": s.get("fallback_reason"),
@@ -569,8 +582,9 @@ def classifier_check(conn, since) -> dict:
 
 
 def step_sentiment(ctx) -> dict:
-    """3. News sentiment by Claude (data/news_ai). Any headline left to the keyword classifier -- no API key,
-    cost cap reached, API down -- is a LOUD alert, not a log line: the scores read it as AI sentiment."""
+    """3. News sentiment (data/news_ai). With news.ai_enabled false ATIP's keyword classifier is the engine by
+    choice and nothing is alerted. With it true, any headline left to the keyword classifier -- no API key, cost cap
+    reached, API down -- is a LOUD alert, not a log line: the scores read it as AI sentiment."""
     res = {}
     from data.news_ai import run_summary_job
     _sub(res, "news_summary_resume", run_summary_job)

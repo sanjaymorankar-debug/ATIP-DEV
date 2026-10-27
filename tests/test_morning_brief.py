@@ -98,7 +98,7 @@ def test_the_brief_has_crude_usd_inr_fii_dii_and_the_news_tone(conn):
     assert "<b>Crude:</b> Brent $64.25 (+1.20%) · WTI $60.10 (+1.05%)" in body
     assert "<b>USD-INR:</b> 88.21 (-0.08%)" in body
     assert f"<b>FII/DII ({td:%d %b}):</b> FII ₹-1,234 Cr · DII ₹+2,346 Cr" in body
-    assert "<b>News tone:</b> RISK-OFF · 231 headlines (keyword rules, not AI" in body
+    assert "<b>News tone:</b> RISK-OFF · 231 headlines (ATIP keyword rules" in body
 
 
 def test_the_brief_says_when_those_inputs_are_missing(conn):

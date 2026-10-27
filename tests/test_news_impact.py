@@ -1,8 +1,8 @@
 """
-NI-01..NI-05 (2026-10-27): the News Impact Estimate -- which headlines are assessed, the Claude and keyword-rule
-paths, combining into a session call with sectors and drivers, the tracking check against the Nifty close, the
+NI-01..NI-05 (2026-10-27): the News Impact Estimate -- which headlines are assessed, the keyword-rule path (never
+an external AI service), combining into a session call with sectors and drivers, the tracking check against the Nifty close, the
 job end to end from the feeds, and where it shows (API, pages, pre-market report, morning brief, scheduler).
-No test reaches the network or the Anthropic API: news_ai._call and the feed pipeline are replaced.
+No test reaches the network: the feed pipeline is replaced, and news_ai._call is made to fail the test if called.
 """
 
 import json
@@ -44,21 +44,25 @@ def close_row(c, day, nifty, **sectors):
     c.commit()
 
 
-def claude(monkeypatch, items_for, brief=None):
-    """Replace the Anthropic call: items_for(headlines) -> items; the brief call returns `brief`."""
-    from data import news_ai
-    calls = []
+def fixed(monkeypatch, items_for):
+    """Fix the per-headline assessment: items_for(headlines) -> items (as the keyword rules would store them)."""
+    from data import news_impact
 
-    def fake(conn, purpose, system, user, schema, max_tokens):
-        calls.append(purpose)
-        if purpose == "news_impact_brief":
-            if brief is None:
-                raise news_ai._Unavailable("no brief")
-            return brief
-        heads = [ln.split("] ", 1)[1] for ln in user.splitlines() if ln[:1].isdigit()]
-        return {"items": items_for(heads)}
-    monkeypatch.setattr(news_ai, "_call", fake)
-    return calls
+    def fake(arts, conn=None, cfg=None):
+        return [{"india_relevance": x["india_relevance"], "nifty_direction": x["nifty_direction"],
+                 "magnitude": x["magnitude"], "horizon": x["horizon"], "transmission": x["transmission"],
+                 "sectors": x["sectors"], "confidence": x["confidence"], "rationale": x["rationale"],
+                 "method": "rule", "model": None} for x in items_for([a["headline"] for a in arts])], None
+    monkeypatch.setattr(news_impact, "assess", fake)
+
+
+@pytest.fixture(autouse=True)
+def no_anthropic(monkeypatch):
+    from data import news_ai
+
+    def boom(*a, **k):
+        raise AssertionError("news impact must not call the Anthropic API")
+    monkeypatch.setattr(news_ai, "_call", boom)
 
 
 def item(i, d="DOWN", m="MEDIUM", sectors=(), conf=0.8, rel=0.9, tr="CRUDE_COMMODITIES"):
@@ -145,52 +149,39 @@ def test_rule_path_keeps_company_news_off_the_nifty_and_never_says_large(NI):
     assert "LARGE" not in (e["magnitude"], g["magnitude"]) and e["method"] == "rule"
 
 
-def test_without_claude_every_headline_is_assessed_by_rules_and_says_why(NI):
+def test_every_headline_is_assessed_by_atip_rules(NI):
     c = _conn()
     try:
         art(c, "Brent crude surges 5% as Gulf supply fears grow", category="COMMODITIES", sentiment=0.7)
         out = NI.assess_pending(c, NOW)
     finally:
         c.close()
-    assert out["rule"] == 1 and out["claude"] == 0 and "ai_enabled is false" in out["fallback_reason"]
+    assert out["rule"] == 1 and out["claude"] == 0 and out["fallback_reason"] is None
 
 
-# ── the Claude path ────────────────────────────────────────────────────────
-def test_claude_assessments_are_stored_and_bad_values_cleaned(NI, monkeypatch):
-    calls = claude(monkeypatch, lambda hs: [
-        {**item(0, sectors=[("ENERGY", "DOWN"), ("NOT_A_SECTOR", "UP"), ("ENERGY", "UP")]), "confidence": 3},
-        item(1, d="NONE", m="LARGE")])
+# ── independent of Anthropic ───────────────────────────────────────────────
+def test_no_anthropic_call_even_with_news_ai_switched_on(NI, tmp_path):
+    (tmp_path / "atip_data").mkdir()
+    (tmp_path / "atip_data" / "config.json").write_text(json.dumps({"news": {"ai_enabled": True}}))
     c = _conn()
     try:
-        a = art(c, "Brent crude surges 5% as Gulf supply fears grow")
-        b = art(c, "Fed holds rates as expected", importance="MEDIUM")
+        art(c, "Brent crude surges 5% as Gulf supply fears grow", category="COMMODITIES", sentiment=0.7)
         out = NI.assess_pending(c, NOW)
-        ra = dict(c.execute("SELECT * FROM news_impact WHERE article_id=?", (a,)).fetchone())
-        rb = dict(c.execute("SELECT * FROM news_impact WHERE article_id=?", (b,)).fetchone())
+        g = NI.aggregate(c, NOW, "premarket")
     finally:
         c.close()
-    assert calls == ["news_impact"] and out["claude"] == 2 and out["fallback_reason"] is None
-    assert ra["method"] == "claude" and ra["confidence"] == 1.0 and ra["for_session"] == "2026-10-27"
-    assert json.loads(ra["sectors_json"]) == [{"sector": "ENERGY", "direction": "DOWN"}]
-    assert rb["magnitude"] == "NONE", "no direction and no sector call means no size"
+    assert out["rule"] == 1 and g["brief_method"] == "rule" and g["fallback_reason"] is None   # no_anthropic: no call
 
 
-def test_a_headline_the_model_skipped_falls_back_to_rules(NI, monkeypatch):
-    claude(monkeypatch, lambda hs: [item(0)])
-    c = _conn()
-    try:
-        art(c, "Brent crude surges 5% as Gulf supply fears grow")
-        art(c, "RBI cuts repo rate by 25 bps", category="RBI_POLICY", sentiment=-0.4, importance="MEDIUM")
-        out = NI.assess_pending(c, NOW)
-    finally:
-        c.close()
-    assert out["claude"] == 1 and out["rule"] == 1
+def test_the_module_has_no_model_path():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "data" / "news_impact.py").read_text(encoding="utf-8")
+    assert "news_ai._call" not in src and "anthropic" not in src.lower().replace("no anthropic call", "")
 
 
 # ── combining ──────────────────────────────────────────────────────────────
 def test_negative_news_gives_a_negative_session_call_with_sectors_and_drivers(NI, monkeypatch):
-    claude(monkeypatch, lambda hs: [item(i, sectors=[("ENERGY", "DOWN")]) for i in range(len(hs))],
-           brief={"summary": "Crude is the story.", "bullets": [{"text": "crude", "refs": [0, 9]}], "watch": ["OMCs"]})
+    fixed(monkeypatch, lambda hs: [item(i, sectors=[("ENERGY", "DOWN")]) for i in range(len(hs))])
     c = _conn()
     try:
         for k in range(4):
@@ -204,8 +195,9 @@ def test_negative_news_gives_a_negative_session_call_with_sectors_and_drivers(NI
     assert g["bias"] == "NEGATIVE" and g["score"] <= 42 and g["strength"] in ("MODERATE", "STRONG")
     assert g["sectors"][0]["sector"] == "ENERGY" and g["sectors"][0]["bias"] == "NEGATIVE"
     assert len(g["drivers"]) == 4 and all(d["points"] < 0 for d in g["drivers"])
-    assert g["brief_method"] == "claude" and g["brief"]["bullets"][0]["article_ids"] == [g["drivers"][0]["article_id"]]
-    assert tuple(stored) == ("NEGATIVE", 4) and g["informational_only"]
+    assert g["brief_method"] == "rule" and g["brief"]["bullets"][0]["article_ids"] == [g["drivers"][0]["article_id"]]
+    assert g["brief"]["watch"][0] == "Nifty Energy"
+    assert tuple(stored) == ("NEGATIVE", 0) and g["informational_only"]
 
 
 def test_older_news_counts_less(NI):
@@ -225,7 +217,7 @@ def test_no_news_is_a_neutral_call_with_a_plain_brief(NI):
     assert g["bias"] == "NEUTRAL" and g["score"] == 50 and g["n_items"] == 0 and "No market-moving" in g["brief"]["summary"]
 
 
-def test_brief_falls_back_to_rules_when_claude_is_unavailable(NI):
+def test_the_brief_names_the_bias_and_top_drivers(NI):
     c = _conn()
     try:
         art(c, "Brent crude surges 5% as Gulf supply fears grow", category="COMMODITIES", sentiment=0.7)
@@ -233,12 +225,13 @@ def test_brief_falls_back_to_rules_when_claude_is_unavailable(NI):
         g = NI.aggregate(c, NOW, "premarket")
     finally:
         c.close()
-    assert g["brief_method"] == "rule" and "keyword rules, not AI" in g["brief"]["summary"] and g["fallback_reason"]
+    assert g["brief_method"] == "rule" and "news bias" in g["brief"]["summary"] and g["fallback_reason"] is None
+    assert len(g["brief"]["bullets"]) == 1
 
 
 # ── tracking ───────────────────────────────────────────────────────────────
 def _call_for(NI, monkeypatch, direction, when=NOW, label="premarket"):
-    claude(monkeypatch, lambda hs: [item(i, d=direction, sectors=[("IT", "UP")]) for i in range(len(hs))])
+    fixed(monkeypatch, lambda hs: [item(i, d=direction, sectors=[("IT", "UP")]) for i in range(len(hs))])
     c = _conn()
     try:
         art(c, f"Big news {direction} {when}", at=when - timedelta(hours=1))
@@ -260,7 +253,7 @@ def test_a_call_is_scored_against_the_nifty_close_of_its_session(NI, monkeypatch
     finally:
         c.close()
     assert out["evaluated"] == 1 and out["headlines_evaluated"] == 1
-    assert e["outcome"] == "NEGATIVE" and e["hit"] == 1 and e["pre_open"] == 1 and e["method"] == "claude"
+    assert e["outcome"] == "NEGATIVE" and e["hit"] == 1 and e["pre_open"] == 1 and e["method"] == "rule"
     assert json.loads(e["sectors_json"]) == [{"sector": "IT", "bias": "POSITIVE", "actual_chg": 1.2, "hit": 1}]
     assert tuple(h) == (-0.85, 1)
 
@@ -299,7 +292,7 @@ def test_accuracy_uses_the_last_pre_open_call_and_shows_baselines(NI, monkeypatc
     finally:
         c.close()
     assert acc["sessions"] == 3, "the midday call is not the one a trader read before the open"
-    assert acc["hit_rate_pct"] == pytest.approx(66.7) and acc["by_method"]["claude"]["sessions"] == 3
+    assert acc["hit_rate_pct"] == pytest.approx(66.7) and acc["by_method"]["rule"]["sessions"] == 3
     assert "yesterday_again" in acc["baselines"] and acc["note"] == "too few sessions to judge yet"
 
 
@@ -318,10 +311,10 @@ def test_run_fetches_indian_and_world_feeds_then_assesses_and_combines(NI, monke
             c.close()
         return {"status": "SUCCESS", "rows": 1, "fetched": 1}
     monkeypatch.setattr(news, "run_news_pipeline", fake_pipeline)
-    claude(monkeypatch, lambda hs: [item(i, d="DOWN" if "Wall Street" in h else "UP", tr="GLOBAL_RISK")
-                                    for i, h in enumerate(hs)])
+    fixed(monkeypatch, lambda hs: [item(i, d="DOWN" if "Wall Street" in h else "UP", tr="GLOBAL_RISK")
+                                   for i, h in enumerate(hs)])
     out = NI.run("premarket")
-    assert seen == ["india", "world"] and out["status"] == "SUCCESS" and out["assessed"]["claude"] == 2
+    assert seen == ["india", "world"] and out["status"] == "SUCCESS" and out["assessed"]["rule"] == 2
     assert out["feeds"]["world"]["stored"] == 1 and out["bias"] in ("POSITIVE", "NEUTRAL", "NEGATIVE")
 
 
@@ -340,7 +333,7 @@ def client(NI):
 
 
 def test_api_and_every_page_carry_the_panel(NI, client, monkeypatch):
-    claude(monkeypatch, lambda hs: [item(i) for i in range(len(hs))])
+    fixed(monkeypatch, lambda hs: [item(i) for i in range(len(hs))])
     c = _conn()
     try:
         art(c, "Brent crude surges 5% as Gulf supply fears grow", at=datetime.now() - timedelta(hours=1))
@@ -349,7 +342,7 @@ def test_api_and_every_page_carry_the_panel(NI, client, monkeypatch):
     finally:
         c.close()
     d = client.get("/api/news-impact").json()
-    assert d["latest"]["bias"] in ("NEGATIVE", "NEUTRAL") and d["recent"][0]["method"] == "claude"
+    assert d["latest"]["bias"] in ("NEGATIVE", "NEUTRAL") and d["recent"][0]["method"] == "rule"
     assert d["latest"]["informational_only"] and "hit_rate_pct" in d["accuracy"]
     assert client.get("/api/news-impact/accuracy?days=30").json()["days"] == 30
     for page, box in (("/", "niNewsBox"), ("/", "niAsiaBox"), ("/global-asia", "niBox"), ("/m", "niBox")):
@@ -382,7 +375,7 @@ def test_premarket_report_and_morning_brief_carry_the_estimate(NI, monkeypatch):
     assert rep["news_impact"]["for_session"] == "2026-10-27" and rep["news_impact"]["bias"]
     assert not [x for x in rep["caveats"] if "news impact" in x]
     ni = [x for x in lines if x.startswith("<b>News impact:</b>")]
-    assert ni and "keyword rules, not AI" in ni[0]
+    assert ni and "ATIP keyword rules" in ni[0] and "not AI" not in ni[0]
 
 
 def test_scheduler_runs_it_at_the_configured_times_and_scores_after_the_close(NI, monkeypatch):

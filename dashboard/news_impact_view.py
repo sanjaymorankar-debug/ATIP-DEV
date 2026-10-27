@@ -34,13 +34,12 @@ NI_JS = r"""<script>
  function render(box,d){
   var L=d.latest,A=d.accuracy||{},h='';
   if(!L){box.innerHTML='<div class="ga-muted">No news impact estimate yet — it runs at 06:00 (resume), 07:40, 12:20, 15:50 and 20:15 IST.</div>';return;}
-  var ai=(L.n_claude||0)>0&&(L.n_claude||0)>=(L.n_rule||0);
   h+='<div class="ga-cards"><div class="ga-card"><div class="ga-muted">News impact on Indian equities · session '+esc(L.for_session)+'</div>'+
    '<div class="ga-big '+(BC[L.bias]||'')+'">'+n(L.score,0)+' <span style="font-size:15px">'+esc(L.bias)+' · '+lab(L.strength)+'</span></div>'+
    '<div class="ga-muted">'+n(L.n_items,0)+' market-relevant headline(s), Indian + world feeds, last '+n(d.window_hours||18,0)+' h · '+
-   (ai?'assessed by Claude':'<span class="ga-warn">keyword rules, not AI'+(d.ai_enabled?'':' (news AI is off)')+'</span>')+' · '+esc(L.run_label)+' '+esc(String(L.generated_at||'').slice(0,16).replace('T',' '))+'</div></div>';
+   'ATIP keyword analysis'+' · '+esc(L.run_label)+' '+esc(String(L.generated_at||'').slice(0,16).replace('T',' '))+'</div></div>';
   var b=L.brief||{};
-  h+='<div class="ga-card"><div class="ga-muted">Brief'+(L.brief_method==='claude'?' (Claude)':' (rules)')+'</div><div>'+esc(b.summary||'—')+'</div>'+
+  h+='<div class="ga-card"><div class="ga-muted">Brief</div><div>'+esc(b.summary||'—')+'</div>'+
    ((b.bullets||[]).length?'<ul class="ni-ul">'+b.bullets.map(function(x){return '<li>'+esc(x.text)+'</li>'}).join('')+'</ul>':'')+
    ((b.watch||[]).length?'<div class="ga-small ga-muted">Watch: '+b.watch.map(esc).join(' · ')+'</div>':'')+'</div>';
   var ac=A.hit_rate_pct==null?'—':n(A.hit_rate_pct,0)+'%',bl=A.baselines||{};
@@ -53,7 +52,7 @@ NI_JS = r"""<script>
   var D=L.drivers||[];
   h+='<h3 class="ga-h">What is driving it</h3>'+(D.length?'<div class="ga-scroll"><table class="ga-t"><thead><tr><th>Nifty</th><th>Size</th><th>Channel</th><th>Headline</th><th>Why</th><th>Sectors</th></tr></thead><tbody>'+
    D.map(function(x){return '<tr><td>'+(DIR[x.direction]||'—')+'</td><td>'+lab(x.magnitude)+'</td><td>'+lab(x.transmission)+'</td><td class="ni-wrap">'+esc(x.headline)+' <span class="ga-muted">'+esc(x.source||'')+'</span></td>'+
-    '<td class="ni-wrap ga-muted">'+esc(x.rationale)+(x.method==='rule'?' <span class="ga-warn">(rules)</span>':'')+'</td><td>'+(x.sectors||[]).map(function(s){return esc(s.sector)+' '+(s.direction==='UP'?'▲':'▼')}).join(', ')+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="ga-muted">No market-moving headline in the window.</div>');
+    '<td class="ni-wrap ga-muted">'+esc(x.rationale)+'</td><td>'+(x.sectors||[]).map(function(s){return esc(s.sector)+' '+(s.direction==='UP'?'▲':'▼')}).join(', ')+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="ga-muted">No market-moving headline in the window.</div>');
   h+='<p class="ga-muted ga-small">An estimate of direction and size only — no price levels or forecasts. Informational: it feeds no ATIP score and places no orders. Updated '+esc(d.now_ist||'')+' IST.</p>';
   box.innerHTML=h;}
  window.atipLoadNewsImpact=async function(id){var box=document.getElementById(id||'niBox');if(!box)return;

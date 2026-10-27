@@ -30,13 +30,19 @@ in the coming NSE session. It also keeps a running record of how often that esti
 
 ## Who does the analysis
 
-- **Claude.** When `news.ai_enabled` is true and `ANTHROPIC_API_KEY` works, Claude Haiku 4.5 does the analysis. It
-  shares the news daily cost cap ($1 by default) and is logged in `ai_usage_log` as `news_impact` and
-  `news_impact_brief`. Expect a few cents a day.
-- **Keyword rules.** Otherwise keyword rules take over, and the page says so in yellow. The rules handle crude, yield
-  and dollar moves the India way round: "crude jumps" reads as negative, "oil decline" as positive. They keep
-  single-company news off the Nifty, never call a move "large", and cap confidence at 0.5. The rules are a fallback and
-  are clearly weaker than Claude.
+ATIP's own keyword rules. The news analysis does not depend on Anthropic or any other external AI service: it makes no
+API call and needs no `ANTHROPIC_API_KEY`, even if `news.ai_enabled` is switched on. `news.ai_enabled` is set to
+`false` in `atip_data/config.json`, so the per-headline sentiment the rules start from is also ATIP's own keyword
+classifier.
+
+- The rules handle crude, yield and dollar moves the India way round: "crude jumps" reads as negative, "oil decline" as
+  positive.
+- They keep single-company news off the Nifty, never call a move "large", and cap confidence at 0.5.
+- The brief names the bias, the top three drivers and the sectors leaning hardest.
+
+Because rules are the engine by choice, the 06:00 resume no longer raises the "news sentiment fell back" alert, and
+the panel no longer shows the yellow "not AI" warning. Keyword rules are blunter than a language model, so the track
+record matters: read the estimate only once it beats both baselines over 20 or more sessions.
 
 ## When it runs
 
@@ -76,7 +82,7 @@ A NEUTRAL call counts as right when the Nifty moves by 0.30% or less. Until ther
 
 ```json
 "news_impact": {
-  "enabled": true, "window_hours": 18, "max_items": 40, "batch_size": 20,
+  "enabled": true, "window_hours": 18, "max_items": 40,
   "fetch_feeds": true, "fetch_hours": 6, "brief": true,
   "half_life_hours": 12, "score_scale": 4.0, "positive_at": 58, "negative_at": 42,
   "neutral_band_pct": 0.30,

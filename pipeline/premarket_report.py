@@ -37,6 +37,14 @@ DDL = """CREATE TABLE IF NOT EXISTS premarket_reports (
     PRIMARY KEY (for_date, label))"""
 
 
+def _news_ai_on() -> bool:
+    try:
+        from data.news_ai import settings
+        return bool(settings()["ai_enabled"])
+    except Exception:
+        return False
+
+
 def _one(conn, q, *a):
     try:
         r = conn.execute(q, a).fetchone()
@@ -95,7 +103,7 @@ def build(conn, now: datetime | None = None) -> dict:
             tone = json.loads(ns["summary_json"]).get("tone")
         except Exception:
             tone = None
-    if ns.get("classifier") == "rule":
+    if ns.get("classifier") == "rule" and _news_ai_on():     # rules by choice (news.ai_enabled false) is no caveat
         caveats.append("news sentiment came from the keyword fallback, not Claude")
     try:                                          # NI-04: the news impact estimate, informational
         from data import news_impact

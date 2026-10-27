@@ -18,10 +18,9 @@ Indian market, and a running check of how often that call was right.
                               transmission     the channel it travels by (FII flows, crude, rupee, rates, ...)
                               sectors          [{sector, direction}] over the NSE sector indices ATIP stores
                               confidence 0..1, rationale (<= 20 words)
-                            MODEL PATH: Claude, the news model and daily cost cap of data/news_ai (one request per
-                            `batch_size` headlines, JSON-schema output, purpose "news_impact" in ai_usage_log).
-                            RULE PATH (no key, cap reached, API down, news.ai_enabled false): the stored sentiment /
-                            importance / category; a crude / yield / dollar / inflation move named in the headline
+                            ATIP's own keyword rules, independent of any external AI service (no Anthropic call,
+                            whatever news.ai_enabled says): the stored sentiment / importance / category; a
+                            crude / yield / dollar / inflation move named in the headline
                             ("crude jumps", "oil decline") decides the direction, the other way round for India;
                             company news kept off the Nifty; never LARGE; confidence <= 0.5.
     aggregate(conn)         points = direction x magnitude (SMALL 1, MEDIUM 2, LARGE 4) x confidence x relevance x
@@ -31,12 +30,12 @@ Indian market, and a running check of how often that call was right.
     evaluate(conn)          against index_levels (the 15:30 row): Nifty 50 % change of the target session vs the
                             call (a NEUTRAL call is right when |change| <= neutral_band_pct), each sector the same,
                             each headline's direction. Kept in news_impact_eval / news_impact.
-    accuracy(conn, days)    hit rate of the last pre-open call per session, by method (claude / rule), next to
+    accuracy(conn, days)    hit rate of the last pre-open call per session, by method, next to
                             two naive baselines (always the commonest outcome; yesterday's direction again) -- the
                             estimate is worth reading only where it beats them.
 
 The estimate is INFORMATIONAL: nothing here places, sizes or blocks an order, and it does not feed ATIP scores.
-CONFIG  config.json "news_impact" (DEFAULTS below); Claude itself is switched by config.json "news".
+CONFIG  config.json "news_impact" (DEFAULTS below).
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ from zoneinfo import ZoneInfo
 log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
-DEFAULTS = {"enabled": True, "window_hours": 18, "max_items": 40, "batch_size": 20, "fetch_feeds": True,
+DEFAULTS = {"enabled": True, "window_hours": 18, "max_items": 40, "fetch_feeds": True,
             "fetch_hours": 6, "brief": True, "half_life_hours": 12.0, "score_scale": 4.0, "positive_at": 58,
             "negative_at": 42, "neutral_band_pct": 0.30, "eval_give_up_days": 5,
             "magnitude_points": {"NONE": 0, "SMALL": 1, "MEDIUM": 2, "LARGE": 4},
@@ -91,56 +90,6 @@ DDL = [
         outcome TEXT, hit INTEGER, sectors_json TEXT, PRIMARY KEY (for_session, run_label))""",
 ]
 
-SYSTEM = (
-    "You are an Indian equity-market strategist. For each numbered news headline (Indian or world), estimate its "
-    "likely effect on Indian equities -- the Nifty 50 and the NSE sector indices.\n"
-    "Think about how the news reaches India: FII flows, crude oil (India imports ~85% of its oil, so higher crude "
-    "is negative for India and for oil marketers, lower crude positive), the rupee, US yields and the dollar, RBI "
-    "and government policy, trade and tariffs, geopolitics (Pakistan, China, the Middle East), global risk "
-    "appetite, earnings.\n"
-    "Be conservative. Most headlines move the Nifty by nothing or SMALL. MEDIUM is for clearly market-wide news "
-    "(a Fed or RBI surprise, a sharp crude move, a large FII flow figure, a big index heavyweight result). LARGE "
-    "is rare: war or a major attack, an emergency policy move, a crash in a major market.\n"
-    "A headline that only REPORTS a market move that already happened (\"Sensex jumps 483 points\", \"market "
-    "wrap\", live-blog titles, stocks-to-buy lists) has magnitude NONE and direction NONE. News about a single "
-    "company is STOCK_SPECIFIC: Nifty direction NONE unless the company is an index heavyweight and the news is "
-    "large; give its sector instead when it plausibly moves the sector.\n"
-    "Sectors only from the list given. india_relevance 0..1 = how much the headline matters to Indian equities "
-    "at all. confidence 0..1 = how sure you are of the direction. rationale at most 20 words, naming the channel. "
-    "No price levels, no point or percentage forecasts, no buy/sell advice."
-)
-SCHEMA = {
-    "type": "object",
-    "properties": {"items": {"type": "array", "items": {
-        "type": "object",
-        "properties": {"i": {"type": "integer"}, "india_relevance": {"type": "number"},
-                       "nifty_direction": {"type": "string", "enum": DIRECTIONS},
-                       "magnitude": {"type": "string", "enum": MAGNITUDES},
-                       "horizon": {"type": "string", "enum": HORIZONS},
-                       "transmission": {"type": "string", "enum": TRANSMISSIONS},
-                       "sectors": {"type": "array", "items": {"type": "object", "properties": {
-                           "sector": {"type": "string", "enum": list(SECTORS)},
-                           "direction": {"type": "string", "enum": ["UP", "DOWN"]}},
-                           "required": ["sector", "direction"], "additionalProperties": False}},
-                       "confidence": {"type": "number"}, "rationale": {"type": "string"}},
-        "required": ["i", "india_relevance", "nifty_direction", "magnitude", "horizon", "transmission", "sectors",
-                     "confidence", "rationale"],
-        "additionalProperties": False}}},
-    "required": ["items"], "additionalProperties": False}
-BRIEF_SYSTEM = (
-    "You write a short pre-trade note for an Indian equities desk: how the news below is likely to affect the "
-    "Indian market in the coming session. Use only the drivers, sector reads and market data given; cite driver "
-    "numbers. No price levels, no point or percentage forecasts, no buy/sell advice. Say plainly when the news "
-    "flow is thin or mixed."
-)
-BRIEF_SCHEMA = {
-    "type": "object",
-    "properties": {"summary": {"type": "string"},
-                   "bullets": {"type": "array", "items": {"type": "object", "properties": {
-                       "text": {"type": "string"}, "refs": {"type": "array", "items": {"type": "integer"}}},
-                       "required": ["text", "refs"], "additionalProperties": False}},
-                   "watch": {"type": "array", "items": {"type": "string"}}},
-    "required": ["summary", "bullets", "watch"], "additionalProperties": False}
 
 
 # ── settings, tables, sessions ─────────────────────────────────────────────
@@ -304,57 +253,10 @@ def assess_rule(a: dict) -> dict:
             "method": "rule", "model": None}
 
 
-# ── model path ─────────────────────────────────────────────────────────────
-def _clip(v, lo=0.0, hi=1.0):
-    try:
-        return round(max(lo, min(hi, float(v))), 3)
-    except (TypeError, ValueError):
-        return lo
-
-
-def _from_model(x: dict, model: str) -> dict:
-    secs = []
-    for s in x.get("sectors") or []:
-        if isinstance(s, dict) and s.get("sector") in SECTORS and s.get("direction") in ("UP", "DOWN") \
-                and s["sector"] not in [y["sector"] for y in secs]:
-            secs.append({"sector": s["sector"], "direction": s["direction"]})
-    d = x.get("nifty_direction") if x.get("nifty_direction") in DIRECTIONS else "NONE"
-    m = x.get("magnitude") if x.get("magnitude") in MAGNITUDES else "NONE"
-    if d == "NONE":
-        m = "NONE" if not secs else m
-    return {"india_relevance": _clip(x.get("india_relevance")), "nifty_direction": d, "magnitude": m,
-            "horizon": x.get("horizon") if x.get("horizon") in HORIZONS else "NEXT_SESSION",
-            "transmission": x.get("transmission") if x.get("transmission") in TRANSMISSIONS else "NONE",
-            "sectors": secs, "confidence": _clip(x.get("confidence")),
-            "rationale": str(x.get("rationale") or "")[:200], "method": "claude", "model": model}
-
-
-def assess(arts: list, conn, cfg=None) -> tuple[list, str | None]:
-    """(assessments in the order given, why the rule path was used -- None when Claude covered every batch)."""
-    cfg = cfg or settings()
-    from data import news_ai
-    model = news_ai.settings().get("model")
-    out, reason = [], None
-    bs = max(1, int(cfg["batch_size"]))
-    for i in range(0, len(arts), bs):
-        batch = arts[i:i + bs]
-        got = {}
-        if reason is None:
-            try:
-                user = ("Sectors: " + ", ".join(SECTORS) + "\nHeadlines (source / stored category):\n" +
-                        "\n".join(f"{n}. [{a.get('source')}/{a.get('category')}] {a['headline'][:300]}"
-                                  for n, a in enumerate(batch)))
-                res = news_ai._call(conn, "news_impact", SYSTEM, user, SCHEMA, 300 + 160 * len(batch))
-                got = {int(x["i"]): x for x in res.get("items", []) if isinstance(x, dict) and "i" in x}
-            except news_ai._Unavailable as e:
-                reason = str(e)
-                log.info(f"  News impact: Claude unavailable ({reason}) — keyword rules")
-            except Exception as e:      # an unparseable batch, a missing SDK: this batch by rules, keep trying
-                log.warning(f"  News impact batch by rules ({type(e).__name__}: {e})")
-                reason = reason if isinstance(e, (ValueError, KeyError, TypeError)) else f"{type(e).__name__}: {e}"
-        for n, a in enumerate(batch):
-            out.append(_from_model(got[n], model) if n in got else assess_rule(a))
-    return out, reason
+# ── assessment ─────────────────────────────────────────────────────────────
+def assess(arts: list, conn=None, cfg=None) -> tuple[list, str | None]:
+    """(assessments in the order given, None). ATIP's own keyword rules only: no external AI service is called."""
+    return [assess_rule(a) for a in arts], None
 
 
 def store(conn, arts: list, assessed: list, now=None):
@@ -458,51 +360,17 @@ def aggregate(conn, now=None, label="manual", cfg=None, brief=None) -> dict:
     return out
 
 
-def _market_context(conn) -> str:
-    bits = []
-    try:
-        g = conn.execute("SELECT date, sp500_chg, nasdaq_chg, crude_brent_chg, usd_inr, usd_inr_chg, us_10y "
-                         "FROM global_markets ORDER BY date DESC, id DESC LIMIT 1").fetchone()
-        if g:
-            bits.append(f"global markets {g['date']}: S&P 500 {g['sp500_chg']}%, Nasdaq {g['nasdaq_chg']}%, Brent "
-                        f"{g['crude_brent_chg']}%, USD/INR {g['usd_inr']} ({g['usd_inr_chg']}%), US 10Y {g['us_10y']}")
-    except Exception:
-        pass
-    try:
-        gift = conn.execute("SELECT date, time, gift_nifty_chg FROM index_levels WHERE gift_nifty_chg IS NOT NULL "
-                            "ORDER BY date DESC, time DESC LIMIT 1").fetchone()
-        if gift:
-            bits.append(f"GIFT Nifty {gift['date']} {gift['time']}: {gift['gift_nifty_chg']}%")
-    except Exception:
-        pass
-    return "; ".join(bits) or "no market data stored"
-
-
 def make_brief(conn, agg: dict, cfg: dict):
-    """(brief, 'claude' | 'rule', why the rule path was used)."""
+    """(brief, 'rule', None): the top drivers and the sectors leaning hardest, from the keyword assessment."""
     if not agg["drivers"]:
         return ({"summary": "No market-moving headlines in the window — no news-driven bias.", "bullets": [],
                  "watch": []}, "rule", None)
-    from data import news_ai
-    lines = [f"{n}. [{d['direction']}/{d['magnitude']}/{d['transmission']}] {d['headline'][:220]} — {d['rationale']}"
-             for n, d in enumerate(agg["drivers"])]
-    secs = ", ".join(f"{s['name']} {s['bias']} ({s['score']:.0f})" for s in agg["sectors"][:6]) or "none"
-    user = (f"Session {agg['for_session']}. News impact score {agg['score']:.0f}/100 ({agg['bias']}, "
-            f"{agg['strength']}) from {agg['n_items']} headlines.\nSectors: {secs}\nMarket data: "
-            f"{_market_context(conn)}\nDrivers (direction/magnitude/channel):\n" + "\n".join(lines))
-    try:
-        b = news_ai._call(conn, "news_impact_brief", BRIEF_SYSTEM, user, BRIEF_SCHEMA, 900)
-        for x in b.get("bullets", []):
-            x["article_ids"] = [agg["drivers"][r]["article_id"] for r in x.get("refs", [])
-                                if isinstance(r, int) and 0 <= r < len(agg["drivers"])]
-        return b, "claude", None
-    except Exception as e:
-        top = agg["drivers"][:3]
-        return ({"summary": f"{agg['n_items']} market-relevant headlines; news bias {agg['bias']} "
-                            f"({agg['strength'].lower()}), keyword rules, not AI.",
-                 "bullets": [{"text": f"{d['direction']} {d['magnitude'].lower()}: {d['headline'][:140]}",
-                              "refs": [n], "article_ids": [d["article_id"]]} for n, d in enumerate(top)],
-                 "watch": [s["name"] for s in agg["sectors"][:3]]}, "rule", str(e))
+    top = agg["drivers"][:3]
+    return ({"summary": f"{agg['n_items']} market-relevant headlines; news bias {agg['bias']} "
+                        f"({agg['strength'].lower()}).",
+             "bullets": [{"text": f"{d['direction']} {d['magnitude'].lower()}: {d['headline'][:140]}",
+                          "refs": [n], "article_ids": [d["article_id"]]} for n, d in enumerate(top)],
+             "watch": [s["name"] for s in agg["sectors"][:3]]}, "rule", None)
 
 
 # ── tracking ───────────────────────────────────────────────────────────────
@@ -642,15 +510,7 @@ def snapshot(conn) -> dict:
     for r in recent:
         r["sectors"] = json.loads(r.pop("sectors_json") or "[]")
     return {"latest": lt, "recent": recent, "accuracy": accuracy(conn, 90),
-            "ai_enabled": _ai_enabled(), "now_ist": _now().strftime("%Y-%m-%d %H:%M")}
-
-
-def _ai_enabled() -> bool:
-    try:
-        from data.news_ai import settings as s
-        return bool(s()["ai_enabled"])
-    except Exception:
-        return False
+            "engine": "rules", "now_ist": _now().strftime("%Y-%m-%d %H:%M")}
 
 
 # ── the job ────────────────────────────────────────────────────────────────
@@ -683,7 +543,7 @@ def run(label: str = "manual", now=None, fetch_feeds=None) -> dict:
     finally:
         conn.close()
     log.info(f"  📰➜📈 News impact {g['for_session']} ({label}): {g['score']:.0f} {g['bias']} {g['strength']} from "
-             f"{g['n_items']} headline(s); {a['assessed']} new ({a['claude']} Claude, {a['rule']} rules), "
+             f"{g['n_items']} headline(s); {a['assessed']} new by keyword rules, "
              f"{e['evaluated']} call(s) scored")
     return {"status": "SUCCESS", "rows": a["assessed"], "for_session": g["for_session"], "score": g["score"],
             "bias": g["bias"], "strength": g["strength"], "assessed": a, "evaluated": e, "feeds": feeds,

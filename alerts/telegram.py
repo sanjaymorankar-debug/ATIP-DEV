@@ -315,7 +315,7 @@ def _market_lines(conn, td, now=None):
         except ValueError: made = None
     if ns and made and now - made <= timedelta(hours=24):
         tone = (json.loads(ns["summary_json"] or "{}").get("tone") or "—").replace("_", "-")
-        how = "AI" if ns["classifier"] == "claude" else "keyword rules, not AI"
+        how = "AI" if ns["classifier"] == "claude" else "ATIP keyword rules"
         lines.append(f"<b>News tone:</b> {_html(tone)} · {ns['article_count'] or 0} headlines ({how}, {made:%d %b %H:%M})")
     else:
         lines.append("<b>News tone:</b> — (no news summary in the last 24 h)")
@@ -337,7 +337,7 @@ def _market_lines(conn, td, now=None):
         ni = ni_latest(conn)
         if ni and ni.get("score") is not None:
             top = (ni.get("drivers") or [{}])[0].get("headline")
-            how = "AI" if (ni.get("n_claude") or 0) >= (ni.get("n_rule") or 0) and ni.get("n_claude") else "keyword rules, not AI"
+            how = "ATIP keyword rules"
             lines.append(f"<b>News impact:</b> {ni['score']:.0f} ({_html(ni['bias'])}, {_html(str(ni['strength']).lower())})"
                          f" for {_html(ni['for_session'])} · {ni['n_items']} headlines ({how})"
                          + (f" · top: {_html(top[:90])}" if top else ""))
