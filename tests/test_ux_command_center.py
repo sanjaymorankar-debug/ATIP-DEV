@@ -49,7 +49,7 @@ def test_summary_shape_on_an_empty_install(api):
         assert k in d, k
     assert d["risk"]["halted"] is False
     assert len(d["sessions"]["sessions"]) == 10
-    assert d["sessions"]["engine_enforced"] is False
+    assert d["sessions"]["engine_enforced"] is True and d["sessions"]["auto_bypass"] is False
     assert d["signals"]["rows"] == []
 
 
@@ -115,7 +115,7 @@ def test_auto_needs_acknowledgement(api):
     r = client.post("/api/sessions/S1/mode", json={"mode": "AUTO"}, headers=h)
     assert r.status_code == 400 and "ack" in r.json()["error"]
     r = client.post("/api/sessions/S1/mode", json={"mode": "AUTO", "ack": True}, headers=h)
-    assert r.status_code == 200 and r.json()["mode"] == "AUTO" and r.json()["engine_enforced"] is False
+    assert r.status_code == 200 and r.json()["mode"] == "AUTO" and r.json()["auto_bypass"] is False
 
 
 def test_auto_is_refused_while_halted(api):

@@ -163,7 +163,7 @@ OWNER_BOOK = [r"^/api/orders(/|$)", r"^/api/oms/positions$", r"^/api/mobile/",
               r"^/api/status/override$", r"^/api/asia/refresh$",
               r"^/api/news-impact/refresh$"]                                                     # NI-05                                  # Task 2/3
 # The owner's dashboard shows the owner's whole state, so another tenant is sent to its own app instead.
-OWNER_PAGES = [r"^/$", r"^/command$"]
+OWNER_PAGES = [r"^/$", r"^/command(/|$)"]                                     # UXR-06..09: /command/*
 
 OWNERS = {"strategy_id": ("strategy", "strategy_id"), "model_id": ("ml_model", "model_id"),
           "run_id": ("backtest_run", "run_id"), "report_id": ("enterprise_report", "report_id"),

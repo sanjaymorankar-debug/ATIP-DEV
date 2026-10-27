@@ -7,14 +7,18 @@ shown on /command and managed through /api/sessions.
             AUTO     ATIP may send within the session's limits without asking
     status  RUNNING | PAUSED | OFF
 
-WHAT IS ENFORCED TODAY, AND WHAT IS NOT. This module is the control plane: it stores the
-sessions, their limits and every change to them (session_events, append-only), links order
-rules to a session (session_rules) and reports per-session counts. The trigger engine
-(orders/rules.py check_triggers / execute_rule) does NOT read it yet: a PAUSED session's rules
-still fire, and AUTO does not bypass the confirmation gate. Wiring the engine to these settings
-changes when real orders go out, so it is held for the owner's explicit go-ahead. Every reply
-from this module carries "engine_enforced": False so no screen can claim otherwise. The kill
-switch (orders/risk.py halt / resume) IS enforced everywhere and is the way to stop orders.
+WHAT IS ENFORCED (UXR-04, 27 Oct 2026). The trigger engine (orders/rules.py check_triggers) asks
+gate() before an ENTRY rule linked to a session may fire:
+    * the session must be RUNNING (PAUSED / OFF hold the rule; it stays ACTIVE and fires once resumed)
+    * MANUAL holds it too -- in a MANUAL session you place every order yourself
+    * max_trades: entries executed today by the session
+    * max_loss_value: the session's realised loss today (its exit legs against their entries)
+    * capital_cap: the session's open entry value plus this order
+Exit legs (TARGET / STOP) are never held: a protective stop must fire whatever the session says.
+Rules not linked to a session are unaffected. AUTO does NOT bypass the confirmation gate: a rule
+still asks unless it was itself created with require_confirmation=False. Letting AUTO skip the
+tap changes when real orders go out and stays held for the owner's go-ahead ("auto_bypass": False
+in every reply). The kill switch (orders/risk.py halt / resume) remains the way to stop everything.
 
 AUTO is guarded even as a setting: it needs ack=True (the "I understand" step on the screen),
 it is refused while trading is halted, and it is refused when broker_env is LIVE and no SEBI
@@ -161,7 +165,7 @@ def list_sessions(conn) -> dict:
     empty = {"rules": 0, "today": 0, "watching": 0, "awaiting": 0, "executed": 0}
     for r in rows:
         r["stats"] = stats.get(r["id"], dict(empty))
-    return {"sessions": rows, "engine_enforced": False,
+    return {"sessions": rows, "engine_enforced": True, "auto_bypass": False,
             "running": sum(1 for r in rows if r["status"] == "RUNNING"),
             "auto": sum(1 for r in rows if r["mode"] == "AUTO")}
 
@@ -196,7 +200,7 @@ def set_mode(conn, sid: str, mode: str, ack: bool = False) -> dict:
     conn.execute("UPDATE trading_sessions SET mode = ?, updated_at = ? WHERE id = ?", (mode, _now(), sid))
     _event(conn, sid, "MODE", {"from": cur["mode"], "to": mode, "ack": bool(ack)})
     conn.commit()
-    return {**get_session(conn, sid), "engine_enforced": False}
+    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": False}
 
 
 def set_status(conn, sid: str, status: str, reason: str = "") -> dict:
@@ -207,7 +211,7 @@ def set_status(conn, sid: str, status: str, reason: str = "") -> dict:
     conn.execute("UPDATE trading_sessions SET status = ?, updated_at = ? WHERE id = ?", (status, _now(), sid))
     _event(conn, sid, "STATUS", {"from": cur["status"], "to": status, "reason": reason})
     conn.commit()
-    return {**get_session(conn, sid), "engine_enforced": False}
+    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": False}
 
 
 def update_session(conn, sid: str, fields: dict) -> dict:
@@ -275,3 +279,109 @@ def pause_all(conn, reason: str) -> int:
         _event(conn, sid, "STATUS", {"from": "RUNNING", "to": "PAUSED", "reason": f"kill switch: {reason}"})
     conn.commit()
     return len(running)
+
+
+# -- UXR-04: the engine gate ------------------------------------------------------------------
+
+def session_of_rule(conn, rule: dict) -> str | None:
+    """The session a rule belongs to: its own link, else its parent's (bracket legs inherit)."""
+    ensure_tables(conn)
+    for rid in (rule.get("id"), rule.get("parent_rule_id")):
+        if not rid:
+            continue
+        r = conn.execute("SELECT session_id FROM session_rules WHERE rule_id = ?", (rid,)).fetchone()
+        if r:
+            return _row(r)["session_id"]
+    return None
+
+
+def _linked_rules(conn, sid: str) -> list:
+    """Every order rule of a session: the linked ones and the bracket legs they spawned."""
+    try:
+        rows = conn.execute(
+            "SELECT r.* FROM order_rules r WHERE r.id IN (SELECT rule_id FROM session_rules WHERE session_id = ?) "
+            "OR r.parent_rule_id IN (SELECT rule_id FROM session_rules WHERE session_id = ?)", (sid, sid)).fetchall()
+    except Exception:                       # order_rules not created yet
+        return []
+    return [_row(r) for r in rows]
+
+
+def _trades(rules: list) -> list:
+    """One entry per executed ENTRY rule: value, realised P&L from its executed exit legs, risk, closed."""
+    kids = {}
+    for r in rules:
+        if r.get("parent_rule_id"):
+            kids.setdefault(r["parent_rule_id"], []).append(r)
+    out = []
+    for e in rules:
+        if (e.get("role") or "ENTRY") != "ENTRY" or e.get("status") != "EXECUTED" or not e.get("execution_price"):
+            continue
+        px, qty = float(e["execution_price"]), float(e.get("execution_quantity") or 0)
+        sign = 1 if e["side"] == "BUY" else -1
+        legs = kids.get(e["id"], [])
+        done = [l for l in legs if l.get("status") == "EXECUTED" and l.get("execution_price")]
+        pnl = sum(sign * (float(l["execution_price"]) - px) * float(l.get("execution_quantity") or 0) for l in done)
+        closed_qty = sum(float(l.get("execution_quantity") or 0) for l in done)
+        stop = e.get("resolved_stoploss_price")
+        risk = abs(px - float(stop)) * qty if stop else None
+        out.append({"rule_id": e["id"], "symbol": e["symbol"], "side": e["side"], "entry": px, "qty": qty,
+                    "value": px * qty, "date": str(e.get("updated_at") or "")[:10],
+                    "closed": bool(qty) and closed_qty >= qty,
+                    "exit_date": max((str(l.get("updated_at") or "")[:10] for l in done), default=None),
+                    "pnl": round(pnl, 2), "risk": round(risk, 2) if risk else None,
+                    "r": round(pnl / risk, 2) if risk and done else None})
+    return out
+
+
+def usage(conn, sid: str, on: str | None = None) -> dict:
+    """Today's use of a session's limits: entries executed, realised P&L, open entry value."""
+    on = on or str(date.today())
+    tr = _trades(_linked_rules(conn, sid))
+    return {"trades_today": sum(1 for t in tr if t["date"] == on),
+            "realised_today": round(sum(t["pnl"] for t in tr if t["exit_date"] == on), 2),
+            "open_value": round(sum(t["value"] for t in tr if not t["closed"]), 2)}
+
+
+def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
+    """None when the rule may fire, else the reason its session holds it. Exit legs and rules
+    without a session always pass. A session that cannot be read holds its entries (fail closed)."""
+    if (rule.get("role") or "ENTRY") != "ENTRY":
+        return None
+    sid = session_of_rule(conn, rule)
+    if not sid:
+        return None
+    try:
+        s = get_session(conn, sid)
+        if s["status"] != "RUNNING":
+            return f"session {sid} is {s['status']}"
+        if s["mode"] == "MANUAL":
+            return f"session {sid} is MANUAL -- place this order yourself"
+        u = usage(conn, sid)
+        if s.get("max_trades") and u["trades_today"] >= int(s["max_trades"]):
+            return f"session {sid} has used its {s['max_trades']} trades today"
+        if s.get("max_loss_value") and -u["realised_today"] >= float(s["max_loss_value"]):
+            return f"session {sid} lost Rs {-u['realised_today']:,.0f} today (limit Rs {s['max_loss_value']:,.0f})"
+        if s.get("capital_cap") and est_value and u["open_value"] + est_value > float(s["capital_cap"]):
+            return (f"session {sid}: Rs {u['open_value'] + est_value:,.0f} open would exceed its "
+                    f"Rs {s['capital_cap']:,.0f} capital cap")
+    except Exception as e:
+        log.error(f"  session gate for {sid} could not be read: {e}")
+        return f"session {sid} could not be read ({e})"
+    return None
+
+
+def journal(conn) -> dict:
+    """Per-session trades, successes, win rate, average R and P&L (UXR-09)."""
+    seed(conn)
+    out = []
+    for s in list_sessions(conn)["sessions"]:
+        tr = _trades(_linked_rules(conn, s["id"]))
+        closed = [t for t in tr if t["closed"]]
+        wins = [t for t in closed if t["pnl"] > 0]
+        rs = [t["r"] for t in closed if t["r"] is not None]
+        out.append({"id": s["id"], "name": s["name"], "mode": s["mode"], "status": s["status"],
+                    "trades": len(tr), "closed": len(closed), "open": len(tr) - len(closed),
+                    "successful": len(wins), "win_rate_pct": round(len(wins) / len(closed) * 100, 1) if closed else None,
+                    "avg_r": round(sum(rs) / len(rs), 2) if rs else None,
+                    "pnl": round(sum(t["pnl"] for t in tr), 2), "recent": sorted(tr, key=lambda t: t["date"])[-5:]})
+    return {"sessions": out}

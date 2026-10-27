@@ -1,8 +1,10 @@
 # ATIP UX redesign — automatic trading console (Oct 2026)
 
 Prototype (clickable, 8 desktop screens + phone): the "ATIP Trading Console Redesign" design canvas.
-Implemented so far: `/command` (Command Center), the kill-switch API and the session registry — see
-UXR-01..03 in the tracker and `docs/UX_TEST_REPORT_2026-10-26.md`.
+Implemented: `/command` (Command Center), the kill-switch API and the session registry (UXR-01..03,
+26 Oct); `/command/signals`, `/command/setup`, `/command/monitor`, `/command/journal` and the session gate
+in the trigger engine (UXR-06..09, UXR-04, 27 Oct, `dashboard/command_more.py`). Not built: Options
+Workbench (the existing /options-builder stands in), Settings & Safety, the phone app screens.
 
 ## 1. UX audit of the current dashboard (code read 26 Oct 2026)
 
@@ -71,16 +73,16 @@ Primary navigation (side menu, 8 items); everything else moves under **More**:
 
 1. **Command Center** — risk budget (loss used, orders, day P&L), market strip, *Waiting for you*,
    top EOD signals with live price and gap, 10 session tiles, what-ATIP-did feed. *(implemented: /command)*
-2. **Signal Explorer** — ranked table + "why this signal" factor bars and plain-language story.
+2. **Signal Explorer** — ranked table + "why this signal" factor bars and plain-language story. *(implemented: /command/signals)*
 3. **Trade Setup** — side, entry type, steppers for qty/target/stop, live ₹ risk/reward/charges,
-   pre-trade checklist (halt, market, funds, circuit, session limit, price gap), session + mode.
+   pre-trade checklist (halt, market, funds, circuit, session limit, price gap), session + mode. *(implemented: /command/setup)*
 4. **Automation & Sessions** — 10 sessions, mode Manual / Confirm / Auto (Auto is a two-step),
-   limits, pause/resume, history. *(registry + UI on /command implemented; engine wiring pending)*
+   limits, pause/resume, history. *(registry + UI on /command; the engine holds paused / MANUAL / over-limit entries)*
 5. **Live Monitor** — positions with a stop←price→target bar, rules watching, order log with the rule
-   behind every action; stale-feed banner pauses triggers.
+   behind every action; stale-feed banner. *(implemented: /command/monitor)*
 6. **Options Workbench** — strategy picker, payoff chart, size-by-max-loss, Greeks, settlement note.
 7. **Journal & Analytics** — per-session trades / successful / win rate / avg R / P&L, a
-   straight-line Dec 2027 *range* with an explicit "not a forecast" note, hit rate by score band.
+   straight-line Dec 2027 *range* with an explicit "not a forecast" note, hit rate by score band. *(implemented: /command/journal)*
 8. **Settings & Safety** — connections health, account-wide limits, live gate with SEBI Algo ID,
    notification choices.
 
@@ -134,4 +136,12 @@ scroll inside their card, the halt button stays in the header.
 | Error recovery | API errors shown inline in plain text |
 | Help | Engine-enforcement caveat stated on screen |
 
-Open issue: session mode/pause are not yet enforced by the trigger engine (UXR-04) — the page says so.
+## 7. Session enforcement (UXR-04, 27 Oct 2026)
+
+`orders/rules.py check_triggers` asks `orders/sessions.py gate()` before an ENTRY rule linked to a session
+fires. It is held (stays ACTIVE, reported as HELD_BY_SESSION and on /command/monitor) while the session is
+PAUSED, OFF or MANUAL, or has used its `max_trades` today, lost `max_loss_value` today, or would pass its
+`capital_cap`. Bracket exit legs are never held. Rules without a session behave as before.
+
+Open decision: AUTO still does not skip the confirmation tap. A rule asks before sending unless it was
+created with `require_confirmation=False`; letting AUTO bypass the tap needs the owner's go-ahead.
