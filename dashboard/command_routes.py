@@ -10,6 +10,8 @@ UXR-01 Command Center: one screen that answers "is it safe, what needs me, what 
     POST /api/risk/resume    {confirm:"RESUME"}   kill switch OFF (orders.risk.resume);
                                           sessions are NOT restarted -- the owner resumes each
     GET  /api/sessions                    the ten sessions with per-session counts
+    POST /api/command/auto-send  {on, ack}   the owner's switch: AUTO sessions send without the
+                                          confirmation tap (orders/sessions.py set_auto_send)
     GET  /api/sessions/events?sid=       append-only change log
     POST /api/sessions/{sid}/mode   {mode, ack}
     POST /api/sessions/{sid}/status {status, reason}
@@ -19,7 +21,8 @@ UXR-01 Command Center: one screen that answers "is it safe, what needs me, what 
 Every POST needs the X-ATIP-Token header (dashboard/security.py). Nothing here places, changes
 or cancels an order: halt/resume call the existing kill switch, which every order path already
 checks. The trigger engine holds a session's entry rules while it is paused, MANUAL or over a
-limit (orders/sessions.py gate); "sessions.auto_bypass" is False: AUTO does not skip the tap.
+limit (orders/sessions.py gate); "sessions.auto_bypass" says whether the owner's auto send switch
+lets AUTO sessions skip the tap.
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
@@ -184,6 +187,13 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/command/summary")
     async def api_command_summary():
         return await run_in_threadpool(call, summary)
+
+    @app.post("/api/command/auto-send", dependencies=guard)
+    async def api_command_auto_send(request: Req):
+        b = await body(request)
+        from orders.sessions import set_auto_send
+        return await run_in_threadpool(call, lambda c: set_auto_send(c, bool(b.get("on")), bool(b.get("ack")),
+                                                                      "from Command Center"))
 
     @app.post("/api/risk/halt", dependencies=guard)
     async def api_risk_halt(request: Req):

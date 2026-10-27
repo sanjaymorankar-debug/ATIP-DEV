@@ -304,13 +304,14 @@ def monitor(conn) -> dict:
         try:
             held = sessions.gate(conn, r, est)
             sid = sessions.session_of_rule(conn, r)
+            auto = sessions.sends_without_asking(conn, r)
         except Exception as e:
-            held, sid = str(e), None
+            held, sid, auto = str(e), None, False
         watching.append({"id": r["id"], "symbol": r["symbol"], "side": r["side"], "role": r.get("role") or "ENTRY",
                          "direction": r.get("trigger_direction"), "trigger": trig, "live": lp, "live_at": ts,
                          "distance_pct": round((trig - lp) / lp * 100, 2) if lp and trig else None,
                          "qty": r["quantity_value"], "qty_type": r["quantity_type"],
-                         "confirm": bool(r["require_confirmation"]), "session": sid, "held": held,
+                         "confirm": bool(r["require_confirmation"]) and not auto, "session": sid, "held": held,
                          "trail": bool(r.get("trail_enabled"))})
     log = _rows(conn, "SELECT id, symbol, side, role, status, quantity_value, execution_quantity, resolved_trigger_price, "
                       "trigger_hit_price, execution_price, dhan_order_id, execution_error, parent_rule_id, notes, "

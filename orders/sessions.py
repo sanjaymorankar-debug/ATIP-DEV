@@ -15,10 +15,16 @@ gate() before an ENTRY rule linked to a session may fire:
     * max_loss_value: the session's realised loss today (its exit legs against their entries)
     * capital_cap: the session's open entry value plus this order
 Exit legs (TARGET / STOP) are never held: a protective stop must fire whatever the session says.
-Rules not linked to a session are unaffected. AUTO does NOT bypass the confirmation gate: a rule
-still asks unless it was itself created with require_confirmation=False. Letting AUTO skip the
-tap changes when real orders go out and stays held for the owner's go-ahead ("auto_bypass": False
-in every reply). The kill switch (orders/risk.py halt / resume) remains the way to stop everything.
+Rules not linked to a session are unaffected.
+
+AUTO SEND (the owner's switch, 27 Oct 2026). AUTO alone does not skip the confirmation tap. The owner
+turns on one account-wide switch, "auto send" (session_settings, OFF by default, every change logged
+in session_events); only then does an entry rule of a RUNNING session in AUTO mode, that the gate
+lets through, go straight to the order instead of asking (orders/rules.py check_triggers, which
+still refuses a quote older than MAX_QUOTE_AGE_SECONDS). Turning it on needs ack=True, is refused
+while trading is halted, and is refused for LIVE without a SEBI Algo ID. Every reply carries
+"auto_bypass": whether the switch is on. The kill switch (orders/risk.py halt / resume) remains the
+way to stop everything.
 
 AUTO is guarded even as a setting: it needs ack=True (the "I understand" step on the screen),
 it is refused while trading is halted, and it is refused when broker_env is LIVE and no SEBI
@@ -88,6 +94,12 @@ def ensure_tables(conn) -> None:
             linked_at   TEXT NOT NULL
         )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_session_rules_sid ON session_rules(session_id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_settings (
+            name        TEXT PRIMARY KEY,
+            value       TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )""")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS session_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,7 +177,7 @@ def list_sessions(conn) -> dict:
     empty = {"rules": 0, "today": 0, "watching": 0, "awaiting": 0, "executed": 0}
     for r in rows:
         r["stats"] = stats.get(r["id"], dict(empty))
-    return {"sessions": rows, "engine_enforced": True, "auto_bypass": False,
+    return {"sessions": rows, "engine_enforced": True, "auto_bypass": auto_send_enabled(conn),
             "running": sum(1 for r in rows if r["status"] == "RUNNING"),
             "auto": sum(1 for r in rows if r["mode"] == "AUTO")}
 
@@ -186,21 +198,11 @@ def set_mode(conn, sid: str, mode: str, ack: bool = False) -> dict:
     if mode == "AUTO" and cur["mode"] != "AUTO":
         if not ack:
             raise ValueError("AUTO sends orders without asking: confirm with ack=true")
-        from orders.risk import halted
-        h, why = halted()
-        if h:
-            raise ValueError(f"trading is halted ({why}) -- resume before turning on AUTO")
-        try:
-            from orders.environment import broker_env
-            env = broker_env()
-        except Exception:
-            env = "PAPER"
-        if env == "LIVE" and not str(_config().get("sebi_algo_id") or "").strip():
-            raise ValueError("LIVE AUTO needs a SEBI Algo ID (config.json sebi_algo_id)")
+        _auto_guards("AUTO")
     conn.execute("UPDATE trading_sessions SET mode = ?, updated_at = ? WHERE id = ?", (mode, _now(), sid))
     _event(conn, sid, "MODE", {"from": cur["mode"], "to": mode, "ack": bool(ack)})
     conn.commit()
-    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": False}
+    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": auto_send_enabled(conn)}
 
 
 def set_status(conn, sid: str, status: str, reason: str = "") -> dict:
@@ -211,7 +213,7 @@ def set_status(conn, sid: str, status: str, reason: str = "") -> dict:
     conn.execute("UPDATE trading_sessions SET status = ?, updated_at = ? WHERE id = ?", (status, _now(), sid))
     _event(conn, sid, "STATUS", {"from": cur["status"], "to": status, "reason": reason})
     conn.commit()
-    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": False}
+    return {**get_session(conn, sid), "engine_enforced": True, "auto_bypass": auto_send_enabled(conn)}
 
 
 def update_session(conn, sid: str, fields: dict) -> dict:
@@ -385,3 +387,52 @@ def journal(conn) -> dict:
                     "avg_r": round(sum(rs) / len(rs), 2) if rs else None,
                     "pnl": round(sum(t["pnl"] for t in tr), 2), "recent": sorted(tr, key=lambda t: t["date"])[-5:]})
     return {"sessions": out}
+
+
+# -- the owner's AUTO send switch -------------------------------------------------------------
+
+def _auto_guards(what: str) -> None:
+    from orders.risk import halted
+    h, why = halted()
+    if h:
+        raise ValueError(f"trading is halted ({why}) -- resume before turning on {what}")
+    try:
+        from orders.environment import broker_env
+        env = broker_env()
+    except Exception:
+        env = "PAPER"
+    if env == "LIVE" and not str(_config().get("sebi_algo_id") or "").strip():
+        raise ValueError(f"LIVE {what} needs a SEBI Algo ID (config.json sebi_algo_id)")
+
+
+def auto_send_enabled(conn) -> bool:
+    ensure_tables(conn)
+    r = conn.execute("SELECT value FROM session_settings WHERE name = 'auto_send'").fetchone()
+    return bool(r) and _row(r)["value"] == "ON"
+
+
+def set_auto_send(conn, on: bool, ack: bool = False, reason: str = "") -> dict:
+    """The account-wide switch that lets AUTO sessions send without the confirmation tap."""
+    if on:
+        if not ack:
+            raise ValueError("auto send places orders without asking you: confirm with ack=true")
+        _auto_guards("auto send")
+    was = auto_send_enabled(conn)
+    conn.execute("INSERT OR REPLACE INTO session_settings (name, value, updated_at) VALUES ('auto_send', ?, ?)",
+                 ("ON" if on else "OFF", _now()))
+    _event(conn, None, "AUTO_SEND", {"from": "ON" if was else "OFF", "to": "ON" if on else "OFF",
+                                     "ack": bool(ack), "reason": reason})
+    conn.commit()
+    return {"auto_send": bool(on), "was": was}
+
+
+def sends_without_asking(conn, rule: dict) -> bool:
+    """True when this rule's trigger should go straight to the order: an ENTRY of a RUNNING
+    AUTO session while the owner's auto send switch is on. Exit legs keep their own setting."""
+    if (rule.get("role") or "ENTRY") != "ENTRY" or not auto_send_enabled(conn):
+        return False
+    sid = session_of_rule(conn, rule)
+    if not sid:
+        return False
+    s = get_session(conn, sid)
+    return s["status"] == "RUNNING" and s["mode"] == "AUTO"
