@@ -326,3 +326,34 @@ def test_auto_send_api_is_guarded_logged_and_shown(api):
     finally:
         c.close()
     assert "Send without asking" in client.get("/command").text
+
+
+# ── PAPER only: nothing goes out without asking when real money is involved ────────────────────
+
+def _set_env(env):
+    import json
+    import orders.environment as E
+    cfg = json.loads(E.CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg["broker_env"] = env
+    E.CONFIG_PATH.write_text(json.dumps(cfg), encoding="utf-8")
+
+
+def test_auto_send_cannot_be_turned_on_outside_paper(paper):
+    _set_env("LIVE")
+    with pytest.raises(ValueError, match="PAPER only"):
+        _auto_send(True)
+
+
+@pytest.mark.parametrize("env", ["LIVE", "SANDBOX"])
+def test_outside_paper_every_entry_asks(paper, env):
+    from orders import rules
+    _session("S1", status="RUNNING", mode="AUTO")
+    _auto_send(True)                                          # switched on while still PAPER
+    a = _rule()
+    _link(a["id"])
+    b = _rule(symbol="BETA", require_confirmation=False)      # a rule's own opt-out too
+    _set_env(env)
+    paper.prices.update({"ACME": 99.0, "BETA": 99.0})
+    rules.check_triggers()
+    assert rules.get_rule(a["id"])["status"] == rules.PENDING_CONFIRMATION
+    assert rules.get_rule(b["id"])["status"] == rules.PENDING_CONFIRMATION

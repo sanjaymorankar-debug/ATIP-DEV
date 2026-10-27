@@ -21,8 +21,10 @@ AUTO SEND (the owner's switch, 27 Oct 2026). AUTO alone does not skip the confir
 turns on one account-wide switch, "auto send" (session_settings, OFF by default, every change logged
 in session_events); only then does an entry rule of a RUNNING session in AUTO mode, that the gate
 lets through, go straight to the order instead of asking (orders/rules.py check_triggers, which
-still refuses a quote older than MAX_QUOTE_AGE_SECONDS). Turning it on needs ack=True, is refused
-while trading is halted, and is refused for LIVE without a SEBI Algo ID. Every reply carries
+still refuses a quote older than MAX_QUOTE_AGE_SECONDS). Turning it on needs ack=True and is refused
+while trading is halted. PAPER ONLY (owner, 27 Oct 2026): the switch cannot be turned on unless
+broker_env is PAPER, and outside PAPER the engine makes every entry ask -- auto send, an AUTO
+session or a rule's own require_confirmation=False alike. Exit legs keep their own setting. Every reply carries
 "auto_bypass": whether the switch is on. The kill switch (orders/risk.py halt / resume) remains the
 way to stop everything.
 
@@ -405,6 +407,14 @@ def _auto_guards(what: str) -> None:
         raise ValueError(f"LIVE {what} needs a SEBI Algo ID (config.json sebi_algo_id)")
 
 
+def _paper() -> bool:
+    try:
+        from orders.environment import PAPER, broker_env
+        return broker_env() == PAPER
+    except Exception:
+        return False
+
+
 def auto_send_enabled(conn) -> bool:
     ensure_tables(conn)
     r = conn.execute("SELECT value FROM session_settings WHERE name = 'auto_send'").fetchone()
@@ -416,6 +426,8 @@ def set_auto_send(conn, on: bool, ack: bool = False, reason: str = "") -> dict:
     if on:
         if not ack:
             raise ValueError("auto send places orders without asking you: confirm with ack=true")
+        if not _paper():
+            raise ValueError("auto send is PAPER only: broker_env is not PAPER, so every order asks you")
         _auto_guards("auto send")
     was = auto_send_enabled(conn)
     conn.execute("INSERT OR REPLACE INTO session_settings (name, value, updated_at) VALUES ('auto_send', ?, ?)",
@@ -429,7 +441,7 @@ def set_auto_send(conn, on: bool, ack: bool = False, reason: str = "") -> dict:
 def sends_without_asking(conn, rule: dict) -> bool:
     """True when this rule's trigger should go straight to the order: an ENTRY of a RUNNING
     AUTO session while the owner's auto send switch is on. Exit legs keep their own setting."""
-    if (rule.get("role") or "ENTRY") != "ENTRY" or not auto_send_enabled(conn):
+    if (rule.get("role") or "ENTRY") != "ENTRY" or not auto_send_enabled(conn) or not _paper():
         return False
     sid = session_of_rule(conn, rule)
     if not sid:
