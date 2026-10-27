@@ -10,7 +10,8 @@ Task 2 / Task 3 (2026-10-26): the operating-status banner, /api/status, the manu
     GET  /api/asia/sources              source health (primary / fallback per index) + the holiday self-check
     POST /api/asia/refresh              fetch now (token-guarded; refused while ATIP is stopped)
     GET  /api/premarket-report          the latest pre-market report (pipeline/premarket_report.py)
-    GET  /global-asia                   the Global & Asia page (desktop and phone)
+    GET  /global-asia                   the Global & Asia page (desktop and phone), with the news impact panel
+                                        (dashboard/news_impact_view.py) on top
 
 status_banner_html() is the banner every page carries (/, /command, /m, /global-asia): it polls /api/status
 every 60 s and says "ATIP stopped — resumes 06:00 IST" with the last-updated time while STOPPED. The Asia
@@ -136,13 +137,18 @@ ASIA_CSS = """<style>
 
 
 def asia_tab_html() -> str:
-    """The container + loader for the main dashboard's "Global & Asia" tab."""
-    return (ASIA_CSS + '<div id="asia" class="tc section"><div class="st">🌏 Global &amp; Asia '
+    """The container + loader for the main dashboard's "Global & Asia" tab (NI-05: the news impact panel on top;
+    NI_CSS / NI_JS come with it, once per page, and the News tab's panel uses them too)."""
+    from dashboard.news_impact_view import NI_CSS, NI_JS, panel_html
+    return (ASIA_CSS + NI_CSS + NI_JS + '<div id="asia" class="tc section">' + panel_html("niAsiaBox") +
+            '<div class="st" style="margin-top:14px">🌏 Global &amp; Asia '
             '<span style="font-size:11px;color:#64748b;font-weight:400">— Japan, South Korea, Taiwan, Pakistan · '
             'informational signals, no orders · <a href="/global-asia" style="color:#38bdf8">full page</a></span></div>'
             '<div id="gaBox" class="ga-muted">Loading…</div></div>' + ASIA_JS +
             "<script>setInterval(function(){var t=document.getElementById('asia');"
-            "if(t&&t.classList.contains('active'))atipLoadAsia('gaBox')},300000);</script>")
+            "if(t&&t.classList.contains('active')){atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')}"
+            "var nw=document.getElementById('news');if(nw&&nw.classList.contains('active'))atipLoadNewsImpact('niNewsBox')},"
+            "300000);</script>")
 
 
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
@@ -154,18 +160,20 @@ PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
  --ga-panel:#FFFFFF;--ga-line:#D5DDEA;--ga-muted:#4B5873;--ga-up:#047857;--ga-dn:#B91C1C;--ga-warn:#854D0E}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--accent);text-decoration:none}header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
-header b{font-size:15px}nav{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}.wrap{max-width:1200px;margin:0 auto;padding:14px 16px 40px}
+header b{font-size:15px}nav{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}.wrap{max-width:1200px;margin:0 auto;padding:14px 16px 40px}.st{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:8px}
 </style>__CSS__</head><body>
-<header><b>ATIP · Global &amp; Asia</b><nav aria-label="Main"><a href="/command">Command Center</a><a href="/">Signals &amp; scores</a><a href="/m">Mobile</a><a href="/api/asia/sources">Data sources</a></nav></header>
+<header><b>ATIP · Global &amp; Asia</b><nav aria-label="Main"><a href="/command">Command Center</a><a href="/">Signals &amp; scores</a><a href="/m">Mobile</a><a href="/api/asia/sources">Data sources</a><a href="/api/news-impact/accuracy">News impact record</a></nav></header>
 __BANNER__
-<main class="wrap"><div id="gaBox" class="ga-muted">Loading…</div></main>
+<main class="wrap">__NI__<div class="st" style="margin-top:16px">🌏 Global &amp; Asia markets</div><div id="gaBox" class="ga-muted">Loading…</div></main>
 __JS__
-<script>atipLoadAsia('gaBox');setInterval(function(){atipLoadAsia('gaBox')},300000);</script>
+<script>function gaAll(){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox')}gaAll();setInterval(gaAll,300000);</script>
 </body></html>"""
 
 
 def render_page() -> str:
-    return PAGE.replace("__CSS__", ASIA_CSS).replace("__BANNER__", status_banner_html()).replace("__JS__", ASIA_JS)
+    from dashboard.news_impact_view import NI_CSS, NI_JS, panel_html
+    return (PAGE.replace("__CSS__", ASIA_CSS + NI_CSS).replace("__BANNER__", status_banner_html())
+            .replace("__NI__", panel_html("niBox")).replace("__JS__", ASIA_JS + NI_JS))
 
 
 def register(app, guard, Req, get_connection, json_safe):

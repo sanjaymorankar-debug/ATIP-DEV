@@ -11,6 +11,7 @@ One JSON document per IST date and label, in premarket_reports and atip_data/rep
     asia        the Asia Sentiment Score, each market's signal / % change / session, the Pakistan risk flag
     global      US / Europe closes, crude, gold, USD-INR, US 10Y, the global score; GIFT Nifty
     news        the latest summary's tone and whether Claude or the keyword fallback classified it
+    news_impact the News Impact Estimate for the session (data/news_impact): score, bias, sectors, drivers, brief
     outlook     MH, the global score and the Asia score combined (0.50 / 0.25 / 0.25, renormalised over
                 what is present) -- informational, not a trading rule
     caveats     every input that is missing or stale, in words
@@ -96,6 +97,15 @@ def build(conn, now: datetime | None = None) -> dict:
             tone = None
     if ns.get("classifier") == "rule":
         caveats.append("news sentiment came from the keyword fallback, not Claude")
+    try:                                          # NI-04: the news impact estimate, informational
+        from data import news_impact
+        ni = news_impact.latest(conn)
+    except Exception:
+        ni = None
+    if not ni:
+        caveats.append("no news impact estimate yet")
+    elif ni.get("for_session") != news_impact.target_session(now):
+        caveats.append(f"news impact estimate is for {ni.get('for_session')}")
     parts = {"mh": mh.get("mh_score"), "global": g.get("global_score"), "asia": sent.get("score")}
     used = {k: v for k, v in parts.items() if v is not None}
     outlook = None
@@ -113,6 +123,9 @@ def build(conn, now: datetime | None = None) -> dict:
                                                         "session_status", "date", "source")}
                                  for m in asia.get("markets", [])]},
             "global": g, "gift_nifty": gift,
+            "news_impact": None if not ni else {k: ni.get(k) for k in (
+                "for_session", "run_label", "generated_at", "score", "bias", "strength", "n_items", "n_claude",
+                "n_rule", "sectors", "drivers", "brief", "brief_method")},
             "news": {"tone": tone, "classifier": ns.get("classifier"), "fallback_reason": ns.get("fallback_reason"),
                      "at": str(ns.get("created_at") or "")[:16] or None},
             "outlook": {"score": outlook, "label": (None if outlook is None else "POSITIVE" if outlook >= 60

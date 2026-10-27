@@ -332,6 +332,19 @@ def _market_lines(conn, td, now=None):
             lines.append("<b>Asia:</b> — (no Asia markets run stored)")
     except Exception as e:
         log.debug(f"  Asia line: {e}")
+    try:                                         # NI-04: the news impact estimate, informational
+        from data.news_impact import latest as ni_latest
+        ni = ni_latest(conn)
+        if ni and ni.get("score") is not None:
+            top = (ni.get("drivers") or [{}])[0].get("headline")
+            how = "AI" if (ni.get("n_claude") or 0) >= (ni.get("n_rule") or 0) and ni.get("n_claude") else "keyword rules, not AI"
+            lines.append(f"<b>News impact:</b> {ni['score']:.0f} ({_html(ni['bias'])}, {_html(str(ni['strength']).lower())})"
+                         f" for {_html(ni['for_session'])} · {ni['n_items']} headlines ({how})"
+                         + (f" · top: {_html(top[:90])}" if top else ""))
+        else:
+            lines.append("<b>News impact:</b> — (no estimate stored)")
+    except Exception as e:
+        log.debug(f"  News impact line: {e}")
     return lines
 
 def send_morning_digest(trade_date=None):

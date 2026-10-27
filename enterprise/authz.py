@@ -160,7 +160,8 @@ PAPER_BOOK = {"orders:manage", "portfolio:read", "portfolio:manage"}
 OWNER_BOOK = [r"^/api/orders(/|$)", r"^/api/oms/positions$", r"^/api/mobile/",
               r"^/api/risk/(limits|portfolio|emergency-exit|evaluate)(/|$)",
               r"^/api/command(/|$)", r"^/api/sessions(/|$)", r"^/api/risk/(halt|resume)$",   # UXR-01..03
-              r"^/api/status/override$", r"^/api/asia/refresh$"]                                  # Task 2/3
+              r"^/api/status/override$", r"^/api/asia/refresh$",
+              r"^/api/news-impact/refresh$"]                                                     # NI-05                                  # Task 2/3
 # The owner's dashboard shows the owner's whole state, so another tenant is sent to its own app instead.
 OWNER_PAGES = [r"^/$", r"^/command$"]
 

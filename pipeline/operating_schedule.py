@@ -574,6 +574,12 @@ def step_sentiment(ctx) -> dict:
     res = {}
     from data.news_ai import run_summary_job
     _sub(res, "news_summary_resume", run_summary_job)
+    try:                                          # NI-04: what the overnight news means for today's session
+        from data.news_impact import run as news_impact_run
+        _sub(res, "news_impact_resume", news_impact_run, "resume", fetch_feeds=False)
+    except Exception as e:
+        res["news_impact_resume"] = "FAILED"
+        log.warning(f"  news impact: {e}")
     from db.schema import get_connection
     c = get_connection()
     try:

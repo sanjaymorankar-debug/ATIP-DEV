@@ -66,12 +66,15 @@ LONG_RETENTION_TABLES = {
     "asia_signals":         "date",      # Task 3: per-market BULLISH / NEUTRAL / BEARISH
     "asia_sentiment":       "date",      # Task 3: the Asia Sentiment Score
     "premarket_reports":    "for_date",  # Task 2: the 06:00 / 08:15 pre-market report
+    "news_impact_daily":    "for_session",  # NI-03: the News Impact Estimate per session and run
+    "news_impact_eval":     "for_session",  # NI-04: its tracking record
 }
 
 SHORT_RETENTION_TABLES = {
     "index_levels":   "date",
     "global_markets": "date",
     "news_articles":  "fetched_at",
+    "news_impact":    "published_at",    # NI-02: per-headline assessments (the headlines themselves are 90 days)
     "pipeline_log":   "run_date",
     "live_quotes":    "timestamp",
     "live_ticks":     "received_at",

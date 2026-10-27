@@ -2247,6 +2247,17 @@ def _schedule_operating_jobs():
         schedule.every().day.at(str(t)).do(_asia_refresh, label)
         log.info(f"  Asia markets refresh ({label}) at {t} IST")
     schedule.every().day.at("08:15").do(_premarket_report_refresh)
+    try:                                          # NI-04: the news impact estimate and its tracking check
+        from data import news_impact
+        ni = news_impact.settings()
+    except Exception as e:
+        log.warning(f"  News impact not scheduled: {e}")
+        ni = {}
+    for label, t in (ni.get("run_times_ist") or {}).items():
+        schedule.every().day.at(str(t)).do(_news_impact_refresh, label)
+        log.info(f"  News impact estimate ({label}) at {t} IST")
+    if ni.get("evaluate_time_ist"):
+        schedule.every().day.at(str(ni["evaluate_time_ist"])).do(_news_impact_evaluate)
 
 
 def _asia_refresh(label):
@@ -2257,6 +2268,24 @@ def _asia_refresh(label):
         run_job(f"asia_markets_{label}", asia_run, label)
     except Exception as e:
         log.warning(f"  Asia markets ({label}): {e}")
+
+
+def _news_impact_refresh(label):
+    """Fetch the Indian + world feeds, assess what is new, combine for the coming session (data/news_impact).
+    Informational: it feeds no score and no order."""
+    try:
+        from data.news_impact import run as ni_run
+        run_job(f"news_impact_{label}", ni_run, label)
+    except Exception as e:
+        log.warning(f"  News impact ({label}): {e}")
+
+
+def _news_impact_evaluate():
+    try:
+        from data.news_impact import run_evaluate
+        run_job("news_impact_evaluate", run_evaluate)
+    except Exception as e:
+        log.warning(f"  News impact evaluation: {e}")
 
 
 def _premarket_report_refresh():

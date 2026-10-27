@@ -172,10 +172,10 @@ __OPBANNER__
 <div id="off">Offline — showing the last data received.</div>
 <div class="seg" role="tablist" aria-label="Screens"><button role="tab" id="tToday" aria-selected="true" onclick="mtab('today')">Today</button><button role="tab" id="tAsia" aria-selected="false" onclick="mtab('asia')">Global &amp; Asia</button><button role="tab" onclick="location.href='/command'">Command</button></div>
 <div class="wrap" id="app"></div>
-<div class="wrap" id="asiaPane" hidden><div id="gaBox" class="muted">Loading…</div></div>
+<div class="wrap" id="asiaPane" hidden><div id="niBox" class="muted">Loading…</div><h3 class="ga-h">Global &amp; Asia markets</h3><div id="gaBox" class="muted">Loading…</div></div>
 __ASIAJS__
 <script>function mtab(t){var a=t==='asia';document.getElementById('app').hidden=a;document.getElementById('asiaPane').hidden=!a;
-document.getElementById('tToday').setAttribute('aria-selected',String(!a));document.getElementById('tAsia').setAttribute('aria-selected',String(a));if(a)atipLoadAsia('gaBox');}</script>
+document.getElementById('tToday').setAttribute('aria-selected',String(!a));document.getElementById('tAsia').setAttribute('aria-selected',String(a));if(a){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox');}}</script>
 <script>
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const n=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});
@@ -211,9 +211,11 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catc
 def render_mobile(token: str = "") -> str:
     # token deliberately unused: see the module note. Task 2/3: the STOPPED / RUNNING banner and the
     # Global & Asia screen (dashboard/global_asia.py), also what the Android / iOS shells (mobile/) load.
+    # NI-05: the news impact panel sits on top of that screen.
     from dashboard.global_asia import status_banner_html, ASIA_CSS, ASIA_JS
+    from dashboard.news_impact_view import NI_CSS, NI_JS
     return (MOBILE.replace("__STYLE__", _STYLE).replace("__OPBANNER__", status_banner_html())
-            .replace("__ASIACSS__", ASIA_CSS).replace("__ASIAJS__", ASIA_JS))
+            .replace("__ASIACSS__", ASIA_CSS + NI_CSS).replace("__ASIAJS__", ASIA_JS + NI_JS))
 
 
 MANIFEST = json.dumps({
