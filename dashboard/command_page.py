@@ -9,8 +9,8 @@ Design rules carried from the redesign:
   * the kill switch is on screen at all times and asks once, with the consequences spelled out
   * EOD signals and live prices are labelled as such; a stale live feed puts up a banner
   * gains/losses carry an arrow and a sign, never colour alone
-  * AUTO needs a second, explicit step, and the page says plainly that session settings are
-    not yet read by the trigger engine (orders/sessions.py)
+  * AUTO needs a second, explicit step; the page says what the trigger engine enforces for a
+    session (pause, MANUAL, limits) and that AUTO does not skip the confirmation tap (orders/sessions.py)
   * Indian number formatting (en-IN), dark by default, light when the OS asks for it
 """
 
@@ -95,6 +95,10 @@ __OPBANNER__
 <div class="wrap">
 <nav aria-label="Main">
  <a class="on" href="/command" aria-current="page">Command Center</a>
+ <a href="/command/signals">Signal Explorer</a>
+ <a href="/command/setup">Trade Setup</a>
+ <a href="/command/monitor">Live Monitor</a>
+ <a href="/command/journal">Journal</a>
  <a href="/">Signals &amp; scores</a>
  <a href="/global-asia">Global &amp; Asia</a>
  <a href="/signals">Technical signals</a>
@@ -125,7 +129,7 @@ __OPBANNER__
 
  <section class="card" aria-label="Sessions">
   <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h2>Sessions</h2><span id="sesSum" class="muted" style="font-size:13px"></span></div>
-  <div class="banner info" style="border-radius:8px;margin-bottom:10px">Session mode and pause are recorded and logged, but the trigger engine does not read them yet: rules still follow their own confirmation setting. <b>Halt all trading</b> is the control that stops orders.</div>
+  <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. AUTO does not skip the confirmation tap yet. <b>Halt all trading</b> stops everything.</div>
   <div id="tiles" class="tiles"></div>
   <div id="sesPanel" class="panel" aria-live="polite">
    <h2 id="spName"></h2><div id="spMeta" class="sub" style="margin:0 0 6px"></div>
@@ -253,7 +257,7 @@ $('spModes').addEventListener('click',async e=>{
 });
 $('abAck').onchange=()=>{$('abGo').disabled=!$('abAck').checked};
 $('abCancel').onclick=()=>$('autoBox').classList.remove('open');
-$('abGo').onclick=async()=>{try{await post('/api/sessions/'+sel+'/mode',{mode:'AUTO',ack:true});$('spMsg').textContent=sel+' set to AUTO (recorded; engine wiring pending).';$('autoBox').classList.remove('open')}catch(err){$('spMsg').textContent=err.message} load();};
+$('abGo').onclick=async()=>{try{await post('/api/sessions/'+sel+'/mode',{mode:'AUTO',ack:true});$('spMsg').textContent=sel+' set to AUTO (rules still ask before sending).';$('autoBox').classList.remove('open')}catch(err){$('spMsg').textContent=err.message} load();};
 $('spPause').onclick=async()=>{try{await post('/api/sessions/'+sel+'/status',{status:$('spPause').dataset.to,reason:'from Command Center'});$('spMsg').textContent=sel+' marked '+$('spPause').dataset.to.toLowerCase()+'.'}catch(err){$('spMsg').textContent=err.message} load();};
 
 load(); setInterval(load,15000);

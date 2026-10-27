@@ -1686,6 +1686,8 @@ if HAS_FASTAPI:
     _register_w40_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.command_routes import register as _register_command_routes          # UXR-01: Command Center
     _register_command_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.command_more import register as _register_command_more             # UXR-06..09: console screens
+    _register_command_more(app, _guard, _Req, get_connection, json_safe)
     from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
     _register_global_asia(app, _guard, _Req, get_connection, json_safe)
     from dashboard.news_impact_view import register as _register_news_impact            # NI-05: news impact

@@ -18,8 +18,8 @@ UXR-01 Command Center: one screen that answers "is it safe, what needs me, what 
 
 Every POST needs the X-ATIP-Token header (dashboard/security.py). Nothing here places, changes
 or cancels an order: halt/resume call the existing kill switch, which every order path already
-checks. Session settings are recorded but not yet read by the trigger engine -- see
-orders/sessions.py; the summary says so in "sessions.engine_enforced".
+checks. The trigger engine holds a session's entry rules while it is paused, MANUAL or over a
+limit (orders/sessions.py gate); "sessions.auto_bypass" is False: AUTO does not skip the tap.
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).

@@ -750,6 +750,19 @@ def check_triggers() -> list[dict]:
             reason = _condition_met(rule, price)
             if not reason:
                 continue
+            # UXR-04: an entry linked to a paused / MANUAL / over-limit session waits (stays ACTIVE).
+            # Exit legs are never held -- orders/sessions.py gate().
+            try:
+                from orders.sessions import gate
+                held = gate(conn, rule, est_value=price * _resolve_quantity(rule, price)
+                            if rule["quantity_type"] != QTY_RISK else None)
+            except Exception as e:
+                held = f"session gate unavailable ({e})" if (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY else None
+            if held:
+                log.debug(f"  {rule['symbol']}: trigger held -- {held}")   # every 30 s; /command/monitor shows it
+                events.append({"type": "HELD_BY_SESSION", "rule_id": rule["id"],
+                               "symbol": rule["symbol"], "reason": held})
+                continue
 
             if rule["require_confirmation"]:
                 now = datetime.now()
