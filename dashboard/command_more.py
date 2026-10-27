@@ -477,7 +477,13 @@ function detail(sym){sel=sym;const r=D.rows.find(x=>x.symbol===sym);if(!r)return
  $('dF').innerHTML=r.factors.filter(f=>f.value!=null).map(f=>`<span>${esc(f.label)}</span><div class="bar ${f.inverse?'inv':''}" role="img" aria-label="${esc(f.label)} ${Math.round(f.value)} of 100"><div style="width:${Math.max(0,Math.min(100,f.value))}%"></div></div><span class="num">${Math.round(f.value)}</span>`).join('');
  const side=r.signal==='SELL'?'SELL':'BUY';
  $('dAct').innerHTML=`<a href="/command/setup?symbol=${encodeURIComponent(r.symbol)}&side=${side}"><button type="button" class="primary">Set up a ${side} →</button></a>`}
+async function fillLive(){   // live_quotes holds the tracked symbols only; /api/live-quotes has every scored one
+ let L={};try{L=await j('/api/live-quotes')}catch(e){return}
+ for(const r of D.rows){const q=L[r.symbol];if(r.live_price!=null||!q||!q.ltp)continue;r.live_price=q.ltp;
+  if(r.signal_price){r.gap_pct=Math.round((q.ltp-r.signal_price)/r.signal_price*10000)/100;
+   r.story+=' Since the close of '+D.date+' the price has moved '+(r.gap_pct>0?'+':'')+r.gap_pct.toFixed(2)+'%'+(Math.abs(r.gap_pct)>=D.gap_warn_pct?' — past the 3% mark, so re-check before acting.':'.')}}}
 async function load(){try{D=await j('/api/command/signals?limit=150&signal='+$('fSig').value+'&q='+encodeURIComponent($('fQ').value));
+ await fillLive();
  const c=D.counts||{};$('sub').textContent=D.date?('EOD '+D.date+' · '+Object.keys(c).map(k=>k+' '+c[k]).join(' · ')+' · live prices refresh every 30 s'):'No scores yet — run the post-market pipeline.';
  $('rows').innerHTML=D.rows.map(rowHtml).join('')||'<tr><td colspan="7" class="muted">No match.</td></tr>';
  if(!sel&&D.rows.length)detail(D.rows[0].symbol);else if(sel)detail(sel)}catch(e){$('sub').textContent='Could not load: '+e.message}}
