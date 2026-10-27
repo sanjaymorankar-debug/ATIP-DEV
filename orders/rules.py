@@ -763,8 +763,16 @@ def check_triggers() -> list[dict]:
                 events.append({"type": "HELD_BY_SESSION", "rule_id": rule["id"],
                                "symbol": rule["symbol"], "reason": held})
                 continue
+            # The owner's auto send switch: an entry of a RUNNING AUTO session skips the tap and takes
+            # the same stale-quote-guarded path as require_confirmation=False (orders/sessions.py).
+            try:
+                from orders.sessions import sends_without_asking
+                auto = sends_without_asking(conn, rule)
+            except Exception as e:
+                log.warning(f"  {rule['symbol']}: auto send check failed, asking instead: {e}")
+                auto = False
 
-            if rule["require_confirmation"]:
+            if rule["require_confirmation"] and not auto:
                 now = datetime.now()
                 expires = (now + timedelta(seconds=CONFIRMATION_WINDOW_SECONDS)).isoformat()
                 conn.execute(

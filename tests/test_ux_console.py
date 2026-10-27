@@ -245,3 +245,84 @@ def test_new_pages_are_owner_only():
     import re
     assert any(re.match(p, "/command/monitor") for p in authz.OWNER_PAGES)
     assert any(re.match(p, "/api/command/preview") for p in authz.OWNER_BOOK)
+
+
+# ── the owner's AUTO send switch ───────────────────────────────────────────────────────────────
+
+def _auto_send(on, ack=True):
+    from orders import sessions
+    c = _conn()
+    try:
+        return sessions.set_auto_send(c, on, ack)
+    finally:
+        c.close()
+
+
+def test_auto_session_still_asks_until_the_switch_is_on(paper):
+    from orders import rules
+    _session("S1", status="RUNNING", mode="AUTO")
+    r = _rule()                                               # require_confirmation defaults to True
+    _link(r["id"])
+    paper.prices["ACME"] = 99.0
+    rules.check_triggers()
+    assert rules.get_rule(r["id"])["status"] == rules.PENDING_CONFIRMATION and _held() == 0
+
+
+def test_switch_on_sends_auto_session_entries_without_asking(paper):
+    from orders import rules
+    _session("S1", status="RUNNING", mode="AUTO")
+    _auto_send(True)
+    r = _rule()
+    _link(r["id"])
+    paper.prices["ACME"] = 99.0
+    rules.check_triggers()
+    assert rules.get_rule(r["id"])["status"] == rules.EXECUTED and _held() == 10
+
+
+def test_switch_on_leaves_confirm_sessions_and_unlinked_rules_asking(paper):
+    from orders import rules
+    _session("S2", status="RUNNING")                          # CONFIRM
+    _auto_send(True)
+    a = _rule()
+    b = _rule(symbol="BETA")
+    _link(a["id"], "S2")
+    paper.prices.update({"ACME": 99.0, "BETA": 99.0})
+    rules.check_triggers()
+    assert rules.get_rule(a["id"])["status"] == rules.PENDING_CONFIRMATION
+    assert rules.get_rule(b["id"])["status"] == rules.PENDING_CONFIRMATION
+
+
+def test_switch_on_refuses_a_stale_quote(paper):
+    from orders import rules
+    _session("S1", status="RUNNING", mode="AUTO")
+    _auto_send(True)
+    r = _rule()
+    _link(r["id"])
+    paper.prices["ACME"], paper.age_s = 99.0, rules.MAX_QUOTE_AGE_SECONDS + 60
+    ev = rules.check_triggers()
+    assert any(e["type"] == "SKIPPED_STALE_QUOTE" for e in ev) and _held() == 0
+
+
+def test_switch_needs_ack_and_is_refused_while_halted(paper):
+    from orders import risk
+    with pytest.raises(ValueError, match="ack"):
+        _auto_send(True, ack=False)
+    risk.halt("test")
+    with pytest.raises(ValueError, match="halted"):
+        _auto_send(True)
+    assert _auto_send(False)["auto_send"] is False            # switching off always works
+
+
+def test_auto_send_api_is_guarded_logged_and_shown(api):
+    from orders import sessions
+    client, h = api
+    assert client.post("/api/command/auto-send", json={"on": True, "ack": True}).status_code in (401, 403)
+    assert client.post("/api/command/auto-send", json={"on": True}, headers=h).status_code == 400
+    assert client.post("/api/command/auto-send", json={"on": True, "ack": True}, headers=h).json()["auto_send"] is True
+    assert client.get("/api/command/summary").json()["sessions"]["auto_bypass"] is True
+    c = _conn()
+    try:
+        assert any(e["event"] == "AUTO_SEND" for e in sessions.events(c, limit=100))
+    finally:
+        c.close()
+    assert "Send without asking" in client.get("/command").text

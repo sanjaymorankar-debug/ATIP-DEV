@@ -9,8 +9,8 @@ Design rules carried from the redesign:
   * the kill switch is on screen at all times and asks once, with the consequences spelled out
   * EOD signals and live prices are labelled as such; a stale live feed puts up a banner
   * gains/losses carry an arrow and a sign, never colour alone
-  * AUTO needs a second, explicit step; the page says what the trigger engine enforces for a
-    session (pause, MANUAL, limits) and that AUTO does not skip the confirmation tap (orders/sessions.py)
+  * AUTO needs a second, explicit step, and so does the account-wide "Send without asking" switch
+    without which AUTO still asks; the page says what the engine enforces (orders/sessions.py)
   * Indian number formatting (en-IN), dark by default, light when the OS asks for it
 """
 
@@ -129,7 +129,20 @@ __OPBANNER__
 
  <section class="card" aria-label="Sessions">
   <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h2>Sessions</h2><span id="sesSum" class="muted" style="font-size:13px"></span></div>
-  <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. AUTO does not skip the confirmation tap yet. <b>Halt all trading</b> stops everything.</div>
+  <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. <b>Halt all trading</b> stops everything.</div>
+  <div class="item" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+   <div class="grow"><b>When an AUTO session's rule triggers</b><div id="asNote" class="sub" style="margin:2px 0 0"></div></div>
+   <div class="seg" role="radiogroup" aria-label="AUTO send" id="asSeg" style="grid-template-columns:repeat(2,minmax(150px,1fr));margin:0">
+    <button type="button" role="radio" data-as="OFF" aria-checked="true"><b>Ask me first</b><span class="sub" style="margin:0">You confirm every order</span></button>
+    <button type="button" role="radio" data-as="ON" class="AUTO" aria-checked="false"><b>Send without asking</b><span class="sub" style="margin:0">Within the session's limits</span></button>
+   </div>
+  </div>
+  <div id="asBox" class="autobox">
+   <b>Let AUTO sessions send orders without asking you?</b>
+   <div style="font-size:13px;margin-top:6px">Only entry rules of sessions that are RUNNING in AUTO mode are affected. Each order still passes the halt, funds, circuit, risk-limit and session-limit checks, and is refused on a price older than 3 minutes. Other sessions keep asking. You can switch back here, or halt everything, at any time.</div>
+   <label><input type="checkbox" id="asAck"> I understand orders can go out without asking me.</label>
+   <div class="actions"><button type="button" id="asCancel">Keep asking me</button><button type="button" id="asGo" class="primary" disabled>Send without asking</button></div>
+  </div>
   <div id="tiles" class="tiles"></div>
   <div id="sesPanel" class="panel" aria-live="polite">
    <h2 id="spName"></h2><div id="spMeta" class="sub" style="margin:0 0 6px"></div>
@@ -137,7 +150,7 @@ __OPBANNER__
    <div class="seg" role="radiogroup" aria-label="Execution mode" id="spModes"></div>
    <div id="autoBox" class="autobox">
     <b>Turn on AUTO for <span id="abName"></span>?</b>
-    <div style="font-size:13px;margin-top:6px">ATIP would send orders for this session without asking you, within its limits. Every order still passes the halt, funds, circuit and loss checks.</div>
+    <div style="font-size:13px;margin-top:6px">While "Send without asking" is on, ATIP sends this session's orders without asking you, within its limits. Every order still passes the halt, funds, circuit and loss checks.</div>
     <label><input type="checkbox" id="abAck"> I understand orders can go out without asking me, and I can halt everything from any screen.</label>
     <div class="actions"><button type="button" id="abCancel">Keep current mode</button><button type="button" id="abGo" class="primary" disabled>Turn on AUTO</button></div>
    </div>
@@ -203,7 +216,9 @@ function render(d){
  $('sigs').innerHTML=(sg.rows||[]).map(s=>{const g=s.gap_pct;const gs=g==null?'—':(g>0?'▲ +':g<0?'▼ ':'')+g+'%';const big=g!=null&&Math.abs(g)>=3;
   return `<tr><td><b>${esc(s.symbol)}</b></td><td><span class="sig ${esc(s.signal)}">${esc(s.signal)}</span></td><td class="num">${s.atip_score==null?'—':Math.round(s.atip_score)}</td><td class="num muted">${inr(s.signal_price,2)}</td><td class="num">${inr(s.live_price,2)}</td><td class="num" style="${big?'color:#FBBF24;font-weight:600':''}" title="${big?'Price has moved 3% or more since the signal':''}">${gs}</td></tr>`}).join('')||'<tr><td colspan="6" class="muted">No BUY/SELL signals.</td></tr>';
  // sessions
- $('sesSum').textContent=ses.running+' running · '+ses.auto+' on AUTO';
+ $('sesSum').textContent=ses.running+' running · '+ses.auto+' on AUTO · '+(ses.auto_bypass?'AUTO sends without asking':'AUTO asks first');
+ document.querySelectorAll('#asSeg [data-as]').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.as==='ON')===!!ses.auto_bypass)));
+ $('asNote').textContent=ses.auto_bypass?'Orders go out without asking for '+ses.sessions.filter(t=>t.mode==='AUTO'&&t.status==='RUNNING').length+' running AUTO session(s). Every change is logged.':'Every AUTO rule still waits for your Confirm. Sessions in CONFIRM always ask.';
  $('tiles').innerHTML=ses.sessions.map(t=>`<button type="button" class="tile" data-sid="${esc(t.id)}" aria-pressed="${sel===t.id}"><span style="display:flex;justify-content:space-between;width:100%"><b>${esc(t.id)} ${esc(t.name)}</b><span class="mode ${esc(t.mode)}">${esc(t.mode)}</span></span><span class="sub" style="margin:0">${esc(t.status)}${t.stats.awaiting?' · '+t.stats.awaiting+' waiting':''}</span><span class="sub num" style="margin:0">${t.stats.today} today · ${t.stats.watching} watching · ${t.stats.executed} done</span></button>`).join('');
  if(sel)openSession(sel,false);
  // recent
@@ -215,7 +230,7 @@ function openSession(sid,focus=true){
  document.querySelectorAll('.tile').forEach(b=>b.setAttribute('aria-pressed',b.dataset.sid===sid));
  $('sesPanel').classList.add('open'); $('spName').textContent=t.id+' · '+t.name;
  $('spMeta').textContent=(t.strategy||'')+' · max '+t.max_trades+' trades/day · max loss '+inr(t.max_loss_value)+' · capital '+inr(t.capital_cap);
- const desc={MANUAL:'You place every order',CONFIRM:'ATIP asks before sending',AUTO:'Sends within limits'};
+ const desc={MANUAL:'You place every order',CONFIRM:'ATIP asks before sending',AUTO:S.sessions.auto_bypass?'Sends without asking':'Asks until you switch on auto send'};
  $('spModes').innerHTML=['MANUAL','CONFIRM','AUTO'].map(m=>`<button type="button" role="radio" class="${m}" aria-checked="${t.mode===m}" data-mode="${m}"><b>${m[0]+m.slice(1).toLowerCase()}</b><span class="sub" style="margin:0">${desc[m]}</span></button>`).join('');
  $('abName').textContent=t.id; const paused=t.status!=='RUNNING';
  $('spPause').textContent=paused?'Mark session running':'Pause session'; $('spPause').dataset.to=paused?'RUNNING':'PAUSED';
@@ -257,7 +272,15 @@ $('spModes').addEventListener('click',async e=>{
 });
 $('abAck').onchange=()=>{$('abGo').disabled=!$('abAck').checked};
 $('abCancel').onclick=()=>$('autoBox').classList.remove('open');
-$('abGo').onclick=async()=>{try{await post('/api/sessions/'+sel+'/mode',{mode:'AUTO',ack:true});$('spMsg').textContent=sel+' set to AUTO (rules still ask before sending).';$('autoBox').classList.remove('open')}catch(err){$('spMsg').textContent=err.message} load();};
+$('abGo').onclick=async()=>{try{await post('/api/sessions/'+sel+'/mode',{mode:'AUTO',ack:true});$('spMsg').textContent=sel+' set to AUTO ('+(S.sessions.auto_bypass?'sends without asking':'asks until you switch on auto send')+').';$('autoBox').classList.remove('open')}catch(err){$('spMsg').textContent=err.message} load();};
+// the auto send switch
+$('asSeg').addEventListener('click',async e=>{const b=e.target.closest('[data-as]');if(!b)return;const on=b.dataset.as==='ON';
+ if(on===!!S.sessions.auto_bypass)return;
+ if(on){$('asAck').checked=false;$('asGo').disabled=true;$('asBox').classList.add('open');$('asAck').focus();return}
+ try{await post('/api/command/auto-send',{on:false});say('AUTO sessions will ask before sending')}catch(err){alert(err.message)} load()});
+$('asAck').onchange=()=>{$('asGo').disabled=!$('asAck').checked};
+$('asCancel').onclick=()=>$('asBox').classList.remove('open');
+$('asGo').onclick=async()=>{try{await post('/api/command/auto-send',{on:true,ack:true});say('AUTO sessions now send without asking');$('asBox').classList.remove('open')}catch(err){alert(err.message)} load()};
 $('spPause').onclick=async()=>{try{await post('/api/sessions/'+sel+'/status',{status:$('spPause').dataset.to,reason:'from Command Center'});$('spMsg').textContent=sel+' marked '+$('spPause').dataset.to.toLowerCase()+'.'}catch(err){$('spMsg').textContent=err.message} load();};
 
 load(); setInterval(load,15000);

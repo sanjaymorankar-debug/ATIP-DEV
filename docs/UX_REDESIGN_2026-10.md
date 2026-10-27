@@ -143,5 +143,9 @@ fires. It is held (stays ACTIVE, reported as HELD_BY_SESSION and on /command/mon
 PAUSED, OFF or MANUAL, or has used its `max_trades` today, lost `max_loss_value` today, or would pass its
 `capital_cap`. Bracket exit legs are never held. Rules without a session behave as before.
 
-Open decision: AUTO still does not skip the confirmation tap. A rule asks before sending unless it was
-created with `require_confirmation=False`; letting AUTO bypass the tap needs the owner's go-ahead.
+**Send without asking** (the owner's switch on /command, OFF by default): AUTO alone still asks. Only
+with the switch on does an entry rule of a RUNNING AUTO session go straight to the order when it
+triggers, through the same path as `require_confirmation=False` (refused on a quote older than 3
+minutes, then the halt, funds, circuit and risk-limit checks in orders/broker.py). Turning it on needs the
+"I understand" tick, is refused while halted and, for LIVE, without a SEBI Algo ID; every change is
+logged in `session_events` (AUTO_SEND). CONFIRM sessions and rules without a session keep asking.
