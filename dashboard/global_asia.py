@@ -14,7 +14,9 @@ Task 2 / Task 3 (2026-10-26): the operating-status banner, /api/status, the manu
                                         (dashboard/news_impact_view.py) on top
 
 status_banner_html() is the banner every page carries (/, /command, /m, /global-asia): it polls /api/status
-every 60 s and says "ATIP stopped — resumes 06:00 IST" with the last-updated time while STOPPED. The Asia
+every 60 s and says "ATIP stopped — resumes 06:00 IST" with the last-updated time while STOPPED. Above it, in
+red, a Dhan token that is missing, expired, refused or running out today (ops/dhan_token.py), with how to
+fix it (owner, 30 Oct 2026). The Asia
 signals are informational only -- nothing on this page or behind these routes places an order.
 """
 
@@ -61,13 +63,19 @@ def asia_payload(conn) -> dict:
 
 
 # ── the banner ─────────────────────────────────────────────────────────────
-BANNER = r"""<div id="atipOpBanner" role="status" aria-live="polite" style="display:none;padding:7px 18px;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
+BANNER = r"""<div id="atipTokenBanner" role="alert" style="display:none;padding:9px 18px;font:600 13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
+<div id="atipOpBanner" role="status" aria-live="polite" style="display:none;padding:7px 18px;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <script>
 (function(){
- var el=document.getElementById('atipOpBanner');
+ var el=document.getElementById('atipOpBanner'),tb=document.getElementById('atipTokenBanner');
  var C={STOPPED:['#7c2d12','#ffedd5','⏸'],RESUMING:['#1e3a8a','#dbeafe','↻'],RUNNING:['#064e3b','#d1fae5','●']};
  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
- function show(d){if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
+ function token(t){if(!t||!t.message){tb.style.display='none';return;}
+  var w=t.severity==='warn';tb.style.background=w?'#78350f':'#7f1d1d';tb.style.color=w?'#fef3c7':'#fee2e2';
+  tb.innerHTML='⚠ '+esc(t.message)+(t.fix||[]).map(function(f){return '<div style="font-weight:400;margin-top:3px">'+esc(f.text)+
+   (f.cmd?' <code style="background:rgba(0,0,0,.35);padding:1px 6px;border-radius:4px;user-select:all">'+esc(f.cmd)+'</code>':'')+'</div>'}).join('');
+  tb.style.display='block';tb.setAttribute('data-state',t.state);}
+ function show(d){token(d&&d.dhan_token);if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
   var t=c[2]+' '+esc(d.banner),lu=' · last updated '+esc(d.last_updated||'—');
   if(d.status==='STOPPED'){t+=' · read-only, no orders can be placed or triggered'+lu;}
   else if(d.status==='RESUMING'){var s=d.resume_steps||[];t+=' · step '+s.length+'/6'+(s.length?' ('+esc(s[s.length-1].name)+' '+esc(s[s.length-1].status)+')':'')+lu;}
@@ -80,13 +88,23 @@ BANNER = r"""<div id="atipOpBanner" role="status" aria-live="polite" style="disp
 </script>"""
 
 
-def status_banner_html() -> str:
+def status_payload() -> dict:
+    """/api/status: the operating status, plus the Dhan token's (ops/dhan_token.py) for the red token banner."""
     try:
         from pipeline.operating_schedule import status
-        initial = status()
+        out = status()
     except Exception:
-        initial = None
-    return BANNER.replace("__INITIAL__", json.dumps(initial).replace("</", "<\\/"))
+        out = {}
+    try:
+        from ops.dhan_token import status as token_status
+        out["dhan_token"] = token_status()
+    except Exception:
+        pass
+    return out
+
+
+def status_banner_html() -> str:
+    return BANNER.replace("__INITIAL__", json.dumps(status_payload(), default=str).replace("</", "<\\/"))
 
 
 # ── the Global & Asia renderer (shared by the / tab and the /global-asia page) ──
@@ -188,8 +206,7 @@ def register(app, guard, Req, get_connection, json_safe):
 
     @app.get("/api/status")
     async def api_status():
-        from pipeline.operating_schedule import status
-        return JSONResponse(await run_in_threadpool(status))
+        return JSONResponse(json.loads(json.dumps(await run_in_threadpool(status_payload), default=str)))
 
     @app.post("/api/status/override", dependencies=guard)
     async def api_status_override(request: Req):

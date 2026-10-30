@@ -11,6 +11,10 @@
       (System Settings > General > Date & Time), not the TZ below, so the Mac
       must be on IST for 06:30 to mean 06:30 IST. A Mac asleep at 06:30 runs
       the job when it wakes.
+    * 08:00 and 09:00 = again before the 09:15 open, in case Dhan refused the
+      06:30 login (it sometimes rejects a correct code: 8 of 16 mornings in
+      Oct 2026). A run whose token works and lasts the day does nothing, so on
+      a good morning these two only check. The times are the script's SLOTS.
     * RunAtLoad = also at login, so a Mac that was switched off at 06:30 still
       gets a fresh token before ATIP needs one.
 
@@ -31,12 +35,26 @@
     <string>__ATIP_DIR__</string>
 
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>6</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>6</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
 
     <key>RunAtLoad</key>
     <true/>
