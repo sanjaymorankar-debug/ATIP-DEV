@@ -114,7 +114,7 @@ __OPBANNER__
 
  <section class="grid3" aria-label="Risk budget">
   <div class="card"><div class="lbl">Daily loss used</div><div id="lossV" class="big num">—</div><div class="meter"><div id="lossM" style="width:0;background:#FBBF24"></div></div><div id="lossS" class="sub"></div></div>
-  <div class="card"><div class="lbl">Orders placed today</div><div id="ordV" class="big num">—</div><div class="meter"><div id="ordM" style="width:0;background:var(--accent)"></div></div><div id="ordS" class="sub"></div></div>
+  <div class="card"><div class="lbl">Buys placed today</div><div id="ordV" class="big num">—</div><div class="meter"><div id="ordM" style="width:0;background:var(--accent)"></div></div><div id="ordS" class="sub"></div></div>
   <div class="card"><div class="lbl">Day P&amp;L</div><div id="pnlV" class="big num">—</div><div id="pnlS" class="sub"></div></div>
  </section>
 
@@ -202,7 +202,7 @@ function render(d){
  const lp=cap&&lost!=null?Math.min(100,lost/cap*100):0; $('lossM').style.width=lp+'%'; $('lossM').style.background=lp>=80?'#F87171':'#FBBF24';
  $('lossS').textContent=cap?'Limit from config.json risk_limits · new BUYs refused at 100%':'No daily loss limit set — add max_daily_loss_value in risk_limits';
  const oc=(r.limits||{}).max_orders_per_day; $('ordV').innerHTML=(r.orders_today??'—')+(oc?' <span class="muted" style="font-size:13px">of '+oc+'</span>':'');
- $('ordM').style.width=(oc&&r.orders_today!=null?Math.min(100,r.orders_today/oc*100):0)+'%'; $('ordS').textContent=oc?'':'No order-count limit set';
+ $('ordM').style.width=(oc&&r.orders_today!=null?Math.min(100,r.orders_today/oc*100):0)+'%'; $('ordS').textContent=oc?'Sales are not counted or limited':'No order-count limit set';
  $('pnlV').className='big num '+(r.day_pnl>0?'up':r.day_pnl<0?'down':''); $('pnlV').textContent=signed(r.day_pnl);
  $('pnlS').textContent=(r.drawdown_pct!=null?'Drawdown '+r.drawdown_pct+'% from peak · ':'')+(b.broker_env||'PAPER')+' book';
  // headline

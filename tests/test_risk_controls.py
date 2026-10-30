@@ -140,6 +140,24 @@ def test_the_day_count_counts_orders_actually_placed(temp_db, cfgfile):
         conn.close()
 
 
+def test_the_day_count_never_counts_or_refuses_a_sale(temp_db, cfgfile):
+    """Owner, 30 Oct 2026: a stop-loss sale must not be refused for the day's order count."""
+    from orders.risk import _orders_today, pretrade_check
+    cfgfile(risk_limits={"max_orders_per_day": 2})
+    conn = _db()
+    try:
+        _placed(conn, 2)
+        conn.execute("INSERT INTO order_log (timestamp, symbol, transaction_type, quantity, status) "
+                     "VALUES (?, 'ACME', 'SELL', 1, 'PLACED')", (f"{dt.date.today()} 11:00:00",))
+        conn.commit()
+        assert _orders_today(conn) == 2                                   # the sale is not counted
+        assert pretrade_check(conn, "ACME", "BUY", 1, 10.0, env="PAPER")["blocked_by"] == "max_orders_per_day"
+        r = pretrade_check(conn, "ACME", "SELL", 1, 10.0, env="PAPER")
+        assert r["ok"] and "max_orders_per_day" not in [c["limit"] for c in r["checks"]]
+    finally:
+        conn.close()
+
+
 def test_position_and_exposure_limits_read_the_paper_book(temp_db, cfgfile):
     from orders.risk import pretrade_check
     cfgfile(risk_limits={"max_open_positions": 2, "max_symbol_exposure_value": 30000})

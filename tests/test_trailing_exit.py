@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from tests.test_session_pools import _do, _entry, _ledger, _pool, _tick, api  # noqa: F401  (fixture)
+from tests.test_session_pools import _do, _entry, _ledger, _limits, _pool, _tick, api  # noqa: F401  (fixture)
 from tests.test_w39_qa_suite import paper  # noqa: F401  (pytest fixture)
 
 TRAIL = {"trail_pct": 1, "hold_days": 15}
@@ -86,6 +86,17 @@ def test_after_15_days_a_price_at_3_pct_or_more_sells_everything(paper):
     assert rules.get_rule(sell["id"])["execution_quantity"] == 250
     assert _ledger()["cash"] == 25850.0                                          # 25,000 + 250 x 3.40
 
+
+
+def test_the_days_order_limit_never_refuses_the_stop(paper, tmp_path):
+    """One order a day: the buy uses it up, and the stop-loss sale still goes through."""
+    from orders import rules
+    _limits(tmp_path, max_orders_per_day=1)
+    r = _bought(paper)
+    assert rules.get_rule(r["id"])["status"] == rules.EXECUTED
+    _tick(paper, ACME=97.9)
+    assert rules.get_rule(_legs(r["id"])["STOP"]["id"])["status"] == rules.EXECUTED
+    assert _ledger()["open"] == []
 
 def test_trailing_without_hold_days_has_no_sale_at_the_target(paper):
     _pool("S1", trail_pct=1)
