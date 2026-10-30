@@ -148,6 +148,11 @@ def _migrate_bracket_columns(conn):
         "trail_jump": "REAL",              # only move the stop in steps this big (0 = continuous)
         "trail_high_water": "REAL",        # best price seen since the leg opened
         "trail_moves": "INTEGER",          # how many times the stop has ratcheted
+        "trail_after_pct": "REAL",         # on an ENTRY: the stop starts trailing only x% past the fill
+        "trail_activate_price": "REAL",    # on a STOP leg: the price where its trailing starts
+        # ── time-bound exit ──
+        "bracket_target_after_days": "REAL",  # on an ENTRY: its TARGET leg may fire only x days after the fill
+        "not_before": "TEXT",              # on a leg: not tested before this time
         # ── broker-side placement (Dhan GTT / bracket / super order) ──
         "broker_leg_type": "TEXT",         # which broker mechanism holds this leg, if any
         "broker_leg_id": "TEXT",           # Dhan's id for it
@@ -223,6 +228,12 @@ def create_rule(payload: dict) -> dict:
                 raise ValueError("quantity_type RISK needs a stoploss below the buy trigger to size against")
             if not payload.get("quantity_value") or float(payload["quantity_value"]) <= 0:
                 raise ValueError("quantity_type RISK: quantity_value is the % of capital to risk, e.g. 1.0")
+        if payload.get("quantity_type") == QTY_SESSION:
+            # Sized at execution from the linked pool session's cash (orders.sessions.pool_quantity).
+            if payload["side"] != "BUY":
+                raise ValueError("quantity_type SESSION sizes a buy from a session's cash — use SHARES for a SELL")
+            if not 0 < float(payload.get("quantity_value") or 0) <= 100:
+                raise ValueError("quantity_type SESSION: quantity_value is the % of the session's cash, 1-100")
 
         now = datetime.now().isoformat()
         rule_id = str(uuid.uuid4())
@@ -242,8 +253,9 @@ def create_rule(payload: dict) -> dict:
                 trigger_direction, role, parent_rule_id, oco_group_id,
                 bracket_target_pct, bracket_target2_pct, bracket_stop_pct, bracket_auto_exit,
                 bracket_target_split, trail_enabled, trail_type, trail_value, trail_jump,
-                trail_high_water, trail_moves
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                trail_high_water, trail_moves, trail_after_pct, trail_activate_price,
+                bracket_target_after_days, not_before
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             rule_id, symbol, side, payload["trigger_type"],
             payload.get("trigger_value"), payload.get("trigger_percent"),
@@ -262,6 +274,8 @@ def create_rule(payload: dict) -> dict:
             1 if payload.get("trail_enabled") else 0,
             payload.get("trail_type"), payload.get("trail_value"), payload.get("trail_jump"),
             payload.get("trail_high_water"), 0,
+            payload.get("trail_after_pct"), payload.get("trail_activate_price"),
+            payload.get("bracket_target_after_days"), payload.get("not_before"),
         ))
         conn.commit()
         return get_rule(rule_id)
@@ -284,6 +298,14 @@ def _create_bracket_legs(entry: dict, fill_price: float, quantity: int) -> list[
     that needs you to be watching is not a stop. It's bounded by the
     MAX_QUOTE_AGE_SECONDS freshness guard in execute_rule(), so it will refuse
     to act on stale quotes rather than fire blind after a sleep/outage.
+
+    Two optional settings on the entry make the exit time-bound and let a winner
+    run (the owner's rule of 30 Oct 2026 for the cash pools):
+      - trail_after_pct: the trailing stop holds at its first level until price
+        is this % past the fill, then trails trail_value % under the best price;
+      - bracket_target_after_days: the TARGET leg is not tested until this many
+        days after the fill, so before then the trailing stop is the only exit
+        above the fill.
     """
     legs = []
     t1 = entry.get("bracket_target_pct")
@@ -317,6 +339,7 @@ def _create_bracket_legs(entry: dict, fill_price: float, quantity: int) -> list[
             "notes": f"{role} leg of {entry['symbol']} {entry['side']} @ {fill_price}",
         }
         if role == ROLE_STOP and entry.get("trail_enabled"):
+            after = entry.get("trail_after_pct")
             payload.update({
                 "trail_enabled": True,
                 "trail_type": entry.get("trail_type") or "PERCENT",
@@ -325,7 +348,13 @@ def _create_bracket_legs(entry: dict, fill_price: float, quantity: int) -> list[
                 # Seed the high-water mark at the fill so the first ratchet is
                 # measured from where the position actually opened.
                 "trail_high_water": fill_price,
+                "trail_activate_price": round(fill_price * (1 + after / 100) if long_entry
+                                              else fill_price * (1 - after / 100), 2) if after else None,
             })
+        days = entry.get("bracket_target_after_days")
+        if role == ROLE_TARGET and days:
+            payload["not_before"] = (datetime.now() + timedelta(days=float(days))).isoformat(timespec="seconds")
+            payload["notes"] += f", not before {payload['not_before'][:16].replace('T', ' ')}"
         return payload
 
     # Split the position across the two targets (default half at T1, rest at
@@ -432,7 +461,9 @@ def update_trailing_stops(price_by_symbol: dict) -> list[dict]:
         whole point of a stop;
       - trail_jump, if set, makes the stop move in discrete steps instead of
         continuously, which is how Dhan's own trailing jump behaves and avoids
-        rewriting the level on every tick.
+        rewriting the level on every tick;
+      - trail_activate_price, if set, keeps the stop at its first level until
+        the best price reaches it (the high-water mark is still recorded).
 
     IMPORTANT LIMITATION: this trails only while the process running
     check_triggers() is alive (the dashboard). It is NOT a broker-side stop —
@@ -455,6 +486,12 @@ def update_trailing_stops(price_by_symbol: dict) -> list[dict]:
             new_hw = max(hw, price) if hw else price
             if not long_pos:
                 new_hw = min(hw, price) if hw else price
+            act = leg.get("trail_activate_price")
+            if act and (new_hw < float(act) if long_pos else new_hw > float(act)):
+                if new_hw != hw:                  # not trailing yet: only remember the best price
+                    conn.execute("UPDATE order_rules SET trail_high_water=?, updated_at=? WHERE id=?",
+                                 (round(new_hw, 2), datetime.now().isoformat(), leg["id"]))
+                continue
             dist = (new_hw * float(leg["trail_value"]) / 100.0
                     if (leg.get("trail_type") or "PERCENT") == "PERCENT"
                     else float(leg["trail_value"]))
@@ -746,10 +783,13 @@ def check_triggers() -> list[dict]:
 
     conn = get_connection()
     try:
+        now_iso = datetime.now().isoformat()
         for rule in active:
             price = price_by_symbol.get(rule["symbol"])
             if not price:
                 continue
+            if rule.get("not_before") and rule["not_before"] > now_iso:
+                continue                          # a time-bound exit leg that is not due yet
             reason = _condition_met(rule, price)
             if not reason:
                 continue
@@ -819,15 +859,47 @@ def check_triggers() -> list[dict]:
 
 # quantity_type: SHARES (a count), AMOUNT (rupees), RISK (% of capital risked
 # on the rule's stop -- RK-13; sized by orders.risk.size_for_account when the
-# rule executes, so the size follows the account and the price at that moment).
+# rule executes, so the size follows the account and the price at that moment),
+# SESSION (% of the linked pool session's cash -- 100 = all of it, so the
+# session's profit or loss carries into its next buy; orders.sessions).
 QTY_RISK = "RISK"
+QTY_SESSION = "SESSION"
 
 def _resolve_quantity(rule: dict, price: float) -> int:
     if rule["quantity_type"] == "AMOUNT":
         return max(1, math.floor(rule["quantity_value"] / price))
     if rule["quantity_type"] == QTY_RISK:
         return _risk_sized(rule, price)["quantity"]
+    if rule["quantity_type"] == QTY_SESSION:
+        return _session_sized(rule, price)["quantity"]
     return int(rule["quantity_value"])
+
+
+def _session_sized(rule: dict, price: float) -> dict:
+    """orders.sessions.pool_quantity for a SESSION rule at execution price."""
+    from orders.sessions import pool_quantity, session_of_rule
+    conn = get_connection()
+    try:
+        sid = session_of_rule(conn, rule)
+        if not sid:
+            return {"quantity": 0, "reason": "quantity SESSION needs the rule linked to a session with a cash pool"}
+        return {"session": sid, **pool_quantity(conn, sid, price, float(rule["quantity_value"]))}
+    finally:
+        conn.close()
+
+
+def _order_tag(rule: dict) -> str | None:
+    """ATIP-S1 for a rule in session S1 (or a leg of one), so its fills can be traced to the session."""
+    try:
+        from orders.sessions import order_tag
+        conn = get_connection()
+        try:
+            return order_tag(conn, rule)
+        finally:
+            conn.close()
+    except Exception as e:
+        log.debug(f"  order tag for {rule.get('symbol')}: {e}")
+        return None
 
 
 def _risk_sized(rule: dict, price: float) -> dict:
@@ -870,14 +942,32 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
             return {"status": "FAILED", "error": err, "sizing": sizing}
         log.info(f"  {rule['symbol']}: risk-sized {quantity} sh — risking Rs.{sizing['risk_amount']:,.0f} "
                  f"of {sizing['capital']:,.0f} ({sizing['capital_source']}), capped by {sizing['capped_by']}")
+    elif rule["quantity_type"] == QTY_SESSION:
+        sizing = _session_sized(rule, exec_price)
+        quantity = sizing["quantity"]
+        if quantity < 1:
+            err = f"session sizing gave no position: {sizing['reason']}"
+            log.error(f"  {rule['symbol']}: {err}")
+            if confirm:
+                conn = get_connection()
+                try:
+                    conn.execute("UPDATE order_rules SET status=?, execution_error=?, updated_at=? WHERE id=?",
+                                 (FAILED, err, datetime.now().isoformat(), rule_id))
+                    conn.commit()
+                finally:
+                    conn.close()
+            return {"status": "FAILED", "error": err, "sizing": sizing}
+        log.info(f"  {rule['symbol']}: {quantity} sh from session {sizing['session']}'s "
+                 f"Rs.{sizing['budget']:,.0f} (cash Rs.{sizing['cash']:,.0f})")
     else:
         quantity = _resolve_quantity(rule, exec_price)
 
     placer = place_buy_order if rule["side"] == "BUY" else place_sell_order
+    tag = _order_tag(rule)
     result = placer(
         rule["symbol"], quantity,
         order_type=rule["order_type"], product_type=rule["product_type"],
-        price=rule.get("limit_price") or 0, confirm=confirm,
+        price=rule.get("limit_price") or 0, confirm=confirm, **({"tag": tag} if tag else {}),
     )
     if result.get("status") == "PLACED":
         # The bracket legs below are measured from the ACTUAL fill (see _create_bracket_legs).

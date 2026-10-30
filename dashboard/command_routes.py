@@ -15,8 +15,16 @@ UXR-01 Command Center: one screen that answers "is it safe, what needs me, what 
     GET  /api/sessions/events?sid=       append-only change log
     POST /api/sessions/{sid}/mode   {mode, ack}
     POST /api/sessions/{sid}/status {status, reason}
-    POST /api/sessions/{sid}        {name?, strategy?, universe?, max_trades?, max_loss_value?, capital_cap?}
+    POST /api/sessions/{sid}        {name?, strategy?, universe?, max_trades?, max_loss_value?, capital_cap?,
+                                     target_pct?, stop_pct?, trail_pct?, hold_days?, min_buy_value?}
     POST /api/sessions/{sid}/link   {rule_id}
+    POST /api/sessions/pools        {capital, total?, target_pct?, stop_pct?, trail_pct?, hold_days?, min_buy_value?,
+                                     max_occurrences?, auto_pick?, ids?}
+                                    a cash pool per session, books from now (orders/sessions.py setup_pools):
+                                    total // capital sessions when total is given; "sid" with the same
+                                    fields restarts one session's pool (start_pool)
+    POST /api/sessions/autopick     {hold_min_score: 60 | null}   auto-pick's HOLD fallback (orders/autopick.py):
+                                    when no BUY signal is free, HOLD stocks scoring at least this; null = off
 
 Every POST needs the X-ATIP-Token header (dashboard/security.py). Nothing here places, changes
 or cancels an order: halt/resume call the existing kill switch, which every order path already
@@ -250,6 +258,25 @@ def register(app, guard, Req, get_connection, json_safe):
         b = await body(request)
         from orders.sessions import link_rule
         return await run_in_threadpool(call, lambda c: link_rule(c, sid, str(b.get("rule_id") or "")))
+
+    @app.post("/api/sessions/autopick", dependencies=guard)
+    async def api_session_autopick(request: Req):
+        b = await body(request)
+        from orders.autopick import set_hold_min_score
+        return await run_in_threadpool(call, lambda c: set_hold_min_score(c, b.get("hold_min_score"),
+                                                                          str(b.get("reason") or "")))
+
+    @app.post("/api/sessions/pools", dependencies=guard)
+    async def api_session_pools(request: Req):
+        b = await body(request)
+        from orders.sessions import setup_pools, start_pool
+        rules = {k: b.get(k) for k in ("target_pct", "stop_pct", "min_buy_value", "max_occurrences",
+                                       "trail_pct", "hold_days")}
+        if b.get("sid"):
+            return await run_in_threadpool(call, lambda c: start_pool(c, str(b["sid"]).upper(), b.get("capital"), **rules))
+        ids = [str(i).upper() for i in b.get("ids") or []] or None
+        return await run_in_threadpool(call, lambda c: setup_pools(c, b.get("capital"), ids, total=b.get("total"),
+                                                                   auto_pick=b.get("auto_pick"), **rules))
 
     @app.post("/api/sessions/{sid}", dependencies=guard)
     async def api_session_update(sid: str, request: Req):

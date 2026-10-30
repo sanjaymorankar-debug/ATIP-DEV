@@ -239,7 +239,7 @@ def _positions(conn, env) -> dict:
 
 
 def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None, order_type=None,
-                   price=None, trigger_price=None, gateway=True) -> dict:
+                   price=None, trigger_price=None, gateway=True, pool_session=None) -> dict:
     """
     {"ok", "blocked_by", "message", "checks", "gateway"} for one order against
     the configured limits. Every limit is reported in `checks` whether it bound
@@ -250,6 +250,11 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
     and a "reason" when it could not be measured. The band needs the order's
     order_type / price / trigger_price -- a caller that passes none gets it
     recorded as skipped.
+
+    `pool_session` names the cash-pool session (orders/sessions.py) an order
+    belongs to. max_order_value does not cap such an order, buy or sale: the
+    session's own cash does, and that grows as the session compounds its
+    profits (owner, 29 Oct 2026). Every other limit still applies.
     """
     env = env or broker_env()
     lim = limits()
@@ -274,7 +279,11 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
             blocked = (name, f"{name}: {value:,.0f}{unit} would exceed the configured "
                              f"{cap:,.0f}{unit}")
 
-    check("max_order_value", est_value, lim.get("max_order_value"), " Rs")
+    if pool_session and lim.get("max_order_value") is not None:
+        checks.append({"limit": "max_order_value", "value": est_value, "cap": lim["max_order_value"],
+                       "breached": False, "reason": f"not applied: session {pool_session}'s own cash sizes this order"})
+    else:
+        check("max_order_value", est_value, lim.get("max_order_value"), " Rs")
     # A SELL reduces exposure and closes a position, so only a BUY is counted
     # against the position and exposure caps.
     if transaction_type == "BUY":

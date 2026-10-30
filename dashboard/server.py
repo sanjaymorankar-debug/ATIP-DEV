@@ -1860,6 +1860,11 @@ if HAS_FASTAPI:
             try:
                 # Task 2: nothing is triggered while ATIP is stopped (21:00-06:00 IST / manual stop)
                 if is_market_hours() and not is_stopped():
+                    try:                    # free cash-pool sessions queue their next occurrence first
+                        from orders.autopick import run as autopick
+                        autopick()
+                    except Exception as e:
+                        log.error(f"  auto-pick error: {e}")
                     events = oe.check_triggers()
                     if events:
                         log.info(f"  order_rules: {events}")

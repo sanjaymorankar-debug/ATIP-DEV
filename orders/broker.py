@@ -225,8 +225,10 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
     else:
         funds = {"ok": True, "available": available_balance(), "message": "SELL — funds check not required"}
 
+    from orders.sessions import pool_of_tag
     risk = pretrade_check(conn, symbol, transaction_type, quantity, est_value, env, order_type=order_type,
-                          price=price if order_type == "LIMIT" else None)   # W39 (RK-21): the price band
+                          price=price if order_type == "LIMIT" else None,   # W39 (RK-21): the price band
+                          pool_session=pool_of_tag(conn, tag))              # a pool's cash sizes its orders
     if not risk["ok"] and confirm:
         log.error(f"  ⛔ Order refused — {risk['message']}")
         _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
