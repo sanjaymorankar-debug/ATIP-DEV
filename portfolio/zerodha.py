@@ -10,6 +10,15 @@ CONFIG_PATH=Path("atip_data/config.json"); TOKEN_PATH=Path("atip_data/kite_token
 try: from kiteconnect import KiteConnect; HAS_KITE=True
 except ImportError: HAS_KITE=False; log.warning("pip install kiteconnect")
 
+def enabled() -> bool:
+    """The owner's switch for everything Zerodha: the holdings sync, the pre-market token check and
+    the broker-health line. Off until "zerodha_enabled": true is in atip_data/config.json (owner,
+    30 Oct 2026: "disable the ZERODHA related alerts till I confirm to enable it")."""
+    try:
+        return json.loads(CONFIG_PATH.read_text()).get("zerodha_enabled") is True
+    except Exception:
+        return False
+
 def load_cfg():
     cfg={}
     if CONFIG_PATH.exists():
