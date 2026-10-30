@@ -499,8 +499,9 @@ def run_premarket(force=False):
     run_job("news_premarket", run_news_pipeline, 14)
     _news_summary()
     try:                                             # W29 (BR-02): an expired Kite session alerts now,
-        from portfolio.zerodha import check_token_and_alert   # not as a failed sync tonight
-        run_job("zerodha_token_check", check_token_and_alert)
+        from portfolio.zerodha import check_token_and_alert, enabled   # not as a failed sync tonight
+        if enabled():                                # off until the owner turns Zerodha on (30 Oct 2026)
+            run_job("zerodha_token_check", check_token_and_alert)
     except Exception as e:
         log.warning(f"  Zerodha token check: {e}")
 
@@ -718,7 +719,9 @@ def _run_startup_plan(plan, now, td, today):
 
 
 def _run_portfolio_sync(td):
-    """Sync portfolio — tries Dhan first, then Zerodha."""
+    """Sync portfolio — tries Dhan first, then Zerodha once the owner has turned it on
+    (portfolio/zerodha.enabled): while it is off its SKIPPED run is not the last word on a
+    failed Dhan sync in the health check."""
     try:
         from data.dhan import sync_dhan_portfolio
         result = run_job("dhan_portfolio", sync_dhan_portfolio, td)
@@ -727,7 +730,9 @@ def _run_portfolio_sync(td):
     except Exception:
         pass
     try:
-        from portfolio.zerodha import run_portfolio_sync
+        from portfolio.zerodha import enabled, run_portfolio_sync
+        if not enabled():
+            return
         run_job("zerodha_portfolio", run_portfolio_sync, td)
     except Exception as e:
         log.warning(f"  Portfolio sync: {e}")

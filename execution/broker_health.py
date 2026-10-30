@@ -131,7 +131,9 @@ def _freshness(conn, now, in_session):
 
 def _zerodha():
     try:
-        from portfolio.zerodha import token_status
+        from portfolio.zerodha import enabled, token_status
+        if not enabled():
+            return _c("zerodha_token", "SKIPPED", "Zerodha is off (zerodha_enabled in atip_data/config.json)")
         t = token_status()
     except Exception as e:
         return _c("zerodha_token", "SKIPPED", str(e))
