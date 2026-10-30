@@ -9,6 +9,8 @@ UXR-06..09: the rest of the redesigned console, next to the Command Center (/com
                                           watching (and why a session holds one), the order log with causes
     GET  /command/journal                 Journal: per-session trades / successful / win rate / avg R / P&L,
                                           hit rate by score band, a straight-line Dec 2027 range (not a forecast)
+    GET  /command/pnl                     P&L: the paper book (or one session's cash pool) by day / week / month,
+                                          every round-trip trade, and the session pools (portfolio/paper_report.py)
 
     GET  /api/command/signals?signal=&q=&limit=
     GET  /api/command/preview?symbol=&side=&qty=&entry=&target=&stop=&session=
@@ -16,6 +18,7 @@ UXR-06..09: the rest of the redesigned console, next to the Command Center (/com
                                           watches -- it never sends by itself) and link it to the session
     GET  /api/command/monitor
     GET  /api/command/journal
+    GET  /api/command/pnl?scope=all|pools|S1&by=day|week|month
 
 Everything here reads, except POST /api/command/setup, which is token-guarded and creates a rule the
 existing confirmation gate still sits in front of. /api/command/* is owner-only (enterprise/authz.py).
@@ -141,6 +144,26 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
     qty = int(_num(qty, "qty")) if qty not in (None, "") else None
     target, stop = _f(target), _f(stop)
     long_ = side == "BUY"
+    pool = None
+    if session and sessions.get_session(conn, session).get("start_capital"):
+        # A cash pool sets the trade (orders/sessions.py): all of its cash, sell everything at +target_pct
+        # (or trail from there), stop at -stop_pct. Its rule is sized again from the cash it has when it fires.
+        s0 = sessions.get_session(conn, session)
+        if not long_:
+            raise ValueError(f"session {session} is a cash pool: it buys delivery stock, not a SELL")
+        L = sessions.ledger(conn, session, s=s0)
+        sized = sessions.pool_quantity(conn, session, entry)
+        tp = float(s0.get("target_pct") or sessions.POOL_DEFAULTS["target_pct"])
+        target = round(entry * (1 + tp / 100), 2)
+        if s0.get("stop_pct"):
+            stop = round(entry * (1 - float(s0["stop_pct"]) / 100), 2)
+        qty = sized["quantity"] or max(1, int(L["equity"] // entry))        # cash in a trade: what it would have
+        pool = {"cash": L["cash"], "equity": L["equity"], "start_capital": L["start_capital"],
+                "quantity_now": sized["quantity"], "target_pct": tp, "stop_pct": s0.get("stop_pct"),
+                "trail_pct": s0.get("trail_pct"), "hold_days": s0.get("hold_days"),
+                "min_buy_value": s0.get("min_buy_value"),
+                "note": (f"{session} buys with all of its Rs {L['cash']:,.0f} cash when this fires; {sessions.exit_rule(s0)}"
+                         + ("" if sized["quantity"] else " -- its cash is in an open trade now, so the rule waits for it"))}
     if stop is not None and ((long_ and stop >= entry) or (not long_ and stop <= entry)):
         raise ValueError(f"the stop must be {'below' if long_ else 'above'} the entry for a {side}")
     if target is not None and ((long_ and target <= entry) or (not long_ and target >= entry)):
@@ -199,7 +222,8 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
         chk("Funds", True, "checked by the broker when the order is sent", blocking=False)
     circ = risk.circuit_check(conn, symbol, order_type="LIMIT", price=entry)
     chk("Inside today's circuit", not circ["breached"], circ.get("reason") or "", blocking=not circ.get("skipped"))
-    pre = risk.pretrade_check(conn, symbol, side, qty, value, env=env, order_type="LIMIT", price=entry)
+    pre = risk.pretrade_check(conn, symbol, side, qty, value, env=env, order_type="LIMIT", price=entry,
+                              pool_session=session if pool else None)
     chk("Risk limits", pre["ok"], pre["message"])
     if net_risk is not None and budget_left is not None:
         chk("Loss budget", net_risk <= budget_left,
@@ -220,7 +244,11 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
             reasons.append(f"{session} is MANUAL — its rules never fire")
         if s.get("max_trades") and u["trades_today"] >= int(s["max_trades"]):
             reasons.append(f"{u['trades_today']} of {s['max_trades']} trades used today")
-        if s.get("capital_cap") and u["open_value"] + value > float(s["capital_cap"]):
+        if pool:
+            if s.get("min_buy_value") and pool["cash"] < float(s["min_buy_value"]):
+                reasons.append(f"Rs {pool['cash']:,.0f} free, under the Rs {float(s['min_buy_value']):,.0f} minimum buy "
+                               f"— the rule waits until the open trade exits")
+        elif s.get("capital_cap") and u["open_value"] + value > float(s["capital_cap"]):
             reasons.append(f"Rs {u['open_value'] + value:,.0f} open would exceed the Rs {s['capital_cap']:,.0f} cap")
         if s.get("max_loss_value") and net_risk is not None and net_risk > float(s["max_loss_value"]):
             reasons.append(f"a stop-out (Rs {net_risk:,.0f}) is more than the session's Rs {s['max_loss_value']:,.0f} loss limit")
@@ -229,7 +257,7 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
     blocked = [c for c in checks if c["blocking"] and not c["ok"]]
     return {"symbol": symbol, "side": side, "qty": qty, "entry": round(entry, 2), "target": target, "stop": stop,
             "reference_price": ref, "reference_source": ref_src, "value": round(value, 2), "env": env,
-            "sizing": sizing,
+            "sizing": sizing, "pool": pool,
             "risk_rs": round(risk_rs, 2) if risk_rs is not None else None,
             "reward_rs": round(reward_rs, 2) if reward_rs is not None else None,
             "rr": round(reward_rs / risk_rs, 2) if risk_rs and reward_rs is not None else None,
@@ -382,7 +410,8 @@ def journal(conn) -> dict:
 # -- pages ---------------------------------------------------------------------------------------
 
 NAV = [("/command", "Command Center"), ("/command/signals", "Signal Explorer"), ("/command/setup", "Trade Setup"),
-       ("/command/monitor", "Live Monitor"), ("/command/journal", "Journal"), ("/", "Scores dashboard"),
+       ("/command/monitor", "Live Monitor"), ("/command/journal", "Journal"), ("/command/pnl", "P&amp;L"),
+       ("/", "Scores dashboard"),
        ("/global-asia", "Global &amp; Asia"), ("/trading", "Trading"), ("/options-builder", "Options builder")]
 
 
@@ -519,8 +548,9 @@ function qs(){const o={symbol:$('sym').value.trim(),side:$('side').value};for(co
 async function run(){const o=qs();if(!o.symbol){$('kv').textContent='Enter a stock.';return}
  try{const p=await j('/api/command/preview?'+new URLSearchParams(o));last=p;
   if(!$('entry').value)$('entry').value=p.entry;if(!$('qty').value&&p.sizing)$('qty').placeholder='sized: '+p.qty;
+  if(p.pool){$('qty').value='';$('qty').placeholder='whole session cash';$('target').value=p.target;$('stop').value=p.stop??''}
   const c=p.charges;$('kv').className='kv';
-  $('kv').innerHTML=`<span>Quantity</span><b class="num">${p.qty}${p.sizing?' <span class="muted">(sized to '+inr(p.sizing.risk_amount)+' risk)</span>':''}</b>
+  $('kv').innerHTML=(p.pool?`<span>Session pool</span><b>${esc(p.pool.note)}</b>`:'')+`<span>Quantity</span><b class="num">${p.qty}${p.sizing?' <span class="muted">(sized to '+inr(p.sizing.risk_amount)+' risk)</span>':''}${p.pool?' <span class="muted">(at '+inr(p.entry,2)+' today)</span>':''}</b>
    <span>Order value</span><b class="num">${inr(p.value)}</b>
    <span>Price now</span><b class="num">${inr(p.reference_price,2)} <span class="muted">${esc(p.reference_source||'')}</span></b>
    <span>At risk to the stop</span><b class="num down">${p.risk_rs==null?'set a stop':'▼ '+inr(p.risk_rs)}</b>
@@ -537,7 +567,7 @@ const later=()=>{clearTimeout(t);t=setTimeout(run,350)};
 $('f').addEventListener('input',later);$('f').addEventListener('change',later);
 $('f').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;const i=$(b.dataset.s);const d=parseFloat(b.dataset.d);
  const base=parseFloat(i.value||(b.dataset.s==='qty'?(last?last.qty:0):(last?last.entry:0)))||0;i.value=b.dataset.s==='qty'?Math.max(1,Math.round(base+d)):(Math.max(0.05,base+d)).toFixed(2);later()});
-$('save').onclick=async()=>{if(!last)return;if(!confirm('Save a watched '+last.side+' rule for '+last.qty+' '+last.symbol+' at '+inr(last.entry,2)+'?\nIt asks you before sending when it triggers.'))return;
+$('save').onclick=async()=>{if(!last)return;if(!confirm('Save a watched '+last.side+' rule for '+(last.pool?'all of '+$('ses').value+"'s cash in":last.qty)+' '+last.symbol+' at '+inr(last.entry,2)+'?\nIt asks you before sending when it triggers.'))return;
  try{const r=await post('/api/command/setup',qs());$('msg').innerHTML='Saved rule '+esc(r.rule.id.slice(0,8))+(r.session?' in '+esc(r.session):'')+'. <a href="/command/monitor">Watch it on the Live Monitor →</a>';$('save').disabled=true}catch(e){$('msg').textContent=e.message}};
 sessions().then(run);
 """
@@ -586,10 +616,86 @@ async function load(){try{const d=await j('/api/command/journal');const t=d.tota
 load();
 """
 
+PNL_BODY = """
+<div><h1>P&amp;L</h1><div id="sub" class="muted">Loading…</div></div>
+<div class="filters" role="search">
+ <select id="scope" aria-label="Book"><option value="all">Whole paper account</option><option value="pools">All session pools</option></select>
+ <select id="by" aria-label="Period"><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option></select>
+</div>
+<section class="grid3" id="tot"></section>
+<section class="card"><h2 id="perT">P&amp;L</h2><div class="scroll"><table><thead><tr><th>Period</th><th>P&amp;L</th><th>Return</th><th>Booked</th><th>Charges</th><th>Trades closed</th><th>Equity at end</th></tr></thead><tbody id="per"></tbody></table></div>
+ <div class="sub">P&amp;L is the change in equity — cash plus shares at each day's close — so it moves with open trades. Booked is what sales realised, after the charges of both the buy and the sale.</div></section>
+<section class="card" id="occCard" hidden><h2>Occurrences</h2><div class="scroll"><table><thead><tr><th>#</th><th>Stock</th><th>Started with</th><th>Ended with</th><th>Change</th><th>Dates</th></tr></thead><tbody id="occ"></tbody></table></div>
+ <div class="sub">Each occurrence buys with everything the one before it ended with.</div></section>
+<section class="card"><h2>Session pools</h2><div class="scroll"><table><thead><tr><th>Session</th><th>Started with</th><th>Occurrence</th><th>Cash free</th><th>Holding</th><th>Equity</th><th>P&amp;L</th><th>Won · closed</th><th>Exit rule</th></tr></thead><tbody id="ses"></tbody></table></div>
+ <div class="sub" id="apNote"></div>
+ <div class="sub">Each session is its own money. An occurrence buys one stock with all of the session's cash; when it sells, the whole amount starts the next occurrence — bigger after a win, smaller after a stop. Sessions do not lend to each other, and each stops after its last occurrence.</div>
+ <details style="margin-top:10px"><summary>Start or restart the sessions</summary>
+  <form id="pf" class="form" style="margin-top:10px" onsubmit="return false">
+   <label>Total money ₹<input id="pTot" inputmode="decimal" class="num" value="250000"></label>
+   <label>Per session ₹<input id="pCap" inputmode="decimal" class="num" value="25000"></label>
+   <label>Occurrences per session<input id="pOcc" inputmode="numeric" class="num" value="500"></label>
+   <label>Target +%<input id="pTgt" inputmode="decimal" class="num" value="3"></label>
+   <label>Stop at −%<input id="pStop" inputmode="decimal" class="num" value="2"></label>
+   <label>Trail the stop by %<input id="pTrail" inputmode="decimal" class="num" value="1"></label>
+   <label>Sell at target after days<input id="pHold" inputmode="decimal" class="num" value="15"></label>
+   <label>Smallest buy ₹<input id="pMin" inputmode="decimal" class="num" value="12000"></label>
+   <label style="grid-column:1/-1;flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text)"><input id="pAuto" type="checkbox" checked style="min-height:auto;width:18px;height:18px"> Pick each next stock automatically (the top ATIP BUY signal no other session holds)</label>
+  </form>
+  <div class="actions" style="margin-top:10px;justify-content:flex-start;align-items:center"><button type="button" id="pGo" class="primary">Start the sessions</button><span id="pN" class="muted num"></span></div>
+  <div class="sub">With a trail, a stock is not sold at the target: from there the stop follows that % under the highest price, and after the days given a price at the target or more sells everything. Leave the trail blank to sell everything at the target.</div>
+  <div id="pMsg" class="sub" role="status">Restarting a pool starts its books again from now. A session holding a trade is skipped until that trade exits.</div>
+ </details></section>
+<section class="card"><h2>Trades</h2><div class="scroll"><table><thead><tr><th>Stock</th><th>Session</th><th>Bought</th><th>Sold</th><th>Charges</th><th>Net P&amp;L</th></tr></thead><tbody id="tr"></tbody></table></div>
+ <div class="sub">One row per round trip: from a buy into a stock not held until it is all sold. Paper only.</div></section>"""
+
+PNL_JS = r"""
+const P=new URLSearchParams(location.search);const NAMES={day:'Daily',week:'Weekly',month:'Monthly'};
+const d10=s=>String(s||'').slice(0,10);
+function label(p,by){if(by==='month')return new Date(p.period+'-01T00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+ if(by==='week')return 'Week of '+new Date(p.from+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'})+(p.to!==p.from?' – '+new Date(p.to+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'');
+ return new Date(p.period+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
+const cls=v=>v>0?'up':v<0?'down':'';
+const occ=s=>(s.finished?'all '+s.max_occurrences+' done':(s.open.length?'#'+s.occurrence+' running':'next #'+(s.occurrence+1))+' of '+s.max_occurrences)
+ +(s.auto_pick&&s.pick?'<div class="sub" style="margin:0;white-space:normal;max-width:220px">'+(s.pick.type==='PICKED'?'auto-pick: '+esc(s.pick.symbol)+' at up to '+inr(s.pick.trigger,2):'auto-pick waits: '+esc(s.pick.reason))+'</div>':'');
+function count(){const t=+$('pTot').value,c=+$('pCap').value;$('pN').textContent=t>0&&c>0?'= '+Math.floor(t/c)+' sessions of '+inr(c)+(t%c?' ('+inr(t%c)+' left over)':''):''}
+async function scopes(){try{const d=await j('/api/sessions');const ps=d.sessions.filter(s=>s.pool);
+ $('scope').innerHTML='<option value="all">Whole paper account</option>'+(ps.length?'<option value="pools">All '+ps.length+' session pools</option>':'')+ps.map(s=>`<option value="${esc(s.id)}">${esc(s.id)} ${esc(s.name)}</option>`).join('');
+ if(P.get('scope')&&[...$('scope').options].some(o=>o.value===P.get('scope')))$('scope').value=P.get('scope');}catch(e){}
+ if(P.get('by')&&NAMES[P.get('by')])$('by').value=P.get('by')}
+async function load(){const sc=$('scope').value,by=$('by').value;history.replaceState(null,'','?scope='+encodeURIComponent(sc)+'&by='+by);
+ try{const d=await j('/api/command/pnl?scope='+encodeURIComponent(sc)+'&by='+by);
+ $('sub').textContent='PAPER · '+d.label+(d.start?' · since '+new Date(d.start+'T00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):' · no trades yet')+(d.unpriced.length?' · no price for '+d.unpriced.join(', ')+' (valued at its last fill)':'');
+ $('tot').innerHTML=[['Started with',inr(d.opening)],['Equity now',inr(d.equity)],['Total P&L',`<span class="${cls(d.pnl)}">${signed(d.pnl)}</span> <span class="muted" style="font-size:14px">${pct(d.return_pct)}</span>`],
+  ['Booked',`<span class="${cls(d.booked)}">${signed(d.booked)}</span>`],['Open trades',`<span class="${cls(d.unrealised)}">${signed(d.unrealised)}</span>`],['Charges paid',inr(d.charges)],
+  ['Trades closed · won',d.closed+' · '+d.wins+(d.open?' <span class="muted" style="font-size:14px">('+d.open+' open)</span>':'')],['Win rate',d.win_rate_pct==null?'—':d.win_rate_pct+'%']]
+  .map(x=>`<div class="card"><div class="lbl">${x[0]}</div><div class="big num">${x[1]}</div></div>`).join('');
+ $('perT').textContent=NAMES[by]+' P&L';
+ $('per').innerHTML=d.periods.map(p=>`<tr><td>${esc(label(p,by))}</td><td class="num ${cls(p.pnl)}">${signed(p.pnl)}</td><td class="num">${pct(p.return_pct)}</td><td class="num ${cls(p.booked)}">${p.booked?signed(p.booked):'—'}</td><td class="num">${p.charges?inr(p.charges,2):'—'}</td><td class="num">${p.trades_closed?p.trades_closed+' · '+p.wins+' won':'—'}</td><td class="num">${inr(p.equity)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">No days to show yet.</td></tr>';
+ const S=d.sessions;const tot=k=>S.reduce((a,s)=>a+(s[k]||0),0);
+ $('ses').innerHTML=S.map(s=>`<tr><td><b>${esc(s.id)}</b> ${esc(s.name)} <span class="muted">${esc(s.mode)} · ${esc(s.status)}</span></td><td class="num">${inr(s.start_capital)}</td><td class="num">${occ(s)}</td><td class="num">${inr(s.cash)}</td><td>${s.open.length?s.open.map(h=>esc(h.symbol)+' '+h.qty+' <span class="'+cls(h.unrealised)+'">'+signed(h.unrealised)+'</span>'+(h.stop?'<div class="sub" style="margin:0">stop '+inr(h.stop,2)+(h.trailing?' · trailing':'')+(h.sell_from?' · sells ≥ '+inr(h.sell_at,2)+' from '+esc(d10(h.sell_from)):'')+'</div>':'')).join('<br>'):'<span class="muted">—</span>'}</td><td class="num">${inr(s.equity)}</td><td class="num ${cls(s.pnl)}">${signed(s.pnl)} <span class="muted">${pct(s.return_pct)}</span></td><td class="num">${s.wins} · ${s.closed}</td><td>${esc(s.exit_rule||'')}</td></tr>`).join('')
+  +(S.length>1?`<tr><td><b>All ${S.length}</b></td><td class="num"><b>${inr(tot('start_capital'))}</b></td><td class="num">${tot('closed')} done</td><td class="num">${inr(tot('cash'))}</td><td></td><td class="num"><b>${inr(tot('equity'))}</b></td><td class="num ${cls(tot('pnl'))}"><b>${signed(tot('pnl'))}</b></td><td class="num">${tot('wins')} · ${tot('closed')}</td><td></td></tr>`:'')
+  ||'<tr><td colspan="9" class="muted">No session has a cash pool yet — start them below.</td></tr>';
+ $('apNote').textContent=S.some(s=>s.auto_pick)?'Auto-pick takes the top ATIP BUY signal no other session holds'+(d.autopick_hold_min_score?', then HOLD stocks scoring '+d.autopick_hold_min_score+' or more.':' (BUY signals only).'):'';
+ $('occCard').hidden=!d.occurrences;
+ if(d.occurrences)$('occ').innerHTML=d.occurrences.slice().reverse().map(o=>`<tr><td class="num"><b>${o.n}</b></td><td><b>${esc(o.symbol)}</b> <span class="muted">${o.qty} @ ${inr(o.entry,2)}${o.exit_price?' → '+inr(o.exit_price,2):''}</span></td><td class="num">${inr(o.start_amount)}</td><td class="num">${o.closed?inr(o.end_amount):'<span class="muted">running</span>'}</td><td class="num ${cls(o.pnl)}">${o.closed?signed(o.pnl)+' <span class="muted">'+pct(o.pct)+'</span>':'—'}</td><td class="num">${esc(o.started)}${o.ended?' → '+esc(o.ended):''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">No occurrence yet: save a buy rule in this session on Trade Setup.</td></tr>';
+ $('tr').innerHTML=d.trade_list.map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td>${esc(t.session||'—')}</td><td class="num">${t.bought_qty} @ ${inr(t.avg_buy,2)}<div class="sub" style="margin:0">${esc(d10(t.opened))}</div></td><td class="num">${t.sold_qty?t.sold_qty+' @ '+inr(t.avg_sell,2):'—'}<div class="sub" style="margin:0">${t.closed?esc(d10(t.closed)):'open · '+t.held_qty+' held'+(t.mark!=null?' · now '+inr(t.mark,2):'')}</div></td><td class="num">${inr(t.charges,2)}</td><td class="num ${cls(t.closed?t.net:t.unrealised)}">${t.closed?signed(t.net)+' <span class="muted">'+pct(t.net_pct)+'</span>':(t.net?signed(t.net)+' booked · ':'')+signed(t.unrealised)+' open'}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">No paper trades yet.</td></tr>'}
+ catch(e){$('sub').textContent='Could not load: '+e.message}}
+$('scope').onchange=load;$('by').onchange=load;
+$('pf').addEventListener('input',count);count();
+$('pGo').onclick=async()=>{const b={total:$('pTot').value,capital:$('pCap').value,max_occurrences:$('pOcc').value,target_pct:$('pTgt').value,stop_pct:$('pStop').value,trail_pct:$('pTrail').value,hold_days:$('pHold').value,min_buy_value:$('pMin').value,auto_pick:$('pAuto').checked};
+ const ex=+b.trail_pct?'stop −'+b.stop_pct+'%; from +'+b.target_pct+'% the stop trails '+b.trail_pct+'% under the high'+(+b.hold_days?'; after '+b.hold_days+' days sells at +'+b.target_pct+'% or more':''):'sell all at +'+b.target_pct+'%, stop −'+b.stop_pct+'%';
+ if(!confirm('Start '+Math.floor(b.total/b.capital)+' sessions of '+inr(+b.capital)+', '+b.max_occurrences+' occurrences each ('+ex+')?\nEach starts its books from now. '+(b.auto_pick?'ATIP picks each next stock from its BUY signals while a session is RUNNING (paper only).':'Nothing is bought until you save buy rules in a session.')))return;
+ try{const r=await post('/api/sessions/pools',b);$('pMsg').textContent='Started '+r.sessions.length+' sessions of '+inr(r.each)+' — '+inr(r.total)+' in all.'+(r.ended.length?' Ended: '+r.ended.join(', ')+'.':'')+(Object.keys(r.skipped).length?' Skipped: '+Object.entries(r.skipped).map(([k,v])=>k+' ('+v+')').join('; '):'');await scopes();load()}
+ catch(e){$('pMsg').textContent=e.message}};
+scopes().then(load);setInterval(load,60000);
+"""
+
 PAGES = {"/command/signals": ("Signal Explorer", SIGNALS_BODY, SIGNALS_JS),
          "/command/setup": ("Trade Setup", SETUP_BODY, SETUP_JS),
          "/command/monitor": ("Live Monitor", MONITOR_BODY, MONITOR_JS),
-         "/command/journal": ("Journal", JOURNAL_BODY, JOURNAL_JS)}
+         "/command/journal": ("Journal", JOURNAL_BODY, JOURNAL_JS),
+         "/command/pnl": ("P&amp;L", PNL_BODY, PNL_JS)}
 
 
 def register(app, guard, Req, get_connection, json_safe):
@@ -639,3 +745,8 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/command/journal")
     async def api_command_journal():
         return await run_in_threadpool(call, journal)
+
+    @app.get("/api/command/pnl")
+    async def api_command_pnl(scope: str = "all", by: str = "day"):
+        from portfolio.paper_report import report
+        return await run_in_threadpool(call, lambda c: report(c, scope, by))
