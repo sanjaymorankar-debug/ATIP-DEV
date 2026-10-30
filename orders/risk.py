@@ -20,7 +20,7 @@ when it is set, so an install that sets none behaves exactly as before:
 
     "risk_limits": {
       "max_order_value":          100000,   # rupees, one order
-      "max_orders_per_day":       10,       # orders actually placed today
+      "max_orders_per_day":       10,       # BUY orders actually placed today
       "max_open_positions":       8,
       "max_symbol_exposure_value": 50000    # held + this order, per symbol
     }
@@ -219,7 +219,10 @@ def _query(conn, sql, params, default):
 
 
 def _orders_today(conn) -> int:
-    rows = _query(conn, "SELECT COUNT(*) FROM order_log WHERE status='PLACED' "
+    """BUY orders placed today: what max_orders_per_day counts. A sale is not counted and never
+    refused by it (owner, 30 Oct 2026) -- it closes a position, and a stop-loss sale refused for
+    the day's count would leave the position open with no stop."""
+    rows = _query(conn, "SELECT COUNT(*) FROM order_log WHERE status='PLACED' AND transaction_type='BUY' "
                         "AND DATE(timestamp)=?", (str(date.today()),), [(0,)])
     return rows[0][0] if rows else 0
 
@@ -285,14 +288,14 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
     else:
         check("max_order_value", est_value, lim.get("max_order_value"), " Rs")
     # A SELL reduces exposure and closes a position, so only a BUY is counted
-    # against the position and exposure caps.
+    # against the position and exposure caps and the day's order count.
     if transaction_type == "BUY":
         held = _positions(conn, env)
         if lim.get("max_open_positions") is not None and symbol not in held:
             check("max_open_positions", len(held) + 1, lim.get("max_open_positions"))
         check("max_symbol_exposure_value", held.get(symbol, 0.0) + (est_value or 0.0),
               lim.get("max_symbol_exposure_value"), " Rs")
-    check("max_orders_per_day", _orders_today(conn) + 1, lim.get("max_orders_per_day"))
+        check("max_orders_per_day", _orders_today(conn) + 1, lim.get("max_orders_per_day"))
     if lim.get("max_adv_participation_pct") is not None:       # W25 RK-10
         try:
             from portfolio.limits import average_daily_volume
@@ -633,7 +636,7 @@ def describe_state(conn=None) -> str:
                  f"trading         : {'HALTED — ' + why if is_halted else 'allowed'}",
                  f"limits          : {lim or 'none configured (nothing enforced)'}",
                  f"gateway (RK-21) : {gateway_limits() or 'disabled'}",
-                 f"orders placed today: {_orders_today(conn)}",
+                 f"buys placed today : {_orders_today(conn)} (sales are not counted)",
                  f"open positions  : {len(_positions(conn, env))}",
                  f"position sizing : {sizing_config()}"]
         try:
