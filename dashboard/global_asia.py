@@ -63,11 +63,12 @@ def asia_payload(conn) -> dict:
 
 
 # ── the banner ─────────────────────────────────────────────────────────────
-BANNER = r"""<div id="atipTokenBanner" role="alert" style="display:none;padding:9px 18px;font:600 13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
+BANNER = r"""<div id="atipRoleBanner" role="status" style="display:none;padding:7px 18px;background:#1e293b;color:#e2e8f0;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
+<div id="atipTokenBanner" role="alert" style="display:none;padding:9px 18px;font:600 13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <div id="atipOpBanner" role="status" aria-live="polite" style="display:none;padding:7px 18px;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <script>
 (function(){
- var el=document.getElementById('atipOpBanner'),tb=document.getElementById('atipTokenBanner');
+ var el=document.getElementById('atipOpBanner'),tb=document.getElementById('atipTokenBanner'),rb=document.getElementById('atipRoleBanner');
  var C={STOPPED:['#7c2d12','#ffedd5','⏸'],RESUMING:['#1e3a8a','#dbeafe','↻'],RUNNING:['#064e3b','#d1fae5','●']};
  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
  function token(t){if(!t||!t.message){tb.style.display='none';return;}
@@ -75,7 +76,10 @@ BANNER = r"""<div id="atipTokenBanner" role="alert" style="display:none;padding:
   tb.innerHTML='⚠ '+esc(t.message)+(t.fix||[]).map(function(f){return '<div style="font-weight:400;margin-top:3px">'+esc(f.text)+
    (f.cmd?' <code style="background:rgba(0,0,0,.35);padding:1px 6px;border-radius:4px;user-select:all">'+esc(f.cmd)+'</code>':'')+'</div>'}).join('');
   tb.style.display='block';tb.setAttribute('data-state',t.state);}
- function show(d){token(d&&d.dhan_token);if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
+ function role(d){if(!d||d.role!=='VIEWER'){rb.style.display='none';return;}var v=d.viewer||{};
+  rb.innerHTML='👁 View only — trading, orders and changes run on the Mac · '+(v.data_from?'data from the Mac at '+esc(String(v.data_from).replace('T',' ').slice(0,16))+' IST':'no data from the Mac yet');
+  rb.style.display='block';document.documentElement.setAttribute('data-atip-role','VIEWER');}
+ function show(d){role(d);token(d&&d.dhan_token);if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
   var t=c[2]+' '+esc(d.banner),lu=' · last updated '+esc(d.last_updated||'—');
   if(d.status==='STOPPED'){t+=' · read-only, no orders can be placed or triggered'+lu;}
   else if(d.status==='RESUMING'){var s=d.resume_steps||[];t+=' · step '+s.length+'/6'+(s.length?' ('+esc(s[s.length-1].name)+' '+esc(s[s.length-1].status)+')':'')+lu;}
@@ -89,12 +93,23 @@ BANNER = r"""<div id="atipTokenBanner" role="alert" style="display:none;padding:
 
 
 def status_payload() -> dict:
-    """/api/status: the operating status, plus the Dhan token's (ops/dhan_token.py) for the red token banner."""
+    """/api/status: the operating status, plus the Dhan token's (ops/dhan_token.py) for the red token banner.
+    On a VIEWER (ops/role.py): the role and when the Mac made the copy it shows, and no token -- it holds none."""
     try:
         from pipeline.operating_schedule import status
         out = status()
     except Exception:
         out = {}
+    from ops.role import is_viewer
+    if is_viewer():
+        try:
+            from ops.viewer_sync import status as sync_status
+            s = sync_status()
+            out["viewer"] = {k: s.get(k) for k in ("data_from", "installed_at", "mac_release", "release")}
+        except Exception:
+            out["viewer"] = {}
+        out["role"] = "VIEWER"
+        return out
     try:
         from ops.dhan_token import status as token_status
         out["dhan_token"] = token_status()

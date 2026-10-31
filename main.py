@@ -265,6 +265,13 @@ def main():
     ap.add_argument("--port",            type=int, default=8000, help="Dashboard port (default: 8000)")
     args = ap.parse_args()
 
+    # ── VIEWER (a web server showing the Mac's data, ops/role.py): nothing that fetches, alerts or trades ──
+    from ops.role import blocked_commands, is_viewer
+    blocked = blocked_commands(args)
+    if blocked:
+        log.error(f"This copy of ATIP is a VIEWER (ATIP_ROLE=viewer): {', '.join(blocked)} runs on the Mac only.")
+        sys.exit(2)
+
     # ── INIT ──────────────────────────────────────────────────────────────
     if args.init:
         log.info("Initialising ATIP database...")
@@ -418,6 +425,11 @@ def main():
             sys.exit(2)
         log.warning(f"  ops startup checks failed (continuing): {e}")
 
+    # ── VIEWER: the dashboard and the copy from the Mac, nothing else ────
+    if is_viewer():
+        _start_viewer(args.port)
+        return
+
     # ── DASHBOARD ONLY ────────────────────────────────────────────────────
     if args.dashboard:
         log.info(f"Starting dashboard → http://localhost:{args.port}")
@@ -472,6 +484,16 @@ def _start_index_feed():
         start_depth20()
     except Exception as e:
         log.warning(f"  20-level depth feed did not start ({e})")
+
+
+def _start_viewer(port: int = 8000):
+    """A VIEWER (ops/role.py): the dashboard over the database the Mac pushes (ops/viewer_sync.py). No
+    scheduler, no Dhan feeds; the dashboard itself starts no order monitor and refuses every write."""
+    log.info("Starting ATIP as a VIEWER — dashboard only, the Mac's data, no trading")
+    log.info(f"  Dashboard : http://localhost:{port}")
+    from ops.viewer_sync import start_watcher
+    start_watcher()
+    _start_dashboard(port)
 
 
 def _start_dashboard(port: int = 8000):

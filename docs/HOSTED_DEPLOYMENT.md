@@ -249,7 +249,13 @@ the scheduler, so it is the one that proves MySQL is wired up.
 
 ---
 
-## 6. If you want the read-only model back
+## 6. View only: the whole dashboard, with trading on the Mac
+
+If the web copy should show every page but never trade, run it as a VIEWER instead of the full app above:
+`ATIP_ROLE=viewer`, the dashboard only, the Mac's database pushed to it every 10 minutes, every write
+refused, no broker or Telegram keys on the server. See [VIEWER_SERVER.md](VIEWER_SERVER.md).
+
+## 7. If you want the read-only model back
 
 It still works and is still the lower-risk option: run ATIP locally under launchd
 (`deploy/launchd/install.sh`) and let `publish_snapshot.sh` push a rendered page

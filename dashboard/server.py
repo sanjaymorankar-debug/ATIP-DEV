@@ -1336,6 +1336,9 @@ if HAS_FASTAPI:
     # Task 2: read-only while ATIP is STOPPED (21:00-06:00 IST or a manual stop) -- writes get 423
     from pipeline.operating_schedule import install_readonly_guard as _install_readonly_guard
     _install_readonly_guard(app)
+    # A VIEWER (a web server showing the Mac's data, ops/role.py) refuses every write -- 403, outermost
+    from ops.role import install_guard as _install_viewer_guard
+    _install_viewer_guard(app)
     from fastapi import Depends, HTTPException, Request as _Req
     from dashboard.security import TOKEN_HEADER, guard_ok
 
@@ -1812,6 +1815,9 @@ if HAS_FASTAPI:
         """Live LTP for every symbol currently shown on the dashboard (scores + portfolio)."""
         from data.dhan import fetch_live_quotes
         from pipeline.scheduler import is_market_hours
+        from ops.role import is_viewer
+        if is_viewer():                  # no Dhan here: the prices are the Mac's, in the copied database
+            return JSONResponse({})
         if not is_market_hours():
             cached = (_live_quotes_cache["data"]
                       if _live_quotes_cache["date"] == str(date.today()) else {})
@@ -1875,7 +1881,11 @@ if HAS_FASTAPI:
     @app.on_event("startup")
     async def _start_order_monitor():
         import threading
-        threading.Thread(target=_order_monitor_loop, daemon=True).start()
+        from ops.role import is_viewer
+        if is_viewer():
+            log.info("  Order-rules monitor not started: this copy is a VIEWER, orders run on the Mac")
+            return
+        threading.Thread(target=_order_monitor_loop, name="atip-order-monitor", daemon=True).start()
         log.info("  ✓ Order-rules monitor started (flags triggers every 30s during market hours)")
 
 if __name__=="__main__":

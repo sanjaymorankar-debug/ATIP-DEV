@@ -92,6 +92,8 @@ def redirect_to_sandbox(dhan) -> bool:
 def sandbox_client():
     """A dhanhq client on the sandbox host with the sandbox credentials. Raises rather than
     return anything that could reach the LIVE endpoint."""
+    from ops.role import refuse
+    refuse("Dhan sandbox connection")
     cid, tok = sandbox_credentials()
     if not cid or not tok:
         raise RuntimeError("SANDBOX needs dhan_sandbox_client_id and dhan_sandbox_access_token in "
@@ -113,7 +115,11 @@ def get_execution_client(quote_source=None):
 
     `quote_source` is a real Dhan client used only for market data — PAPER still
     prices its fills from the live market.
+
+    A VIEWER (ops/role.py) gets no client at all, not even PAPER: orders run on the Mac.
     """
+    from ops.role import refuse
+    refuse("Order routing")
     env = broker_env()
 
     if env == PAPER:

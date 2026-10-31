@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sends a copy of ATIP's database to the view-only web server every 10 minutes
+  (ops/viewer_sync.py, docs/VIEWER_SERVER.md). While ATIP is stopped
+  (21:00-06:00 IST) it sends at most once an hour.
+
+  Paths are rewritten by deploy/launchd/install.sh.
+  Output goes to atip_data/viewer_push.log (push_viewer.sh appends to it).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.atip.viewer-push</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__ATIP_DIR__/push_viewer.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__ATIP_DIR__</string>
+
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- A short-lived job: never keep it alive, just run it again on the interval. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__ATIP_DIR__/atip_data/viewer_push.launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>__ATIP_DIR__/atip_data/viewer_push.launchd.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TZ</key>
+        <string>Asia/Kolkata</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

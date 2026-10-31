@@ -92,6 +92,8 @@ class BrokerConnector(ABC):
     required_fields: tuple = ()
 
     def __init__(self, fields: dict):
+        from ops.role import refuse
+        refuse(f"{self.name} connection")    # a VIEWER reaches no broker (ops/role.py)
         missing = [k for k in self.required_fields if not fields.get(k)]
         if missing:
             raise ValueError(f"{self.name}: missing credential fields {missing}")

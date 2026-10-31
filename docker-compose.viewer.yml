@@ -1,0 +1,20 @@
+# ATIP as a VIEWER on a web server: the dashboard over the Mac's data, with nothing able to trade
+# (ops/role.py, docs/VIEWER_SERVER.md).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.viewer.yml up -d --build
+#
+# The Mac's push (push_viewer.sh) rsyncs into ./viewer_incoming/ on this host; the container reads it
+# read-only and installs each complete copy into its own atip_data volume.
+#
+# Put NO broker, Telegram or Anthropic keys in deploy/atip.env on this server: the viewer refuses to use
+# them anyway, and a key that is not here cannot leak from here.
+services:
+  atip:
+    environment:
+      ATIP_ROLE: viewer
+      ATIP_VIEWER_INCOMING: /app/viewer_incoming
+      # Not "production": production demands ATIP's own sign-in (enterprise.enabled), whose accounts stay
+      # on the Mac. The viewer's sign-in is the proxy's, in front of every route (docs/VIEWER_SERVER.md).
+      ATIP_ENV: staging
+    volumes:
+      - ./viewer_incoming:/app/viewer_incoming:ro

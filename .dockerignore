@@ -1,5 +1,6 @@
 # Never bake state or secrets into the image: atip_data is a volume
 atip_data/
+viewer_incoming/
 .env
 .env.*
 !.env.example

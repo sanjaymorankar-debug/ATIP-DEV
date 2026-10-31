@@ -13,7 +13,7 @@
 # atip_data volume contents (config.json, secrets) over SSH -- never put secrets in user data.
 
 package_update: true
-packages: [ca-certificates, curl, git, ufw, unattended-upgrades]
+packages: [ca-certificates, curl, git, rsync, ufw, unattended-upgrades]   # rsync: the Mac's push to a viewer
 
 users:
   - name: atip
