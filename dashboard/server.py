@@ -1,5 +1,5 @@
 """ATIP — FastAPI Dashboard Server (http://localhost:8000)"""
-import json, logging
+import json, logging, threading, time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from db.schema import get_connection
@@ -1808,36 +1808,60 @@ if HAS_FASTAPI:
     # 2026-09-19 09:15, where the quote thread finally died), on top of the
     # index WebSocket's own reconnect storm. Outside market hours there is no
     # new price to fetch -- the last one IS the close.
-    _live_quotes_cache = {"date": None, "data": {}}
+    # In the session too, every tab and request shares one fetch per
+    # LIVE_QUOTES_TTL seconds. Each tab used to ask Dhan itself, and Chrome
+    # wakes background tabs together on the minute: two or three ~500-quote
+    # calls landed in the same second and Dhan (1 quote call a second) refused
+    # all but one -- 639 refusals on 2026-10-30.
+    _live_quotes_cache = {"date": None, "data": {}, "at": 0.0}
+    _live_quotes_lock = threading.Lock()
+    LIVE_QUOTES_TTL = 15
 
     @app.get("/api/live-quotes")
     async def api_live_quotes():
         """Live LTP for every symbol currently shown on the dashboard (scores + portfolio)."""
-        from data.dhan import fetch_live_quotes
         from pipeline.scheduler import is_market_hours
         from ops.role import is_viewer
+        from starlette.concurrency import run_in_threadpool
         if is_viewer():                  # no Dhan here: the prices are the Mac's, in the copied database
             return JSONResponse({})
         if not is_market_hours():
             cached = (_live_quotes_cache["data"]
                       if _live_quotes_cache["date"] == str(date.today()) else {})
             return JSONResponse(cached)
-        td = latest_scored_date()
-        conn = get_connection()
-        try:
-            syms = {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM ai_scores WHERE date=?", str(td))}
-            syms |= {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM portfolio_holdings WHERE date=?", str(td))}
-        finally:
-            conn.close()
-        if not syms:
-            return JSONResponse({})
-        try:
-            df = fetch_live_quotes(list(syms))
-        except Exception as e:
-            log.warning(f"  live quotes fetch failed: {e}")
-            return JSONResponse({})
-        if df.empty:
-            return JSONResponse({})
+        # A thread, not the event loop: a request may wait on another's fetch or its turn at Dhan
+        return JSONResponse(await run_in_threadpool(_session_live_quotes))
+
+    def _session_live_quotes() -> dict:
+        """The session's quotes, fetched from Dhan at most once per LIVE_QUOTES_TTL. A request that
+        arrives while another is fetching waits for that fetch and gets its result."""
+        from data.dhan import fetch_live_quotes
+        today = str(date.today())
+        with _live_quotes_lock:
+            if time.monotonic() - _live_quotes_cache["at"] < LIVE_QUOTES_TTL:
+                return _live_quotes_cache["data"] if _live_quotes_cache["date"] == today else {}
+            _live_quotes_cache["at"] = time.monotonic()      # a failed fetch waits out the window too
+            td = latest_scored_date()
+            conn = get_connection()
+            try:
+                syms = {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM ai_scores WHERE date=?", str(td))}
+                syms |= {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM portfolio_holdings WHERE date=?", str(td))}
+            finally:
+                conn.close()
+            if not syms:
+                return {}
+            try:
+                df = fetch_live_quotes(list(syms))
+            except Exception as e:
+                log.warning(f"  live quotes fetch failed: {e}")
+                return {}
+            if df.empty:
+                return {}
+            out = _quotes_out(df)
+            _live_quotes_cache.update(date=today, data=out)
+            return out
+
+    def _quotes_out(df) -> dict:
         out = {}
         for _, row in df.iterrows():
             ltp = row.get("ltp")
@@ -1849,8 +1873,7 @@ if HAS_FASTAPI:
             # between 09:15 and the 16:45 post-market run it is one session too
             # old and renders a two-session move as today's change.
             out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg, "prev_close": prev}
-        _live_quotes_cache.update(date=str(date.today()), data=out)
-        return JSONResponse(out)
+        return out
 
     def _order_monitor_loop():
         """
