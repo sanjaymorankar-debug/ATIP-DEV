@@ -126,6 +126,8 @@ def _guarded(fn, *a, **k):
 
 def get_dhan_client():
     """Return authenticated Dhan client."""
+    from ops.role import refuse
+    refuse("Dhan connection")            # a VIEWER never reaches Dhan, for data or orders (ops/role.py)
     if not HAS_DHAN:
         raise RuntimeError("pip install dhanhq")
     cfg = load_dhan_config()

@@ -236,6 +236,11 @@ def failed():
 
 def main():
     os.chdir(ROOT)                      # ops/* resolve atip_data/ relative to the repository
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from ops.role import is_viewer
+    if is_viewer():                     # renewing here could cut off the Mac's token: only the Mac renews it
+        log("this copy of ATIP is a VIEWER (ATIP_ROLE=viewer): the Dhan token is renewed on the Mac"); return 2
     cfg = json.loads(CFG.read_text(encoding="utf-8"))
     cid = secret(cfg, "dhan_client_id", "DHAN_CLIENT_ID")
     tok = secret(cfg, "dhan_access_token", "DHAN_ACCESS_TOKEN")

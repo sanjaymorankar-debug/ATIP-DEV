@@ -357,7 +357,11 @@ class PaperBroker:
 
         Returns the dhanhq response shape, so the caller cannot tell the
         difference — which is the point: the real code path gets exercised.
+
+        A VIEWER (ops/role.py) places nothing, not even on paper: its database is the Mac's copy.
         """
+        from ops.role import refuse
+        refuse("Paper order")
         qty = int(quantity or 0)
         sym = symbol or self._symbol_for(security_id) or str(security_id)
         oid = f"PAPER{uuid.uuid4().hex[:10].upper()}"

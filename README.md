@@ -49,6 +49,7 @@
 ├── setup_atip.sh                   ← macOS: check, install, migrate, auto-start, verify
 ├── start_atip.sh                   ← Start ATIP
 ├── publish_snapshot.sh             ← Push the read-only dashboard to bkesari.com
+├── push_viewer.sh                  ← Push the database to a view-only web server (docs/VIEWER_SERVER.md)
 ├── deploy/launchd/                 ← LaunchAgents: auto-start, 5-min snapshot, Dhan token
 │
 │   Windows launchers (kept for the old machine)
@@ -360,6 +361,7 @@ deploy/launchd/install.sh            # scheduler/dashboard + 5-min snapshot uplo
 deploy/launchd/install.sh platform   # just the scheduler/dashboard
 deploy/launchd/install.sh snapshot   # just the snapshot upload
 deploy/launchd/install.sh token      # just the daily Dhan token refresh
+deploy/launchd/install.sh viewer     # the 10-minute push to a view-only web server
 deploy/launchd/install.sh --uninstall
 ```
 
@@ -373,6 +375,7 @@ either agent.
 |---|---|
 | `com.atip.platform` | Starts ATIP at login and restarts it if it exits non-zero (`KeepAlive`), which is what the Windows Task Scheduler task provided and the Startup folder could not. |
 | `com.atip.publish-snapshot` | Runs `publish_snapshot.sh` every 5 minutes. Needs `atip_data/publish.json`. |
+| `com.atip.viewer-push` | Runs `push_viewer.sh` every 10 minutes: a copy of the database to the view-only web server ([docs/VIEWER_SERVER.md](docs/VIEWER_SERVER.md)). Not part of `all`; install it with `install.sh viewer` once `atip_data/viewer_push.json` exists. |
 | `com.atip.dhan-token-refresh` | Runs `tools/dhan_token_refresh.sh` daily at 06:30 and at login: renews the 24-hour Dhan token before the 07:00 pre-market run, and saves it where ATIP reads it (`config.json`, or the vault once migrated). Replaces the Windows `ATIP_DhanTokenRefresh` task. |
 
 All set `TZ=Asia/Kolkata` so scheduled job times match the market session

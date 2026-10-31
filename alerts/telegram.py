@@ -82,7 +82,9 @@ def notify(message, category="alert", severity="info", key=None, parse_mode="HTM
     except Exception as e:
         log.warning(f"  alert_log: could not record alert: {e}"); alert_id=None
     try:
-        sent,err=_deliver_telegram(message,parse_mode)
+        from ops.role import is_viewer
+        # A VIEWER (ops/role.py) records but never delivers: the Mac sends every alert once
+        sent,err=(False,"viewer: alerts are sent by the Mac") if is_viewer() else _deliver_telegram(message,parse_mode)
         out["sent"]=sent
         if conn is not None and alert_id is not None:
             conn.execute("UPDATE alert_log SET telegram_sent=?, telegram_error=? WHERE id=?",

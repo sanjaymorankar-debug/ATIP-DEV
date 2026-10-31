@@ -5,6 +5,9 @@ atip_data/
 # setup_atip.sh migrate keeps a folder's previous atip_data/ aside under this name
 atip_data.before-migrate-*/
 
+# A view-only web server: what the Mac's push_viewer.sh sends (docs/VIEWER_SERVER.md)
+viewer_incoming/
+
 # Secrets - never commit these.
 .env
 atip_data/config.json
