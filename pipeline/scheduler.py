@@ -1826,7 +1826,8 @@ def _w37_vault_expiry():
 def _schedule_w35_jobs():
     """W35 data platform. Depth and option-chain ticks are no-ops unless enabled in config.json."""
     schedule.every(1).minutes.do(_w35_depth_tick)
-    schedule.every(15).minutes.do(_w35_chain_tick)
+    schedule.every(1).minutes.do(_w35_chain_tick)          # a snapshot when derivatives.chain_minutes have passed
+    schedule.every(15).minutes.do(_w35_bars_fallback_tick)  # DP-03: 1-minute bars by REST while the feed is not streaming
     schedule.every().day.at("15:50").do(_w35_ticks_eod)
     schedule.every().day.at("07:15").do(_w35_guard, "macro_data", "data.macro", "run_macro")
     schedule.every().day.at("19:45").do(_w35_guard, "alt_data", "altdata.framework", "run_enabled")
@@ -1855,16 +1856,29 @@ def _w35_chain_tick():
     try:
         from data.derivatives_store import settings as dsettings
         if dsettings()["option_chain_enabled"] and is_market_hours():
-            from data.derivatives_store import run_chain_tick
-            run_job("option_chain", run_chain_tick)
+            from data.derivatives_store import chain_due, run_chain_tick
+            if chain_due():                          # checked each minute: a pipeline_log row only when it runs
+                run_job("option_chain", run_chain_tick)
     except Exception as e:
         log.warning(f"  Option chain: {e}")
 
 
+def _w35_bars_fallback_tick():
+    try:
+        from data.stock_feed import settings as fsettings
+        s = fsettings()
+        if s.get("minute_bars") is True and s.get("stocks_enabled") and is_market_hours():
+            from data.ticks import run_bars_fallback
+            run_job("minute_bars_rest", run_bars_fallback)
+    except Exception as e:
+        log.warning(f"  1-minute bars REST fallback: {e}")
+
+
 def _w35_ticks_eod():
     try:
+        from data.stock_feed import settings as fsettings
         from data.ticks import enabled
-        if enabled() and is_market_day():
+        if (enabled() or fsettings().get("minute_bars") is True) and is_market_day():
             from data.ticks import run_eod
             run_job("ticks_minute_bars", run_eod)
     except Exception as e:

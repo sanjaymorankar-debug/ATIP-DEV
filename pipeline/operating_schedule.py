@@ -763,9 +763,13 @@ def _stop_live_feeds() -> list:
 
 
 def _start_live_feeds() -> list:
+    """Each feed connects inside its own market window; a feed switched off in config.json records OFF in
+    live_feed_status instead (2026-10-31). The 20-level depth feed needs no stop call: its session checks the
+    window (and so the stop window) every 30 seconds and closes."""
     started = []
     for mod, get, start in (("data.dhan_ws", "get_index_feed_manager", "start_index_feed"),
-                            ("data.stock_feed", "get_stock_feed", "start_stock_feed")):
+                            ("data.stock_feed", "get_stock_feed", "start_stock_feed"),
+                            ("data.depth20", "get_depth20", "start_depth20")):
         try:
             m = __import__(mod, fromlist=[get, start])
             if getattr(m, get)() is None:
@@ -773,6 +777,11 @@ def _start_live_feeds() -> list:
             started.append(mod)
         except Exception as e:
             log.info(f"  {mod} not started: {e}")
+    try:
+        from data.derivatives_store import report_state
+        report_state()
+    except Exception as e:
+        log.debug(f"  option chain state: {e}")
     return started
 
 

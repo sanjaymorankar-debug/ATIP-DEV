@@ -12,6 +12,8 @@ struct ContentView: View {
                 .accessibilityHint("Long-press to change the ATIP server address")
             TabView {
                 WebScreen(url: url("/m")).tabItem { Label("Today", systemImage: "chart.line.uptrend.xyaxis") }
+                // 2026-10-31: every Dhan live feed (OFF / IDLE / LIVE / REST / STALE), refreshed every 15 s
+                WebScreen(url: url("/m?tab=live")).tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
                 WebScreen(url: url("/command")).tabItem { Label("Command", systemImage: "switch.2") }
                 WebScreen(url: url("/global-asia")).tabItem { Label("Global & Asia", systemImage: "globe.asia.australia") }
             }

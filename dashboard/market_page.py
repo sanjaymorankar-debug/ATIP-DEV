@@ -3,6 +3,11 @@ The /market page (W27): pre-open view (DB-04), global markets and US yields with
 history (DP-12), F&O OI / PCR / max pain (DP-08 partial, SC-06 input), per-symbol
 fundamentals (DP-15, SC-13 / SC-02) and ownership (DP-16), the bulk / block deal
 study (AD-03) and the live-feed status (DP-01). Reads /api/market/*; computes nothing.
+
+2026-10-31 (DP-01 / MON-07): the live-feed view is shared -- LIVE_FEEDS_CSS / LIVE_FEEDS_JS render
+GET /api/live-feeds (every Dhan feed from live_feed_status: OFF, IDLE, LIVE, REST, STALE ...) on this
+page, on the main dashboard's Live tab (live_tab_html) and on the phone's Live screen (/m?tab=live,
+which the Android and iOS apps open). One renderer, so the three never disagree.
 """
 
 import json
@@ -43,7 +48,7 @@ button{cursor:pointer}svg{display:block}
 <h2>Live feeds</h2><div id="feed"></div>
 <div id="msg" class="note" style="margin-top:12px"></div>
 </div>
-<script>
+__LIVEFEEDS__<script>
 const TOKEN=__TOKEN__;
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const num=(v,d=2)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -87,12 +92,52 @@ async function look(){const s=cur();if(!s)return;try{
 async function deal(){const d=await j('/api/market/deal-signal');if(d.note){document.getElementById('deal').innerHTML=`<span class="muted">${esc(d.note)}</span>`;return}
   const rows=Object.entries(d.horizons||{}).map(([h,v])=>`<tr><td>${h}d</td><td>${v.BUY.n}</td><td>${pct(v.BUY.mean_abnormal_pct)}</td><td>${num(v.BUY.t_stat)}</td><td>${v.SELL.n}</td><td>${pct(v.SELL.mean_abnormal_pct)}</td><td>${num(v.SELL.t_stat)}</td><td>${num(v.pooled_ic,3)}</td></tr>`);
   document.getElementById('deal').innerHTML=`<div style="margin-bottom:6px">Verdict <b>${esc(d.verdict)}</b> · ${d.events} events · ${esc(d.period)} · computed ${esc(String(d.computed_at||'').slice(0,16))}</div><div class="muted" style="margin-bottom:6px">Abnormal = stock − NIFTY50 forward return after the deal session. Small, recent sample: descriptive only.</div>`+table(['Horizon','BUY n','BUY mean','BUY t','SELL n','SELL mean','SELL t','Pooled IC'],rows)}
-async function feed(){const f=await j('/api/market/feed-status');const s=f.stocks||{};
-  document.getElementById('feed').innerHTML=`Stocks: <b>${s.running?esc(s.mode):(s.enabled?'enabled, not started':'off')}</b> ${s.running?`· ${s.subscribed} symbols · ${s.ticks} ticks · last tick ${esc(String(s.last_tick_at||'—').slice(11,19))} · ${esc(s.detail)}`:'<span class="muted">(config.json live_feed.stocks_enabled)</span>'}<br>Indexes: ${f.indexes?.running?`running · ${f.indexes.indexes_ticking} ticking`:'not running in this process'}`}
+async function feed(){atipLoadFeeds('feed')}
 pre().catch(e=>document.getElementById('pre').textContent=e.message);fo().catch(e=>document.getElementById('fo').textContent=e.message);
-deal().catch(()=>{});feed().catch(()=>{});
+deal().catch(()=>{});feed().catch(()=>{});setInterval(()=>{if(!document.hidden)feed()},15000);
 </script></body></html>"""
+
+LIVE_FEEDS_CSS = """<style>
+.lf-head{margin:0 0 8px;font-size:12px;color:var(--muted,#94a3b8)}.lf-wrap{overflow-x:auto}
+.lf-t{width:100%;border-collapse:collapse;background:var(--panel,#1e293b);font-size:12px}
+.lf-t th,.lf-t td{padding:6px 8px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}
+.lf-t th{color:var(--muted,#94a3b8);background:var(--bg,#0f172a);white-space:nowrap;font-weight:600}
+.lf-s{display:inline-block;min-width:64px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-align:center;white-space:nowrap}
+.lf-ok{background:#064e3b;color:#a7f3d0}.lf-warn{background:#78350f;color:#fde68a}.lf-bad{background:#7f1d1d;color:#fecaca}
+.lf-off{background:#334155;color:#cbd5e1}.lf-idle{background:#1e3a8a;color:#dbeafe}.lf-d{color:var(--muted,#94a3b8);max-width:420px;white-space:normal}
+@media(max-width:600px){.lf-hide{display:none}.lf-t td,.lf-t th{padding:8px 6px}}
+</style>"""
+
+LIVE_FEEDS_JS = r"""<script>
+(function(){
+const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CLS={LIVE:'ok',WS:'ok',REST:'warn',PARTIAL:'warn',CONNECTING:'warn',RECONNECTING:'bad',STALE:'bad',PARKED:'bad',
+ ERROR:'bad','NOT STARTED':'bad',OFF:'off',IDLE:'idle'};
+const age=s=>s==null?'—':s<90?s+' s':s<5400?Math.round(s/60)+' min':Math.round(s/3600)+' h';
+window.atipFeedsHtml=function(d){
+  const rows=(d.feeds||[]).map(f=>`<tr><td><b>${E(f.label)}</b></td><td><span class="lf-s lf-${CLS[f.state]||'idle'}">${E(f.state)}</span></td>`+
+   `<td class="lf-d">${E(f.detail)}</td><td class="lf-hide">${f.subscribed??'—'}</td><td>${E(String(f.last_data_at||'—').slice(5,19))}</td><td class="lf-hide">${age(f.data_age_s)}</td></tr>`).join('');
+  const bad=(d.feeds||[]).filter(f=>f.problem).length;
+  return `<div class="lf-head">${d.window_open?'Feed window open (09:00–15:45 IST)':'Market closed — enabled feeds wait, idle, for 09:00 on the next trading day'}`+
+   ` · ${bad?`<b style="color:#fca5a5">${bad} feed(s) need attention</b>`:'no feed problems'} · checked ${E(String(d.checked_at||'').slice(11,19))}</div>`+
+   `<div class="lf-wrap"><table class="lf-t"><thead><tr><th>Feed</th><th>State</th><th>Detail</th><th class="lf-hide">Instruments</th><th>Last data</th><th class="lf-hide">Age</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+   `<div class="lf-head" style="margin-top:6px">OFF = switched off in config.json (all feeds are off until the owner turns them on). Read-only: no feed places an order.</div>`};
+window.atipLoadFeeds=async function(id){const el=document.getElementById(id);if(!el)return;
+  try{const r=await fetch('/api/live-feeds',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);el.innerHTML=atipFeedsHtml(await r.json())}
+  catch(e){el.innerHTML='<span class="lf-head">Feed status unavailable: '+E(e.message)+'</span>'}};
+})();
+</script>"""
+
+
+def live_tab_html() -> str:
+    """The main dashboard's Live tab: every feed's state, refreshed every 15 s while the tab is open."""
+    return (LIVE_FEEDS_CSS + LIVE_FEEDS_JS + '<div id="livefeeds" class="tc section"><div class="st">🛰 Live feeds '
+            '<span style="font-size:11px;color:#64748b;font-weight:400">— Dhan WebSocket, depth and option chain · '
+            'refreshes every 15 s · <a href="/market" style="color:#38bdf8">market page</a></span></div>'
+            '<div id="lfBox" class="lf-head">Loading…</div></div>'
+            "<script>setInterval(function(){var t=document.getElementById('livefeeds');"
+            "if(t&&t.classList.contains('active')&&!document.hidden)atipLoadFeeds('lfBox')},15000);</script>")
 
 
 def render(token: str) -> str:
-    return PAGE.replace("__TOKEN__", json.dumps(token))
+    return PAGE.replace("__TOKEN__", json.dumps(token)).replace("__LIVEFEEDS__", LIVE_FEEDS_CSS + LIVE_FEEDS_JS)

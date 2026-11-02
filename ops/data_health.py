@@ -153,3 +153,117 @@ def symbol_bar_age(conn, symbol, now: datetime | None = None) -> int | None:
         return None
     d = _as_date(r[0] if r else None)
     return None if d is None else sessions_between(d, last_session(now))
+
+
+# ── 2026-10-31 (MON-07): every Dhan live feed, from live_feed_status ─────────────────────────────────
+# feed, label, the config.json switch that turns it on, seconds without data before STALE in the session.
+# Every feed writes its own row (data/dhan_ws.record_feed_status); a feed switched off records mode OFF when
+# ATIP starts, so it reads OFF here -- not missing, not a problem.
+FEEDS = (
+    ("indices", "Index WebSocket (NSE indexes)", None, 300),
+    ("stocks", "Stock WebSocket (up to 100 stocks)", "live_feed.stocks_enabled", 300),
+    ("ticks", "Tick capture", "live_feed.capture_ticks", 300),
+    ("minute_bars", "1-minute bars", "live_feed.minute_bars", 300),
+    ("depth20", "20-level depth (DWI / OFI)", "depth20.enabled", 120),
+    ("option_chain", "Option chain", "derivatives.option_chain_enabled", None),
+)
+FEED_SESSION = (time(9, 20), time(15, 30))      # when a silent feed is judged stale
+HEARTBEAT_SECONDS = 180                         # a status row not refreshed for this long: the feed stopped
+PROBLEM_STATES = ("STALE", "NOT STARTED", "PARKED", "ERROR", "RECONNECTING")
+WORKING_STATES = ("LIVE", "WS", "REST", "PARTIAL", "CONNECTING")
+
+
+def _feed_enabled(feed: str) -> bool:
+    if feed == "indices":
+        return True
+    if feed in ("stocks", "ticks", "minute_bars"):
+        from data.stock_feed import settings
+        s = settings()
+        return bool(s.get("stocks_enabled")) and (feed == "stocks" or s.get({"ticks": "capture_ticks",
+                                                                             "minute_bars": "minute_bars"}[feed]) is True)
+    if feed == "depth20":
+        from data.depth20 import settings
+        return bool(settings().get("enabled"))
+    from data.derivatives_store import settings
+    return bool(settings().get("option_chain_enabled"))
+
+
+def _ts(v):
+    try:
+        return datetime.fromisoformat(str(v)[:19].replace("T", " ")) if v else None
+    except ValueError:
+        return None
+
+
+def feeds(conn, now: datetime | None = None, use_config: bool | None = None) -> list:
+    """One row per feed: feed, label, switch, enabled, state, mode, detail, subscribed, ticks, last_data_at,
+    data_age_s, updated_at, problem.
+
+    state  OFF          switched off (config.json, or the row the Mac wrote)
+           NOT STARTED  switched on but no status yet: it starts at ATIP's next restart or 06:00 resume
+           IDLE         outside the feed window (09:00-15:45 on a trading day, not in the stop window)
+           LIVE / WS / REST / PARTIAL / CONNECTING / RECONNECTING / PARKED / ERROR   the feed's own mode
+           STALE        in the session: no data for longer than the feed's limit, or its status row has not
+                        been refreshed for HEARTBEAT_SECONDS (the feed, or ATIP, has stopped)
+    problem: switched on, inside the session, and in one of PROBLEM_STATES.
+    use_config (default: not a VIEWER) reads the switches from this copy's config.json; a VIEWER has none and
+    goes by the rows the Mac's database carries."""
+    now = now or datetime.now()
+    if use_config is None:
+        try:
+            from ops.role import is_viewer
+            use_config = not is_viewer()
+        except Exception:
+            use_config = True
+    try:
+        rows = {r[0]: r for r in conn.execute(
+            "SELECT feed, mode, subscribed, ticks, CAST(last_tick_at AS TEXT), CAST(last_flush_at AS TEXT), detail, "
+            "CAST(updated_at AS TEXT) FROM live_feed_status")}
+    except Exception:
+        rows = {}
+    try:
+        from data.dhan_ws import feed_window_open
+        window = feed_window_open(now)
+    except Exception:
+        window = False
+    judged = window and _is_session(now.date()) and FEED_SESSION[0] <= now.time() <= FEED_SESSION[1]
+    out = []
+    for feed, label, switch, stale_s in FEEDS:
+        r = rows.get(feed)
+        mode = r[1] if r else None
+        if feed == "option_chain":
+            try:
+                from data.derivatives_store import settings
+                stale_s = float(settings().get("chain_minutes") or 15) * 120 + 120
+            except Exception:
+                stale_s = 1920
+        enabled = _feed_enabled(feed) if use_config else (r is not None and mode != "OFF")
+        last = _ts(r[4]) or _ts(r[5]) if r else None
+        updated = _ts(r[7]) if r else None
+        row = {"feed": feed, "label": label, "switch": switch, "enabled": enabled, "mode": mode,
+               "detail": (r[6] if r else None) or "", "subscribed": r[2] if r else None, "ticks": r[3] if r else None,
+               "last_data_at": str(last)[:19] if last else None,
+               "data_age_s": round((now - last).total_seconds()) if last else None,
+               "updated_at": str(updated)[:19] if updated else None, "problem": False}
+        if not enabled:
+            row["state"] = "OFF"
+            if mode != "OFF" or not row["detail"]:
+                row["detail"] = f"off: set config.json {switch}" if switch else "off"
+        elif r is None or (mode == "OFF" and use_config):
+            row["state"] = "NOT STARTED"
+            row["detail"] = "switched on; starts with ATIP's next restart or the 06:00 resume"
+        elif not window:
+            row["state"] = "IDLE"
+            row["detail"] = "market closed"
+        elif judged and updated and (now - updated).total_seconds() > max(HEARTBEAT_SECONDS, stale_s):
+            row["state"] = "STALE"
+            row["detail"] = f"no status for {(now - updated).total_seconds() / 60:.0f} min (feed or ATIP stopped)"
+        elif mode in WORKING_STATES and judged and (last is None or (now - last).total_seconds() > stale_s):
+            row["state"] = "STALE"
+            row["detail"] = (f"no data for {(now - last).total_seconds() / 60:.0f} min" if last else
+                             "no data yet this session") + (f" ({row['detail']})" if row["detail"] else "")
+        else:
+            row["state"] = mode or "IDLE"
+        row["problem"] = bool(enabled and judged and row["state"] in PROBLEM_STATES)
+        out.append(row)
+    return out

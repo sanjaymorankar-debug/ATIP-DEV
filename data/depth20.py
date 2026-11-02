@@ -47,6 +47,21 @@ connections, 806 no Data API subscription, 807 token expired, 808 bad client id,
 saying which.
 Symbols: config, else data/stock_feed.default_symbols (holdings, open positions, active rules, top ATIP
 scores). Context for minutes, not a signal: the page states it.
+
+2026-10-31 (DP-05 / MON-07):
+    window    the socket is closed when the window closes (15:45, the stop window, a manual stop): the read loop
+              wakes at least every RECV_TIMEOUT seconds to check, where it used to wait on the next frame and so
+              stayed connected for as long as Dhan kept sending
+    limits    one connection, at most 50 stocks (Dhan's limit per 20-level connection; a larger max_symbols is
+              cut to 50) -- Dhan allows 5 connections per user and the index, stock and depth feeds hold three
+    refusals  805 too many connections and 807 token expired park the feed for PARK_SECONDS (30 min) and it tries
+              again; 806 no Data API, 808 bad client id and 809 authentication failed park it until the next
+              trading day. The thread no longer exits, so a refusal no longer needs a restart to recover from
+    status    live_feed_status row 'depth20' (mode LIVE / IDLE / RECONNECTING / PARKED / OFF, stocks, frames,
+              the newest snapshot, the last flush), written on every flush and every change of mode; the
+              token in the URL is masked from every message
+    200-level not built: no strategy, order or score reads the book at all (2026-10-31), and Dhan's 200-level
+              feed takes one connection per instrument, out of the 5 a user has
 """
 
 from __future__ import annotations
@@ -68,7 +83,12 @@ HEADER, LEVEL = struct.Struct("<hBBiI"), struct.Struct("<dII")
 BID, ASK, DISCONNECT = 41, 51, 50
 REFUSALS = {805: "too many active WebSocket connections", 806: "subscribe to Dhan's Data APIs to continue",
             807: "access token expired", 808: "invalid client id", 809: "authentication failed"}
-BATCH = 50
+BATCH = 50                          # instruments per subscription message, and per connection (Dhan)
+RECV_TIMEOUT = 5.0                  # seconds the read loop waits for a frame before looking at the clock
+WINDOW_CHECK = 30.0                 # seconds between two checks of the market window during a session
+FLUSH_SECONDS = 10.0
+PARK_SECONDS = 1800.0               # 805 / 807: try again after 30 minutes
+PARK_FOR_THE_DAY = (806, 808, 809)  # needs the owner: the Data API plan, the client id, the credentials
 DEFAULTS = {"enabled": False, "symbols": [], "max_symbols": 50, "sample_seconds": 15, "band_bp": 50.0, "decay": 0.5,
             "flag_dwi": 0.3, "flag_snapshots": 3, "ofi_levels": 20, "ofi_decay": 0.0}
 MIN_VALIDATE, Z_MIN = 500, 2.0
@@ -242,6 +262,27 @@ class OFI:
 
 # ── the feed ─────────────────────────────────────────────────────────────────
 
+async def _frames(ws):
+    """The socket's frames, and None after RECV_TIMEOUT seconds without one, so the session can look at the clock.
+    A source without recv() (a recorded session) is read to its end; a socket Dhan closes normally ends it."""
+    recv = getattr(ws, "recv", None)
+    if recv is None:
+        async for frame in ws:
+            yield frame
+        return
+    try:
+        from websockets.exceptions import ConnectionClosedOK
+    except Exception:                       # pragma: no cover
+        ConnectionClosedOK = ()
+    while True:
+        try:
+            yield await asyncio.wait_for(recv(), timeout=RECV_TIMEOUT)
+        except asyncio.TimeoutError:
+            yield None
+        except ConnectionClosedOK:
+            return
+
+
 class Depth20Feed:
     def __init__(self, symbols=None, cfg=None):
         self.cfg = {**DEFAULTS, **(cfg or settings())}
@@ -256,6 +297,9 @@ class Depth20Feed:
         self.mode, self.detail = "IDLE", ""
         self.frames = self.snapshots = 0
         self.last_at = None
+        self.last_flush = None
+        self._park_until = None             # datetime: no connection before this
+        self._reported = None
 
     def resolve(self) -> dict:
         from data.dhan import get_security_id
@@ -268,8 +312,11 @@ class Depth20Feed:
                 syms = default_symbols(c, int(self.cfg["max_symbols"]))
             finally:
                 c.close()
+        cap = max(1, min(int(self.cfg["max_symbols"] or BATCH), BATCH))
+        if int(self.cfg["max_symbols"] or BATCH) > BATCH:
+            log.warning(f"  20-level depth: max_symbols {self.cfg['max_symbols']} cut to {BATCH} (one connection)")
         m = {}
-        for s in syms[: int(self.cfg["max_symbols"])]:
+        for s in syms[:cap]:
             sec = get_security_id(s)
             if sec and str(sec.get("exchange", "NSE_EQ")) == "NSE_EQ":
                 m[int(sec["security_id"])] = s.upper()
@@ -321,36 +368,84 @@ class Depth20Feed:
     def flush(self, conn) -> int:
         with self._lock:
             rows, self._buffer = self._buffer, []
-        if not rows:
-            return 0
-        ensure_tables(conn)
-        conn.executemany(f"INSERT OR REPLACE INTO depth20_snapshot (symbol, ts, {', '.join(ROW)}) "
-                         f"VALUES ({','.join('?' * (len(ROW) + 2))})",
-                         [(s, ts, *(x.get(k) for k in ROW)) for s, ts, x in rows])
-        conn.commit()
+        if rows:
+            ensure_tables(conn)
+            conn.executemany(f"INSERT OR REPLACE INTO depth20_snapshot (symbol, ts, {', '.join(ROW)}) "
+                             f"VALUES ({','.join('?' * (len(ROW) + 2))})",
+                             [(s, ts, *(x.get(k) for k in ROW)) for s, ts, x in rows])
+            conn.commit()
+            self.last_flush = datetime.now()
+        self.report(conn, force=True)
         return len(rows)
 
-    async def session(self, ws):
-        """One connection: subscribe, then read frames until it closes; flush every 10 seconds. A new connection
-        starts from empty books and OFI sums: a side left from the last one would count as a quote change."""
+    def report(self, conn=None, force=False):
+        """live_feed_status 'depth20': at every flush (force) and whenever the mode changes."""
+        state = (self.mode, self.detail)
+        if not force and state == self._reported:
+            return
+        self._reported = state
+        from data.dhan_ws import record_feed_status
+        record_feed_status("depth20", self.mode, len(self._sid_to_sym) or None, self.snapshots, self.last_at,
+                           self.last_flush, self.detail, conn=conn)
+
+    def _set(self, mode, detail):
+        from data.dhan_ws import safe
+        self.mode, self.detail = mode, safe(detail)
+        self.report()
+
+    async def session(self, ws, window=None):
+        """One connection: subscribe, then read frames until it closes, the window closes or stop(); flush every
+        10 seconds. A new connection starts from empty books and OFI sums: a side left from the last one would count
+        as a quote change. The window is checked every WINDOW_CHECK seconds (not per frame: it reads the operating
+        schedule), and a quiet socket still wakes every RECV_TIMEOUT to look."""
         from db.schema import get_connection
+        if window is None:
+            from data.dhan_ws import feed_window_open as window
         self._book, self._ofi = {}, {}
         for msg in self.subscriptions():
             await ws.send(msg)
-        self.mode, self.detail = "LIVE", f"{len(self._sid_to_sym)} stocks"
-        last_flush = _time.monotonic()
-        async for frame in ws:
-            if isinstance(frame, (bytes, bytearray)):
-                self.consume(bytes(frame))
-            if _time.monotonic() - last_flush >= 10:
-                c = get_connection()
-                try:
-                    self.flush(c)
-                finally:
-                    c.close()
-                last_flush = _time.monotonic()
-            if not self._running:
-                break
+        self._set("LIVE", f"{len(self._sid_to_sym)} stocks")
+        last_flush = last_check = _time.monotonic()
+
+        def flush_now():
+            c = get_connection()
+            try:
+                self.flush(c)
+            finally:
+                c.close()
+        closing = False
+        frames = _frames(ws)
+        try:
+            async for frame in frames:
+                if isinstance(frame, (bytes, bytearray)):
+                    self.consume(bytes(frame))
+                now = _time.monotonic()
+                if now - last_flush >= FLUSH_SECONDS:
+                    flush_now()
+                    last_flush = now
+                if not self._running:
+                    closing = True
+                    break
+                if now - last_check >= WINDOW_CHECK:
+                    last_check = now
+                    if not window():
+                        closing = True
+                        break
+        finally:
+            await frames.aclose()
+        if closing:
+            flush_now()                      # the session's last snapshots, and the final status
+
+    def refused(self, e: "FeedRefused", now: datetime | None = None):
+        """Park after one of Dhan's refusals: 30 minutes, or until the next trading day when the owner must act."""
+        now = now or datetime.now()
+        if e.code in PARK_FOR_THE_DAY:
+            self._park_until = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
+            self._set("PARKED", f"{e} -- parked until the next trading day")
+        else:
+            self._park_until = now + timedelta(seconds=PARK_SECONDS)
+            self._set("PARKED", f"{e} -- trying again at {self._park_until:%H:%M}")
+        log.warning(f"  20-level depth: {self.detail}")
 
     async def _main(self):
         from data.dhan import get_dhan_client
@@ -358,10 +453,15 @@ class Depth20Feed:
         import websockets
         backoff = 5
         while self._running:
-            if not feed_window_open():
-                self.mode, self.detail = "IDLE", "outside 09:00-15:45 on a trading day"
+            if self._park_until and datetime.now() < self._park_until:
                 await asyncio.sleep(30)
                 continue
+            if not feed_window_open():
+                if self.mode != "PARKED" or not self._park_until or datetime.now() >= self._park_until:
+                    self._set("IDLE", "outside 09:00-15:45 on a trading day")
+                await asyncio.sleep(30)
+                continue
+            self._park_until = None
             try:
                 if not self._sid_to_sym:
                     self.resolve()
@@ -370,12 +470,17 @@ class Depth20Feed:
                 async with websockets.connect(url, max_size=None) as ws:
                     backoff = 5
                     await self.session(ws)
+                if self._running and not feed_window_open():
+                    self._set("IDLE", "window closed: disconnected")
+                    log.info("  20-level depth disconnected — market closed")
+                elif self._running:              # Dhan closed it in the session: wait before asking again
+                    self._set("RECONNECTING", f"socket closed by Dhan; reconnecting in {backoff}s")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 300)
             except FeedRefused as e:
-                self.mode, self.detail = "PARKED", str(e)
-                log.warning(f"  20-level depth: {e}")
-                self._running = False
+                self.refused(e)
             except Exception as e:
-                self.mode, self.detail = "RECONNECTING", f"{type(e).__name__}: {str(e)[:160]}"
+                self._set("RECONNECTING", f"{type(e).__name__}: {str(e)[:160]}")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 300)
 
@@ -391,17 +496,31 @@ class Depth20Feed:
 
     def status(self) -> dict:
         return {"mode": self.mode, "detail": self.detail, "subscribed": len(self._sid_to_sym), "frames": self.frames,
-                "snapshots": self.snapshots, "last_at": self.last_at}
+                "snapshots": self.snapshots, "last_at": self.last_at, "last_flush": self.last_flush}
 
 
 _feed = None
 _flock = threading.Lock()
 
 
+def get_depth20():
+    return _feed
+
+
+def stop_depth20():
+    global _feed
+    with _flock:
+        if _feed is not None:
+            _feed.stop()
+            _feed = None
+
+
 def start_depth20(force=False):
     """Started by main.py next to the index and stock feeds when depth20.enabled (or force)."""
     global _feed
     if not (force or settings().get("enabled")):
+        from data.dhan_ws import record_feed_status
+        record_feed_status("depth20", "OFF", detail="off: set config.json depth20.enabled (needs the Dhan Data API)")
         return None
     with _flock:
         if _feed is None:

@@ -33,7 +33,7 @@ Run standalone:
   python -m data.dhan --portfolio             # sync Dhan portfolio
 """
 
-import os, json, time, logging, argparse, asyncio
+import os, json, time, logging, argparse, asyncio, threading
 import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -111,6 +111,39 @@ def data_plan_status(timeout: float = 10) -> dict:
             "data_validity": p.get("dataValidity"), "token_validity": p.get("tokenValidity")}
 
 
+# Dhan's per-second limits by API family (past them it answers DH-904 "Too many requests", or a bare
+# {'status': 'failure'} with every remark None): Quote APIs (quote / ohlc / ticker) 1 call a second, Data
+# APIs (historical / intraday bars) 5 a second. Every market-data call in this process -- dashboard,
+# scheduler jobs, feeds, the broker-health check -- takes its turn here, so two callers no longer land
+# in the same second. 2026-10-30: 639 quote calls refused, a broker-health DOWN at 12:59 whose NIFTY
+# quote landed in the same second as the dashboard's, and two index histories refused at 16:48 with
+# more than five calls in one second. Seconds between two calls of a family:
+# 2026-10-31 (DP-08): the option chain API allows one call every 3 seconds (its expiry list too).
+PACE_SECONDS = {"quote": 1.1, "data": 0.3, "chain": 3.1}
+_QUOTE_CALLS = {"quote_data", "ohlc_data", "ticker_data"}
+_CHAIN_CALLS = {"option_chain", "expiry_list"}
+_pace_lock = threading.Lock()
+_next_call = {}
+
+
+def _pace(fn):
+    """Wait for this call's turn in its API family. The turn is booked under the lock and the wait
+    happens outside it, so callers go in the order they arrived."""
+    name = getattr(fn, "__name__", "")
+    family = "quote" if name in _QUOTE_CALLS else "chain" if name in _CHAIN_CALLS else "data"
+    with _pace_lock:
+        now = time.monotonic()
+        turn = max(now, _next_call.get(family, 0.0))
+        _next_call[family] = turn + PACE_SECONDS.get(family, 0.0)
+    if turn > now:
+        time.sleep(turn - now)
+
+
+def _paced(fn, *a, **k):
+    _pace(fn)
+    return fn(*a, **k)
+
+
 def _guarded(fn, *a, **k):
     """
     W31 (OPS-10): every Dhan MARKET-DATA call goes through one circuit breaker
@@ -119,9 +152,10 @@ def _guarded(fn, *a, **k):
     like any other fetch error -- instead of hammering an API that is refusing (the 429
     storm of 2026-09-07). Order placement never goes through here, and nothing is retried
     here: retries stay with the callers that already pace themselves.
+    A call the breaker lets through then waits for its turn under Dhan's rate limits (_pace).
     """
     from ops.resilience import breaker
-    return breaker("dhan_data", failure_threshold=6, reset_seconds=120).call(fn, *a, **k)
+    return breaker("dhan_data", failure_threshold=6, reset_seconds=120).call(_paced, fn, *a, **k)
 
 
 def get_dhan_client():

@@ -1,5 +1,5 @@
 """ATIP — FastAPI Dashboard Server (http://localhost:8000)"""
-import json, logging
+import json, logging, threading, time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from db.schema import get_connection
@@ -864,6 +864,8 @@ def build_html(state):
     # Task 2/3: the operating-status banner and the Global & Asia tab (dashboard/global_asia.py)
     from dashboard.global_asia import status_banner_html as _op_banner, asia_tab_html as _asia_tab
     op_banner=_op_banner(); asia_tab=_asia_tab()
+    from dashboard.market_page import live_tab_html as _live_tab                       # 2026-10-31 (DP-01, MON-07)
+    live_tab=_live_tab()
     from dashboard.news_impact_view import panel_html as _ni_panel                     # NI-05
     ni_news_panel=_ni_panel("niNewsBox")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
@@ -930,7 +932,7 @@ def build_html(state):
   <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
     <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history</span></div>
     <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -997,6 +999,7 @@ def build_html(state):
       <tbody>{order_rows_or_empty}</tbody></table>
   </div>
   {asia_tab}
+  {live_tab}
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
 
@@ -1808,36 +1811,90 @@ if HAS_FASTAPI:
     # 2026-09-19 09:15, where the quote thread finally died), on top of the
     # index WebSocket's own reconnect storm. Outside market hours there is no
     # new price to fetch -- the last one IS the close.
-    _live_quotes_cache = {"date": None, "data": {}}
+    # In the session too, every tab and request shares one fetch per
+    # LIVE_QUOTES_TTL seconds. Each tab used to ask Dhan itself, and Chrome
+    # wakes background tabs together on the minute: two or three ~500-quote
+    # calls landed in the same second and Dhan (1 quote call a second) refused
+    # all but one -- 639 refusals on 2026-10-30.
+    _live_quotes_cache = {"date": None, "data": {}, "at": 0.0}
+    _live_quotes_lock = threading.Lock()
+    LIVE_QUOTES_TTL = 15
 
     @app.get("/api/live-quotes")
     async def api_live_quotes():
         """Live LTP for every symbol currently shown on the dashboard (scores + portfolio)."""
-        from data.dhan import fetch_live_quotes
         from pipeline.scheduler import is_market_hours
         from ops.role import is_viewer
+        from starlette.concurrency import run_in_threadpool
         if is_viewer():                  # no Dhan here: the prices are the Mac's, in the copied database
             return JSONResponse({})
         if not is_market_hours():
             cached = (_live_quotes_cache["data"]
                       if _live_quotes_cache["date"] == str(date.today()) else {})
             return JSONResponse(cached)
-        td = latest_scored_date()
-        conn = get_connection()
-        try:
-            syms = {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM ai_scores WHERE date=?", str(td))}
-            syms |= {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM portfolio_holdings WHERE date=?", str(td))}
-        finally:
-            conn.close()
-        if not syms:
-            return JSONResponse({})
-        try:
-            df = fetch_live_quotes(list(syms))
-        except Exception as e:
-            log.warning(f"  live quotes fetch failed: {e}")
-            return JSONResponse({})
-        if df.empty:
-            return JSONResponse({})
+        # A thread, not the event loop: a request may wait on another's fetch or its turn at Dhan
+        return JSONResponse(await run_in_threadpool(_session_live_quotes))
+
+    def _session_live_quotes() -> dict:
+        """The session's quotes, fetched from Dhan at most once per LIVE_QUOTES_TTL. A request that
+        arrives while another is fetching waits for that fetch and gets its result."""
+        from data.dhan import fetch_live_quotes
+        today = str(date.today())
+        with _live_quotes_lock:
+            if time.monotonic() - _live_quotes_cache["at"] < LIVE_QUOTES_TTL:
+                return _live_quotes_cache["data"] if _live_quotes_cache["date"] == today else {}
+            _live_quotes_cache["at"] = time.monotonic()      # a failed fetch waits out the window too
+            td = latest_scored_date()
+            conn = get_connection()
+            try:
+                syms = {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM ai_scores WHERE date=?", str(td))}
+                syms |= {r["symbol"] for r in q(conn, "SELECT DISTINCT symbol FROM portfolio_holdings WHERE date=?", str(td))}
+            finally:
+                conn.close()
+            if not syms:
+                return {}
+            try:
+                df = fetch_live_quotes(list(syms))
+            except Exception as e:
+                log.warning(f"  live quotes fetch failed: {e}")
+                return {}
+            if df.empty:
+                return {}
+            out = _quotes_out(df)
+            _live_quotes_cache.update(date=today, data=out)
+            return out
+
+    # 2026-10-31 (DP-01 / MON-07): every Dhan feed's state for the Live tab and the phone's Live screen, served
+    # the way the quotes above are -- one read per LIVE_QUOTES_TTL, shared by every tab and request. It reads
+    # live_feed_status only (ops/data_health.feeds), never Dhan, so a VIEWER shows the Mac's feed states from the
+    # copied database. A feed switched off reads OFF.
+    _live_feeds_cache = {"data": None, "at": 0.0}
+    _live_feeds_lock = threading.Lock()
+
+    @app.get("/api/live-feeds")
+    async def api_live_feeds():
+        """State of the index / stock WebSocket, tick capture, 1-minute bars, 20-level depth and option chain."""
+        from starlette.concurrency import run_in_threadpool
+        return JSONResponse(await run_in_threadpool(_live_feeds))
+
+    def _live_feeds() -> dict:
+        from data.dhan_ws import feed_window_open
+        from ops.data_health import feeds
+        with _live_feeds_lock:
+            c = _live_feeds_cache
+            if c["data"] is not None and time.monotonic() - c["at"] < LIVE_QUOTES_TTL:
+                return c["data"]
+            conn = get_connection()
+            try:
+                rows = feeds(conn)
+            finally:
+                conn.close()
+            out = {"checked_at": datetime.now().isoformat(timespec="seconds"), "window_open": feed_window_open(),
+                   "feeds": rows}
+            c.update(data=out, at=time.monotonic())
+            return out
+
+    def _quotes_out(df) -> dict:
         out = {}
         for _, row in df.iterrows():
             ltp = row.get("ltp")
@@ -1849,8 +1906,7 @@ if HAS_FASTAPI:
             # between 09:15 and the 16:45 post-market run it is one session too
             # old and renders a two-session move as today's change.
             out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg, "prev_close": prev}
-        _live_quotes_cache.update(date=str(date.today()), data=out)
-        return JSONResponse(out)
+        return out
 
     def _order_monitor_loop():
         """

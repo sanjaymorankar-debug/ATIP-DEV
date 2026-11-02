@@ -19,10 +19,24 @@ bounded symbol set and writes the latest quote per symbol to live_quotes on a ti
             and status() for /api/market/feed-status.
 
 OFF BY DEFAULT: config.json  "live_feed": {"stocks_enabled": true, "max_symbols": 100,
-"flush_seconds": 60, "rest_seconds": 60, "symbols": []}. Supervision mirrors the index
-feed: connect only inside the window, park with doubling backoff after an error
+"flush_seconds": 60, "rest_seconds": 60, "symbols": [], "capture_ticks": false, "minute_bars": false}.
+Supervision mirrors the index feed: connect only inside the window, park with doubling backoff after an error
 burst, recycle a silent socket -- and, unlike the index feed, fall back to REST
 instead of leaving prices stale while parked. It never places orders.
+
+2026-10-31 (DP-01 / DP-03 / DP-04), hardened for 100 symbols:
+    LIMITS   at most MAX_SYMBOLS (100) instruments, on ONE connection: Dhan allows 5,000 instruments per
+             connection and 5 connections per user (index feed, this feed and the 20-level depth feed use
+             three), and the SDK subscribes them 100 to a message. A larger max_symbols is cut to 100, logged.
+    REST     the failover polls Dhan's quote API (1 call a second, paced in data/dhan.py) every rest_seconds;
+             a failed or empty poll (DH-904 "too many requests" among them) doubles the wait, up to 5 minutes,
+             and the first good poll resets it.
+    CLOSE    callbacks from an SDK instance the supervisor has already let go of are expected (the window
+             closing, a park): logged at INFO, never counted toward an error burst (see data/dhan_ws.py).
+    WRITES   live_quotes gets a row only for a stock whose quote changed since the last flush; the status
+             rows 'stocks', 'ticks' and 'minute_bars' in live_feed_status say OFF when switched off.
+    BARS     minute_bars = true: 1-minute OHLCV from the Quote packets into intraday_bars (data/ticks.py
+             MinuteBars; REST fallback data/ticks.backfill_minute_bars).
 """
 
 from __future__ import annotations
@@ -36,14 +50,18 @@ from datetime import datetime, time as _time
 from pathlib import Path
 
 from data.dhan_ws import (BACKOFF_MAX, BACKOFF_START, ERROR_BURST, ERROR_WINDOW, SUPERVISOR_TICK,
-                          feed_window_open)
+                          feed_window_open, record_feed_status, safe)
 
 log = logging.getLogger(__name__)
 
 DEFAULTS = {"stocks_enabled": False, "max_symbols": 100, "flush_seconds": 60, "rest_seconds": 60, "symbols": [],
-            "capture_ticks": False}          # W35 (DP-04): every Quote packet to the tick store (data/ticks.py)
+            "capture_ticks": False,          # W35 (DP-04): every Quote packet to the tick store (data/ticks.py)
+            "minute_bars": False}            # DP-03: 1-minute bars from the Quote packets (data/ticks.MinuteBars)
 TICK_FROM, TICK_TO = _time(9, 16), _time(15, 30)
 STALL_SECONDS = 300.0
+MAX_SYMBOLS = 100                  # ATIP's cap for this feed, on one connection
+DHAN_MAX_PER_CONNECTION = 5000     # Dhan's limit per WebSocket connection
+REST_WAIT_MAX = 300.0              # the REST failover's longest wait after failed polls
 
 try:
     from dhanhq.marketfeed import MarketFeed
@@ -59,6 +77,15 @@ def settings() -> dict:
         return {**DEFAULTS, **(cfg.get("live_feed") or {})}
     except Exception:
         return dict(DEFAULTS)
+
+
+def symbol_cap(cfg=None) -> int:
+    """max_symbols, never above MAX_SYMBOLS (and so far below Dhan's 5,000 per connection)."""
+    try:
+        want = int((cfg or settings()).get("max_symbols") or MAX_SYMBOLS)
+    except (TypeError, ValueError):
+        want = MAX_SYMBOLS
+    return max(1, min(want, MAX_SYMBOLS, DHAN_MAX_PER_CONNECTION))
 
 
 def default_symbols(conn, cap=100) -> list:
@@ -101,20 +128,33 @@ class StockFeedManager:
         self._ticks = 0
         self.mode = "IDLE"
         self.detail = ""
+        self._connected = False
+        self._rest_wait = float(self.cfg.get("rest_seconds") or 60)
+        self._written = {}            # symbol -> (ltp, volume) last written to live_quotes
+        self._bars = None
+        if self.cfg.get("minute_bars") is True:
+            from data.ticks import MinuteBars
+            self._bars = MinuteBars()
+        self._bars_written = 0
+        self._last_bar_at = None
 
     # ── symbols ──
     def _resolve(self):
         from data.dhan import get_security_id
+        cap = symbol_cap(self.cfg)
+        if int(self.cfg.get("max_symbols") or cap) > cap:
+            log.warning(f"  Stock feed: live_feed.max_symbols {self.cfg.get('max_symbols')} cut to {cap} "
+                        f"(one connection, {MAX_SYMBOLS} at most)")
         syms = self._symbols_req or self.cfg.get("symbols") or None
         if not syms:
             from db.schema import get_connection
             c = get_connection()
             try:
-                syms = default_symbols(c, int(self.cfg.get("max_symbols") or 100))
+                syms = default_symbols(c, cap)
             finally:
                 c.close()
         m = {}
-        for s in syms[: int(self.cfg.get("max_symbols") or 100)]:
+        for s in syms[:cap]:
             sec = get_security_id(s)
             if sec:
                 m[int(sec["security_id"])] = s
@@ -126,6 +166,12 @@ class StockFeedManager:
         if self._running:
             return
         self._running = True
+        idle = "outside 09:00-15:45 on a trading day"
+        record_feed_status("stocks", "IDLE", detail=idle)            # switched on: IDLE until it connects, not missing
+        if self.cfg.get("capture_ticks") is True:
+            record_feed_status("ticks", "IDLE", detail=idle)
+        if self._bars is not None:
+            record_feed_status("minute_bars", "IDLE", detail=idle)
         threading.Thread(target=self._supervise_loop, daemon=True, name="stock-feed-supervisor").start()
         threading.Thread(target=self._flush_loop, daemon=True, name="stock-feed-flush").start()
         log.info("  ✓ Stock live feed supervised (WebSocket, REST failover)")
@@ -149,6 +195,8 @@ class StockFeedManager:
             self._feed = MarketFeed(ctx, instruments, version="v2", on_connect=self._on_connect,
                                     on_message=self._on_message, on_close=self._on_close, on_error=self._on_error)
             self._errors.clear()
+            if self._bars is not None:
+                self._bars.reset()       # the first minute after a (re)connect is partial
             self._sdk_thread = self._feed.start()
             self._connected_since = time.monotonic()
             self.mode = "WS"
@@ -156,12 +204,13 @@ class StockFeedManager:
             log.info(f"  ✓ Stock WebSocket feed started — {len(instruments)} symbols")
         except Exception as e:
             self._feed = None
-            self._park(f"could not start: {e}")
+            self._park(f"could not start: {safe(e)}")
 
     def _disconnect(self, why):
         feed, self._feed = self._feed, None
         self._sdk_thread = None
         self._connected_since = None
+        self._connected = False
         if feed is not None:
             try:
                 feed.close_connection()
@@ -209,13 +258,15 @@ class StockFeedManager:
             self._connect()
         if self._feed is None:
             self.mode = "REST"
-            if time.monotonic() - self._last_rest >= float(self.cfg.get("rest_seconds") or 60):
+            if time.monotonic() - self._last_rest >= self._rest_wait:
                 self._rest_poll()
 
     def _supervise_loop(self):
         self._supervise_once()
         while self._running:
             time.sleep(min(SUPERVISOR_TICK, float(self.cfg.get("rest_seconds") or 60)))
+            if not self._running:        # stop() during the sleep: nothing more to decide, or to write
+                break
             try:
                 self._supervise_once()
             except Exception as e:
@@ -227,26 +278,50 @@ class StockFeedManager:
             from data.dhan import fetch_live_quotes
             syms = list(self._sid_to_sym.values()) or list(self._resolve().values())
             df = fetch_live_quotes(syms)
+            if df is None or df.empty:
+                raise RuntimeError("no quotes (Dhan refused or rate-limited the call)")
             with self._lock:
                 for _, r in df.iterrows():
                     self._quotes[r["symbol"]] = {"ltp": r.get("ltp"), "open": r.get("open"), "high": r.get("high"),
                                                  "low": r.get("low"), "prev_close": r.get("prev_close"),
                                                  "volume": r.get("volume"), "src": "rest"}
+            self._rest_wait = float(self.cfg.get("rest_seconds") or 60)
         except Exception as e:
-            self.detail = f"REST failover failed: {e}"
+            self._rest_wait = min(self._rest_wait * 2, REST_WAIT_MAX)
+            self.detail = f"REST failover failed: {safe(e)}; next poll in {self._rest_wait:.0f}s"
 
     # ── SDK callbacks ──
+    def _detached(self, instance) -> bool:
+        """A callback from an SDK instance the supervisor already let go of (None: the caller cannot tell)."""
+        return instance is not None and instance is not self._feed
+
     def _on_connect(self, instance):
+        if self._detached(instance):
+            return
+        if self._connected is None:          # a drop the SDK recovered from: the minute in progress is partial
+            log.info("  Stock WebSocket reconnected")
+            if self._bars is not None:
+                self._bars.reset()
+        self._connected = True
         self._errors.clear()
         self._backoff = BACKOFF_START
 
     def _on_error(self, instance, error):
+        if self._detached(instance):
+            log.info(f"  Stock WebSocket closed by ATIP ({safe(error)})")
+            return
         first = not self._errors
         self._errors.append(time.monotonic())
-        if first:
-            log.error(f"  Stock WebSocket error: {error}")
+        if first and self._connected:
+            self._connected = None           # dropped; the SDK reconnects by itself
+            log.warning(f"  Stock WebSocket dropped by the server ({safe(error)}) — the SDK is reconnecting")
+        elif first:
+            log.error(f"  Stock WebSocket error: {safe(error)}")
 
     def _on_close(self, instance):
+        if self._detached(instance):
+            log.info("  Stock WebSocket closed by ATIP")
+            return
         log.warning("  Stock WebSocket closed")
 
     def _on_message(self, instance, data):
@@ -273,6 +348,8 @@ class StockFeedManager:
                              sell_qty=float(data.get("total_sell_quantity") or 0))
                     self._ticks += 1
                     self._last_tick = datetime.now()
+                    if self._bars is not None:
+                        self._bars.update(sym, q["ltp"], q["volume"], self._last_tick)
                 except (KeyError, TypeError, ValueError):
                     pass
         if data.get("type") == "Quote Data" and self.cfg.get("capture_ticks") is True:
@@ -287,6 +364,8 @@ class StockFeedManager:
     def _flush_loop(self):
         while self._running:
             time.sleep(float(self.cfg.get("flush_seconds") or 15))
+            if not self._running:
+                break
             try:
                 self._flush()
             except Exception as e:
@@ -300,31 +379,48 @@ class StockFeedManager:
                 _flush_ticks()
             except Exception as e:
                 log.error(f"  tick flush: {e}")
-        snap = self.snapshot() if feed_window_open() else {}
+        window = feed_window_open()
+        snap = self.snapshot() if window else {}
         conn = get_connection()
         try:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            written = 0
             for s, q in snap.items():
+                key = (q.get("ltp"), q.get("volume"))
+                if self._written.get(s) == key:
+                    continue                 # unchanged since the last flush: no new row (100 stocks x 375 minutes)
                 prev = q.get("prev_close")
                 chg = round((q["ltp"] - prev) / prev * 100, 2) if prev else None
                 conn.execute("INSERT OR REPLACE INTO live_quotes (symbol,ltp,open,high,low,prev_close,volume,chg_pct,"
                              "timestamp,source,buy_qty,sell_qty) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                              (s, q["ltp"], q.get("open"), q.get("high"), q.get("low"), prev, q.get("volume"), chg, ts,
                               f"dhan_{q.get('src', 'ws')}", q.get("buy_qty"), q.get("sell_qty")))
-            if snap:
+                self._written[s] = key
+                written += 1
+            if written:
                 self._last_flush = datetime.now()
-            conn.execute("INSERT OR REPLACE INTO live_feed_status (feed,mode,subscribed,ticks,last_tick_at,last_flush_at,"
-                         "detail,updated_at) VALUES ('stocks',?,?,?,?,?,?,?)",
-                         (self.mode, len(self._sid_to_sym), self._ticks, self._last_tick, self._last_flush,
-                          self.detail, datetime.now()))
+            if not window:
+                self._written.clear()
             conn.commit()
+            record_feed_status("stocks", self.mode, len(self._sid_to_sym) or None, self._ticks, self._last_tick,
+                               self._last_flush, self.detail, conn=conn)
+            if self._bars is not None:
+                bars = self._bars.take_closed(datetime.now())
+                if bars:
+                    from data.ticks import write_minute_bars
+                    self._bars_written += write_minute_bars(conn, bars, source="ws")
+                    self._last_bar_at = bars[-1][1]
+                record_feed_status("minute_bars", self.mode, len(self._sid_to_sym) or None,
+                                   self._bars_written, self._last_bar_at, datetime.now() if bars else None,
+                                   f"{self._bars_written} one-minute bars from the WebSocket" +
+                                   ("" if self.mode == "WS" else "; REST fallback every 15 min"), conn=conn)
         finally:
             conn.close()
 
     def status(self) -> dict:
         return {"mode": self.mode, "subscribed": len(self._sid_to_sym), "ticks": self._ticks,
                 "last_tick_at": self._last_tick, "last_flush_at": self._last_flush, "detail": self.detail,
-                "window_open": feed_window_open()}
+                "window_open": feed_window_open(), "minute_bars": self._bars_written if self._bars is not None else None}
 
 
 _manager = None
@@ -334,8 +430,17 @@ _mlock = threading.Lock()
 def start_stock_feed(force=False):
     """Started by main.py next to the index feed when live_feed.stocks_enabled (or force)."""
     global _manager
-    if not (force or settings().get("stocks_enabled")):
+    s = settings()
+    if not (force or s.get("stocks_enabled")):
+        off = "off: set config.json live_feed.stocks_enabled (needs the Dhan Data API)"
+        for feed, why in (("stocks", off), ("ticks", "off: needs live_feed.stocks_enabled and capture_ticks"),
+                          ("minute_bars", "off: needs live_feed.stocks_enabled and minute_bars")):
+            record_feed_status(feed, "OFF", detail=why)
         return None
+    if s.get("capture_ticks") is not True:
+        record_feed_status("ticks", "OFF", detail="off: set config.json live_feed.capture_ticks")
+    if s.get("minute_bars") is not True:
+        record_feed_status("minute_bars", "OFF", detail="off: set config.json live_feed.minute_bars")
     with _mlock:
         if _manager is None:
             _manager = StockFeedManager()

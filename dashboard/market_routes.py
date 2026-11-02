@@ -12,7 +12,7 @@ system:operate (the catch-all rule) and the dashboard token.
     GET  /api/market/fundamentals/{symbol}      quarters (newest first) + filings stored
     GET  /api/market/ownership/{symbol}         shareholding history, insider trades, SAST, features
     GET  /api/market/deal-signal                latest AD-03 event study
-    GET  /api/market/feed-status                DP-01 stock feed (and index feed) status
+    GET  /api/market/feed-status                DP-01 stock feed (and index feed) status; "feeds": every feed (ops/data_health.feeds)
     POST /api/market/refresh/{job}              (token) job = fundamentals | institutional | fo |
                                                 global_history | deal_signal; body {symbols?, period?}
                                                 runs in the background; see pipeline_log
@@ -191,7 +191,8 @@ def register(app, guard, Req, get_connection, json_safe):
                 idx = {"running": m is not None, "indexes_ticking": len(m.snapshot()) if m else 0}
             except Exception as e:
                 idx = {"error": str(e)}
-            return {"stocks": feed_status(conn), "indexes": idx}
+            from ops.data_health import feeds                   # 2026-10-31: every feed, OFF included
+            return {"stocks": feed_status(conn), "indexes": idx, "feeds": feeds(conn)}
         return ok(f)
 
     @app.post("/api/market/refresh/{job}", dependencies=guard)

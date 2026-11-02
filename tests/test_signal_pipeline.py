@@ -304,6 +304,22 @@ def test_filled_signal_becomes_trackable(db):
     assert n > 0, "a signal with a filled entry price must get outcome rows"
 
 
+def test_four_percent_is_tracked_by_default(db, monkeypatch, tmp_path):
+    """The owner asked for +4% next to 3/6/8 (2026-10-30): a +4.5% day hits 3 and 4, not 6 or 8."""
+    import scores.signal_log as sl
+    monkeypatch.setattr(sl, "CONFIG_PATH", tmp_path / "none.json")      # the defaults, not a local config
+    _log_signal(db, "2026-09-17", "ACME", 100.0)
+    db.execute("INSERT INTO prices_daily (symbol, date, open, high, low, close, volume, source) "
+               "VALUES ('ACME','2026-09-18',100.5,104.5,100.0,102.0,1000,'test')")
+    db.commit()
+    sl.evaluate_outcomes()
+    got = {r[0]: (r[1], r[2]) for r in db.execute(
+        "SELECT threshold_pct, hit, sessions_to_hit FROM signal_outcome")}
+    assert sorted(got) == [3.0, 4.0, 6.0, 8.0]
+    assert got[4.0] == (1, 1) and got[3.0] == (1, 1)
+    assert got[6.0][0] == 0 and got[8.0][0] == 0
+
+
 # ── FII/DII dating ────────────────────────────────────────────────────────
 
 class _NseSession:

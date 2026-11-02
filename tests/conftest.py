@@ -16,6 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import db.schema as schema  # noqa: E402
 
+# A daemon thread a test started (a feed supervisor sleeping 30 s) can outlive its test, and monkeypatch then puts
+# DB_PATH back. Back to this throwaway file, never to atip_data/atip.db: on 2026-10-31 one such thread wrote a
+# live_feed_status row into the real database after its test had ended.
+import tempfile  # noqa: E402
+
+schema.DB_PATH = Path(tempfile.mkdtemp(prefix="atip-tests-")) / "outside-any-test.db"
+
 
 @pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
@@ -32,6 +39,12 @@ def _isolated(tmp_path, monkeypatch):
     # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
     # with its fixture rows (2026-10-26).
     monkeypatch.setattr("dashboard.server.STATE_PATH", tmp_path / "dashboard_state.json")
+    # The dashboard's session quotes are shared for 15 s and Dhan calls wait for their turn (1.1 s apart
+    # for quotes): neither may carry from one test to the next. tests/test_dhan_pacing.py turns them on.
+    monkeypatch.setattr("dashboard.server._live_quotes_cache", {"date": None, "data": {}, "at": 0.0})
+    monkeypatch.setattr("dashboard.server._live_feeds_cache", {"data": None, "at": 0.0})
+    monkeypatch.setattr("data.dhan.PACE_SECONDS", {"quote": 0.0, "data": 0.0})
+    monkeypatch.setattr("data.dhan._next_call", {})
     import alerts.telegram as tg
     monkeypatch.setattr(tg, "_real_deliver_telegram", tg._deliver_telegram, raising=False)
     monkeypatch.setattr(tg, "_deliver_telegram", lambda message, parse_mode="HTML": (False, "test"))

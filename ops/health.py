@@ -13,7 +13,11 @@ Health checks.
     GET /health/ml         ML layer enabled?, active models, predictions today, drift alerts
     GET /health/storage    (W9) disk free, backup directory, latest verified backup age
     GET /health/market_data (W9) live quote / index feed freshness in market hours, last broker
-                           data job, credential presence -- no broker call is made
+                           data job, credential presence -- no broker call is made; (2026-10-31,
+                           MON-07) "feeds": every Dhan live feed from live_feed_status -- OFF when
+                           switched off, IDLE outside the window, its mode or STALE inside it
+                           (ops/data_health.feeds); an enabled feed in trouble in the session
+                           makes the component DEGRADED
     (no queue exists in ATIP, so there is no queue component)
 
 Status values: LIVE, READY, DEGRADED, FAILED. HTTP 200 for LIVE / READY / DEGRADED,
@@ -260,6 +264,17 @@ def market_data() -> dict:
         r = c.execute("SELECT job_name, MAX(start_time) FROM pipeline_log WHERE kind='run' AND status='SUCCESS' AND "
                       "job_name LIKE 'dhan%' GROUP BY job_name ORDER BY 2 DESC LIMIT 1").fetchone()
         out["last_successful_broker_data_job"] = {"job": r[0], "at": str(r[1])[:19]} if r else None
+        try:
+            from ops.data_health import feeds
+            fs = feeds(c, now)
+            out["feeds"] = {f["feed"]: {"state": f["state"], "detail": f["detail"], "last_data_at": f["last_data_at"]}
+                            for f in fs}
+            problems = [f["feed"] for f in fs if f["problem"]]
+            if problems:
+                st = DEGRADED
+                out["feed_problems"] = problems
+        except Exception as e:
+            out["feeds"] = {"error": type(e).__name__}
     finally:
         c.close()
     if in_session:
