@@ -13,8 +13,8 @@ targets:
       path: ATIP/Info.plist
       properties:
         CFBundleDisplayName: ATIP
-        CFBundleShortVersionString: "2026.10.26"
-        CFBundleVersion: "2"
+        CFBundleShortVersionString: "2026.11.02"
+        CFBundleVersion: "3"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # ATIP runs on the owner's Mac on the home network over plain http (port 8000)

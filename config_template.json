@@ -195,5 +195,11 @@
 
   "_SECTION_20": "W40 meta-labelling of the technical signals (off by default; research only, never sizes an order)",
   "meta_label": {"enabled": false, "model_type": "native_gbm", "threshold": 0.5, "n_splits": 5, "embargo_sessions": 5, "weighting": "uniqueness", "min_oos": 200, "min_group": 30, "min_t": 2.0, "size_step": 0.1},
-  "_meta_label_note": "enabled: Saturday 09:30 retraining and 20:45 scoring of the day's signals (shown on /signals) with the ADOPTED model: an ACTIVE meta-label version whose out-of-fold run was ADOPTABLE (python -m ml.meta_label train | score | report; docs/USER_GUIDE.md). Activation is always the owner's, through /ml or python -m ml lifecycle."
+  "_meta_label_note": "enabled: Saturday 09:30 retraining and 20:45 scoring of the day's signals (shown on /signals) with the ADOPTED model: an ACTIVE meta-label version whose out-of-fold run was ADOPTABLE (python -m ml.meta_label train | score | report; docs/USER_GUIDE.md). Activation is always the owner's, through /ml or python -m ml lifecycle.",
+
+  "_SECTION_21": "Session accounting and reports (2 Nov 2026): estimated tax per cycle and per FY, report schedules and PDF",
+  "tax": {"effective_from": "2026-04-01", "stcg_pct": 20.0, "ltcg_pct": 12.5, "ltcg_exemption": 125000, "slab_pct": 30.0, "surcharge_pct": 0.0, "cess_pct": 4.0, "addons_enabled": false, "stt_deductible": true},
+  "_tax_note": "ESTIMATE, NOT TAX ADVICE - verify before relying on it (accounting/tax.py). STCG: delivery held <= 12 months; LTCG above the yearly exemption, applied once a FY across sessions; intraday and F&O at slab_pct. addons_enabled puts surcharge + cess into the estimates. stt_deductible true taxes net P&L after every charge (the owner's worked example); s.48 says STT is not deductible - set false for that. Also editable on /settings.",
+  "reports": {"enabled": true, "pdf_engine": "auto"},
+  "_reports_note": "enabled: the scheduler's 15-minute job (06:00-20:45 IST) stores closed session cycles and runs due report schedules (enterprise/session_reports.py; schedules are edited on /reports in IST). pdf_engine: auto (WeasyPrint if installed, else a headless Chrome / Chromium print, else the built-in writer) | weasyprint | chrome | builtin; chrome_path to point at a browser."
 }

@@ -1,5 +1,7 @@
 <resources>
     <style name="Theme.ATIP" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">#0F172A</item>
+        <!-- light status-bar icons on the dark bar (the Material 3 light theme would draw dark ones) -->
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

@@ -1,0 +1,482 @@
+[
+ {
+  "page": "/home",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_home_light_1440.png",
+  "height": 1783,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_markets_light_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_research_light_1440.png",
+  "height": 2737,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_trade_light_1440.png",
+  "height": 1909,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_sessions_light_1440.png",
+  "height": 1914,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_session-detail_light_1440.png",
+  "height": 1694,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_accounting_light_1440.png",
+  "height": 1167,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_reports_light_1440.png",
+  "height": 1252,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_lab_light_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_wealth_light_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_settings_light_1440.png",
+  "height": 1630,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_more_light_1440.png",
+  "height": 2053,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_home_dark_1440.png",
+  "height": 1783,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_markets_dark_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_research_dark_1440.png",
+  "height": 2737,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_trade_dark_1440.png",
+  "height": 1909,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_sessions_dark_1440.png",
+  "height": 1914,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_session-detail_dark_1440.png",
+  "height": 1694,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_accounting_dark_1440.png",
+  "height": 1167,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_reports_dark_1440.png",
+  "height": 1252,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_lab_dark_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_wealth_dark_1440.png",
+  "height": 1063,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_settings_dark_1440.png",
+  "height": 1630,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/prod/prod_more_dark_1440.png",
+  "height": 2053,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_home_light_390.png",
+  "height": 3519,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_markets_light_390.png",
+  "height": 1070,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_research_light_390.png",
+  "height": 3979,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_trade_light_390.png",
+  "height": 4035,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_sessions_light_390.png",
+  "height": 4372,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_session-detail_light_390.png",
+  "height": 2879,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_accounting_light_390.png",
+  "height": 1750,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_reports_light_390.png",
+  "height": 3111,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_lab_light_390.png",
+  "height": 1301,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_wealth_light_390.png",
+  "height": 1521,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_settings_light_390.png",
+  "height": 3230,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_more_light_390.png",
+  "height": 3974,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_home_dark_390.png",
+  "height": 3519,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_markets_dark_390.png",
+  "height": 1070,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_research_dark_390.png",
+  "height": 3979,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_trade_dark_390.png",
+  "height": 4035,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_sessions_dark_390.png",
+  "height": 4372,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_session-detail_dark_390.png",
+  "height": 2879,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_accounting_dark_390.png",
+  "height": 1750,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_reports_dark_390.png",
+  "height": 3111,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_lab_dark_390.png",
+  "height": 1301,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_wealth_dark_390.png",
+  "height": 1521,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_settings_dark_390.png",
+  "height": 3230,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/prod/prod_more_dark_390.png",
+  "height": 3974,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ }
+]

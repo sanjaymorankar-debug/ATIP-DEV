@@ -1,0 +1,482 @@
+[
+ {
+  "page": "/home",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_home_light_1440.png",
+  "height": 1836,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_markets_light_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_research_light_1440.png",
+  "height": 1438,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_trade_light_1440.png",
+  "height": 2106,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_sessions_light_1440.png",
+  "height": 2093,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_session-detail_light_1440.png",
+  "height": 1718,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_accounting_light_1440.png",
+  "height": 1522,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_reports_light_1440.png",
+  "height": 1252,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_lab_light_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_wealth_light_1440.png",
+  "height": 1222,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_settings_light_1440.png",
+  "height": 1630,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "light",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_more_light_1440.png",
+  "height": 2053,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_home_dark_1440.png",
+  "height": 1836,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_markets_dark_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_research_dark_1440.png",
+  "height": 1438,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_trade_dark_1440.png",
+  "height": 2106,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_sessions_dark_1440.png",
+  "height": 2093,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_session-detail_dark_1440.png",
+  "height": 1718,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_accounting_dark_1440.png",
+  "height": 1522,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_reports_dark_1440.png",
+  "height": 1252,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_lab_dark_1440.png",
+  "height": 900,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_wealth_dark_1440.png",
+  "height": 1222,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_settings_dark_1440.png",
+  "height": 1630,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "dark",
+  "width": 1440,
+  "file": "docs/testing/screenshots/test_more_dark_1440.png",
+  "height": 2053,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_home_light_390.png",
+  "height": 3317,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_markets_light_390.png",
+  "height": 1052,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_research_light_390.png",
+  "height": 2307,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_trade_light_390.png",
+  "height": 4143,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_sessions_light_390.png",
+  "height": 4816,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_session-detail_light_390.png",
+  "height": 2945,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_accounting_light_390.png",
+  "height": 2057,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_reports_light_390.png",
+  "height": 3094,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_lab_light_390.png",
+  "height": 1283,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_wealth_light_390.png",
+  "height": 2200,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_settings_light_390.png",
+  "height": 3213,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "light",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_more_light_390.png",
+  "height": 3957,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/home",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_home_dark_390.png",
+  "height": 3317,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/markets",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_markets_dark_390.png",
+  "height": 1052,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_research_dark_390.png",
+  "height": 2307,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/command",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_trade_dark_390.png",
+  "height": 4143,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_sessions_dark_390.png",
+  "height": 4816,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/sessions/S1",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_session-detail_dark_390.png",
+  "height": 2945,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/accounting?tab=tax",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_accounting_dark_390.png",
+  "height": 2057,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/reports",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_reports_dark_390.png",
+  "height": 3094,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/lab",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_lab_dark_390.png",
+  "height": 1283,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/wealth",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_wealth_dark_390.png",
+  "height": 2200,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/settings",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_settings_dark_390.png",
+  "height": 3213,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ },
+ {
+  "page": "/more",
+  "theme": "dark",
+  "width": 390,
+  "file": "docs/testing/screenshots/test_more_dark_390.png",
+  "height": 3957,
+  "js_errors": [],
+  "server_errors": [],
+  "horizontal_overflow": false
+ }
+]

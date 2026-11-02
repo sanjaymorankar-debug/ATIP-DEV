@@ -100,6 +100,11 @@ def status_payload() -> dict:
         out = status()
     except Exception:
         out = {}
+    try:                                        # UXD-02 (2 Nov 2026): the environment badge -- an added key
+        from orders.environment import broker_env
+        out["env"] = broker_env()
+    except Exception:
+        pass
     from ops.role import is_viewer
     if is_viewer():
         try:
