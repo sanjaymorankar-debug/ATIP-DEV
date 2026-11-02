@@ -25,8 +25,10 @@ WHY THIS EXISTS
     confused with market movement.
 
 MOMENTUM
-    Thresholds default to 3%, 6% and 8% and are configurable (atip_data/
-    config.json -> momentum_thresholds, or the constant below). Direction
+    Thresholds default to 3%, 4%, 6% and 8% and are configurable (atip_data/
+    config.json -> momentum_thresholds, or the constant below). 4% was added
+    on 2026-10-30 at the owner's request, so a +4% exit can be judged on live
+    signals and not only in backtests. Direction
     follows the signal: a BUY is measured on the way up (high >= target), a
     SELL on the way down (low <= target), so "momentum" means "moved the way
     the signal said", both ways.
@@ -57,7 +59,7 @@ from db.schema import get_connection, log_job
 
 log = logging.getLogger(__name__)
 
-DEFAULT_THRESHOLDS = (3.0, 6.0, 8.0)
+DEFAULT_THRESHOLDS = (3.0, 4.0, 6.0, 8.0)
 MAX_TRACK_SESSIONS = 30      # stop chasing a signal after this many sessions
 CONFIG_PATH = Path("atip_data/config.json")
 
@@ -65,7 +67,7 @@ _VERSION_CACHE = {}
 
 
 def momentum_thresholds():
-    """Configurable via config.json -> momentum_thresholds; falls back to 3/6/8."""
+    """Configurable via config.json -> momentum_thresholds; falls back to 3/4/6/8."""
     try:
         if CONFIG_PATH.exists():
             cfg = json.loads(CONFIG_PATH.read_text())
