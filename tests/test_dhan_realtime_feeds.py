@@ -608,6 +608,9 @@ def test_broker_health_shows_off_and_never_blocks_a_buy_over_a_feed(conn, monkey
     assert by["index_feed"]["status"] == "OK"
     assert by["stock_feed"]["status"] == "DEGRADED" and by["stock_feed"]["state"] == "STALE"
     assert r["overall"] == "DEGRADED"
+    # the gate ages the last check by the real clock: make it fresh, or the gate SKIPs it as old after 2 Nov
+    conn.execute("UPDATE broker_health_check SET checked_at=?", (str(datetime.now())[:19],))
+    conn.commit()
     assert BH.gate(conn, "BUY")[0] == "PASS", "a feed problem informs; it does not change order behaviour"
 
 
