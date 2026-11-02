@@ -42,8 +42,23 @@ two log lines each (the SDK reports a failed connect twice), which is what
 filled atip.log with 35 MB of noise and most likely got the account
 throttled. Dhan has nothing to stream when the market is shut, so the fix
 is to not be connected then.
+
+2026-10-31 (DP-01 / MON-07), from the two errors of 2026-10-30:
+  13:29:56  "no close frame received or sent": Dhan dropped the socket mid-session
+            and the SDK reconnected and resubscribed by 13:29:58; index_levels kept
+            its 15-second rows (13:29:53, 13:30:08). Not a fault in ATIP, but it
+            was logged as an ERROR with nothing saying it recovered: it is now a
+            WARNING, and the reconnect is logged with how long it took and counted.
+  15:45:07  "sent 1000 (OK); no close frame received": ATIP's own close at the end
+            of the window. The supervisor detaches the SDK instance and closes it;
+            the SDK's read loop then reports the closed socket through on_error.
+            Callbacks from an instance ATIP has detached are expected and logged
+            at INFO, and never counted toward an error burst.
+The feed also writes its state to live_feed_status (row 'indices'), like the stock
+feed, so the health checks and the dashboard read every feed from one table.
 """
 import logging
+import re
 import threading
 import time
 from collections import deque
@@ -83,6 +98,52 @@ def feed_window_open(now=None) -> bool:
     except Exception:
         return True
 
+
+# A WebSocket URL carries the access token and client id as query parameters, and websockets puts the URL in
+# some of its exceptions: nothing that reaches a log line, live_feed_status or the dashboard keeps them.
+_URL_SECRET = re.compile(r"(?i)\b(token|access_token|access-token|clientId|client_id|client-id)=([^&\s'\"]+)")
+
+
+def safe(text) -> str:
+    """str(text) with credentials masked (ops.secrets.mask: tokens, JWTs, configured secret values)."""
+    s = _URL_SECRET.sub(lambda m: f"{m.group(1)}=****", str(text))
+    try:
+        from ops.secrets import mask
+        return mask(s)
+    except Exception:
+        return s
+
+
+STATUS_COLUMNS = ("mode", "subscribed", "ticks", "last_tick_at", "last_flush_at", "detail")
+
+
+def record_feed_status(feed: str, mode: str, subscribed=None, ticks=None, last_tick_at=None, last_flush_at=None,
+                       detail: str = "", conn=None):
+    """One live_feed_status row per feed (indices, stocks, ticks, minute_bars, depth20, option_chain), updated on
+    each write. mode OFF means switched off in config.json -- written when ATIP starts, so OFF reads as OFF, not as
+    a feed that never reported. A write without a last-data / last-flush time or an instrument count keeps the
+    stored one, so a restart (or a feed switched off) still shows when the feed last had data, and for how many. Never raises: a status write must not take a
+    feed down."""
+    own = conn is None
+    try:
+        conn = conn or get_connection()
+        conn.execute("INSERT INTO live_feed_status (feed,mode,subscribed,ticks,last_tick_at,last_flush_at,detail,"
+                     "updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(feed) DO UPDATE SET mode=excluded.mode, "
+                     "subscribed=COALESCE(excluded.subscribed, live_feed_status.subscribed), ticks=excluded.ticks, "
+                     "last_tick_at=COALESCE(excluded.last_tick_at, live_feed_status.last_tick_at), "
+                     "last_flush_at=COALESCE(excluded.last_flush_at, live_feed_status.last_flush_at), "
+                     "detail=excluded.detail, updated_at=excluded.updated_at",
+                     (feed, mode, subscribed, ticks, last_tick_at, last_flush_at, safe(detail)[:300], datetime.now()))
+        conn.commit()
+    except Exception as e:
+        log.debug(f"  live_feed_status {feed}: {e}")
+    finally:
+        if own and conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 try:
     from dhanhq.marketfeed import MarketFeed
     HAS_MARKETFEED = True
@@ -119,6 +180,13 @@ class IndexFeedManager:
         self._cooldown_until = 0.0   # monotonic; no connect attempts before this
         self._connected_since = None # monotonic; when the current socket was opened
         self._backoff = BACKOFF_START
+        self._dropped_at = None      # monotonic; a live socket Dhan dropped, until the SDK reconnects
+        self._reconnects = 0         # mid-session drops the SDK recovered from, since start
+        self._ticks = 0
+        self._last_tick = None       # kept across disconnects (the snapshot is not), for the status row
+        self._last_flush = None
+        self.detail = ""
+        self._reported = (None, 0.0) # (mode, monotonic) of the last live_feed_status write
 
     # ── WebSocket lifecycle ────────────────────────────────────────────
     def start(self):
@@ -140,6 +208,7 @@ class IndexFeedManager:
         else:
             log.info(f"  ✓ Index WebSocket feed supervised — market closed, connecting at "
                      f"{FEED_OPEN.strftime('%H:%M')} on the next trading day")
+        self._report(force=True)
 
     def stop(self):
         self._running = False
@@ -171,13 +240,14 @@ class IndexFeedManager:
         except Exception as e:
             self._feed = None
             self._sdk_thread = None
-            self._park(f"could not start feed: {e}")
+            self._park(f"could not start feed: {safe(e)}")
 
     def _disconnect(self, why):
         feed, self._feed = self._feed, None
         self._sdk_thread = None
         self._connected = False
         self._connected_since = None
+        self._dropped_at = None
         # Drop the snapshot: without this the last tick stays "current" and the
         # flush loop keeps writing it. That is how index_levels collected 7,583
         # rows stamped 2026-09-19/20 -- a Saturday and a Sunday -- all holding
@@ -198,6 +268,7 @@ class IndexFeedManager:
         """Stop asking for a while, then let the supervisor try again."""
         self._disconnect(why)
         self._cooldown_until = time.monotonic() + self._backoff
+        self.detail = f"parked {self._backoff / 60:.0f} min: {why}"
         log.warning(f"  ⚠ Index WebSocket parked for {self._backoff / 60:.0f} min — {why}")
         self._backoff = min(self._backoff * 2, BACKOFF_MAX)
 
@@ -209,6 +280,8 @@ class IndexFeedManager:
         """
         while self._running:
             time.sleep(SUPERVISOR_TICK)
+            if not self._running:        # stop() during the sleep: nothing more to decide, or to write
+                break
             try:
                 self._supervise_once()
             except Exception as e:
@@ -231,6 +304,37 @@ class IndexFeedManager:
                        f"{ERROR_WINDOW:.0f}s (Dhan is refusing the connection)")
         elif self._feed is None and want and time.monotonic() >= self._cooldown_until:
             self._connect()
+        self._report(want)
+
+    @property
+    def mode(self) -> str:
+        """WS (connected), CONNECTING, RECONNECTING (Dhan dropped it, the SDK is reconnecting), PARKED, IDLE."""
+        if self._feed is not None:
+            return "RECONNECTING" if self._dropped_at else "WS" if self._connected else "CONNECTING"
+        return "PARKED" if time.monotonic() < self._cooldown_until and feed_window_open() else "IDLE"
+
+    def _report(self, want=None, force=False):
+        """live_feed_status 'indices': on every change of mode, and once a minute while the window is open."""
+        mode = self.mode
+        last_mode, at = self._reported
+        if not (force or mode != last_mode or (want and time.monotonic() - at >= 60)):
+            return
+        self._reported = (mode, time.monotonic())
+        with self._lock:
+            n = len(self._ltp)
+        last = self._last_tick
+        detail = (f"{n} of {len(self._sec_to_col)} indexes ticking" if mode == "WS" else
+                  "outside 09:00-15:45 on a trading day" if mode == "IDLE" else self.detail or mode.lower())
+        if self._reconnects:
+            detail += f"; {self._reconnects} reconnect(s) today"
+        record_feed_status("indices", mode, len(self._sec_to_col), self._ticks, last, self._last_flush, detail)
+
+    def status(self) -> dict:
+        with self._lock:
+            n = len(self._ltp)
+        return {"mode": self.mode, "subscribed": len(self._sec_to_col), "ticking": n, "ticks": self._ticks,
+                "reconnects": self._reconnects, "last_flush_at": self._last_flush, "detail": self.detail,
+                "window_open": feed_window_open()}
 
     def _error_burst(self) -> bool:
         cutoff = time.monotonic() - ERROR_WINDOW
@@ -262,21 +366,48 @@ class IndexFeedManager:
                 and time.monotonic() - self._connected_since > TICK_STALL_SECONDS)
 
     # ── Callbacks (called by the SDK's internal WS thread) ─────────────
+    def _detached(self, instance) -> bool:
+        """A callback from an SDK instance ATIP has already let go of (closed at 15:45, parked, stopped).
+        None means "the current one" (the callers that cannot tell)."""
+        return instance is not None and instance is not self._feed
+
     def _on_connect(self, instance):
-        log.info("  Index WebSocket connected")
+        if self._detached(instance):
+            return
+        if self._dropped_at is not None:
+            self._reconnects += 1
+            log.info(f"  Index WebSocket reconnected after {time.monotonic() - self._dropped_at:.0f}s "
+                     f"(reconnect {self._reconnects} today)")
+            self._dropped_at = None
+        else:
+            log.info("  Index WebSocket connected")
         self._connected = True
         self._errors.clear()
         self._backoff = BACKOFF_START
 
     def _on_error(self, instance, error):
+        # 2026-10-30 15:45:07: the SDK reports the socket ATIP itself just closed as an error ("sent 1000 (OK);
+        # no close frame received"). That is the close working, not a fault.
+        if self._detached(instance):
+            log.info(f"  Index WebSocket closed by ATIP ({safe(error)})")
+            return
         # Record only; the supervisor decides whether to park. Logged at most
         # once per ERROR_WINDOW so a refusing endpoint can't fill the log.
         first = not self._errors
         self._errors.append(time.monotonic())
-        if first or len(self._errors) == ERROR_BURST:
-            log.error(f"  Index WebSocket error: {error}")
+        if first and self._connected:
+            # 2026-10-30 13:29:56: a live socket Dhan dropped. The SDK reconnects and resubscribes by itself
+            # (13:29:58 that day, no index row lost); _on_connect logs how long it took.
+            self._dropped_at = time.monotonic()
+            self._connected = False
+            log.warning(f"  Index WebSocket dropped by the server ({safe(error)}) — the SDK is reconnecting")
+        elif first or len(self._errors) == ERROR_BURST:
+            log.error(f"  Index WebSocket error: {safe(error)}")
 
     def _on_close(self, instance):
+        if self._detached(instance):
+            log.info("  Index WebSocket closed by ATIP")
+            return
         self._connected = False
         log.warning("  Index WebSocket closed")
 
@@ -306,7 +437,8 @@ class IndexFeedManager:
             elif data.get("type") == "Ticker Data":
                 try:
                     self._ltp[sec_id] = float(data["LTP"])
-                    self._last_tick_at[sec_id] = datetime.now()
+                    self._last_tick_at[sec_id] = self._last_tick = datetime.now()
+                    self._ticks += 1
                 except (KeyError, TypeError, ValueError):
                     pass
 
@@ -333,6 +465,8 @@ class IndexFeedManager:
     def _flush_loop(self):
         while self._running:
             time.sleep(self.flush_interval)
+            if not self._running:
+                break
             if self._feed is None:
                 continue  # not connected: nothing is ticking, so nothing to store
             try:
@@ -380,6 +514,7 @@ class IndexFeedManager:
                 [record[c] for c in cols],
             )
             conn.commit()
+            self._last_flush = datetime.now()
         finally:
             conn.close()          # W39: this flush (every 15 s) never closed its connection
         log.debug(f"  Index feed flush → {len(snap)} indexes @ {record['time']}")

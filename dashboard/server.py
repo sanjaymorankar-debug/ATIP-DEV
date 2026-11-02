@@ -864,6 +864,8 @@ def build_html(state):
     # Task 2/3: the operating-status banner and the Global & Asia tab (dashboard/global_asia.py)
     from dashboard.global_asia import status_banner_html as _op_banner, asia_tab_html as _asia_tab
     op_banner=_op_banner(); asia_tab=_asia_tab()
+    from dashboard.market_page import live_tab_html as _live_tab                       # 2026-10-31 (DP-01, MON-07)
+    live_tab=_live_tab()
     from dashboard.news_impact_view import panel_html as _ni_panel                     # NI-05
     ni_news_panel=_ni_panel("niNewsBox")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
@@ -930,7 +932,7 @@ def build_html(state):
   <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
+  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
     <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history</span></div>
     <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
@@ -997,6 +999,7 @@ def build_html(state):
       <tbody>{order_rows_or_empty}</tbody></table>
   </div>
   {asia_tab}
+  {live_tab}
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
 
@@ -1859,6 +1862,36 @@ if HAS_FASTAPI:
                 return {}
             out = _quotes_out(df)
             _live_quotes_cache.update(date=today, data=out)
+            return out
+
+    # 2026-10-31 (DP-01 / MON-07): every Dhan feed's state for the Live tab and the phone's Live screen, served
+    # the way the quotes above are -- one read per LIVE_QUOTES_TTL, shared by every tab and request. It reads
+    # live_feed_status only (ops/data_health.feeds), never Dhan, so a VIEWER shows the Mac's feed states from the
+    # copied database. A feed switched off reads OFF.
+    _live_feeds_cache = {"data": None, "at": 0.0}
+    _live_feeds_lock = threading.Lock()
+
+    @app.get("/api/live-feeds")
+    async def api_live_feeds():
+        """State of the index / stock WebSocket, tick capture, 1-minute bars, 20-level depth and option chain."""
+        from starlette.concurrency import run_in_threadpool
+        return JSONResponse(await run_in_threadpool(_live_feeds))
+
+    def _live_feeds() -> dict:
+        from data.dhan_ws import feed_window_open
+        from ops.data_health import feeds
+        with _live_feeds_lock:
+            c = _live_feeds_cache
+            if c["data"] is not None and time.monotonic() - c["at"] < LIVE_QUOTES_TTL:
+                return c["data"]
+            conn = get_connection()
+            try:
+                rows = feeds(conn)
+            finally:
+                conn.close()
+            out = {"checked_at": datetime.now().isoformat(timespec="seconds"), "window_open": feed_window_open(),
+                   "feeds": rows}
+            c.update(data=out, at=time.monotonic())
             return out
 
     def _quotes_out(df) -> dict:

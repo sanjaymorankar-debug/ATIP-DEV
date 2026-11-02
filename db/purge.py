@@ -19,7 +19,8 @@ Three retention tiers by default:
   SHORT (default 90 days)  — high-frequency / operational tables that are
         only ever read for "recent" context: intraday index snapshots
         (written every ~15s by the WS feed during market hours), live
-        quote/tick caches, and the pipeline run log. Keeping these at
+        quote/tick caches, and the pipeline run log -- and (2026-10-31) the
+        lake's "ticks" dataset (data/lake.purge: files and manifest rows). Keeping these at
         600 days would balloon the database for no analytical benefit —
         nothing reads a live tick from 18 months ago.
 
@@ -91,7 +92,11 @@ SHORT_RETENTION_TABLES = {
     "scheduler_status": "at",            # Task 2: STOPPED / RESUMING / RUNNING transitions
     "resume_runs":      "run_date",      # Task 2: one row per 06:00 resume
     "deferred_jobs":    "window_date",   # Task 2: daily slots the stop window deferred
+    "tick_capture_status": "day",        # DP-04 (2026-10-31): one row per day of tick capture
 }
+
+# Lake datasets on the SHORT window (2026-10-31, DP-04): the tick store is files, not a table, and was kept forever.
+SHORT_RETENTION_LAKE = ("ticks",)
 
 HISTORY_YEARS = 7
 DEFAULT_HISTORY_DAYS = 2557              # 7 x 365.25: the window history_backfill fills
@@ -159,6 +164,13 @@ def purge_old_data(long_days: int = None, short_days: int = None,
             results[table] = _purge_table(conn, table, col, long_cutoff, dry_run)
         for table, col in SHORT_RETENTION_TABLES.items():
             results[table] = _purge_table(conn, table, col, short_cutoff, dry_run)
+        for dataset in SHORT_RETENTION_LAKE:
+            try:
+                from data.lake import purge as _lake_purge
+                results[f"lake:{dataset}"] = _lake_purge(dataset, short_cutoff, conn=conn, dry_run=dry_run)
+            except Exception as e:
+                log.warning(f"  purge lake {dataset}: {e}")
+                results[f"lake:{dataset}"] = f"error: {e}"
 
         total = sum(v for v in results.values() if isinstance(v, int))
         if not dry_run:

@@ -484,6 +484,13 @@ def _start_index_feed():
         start_depth20()
     except Exception as e:
         log.warning(f"  20-level depth feed did not start ({e})")
+    # 2026-10-31 (MON-07): the option chain is a scheduled snapshot, not a socket; record OFF when it is off,
+    # so every feed switched off in config.json reads OFF in live_feed_status and on the Live tab
+    try:
+        from data.derivatives_store import report_state
+        report_state()
+    except Exception as e:
+        log.debug(f"  option chain state: {e}")
 
 
 def _start_viewer(port: int = 8000):

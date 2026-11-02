@@ -8,6 +8,13 @@ check() runs these and stores one broker_health_check row:
                        DH-901 / an auth failure means the access token has expired
     index_feed         the index WebSocket (dhan_ws) is running and ticking in the session
     stock_feed         the W27 stock feed (when enabled): mode WS / REST / IDLE
+    tick_capture, minute_bars, depth20_feed, option_chain   (2026-10-31, MON-07) the other Dhan feeds
+                       All six come from live_feed_status through ops/data_health.feeds(): a feed switched
+                       off is OFF (shown, never counted, never "missing"); outside the session SKIPPED; a
+                       working one OK; REST failover, a partial chain, a stalled, parked or not-started
+                       feed DEGRADED -- never DOWN or STALE, so the RK-17 BUY gate below is decided by
+                       the same checks as before (market data, token, quote freshness). Each change of a
+                       feed's status raises one alert (and its recovery one more).
     quote_freshness    newest live_quotes row during the session (stale > stale_minutes)
     zerodha_token      Kite session present and not past its 06:00 IST expiry (when used)
     paper_broker       paper tables readable (the PAPER book of record)
@@ -32,7 +39,9 @@ from datetime import datetime, time as _time, timedelta
 
 log = logging.getLogger("atip.execution")
 
-ORDER = {"OK": 0, "SKIPPED": 0, "DEGRADED": 1, "STALE": 2, "DOWN": 3}
+ORDER = {"OK": 0, "SKIPPED": 0, "OFF": 0, "DEGRADED": 1, "STALE": 2, "DOWN": 3}
+FEED_CHECKS = {"indices": "index_feed", "stocks": "stock_feed", "ticks": "tick_capture", "minute_bars": "minute_bars",
+               "depth20": "depth20_feed", "option_chain": "option_chain"}
 STALE_MINUTES = 20
 SESSION = (_time(9, 20), _time(15, 30))
 
@@ -91,30 +100,55 @@ def _empty_quote_reason() -> str:
 
 
 def _feeds(now, in_session) -> list:
+    """Every Dhan live feed, from live_feed_status (ops/data_health.feeds), as checks capped at DEGRADED."""
+    from db.schema import get_connection
+    try:
+        from ops.data_health import feeds
+        conn = get_connection()
+        try:
+            rows = feeds(conn, now)
+        finally:
+            conn.close()
+    except Exception as e:
+        return [_c("index_feed", "DEGRADED", f"feed status unreadable: {e}")]
     out = []
-    try:
-        from data.dhan_ws import get_index_feed_manager
-        m = get_index_feed_manager()
-        if not in_session:
-            out.append(_c("index_feed", "SKIPPED", "outside the session"))
-        elif m is None:
-            out.append(_c("index_feed", "DEGRADED", "index feed not running in this process"))
+    for f in rows:
+        st = f["state"]
+        if st == "OFF":
+            status = "OFF"
+        elif not in_session or st == "IDLE":
+            status = "SKIPPED"
+        elif st in ("LIVE", "WS"):
+            status = "OK"
         else:
-            n = len(m.snapshot())
-            out.append(_c("index_feed", "OK" if n else "DEGRADED", f"{n} indexes ticking"))
-    except Exception as e:
-        out.append(_c("index_feed", "DEGRADED", str(e)))
-    try:
-        from data.stock_feed import feed_status
-        fs = feed_status()
-        if not fs.get("running"):
-            out.append(_c("stock_feed", "SKIPPED", "stock feed not enabled"))
-        else:
-            st = "OK" if fs.get("mode") == "WS" else "DEGRADED" if fs.get("mode") == "REST" else "SKIPPED"
-            out.append(_c("stock_feed", st, f"mode {fs.get('mode')}: {fs.get('detail')}"))
-    except Exception as e:
-        out.append(_c("stock_feed", "SKIPPED", str(e)))
+            status = "DEGRADED"
+        out.append(_c(FEED_CHECKS[f["feed"]], status, f"{st}: {f['detail']}" if f["detail"] else st, state=st,
+                      last_data_at=f["last_data_at"]))
     return out
+
+
+def _feed_alerts(prev_checks: list, checks: list, now) -> None:
+    """One alert when a feed check turns DEGRADED (REST failover, stalled, parked, not started) and one when it
+    is OK again. Outside the session feeds are SKIPPED, which neither alerts nor resets."""
+    before = {c.get("check"): c.get("status") for c in prev_checks or []}
+    for c in checks:
+        name, st = c.get("check"), c.get("status")
+        if name not in FEED_CHECKS.values() or st in ("SKIPPED", "OFF"):
+            continue
+        was = before.get(name)
+        if st == "DEGRADED" and was != "DEGRADED":
+            bad = True                       # turned bad
+        elif st == "OK" and was == "DEGRADED":
+            bad = False                      # recovered
+        else:
+            continue
+        try:
+            from alerts.telegram import notify as _notify
+            _notify(f"{'⚠️' if bad else '🟢'} <b>Live feed {name}: {was or 'new'} → {st}</b>\n{c.get('detail', '')}",
+                    category="broker", severity="warning" if bad else "info",
+                    key=f"feed-{name}-{st}-{now:%Y%m%d%H}")
+        except Exception as e:
+            log.warning(f"  feed alert: {e}")
 
 
 def _freshness(conn, now, in_session):
@@ -155,8 +189,9 @@ def check(network: bool = True, now=None, notify: bool = True) -> dict:
         except Exception as e:
             checks.append(_c("paper_broker", "DEGRADED", str(e)))
         overall = max((c["status"] for c in checks), key=lambda s: ORDER.get(s, 0))
-        overall = "OK" if overall == "SKIPPED" else overall
-        prev = conn.execute("SELECT overall FROM broker_health_check ORDER BY checked_at DESC LIMIT 1").fetchone()
+        overall = "OK" if ORDER.get(overall, 0) == 0 else overall          # SKIPPED / OFF never set the overall
+        prev = conn.execute("SELECT overall, checks_json FROM broker_health_check ORDER BY checked_at DESC LIMIT 1"
+                            ).fetchone()
         conn.execute("INSERT INTO broker_health_check (checked_at,overall,in_session,checks_json) VALUES (?,?,?,?)",
                      (now, overall, 1 if in_s else 0, json.dumps(checks, default=str)))
         conn.commit()
@@ -169,6 +204,11 @@ def check(network: bool = True, now=None, notify: bool = True) -> dict:
                         "warning" if overall in ("DOWN", "STALE") else "info", key=f"broker-{overall}-{now:%Y%m%d%H}")
             except Exception as e:
                 log.warning(f"  broker health alert: {e}")
+        if notify and prev:
+            try:
+                _feed_alerts(json.loads(prev[1] or "[]"), checks, now)
+            except Exception as e:
+                log.warning(f"  feed alerts: {e}")
         return {"status": "SUCCESS", "rows": len(checks), "overall": overall, "in_session": in_s, "checks": checks,
                 "checked_at": now}
     finally:

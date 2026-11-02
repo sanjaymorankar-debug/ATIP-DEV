@@ -118,8 +118,10 @@ def data_plan_status(timeout: float = 10) -> dict:
 # in the same second. 2026-10-30: 639 quote calls refused, a broker-health DOWN at 12:59 whose NIFTY
 # quote landed in the same second as the dashboard's, and two index histories refused at 16:48 with
 # more than five calls in one second. Seconds between two calls of a family:
-PACE_SECONDS = {"quote": 1.1, "data": 0.3}
+# 2026-10-31 (DP-08): the option chain API allows one call every 3 seconds (its expiry list too).
+PACE_SECONDS = {"quote": 1.1, "data": 0.3, "chain": 3.1}
 _QUOTE_CALLS = {"quote_data", "ohlc_data", "ticker_data"}
+_CHAIN_CALLS = {"option_chain", "expiry_list"}
 _pace_lock = threading.Lock()
 _next_call = {}
 
@@ -127,11 +129,12 @@ _next_call = {}
 def _pace(fn):
     """Wait for this call's turn in its API family. The turn is booked under the lock and the wait
     happens outside it, so callers go in the order they arrived."""
-    family = "quote" if getattr(fn, "__name__", "") in _QUOTE_CALLS else "data"
+    name = getattr(fn, "__name__", "")
+    family = "quote" if name in _QUOTE_CALLS else "chain" if name in _CHAIN_CALLS else "data"
     with _pace_lock:
         now = time.monotonic()
         turn = max(now, _next_call.get(family, 0.0))
-        _next_call[family] = turn + PACE_SECONDS[family]
+        _next_call[family] = turn + PACE_SECONDS.get(family, 0.0)
     if turn > now:
         time.sleep(turn - now)
 

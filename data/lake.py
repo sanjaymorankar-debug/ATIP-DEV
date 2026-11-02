@@ -156,6 +156,34 @@ def read(dataset, start=None, end=None, as_of=None, columns=None, conn=None) -> 
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def purge(dataset: str, before, conn=None, dry_run: bool = True) -> int:
+    """Retention for a high-frequency dataset (2026-10-31: "ticks", db/purge.py SHORT tier, 90 days): every part
+    dated before `before` -- its file and its manifest row -- is deleted. Returns the rows those parts held. The
+    lake stays append-only otherwise; only retention removes anything."""
+    conn, own = _conn(conn)
+    try:
+        rows = conn.execute("SELECT id, path, `rows` FROM lake_partition WHERE dataset=? AND partition_date<?",
+                            (dataset, str(_d(before)))).fetchall()
+        total = sum(int(r[2] or 0) for r in rows)
+        if dry_run or not rows:
+            return total
+        for _id, path, _n in rows:
+            try:
+                Path(path).unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                Path(path).parent.rmdir()              # the date= folder, once empty
+            except OSError:
+                pass
+        conn.executemany("DELETE FROM lake_partition WHERE id=?", [(r[0],) for r in rows])
+        conn.commit()
+        return total
+    finally:
+        if own:
+            conn.close()
+
+
 def archive_table(table: str, date_col: str, dataset: str | None = None, start=None, end=None, conn=None,
                   knowledge_col: str | None = None) -> dict:
     """Copy rows of a SQLite table into the lake, one partition per day. knowledge_col (e.g.

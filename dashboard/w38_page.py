@@ -150,6 +150,12 @@ def mobile_summary(conn) -> dict:
             md = {}
         feed["market_data"] = {"status": md.get("status"), "detail": md.get("detail")}
     out["data_feed"] = feed
+    try:                                    # 2026-10-31 (MON-07): every Dhan feed, OFF included (the Live screen)
+        from ops.data_health import feeds
+        out["live_feeds"] = [{"feed": f["feed"], "label": f["label"], "state": f["state"], "problem": f["problem"]}
+                             for f in feeds(conn)]
+    except Exception:
+        out["live_feeds"] = []
     news = one("SELECT MAX(start_time) last_fetch FROM pipeline_log WHERE kind='run' AND status IN ('SUCCESS','NO_NEW') "
                "AND job_name IN ('news_premarket','news_midday','news_catchup','news_recover')") or {}
     since = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
@@ -170,12 +176,17 @@ body{font-size:15px;padding-bottom:24px}.wrap{padding:12px}.big{font-size:26px;f
 <div class="top"><b style="color:var(--accent)">📊 ATIP</b><span class="muted" id="upd">loading…</span></div>
 __OPBANNER__
 <div id="off">Offline — showing the last data received.</div>
-<div class="seg" role="tablist" aria-label="Screens"><button role="tab" id="tToday" aria-selected="true" onclick="mtab('today')">Today</button><button role="tab" id="tAsia" aria-selected="false" onclick="mtab('asia')">Global &amp; Asia</button><button role="tab" onclick="location.href='/command'">Command</button></div>
+<div class="seg" role="tablist" aria-label="Screens"><button role="tab" id="tToday" aria-selected="true" onclick="mtab('today')">Today</button><button role="tab" id="tLive" aria-selected="false" onclick="mtab('live')">Live</button><button role="tab" id="tAsia" aria-selected="false" onclick="mtab('asia')">Global &amp; Asia</button><button role="tab" onclick="location.href='/command'">Command</button></div>
 <div class="wrap" id="app"></div>
+<div class="wrap" id="livePane" hidden><h3 class="ga-h">🛰 Live feeds</h3><div id="lfM" class="muted">Loading…</div></div>
 <div class="wrap" id="asiaPane" hidden><div id="niBox" class="muted">Loading…</div><h3 class="ga-h">Global &amp; Asia markets</h3><div id="gaBox" class="muted">Loading…</div></div>
 __ASIAJS__
-<script>function mtab(t){var a=t==='asia';document.getElementById('app').hidden=a;document.getElementById('asiaPane').hidden=!a;
-document.getElementById('tToday').setAttribute('aria-selected',String(!a));document.getElementById('tAsia').setAttribute('aria-selected',String(a));if(a){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox');}}</script>
+<script>function mtab(t){var panes={today:'app',live:'livePane',asia:'asiaPane'},tabs={today:'tToday',live:'tLive',asia:'tAsia'};
+Object.keys(panes).forEach(function(k){document.getElementById(panes[k]).hidden=k!==t;document.getElementById(tabs[k]).setAttribute('aria-selected',String(k===t))});
+if(t==='asia'){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox');}if(t==='live'){atipLoadFeeds('lfM')}}
+// 2026-10-31: /m?tab=live is the Android / iOS Live tab; the feeds refresh every 15 s while it is shown
+if(new URLSearchParams(location.search).get('tab')==='live'){mtab('live')}
+setInterval(function(){if(!document.getElementById('livePane').hidden&&!document.hidden)atipLoadFeeds('lfM')},15000);</script>
 <script>
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const n=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});
@@ -200,7 +211,8 @@ async function load(){let d,cached=false;
     <div class="card"><h3>🛰 Data feeds</h3><div class="row"><span>Dhan market data</span><span class="${md.status==='OK'?'ok':'bad'}">${esc(md.status||'—')}</span></div>
     ${md.detail&&md.status!=='OK'?`<div class="muted">${esc(md.detail)}</div>`:''}
     <div class="row"><span>Broker health</span><span>${esc(f.overall||'—')} <span class="muted">${esc(String(f.checked_at||'').slice(5,16))}</span></span></div>
-    <div class="row"><span>News fetched</span><span>${esc(nw.last_fetch?String(nw.last_fetch).slice(5,16):'never')} · ${nw.n?(nw.ai?`AI ${nw.ai}/${nw.n}`:'keyword only'):'—'}</span></div></div>
+    <div class="row"><span>News fetched</span><span>${esc(nw.last_fetch?String(nw.last_fetch).slice(5,16):'never')} · ${nw.n?(nw.ai?`AI ${nw.ai}/${nw.n}`:'keyword only'):'—'}</span></div>
+    ${(d.live_feeds||[]).length?`<div class="row"><span>Live feeds</span><span><a href="#" onclick="mtab('live');return false" style="color:var(--accent)">${(d.live_feeds||[]).filter(f=>f.state!=='OFF').length} on · ${(d.live_feeds||[]).filter(f=>f.problem).length?`<span class="bad">${(d.live_feeds||[]).filter(f=>f.problem).length} need attention</span>`:'no problems'}</a></span></div>`:''}</div>
     <div class="card"><h3>🔔 Alerts</h3>${list(d.alerts,a=>`<div class="row"><span class="muted">${esc(String(a.created_at).slice(5,16))}</span><span>${esc(a.title)}</span></div>`)}</div>
     <div class="muted" style="text-align:center">Read-only · model output, not advice · <a href="/" style="color:var(--accent)">full dashboard</a></div>`}
 load();setInterval(load,5*60*1000);
@@ -213,9 +225,10 @@ def render_mobile(token: str = "") -> str:
     # Global & Asia screen (dashboard/global_asia.py), also what the Android / iOS shells (mobile/) load.
     # NI-05: the news impact panel sits on top of that screen.
     from dashboard.global_asia import status_banner_html, ASIA_CSS, ASIA_JS
+    from dashboard.market_page import LIVE_FEEDS_CSS, LIVE_FEEDS_JS          # 2026-10-31: the Live screen
     from dashboard.news_impact_view import NI_CSS, NI_JS
     return (MOBILE.replace("__STYLE__", _STYLE).replace("__OPBANNER__", status_banner_html())
-            .replace("__ASIACSS__", ASIA_CSS + NI_CSS).replace("__ASIAJS__", ASIA_JS + NI_JS))
+            .replace("__ASIACSS__", ASIA_CSS + NI_CSS + LIVE_FEEDS_CSS).replace("__ASIAJS__", ASIA_JS + NI_JS + LIVE_FEEDS_JS))
 
 
 MANIFEST = json.dumps({

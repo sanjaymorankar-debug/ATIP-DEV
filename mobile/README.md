@@ -7,6 +7,7 @@ release:
 | Tab | Page | What it shows |
 |---|---|---|
 | Today | `/m` | Market Health, Nifty/VIX, global, buys/sells, Trade of the Day, P&L, pipeline, feeds, alerts |
+| Live | `/m?tab=live` | (2026-10-31) every Dhan live feed — index and stock WebSocket, tick capture, 1-minute bars, 20-level depth, option chain — as OFF / IDLE / LIVE / REST / STALE with the last data time; refreshes every 15 s |
 | Command | `/command` | Command Center (UXR-01): halt switch, risk budget, pending confirmations, 10 sessions |
 | Global & Asia | `/global-asia` | Nikkei 225, TOPIX, KOSPI, KOSDAQ, TAIEX, KSE-100: last, % change, signal, session; Asia Sentiment Score; Pakistan risk flag; global markets |
 

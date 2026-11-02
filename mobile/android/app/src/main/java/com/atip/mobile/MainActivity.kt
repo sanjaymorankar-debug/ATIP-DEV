@@ -26,6 +26,8 @@ import kotlin.concurrent.thread
  * ATIP for Android (2026-10-26): a native shell around ATIP's own mobile screens.
  *
  *   Today          /m            market health, signals, portfolio, pipeline, alerts
+ *   Live           /m?tab=live   (2026-10-31) every Dhan live feed: index / stock WebSocket, ticks, 1-minute
+ *                                bars, 20-level depth, option chain -- OFF / IDLE / LIVE / REST / STALE
  *   Command        /command      Command Center (UXR-01): halt switch, sessions, pending confirmations
  *   Global & Asia  /global-asia  Japan, South Korea, Taiwan, Pakistan signals + global markets (Task 3)
  *
@@ -36,8 +38,8 @@ import kotlin.concurrent.thread
  * which carry the dashboard token and are refused (HTTP 423) while ATIP is stopped.
  */
 class MainActivity : AppCompatActivity() {
-    private val tabs = listOf("/m" to R.string.tab_today, "/command" to R.string.tab_command,
-                              "/global-asia" to R.string.tab_asia)
+    private val tabs = listOf("/m" to R.string.tab_today, "/m?tab=live" to R.string.tab_live,
+                              "/command" to R.string.tab_command, "/global-asia" to R.string.tab_asia)
     private lateinit var web: WebView
     private lateinit var banner: TextView
     private lateinit var refresh: SwipeRefreshLayout
