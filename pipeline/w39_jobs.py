@@ -18,6 +18,10 @@ Windows task running tools/dhan_token_refresh.py, and data/history_backfill.py s
 pipeline/scheduler.py _schedule_w39_jobs. (W39b had built both too; on merging #4 its own
 versions were dropped so there is one of each.)
 
+    session_reports      RPT-05  every 15 minutes, 06:00-20:45: closed session cycles are stored and posted to the ledger,
+                         then the report schedules that are due run (enterprise/session_reports.py).
+                         Off with config "reports": {"enabled": false}. A no-op on the view-only server.
+
 Switches (atip_data/config.json):
     "sip_enabled": true, "sip_time": "09:30"
     "risk_model": {"enabled": true, "time": "21:45", ...}   (quant/risk_model.py DEFAULTS)
@@ -99,4 +103,16 @@ def schedule_jobs(schedule, run_job) -> list:
         t = _hhmm(rm["time"], "21:45")
         schedule.every().day.at(t).do(run_job, "risk_model", risk_model_run)
         out.append(f"risk_model daily {t} (factor risk model, incremental)")
+    if (cfg.get("reports") or {}).get("enabled", True):
+        # RPT-05 (2 Nov 2026): newly closed session cycles into session_cycles and the ledger, then the due
+        # report schedules (enterprise/session_reports.py; their times are IST, a missed one catches up)
+        for hh in range(6, 21):                  # every 15 min inside ATIP's run window (06:00-21:00 IST)
+            for mm in (0, 15, 30, 45):
+                schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_job, "session_reports", session_reports_tick)
+        out.append("session_reports every 15 min 06:00-20:45 (cycle book + due report schedules)")
     return out
+
+
+def session_reports_tick() -> dict:
+    from enterprise.session_reports import tick
+    return tick()

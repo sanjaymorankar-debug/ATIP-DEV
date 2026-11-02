@@ -91,7 +91,12 @@ POOL_DEFAULTS = {"target_pct": 3.0, "stop_pct": 2.0, "min_buy_value": 12000.0, "
 POOL_COLUMNS = {"start_capital": "REAL", "target_pct": "REAL", "stop_pct": "REAL",
                 "min_buy_value": "REAL", "max_occurrences": "INTEGER", "pool_started_at": "TEXT",
                 "auto_pick": "INTEGER",                 # orders/autopick.py starts the next occurrence
-                "trail_pct": "REAL", "hold_days": "REAL"}   # the trailing exit; NULL = sell at +target_pct
+                "trail_pct": "REAL", "hold_days": "REAL",   # the trailing exit; NULL = sell at +target_pct
+                # SES-01 (2 Nov 2026): the floor rule and compounding basis (accounting/cycles.py); NULL = FIXED floor,
+                # CASH_AFTER_CHARGES -- the behaviour before them
+                "floor_rule": "TEXT", "floor_value": "REAL", "floor_step_every": "INTEGER", "compound_basis": "TEXT"}
+FLOOR_RULES = ("FIXED", "RATCHET_PCT", "STEP")
+COMPOUND_BASES = ("CASH_AFTER_CHARGES", "AFTER_TAX_RESERVE")
 # The owner's trailing exit (30 Oct 2026): trail 1 % under the high once up target_pct, and after
 # 15 days sell at target_pct or more. Pools start without it unless it is asked for.
 OWNER_TRAIL = {"trail_pct": 1.0, "hold_days": 15.0}
@@ -281,6 +286,33 @@ def update_session(conn, sid: str, fields: dict) -> dict:
                 raise ValueError(f"{k} must be a number")
             if v <= 0:
                 raise ValueError(f"{k} must be positive")
+            sets.append(f"{k} = ?"); vals.append(v)
+    if "max_occurrences" in fields:
+        try:
+            v = int(fields["max_occurrences"])
+        except (TypeError, ValueError):
+            raise ValueError("max_occurrences must be a whole number")
+        if v <= 0:
+            raise ValueError("max_occurrences must be positive")
+        sets.append("max_occurrences = ?"); vals.append(v)
+    for k, allowed in (("floor_rule", FLOOR_RULES), ("compound_basis", COMPOUND_BASES)):
+        if k in fields:
+            v = str(fields[k] or "").strip().upper() or None
+            if v and v not in allowed:
+                raise ValueError(f"{k} must be one of {', '.join(allowed)}")
+            sets.append(f"{k} = ?"); vals.append(v)
+    for k, cast in (("floor_value", float), ("floor_step_every", int)):
+        if k in fields:
+            v = fields[k]
+            if v in (None, ""):
+                v = None
+            else:
+                try:
+                    v = cast(v)
+                except (TypeError, ValueError):
+                    raise ValueError(f"{k} must be a number")
+                if v < 0:
+                    raise ValueError(f"{k} cannot be negative")
             sets.append(f"{k} = ?"); vals.append(v)
     for k in ("trail_pct", "hold_days"):
         if k in fields:
@@ -574,13 +606,30 @@ def ledger(conn, sid: str, s: dict | None = None, history: bool = False) -> dict
                      "value": round(value, 2), "cost": t["held_cost"], "unrealised": round(value - t["held_cost"], 2),
                      "since": t["date"], "rule_id": t["rule_id"], "stop": t["stop_now"], "trailing": t["trailing"],
                      "sell_at": t["sell_at"], "sell_from": t["sell_from"]})
-    cash = start + sum(t["cash_flow"] for t in tr)
+    # SES-03/ACC-05 (2 Nov 2026): money moved in or out by a transfer, the next cycle's floor under the session's
+    # floor rule, and the tax set aside under AFTER_TAX_RESERVE. With no transfer, a FIXED floor and
+    # CASH_AFTER_CHARGES these are 0, min_buy_value and 0, and every figure below is what it was.
+    floor = float(s.get("min_buy_value") or 0)
+    extras = {"floor": floor, "floor_rule": "FIXED", "compound_basis": "CASH_AFTER_CHARGES", "tax_reserve": 0.0}
+    moved = []
+    try:
+        from accounting.cycles import pool_extras, transfers_for
+        moved = transfers_for(conn, sid, s.get("pool_started_at"))
+        extras = pool_extras(s, rules, tr, moved)
+    except Exception as e:
+        log.warning(f"  session {sid} floor / tax reserve unreadable, using min_buy_value: {e}")
+    cash = start + sum(t["cash_flow"] for t in tr) + sum(m["amount"] for m in moved)
     booked = sum(t["pnl"] for t in tr)
     closed = [t for t in tr if t["closed"]]
     wins = sum(1 for t in closed if t["pnl"] > 0)
     equity = cash + sum(h["value"] for h in held)
     occ = _occurrences(start, tr)
     cap = int(s.get("max_occurrences") or POOL_DEFAULTS["max_occurrences"])
+    investable = cash - float(extras["tax_reserve"] or 0)
+    waiting = None
+    if not held and extras["floor"] and investable < float(extras["floor"]):
+        from accounting.cycles import waiting_text
+        waiting = waiting_text(investable, float(extras["floor"]))
     return {"start_capital": round(start, 2), "since": s.get("pool_started_at"),
             "cash": round(cash, 2), "booked": round(booked, 2), "charges": round(sum(t["charges"] for t in tr), 2),
             "open": held, "open_value": round(sum(h["value"] for h in held), 2),
@@ -593,7 +642,11 @@ def ledger(conn, sid: str, s: dict | None = None, history: bool = False) -> dict
             "latest": occ[-1] if occ else None, **({"occurrences": occ} if history else {}),
             "target_pct": s.get("target_pct"), "stop_pct": s.get("stop_pct"),
             "trail_pct": s.get("trail_pct"), "hold_days": s.get("hold_days"), "exit_rule": exit_rule(s),
-            "min_buy_value": s.get("min_buy_value")}
+            "min_buy_value": s.get("min_buy_value"),
+            "transfers": round(sum(m["amount"] for m in moved), 2), "floor": round(float(extras["floor"]), 2),
+            "floor_rule": extras["floor_rule"], "compound_basis": extras["compound_basis"],
+            "tax_reserve": round(float(extras["tax_reserve"] or 0), 2), "investable_cash": round(investable, 2),
+            "waiting": waiting}
 
 
 def pool_quantity(conn, sid: str, price: float, pct: float = 100.0) -> dict:
@@ -602,7 +655,8 @@ def pool_quantity(conn, sid: str, price: float, pct: float = 100.0) -> dict:
     L = ledger(conn, sid)
     if not L:
         return {"quantity": 0, "cash": None, "budget": None, "reason": f"session {sid} has no starting capital"}
-    budget = max(0.0, L["cash"]) * min(100.0, max(0.0, float(pct))) / 100
+    # Under AFTER_TAX_RESERVE the cycles' estimated tax is not reinvested (investable_cash = cash - tax_reserve)
+    budget = max(0.0, L.get("investable_cash", L["cash"])) * min(100.0, max(0.0, float(pct))) / 100
     if _paper():
         from orders.paper import paper_cost_model, settings
         model, bps = paper_cost_model(), float(settings().get("paper_slippage_bps") or 0)
@@ -756,12 +810,15 @@ def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
             L = ledger(conn, sid, s=s)
             if L["occurrence"] >= L["max_occurrences"]:
                 return f"session {sid} has run all {L['max_occurrences']} of its occurrences"
-            floor = float(s.get("min_buy_value") or 0)
-            if floor and L["cash"] < floor:
-                return (f"session {sid} has Rs {L['cash']:,.0f} free, under its Rs {floor:,.0f} minimum buy"
+            # The floor is the session's floor rule's (min_buy_value under FIXED); the free cash leaves out the tax
+            # set aside under AFTER_TAX_RESERVE (accounting/cycles.py). Defaults: min_buy_value and all the cash.
+            floor = float(L.get("floor", s.get("min_buy_value")) or 0)
+            free = float(L.get("investable_cash", L["cash"]))
+            if floor and free < floor:
+                return (f"session {sid} has Rs {free:,.0f} free, under its Rs {floor:,.0f} minimum buy"
                         + (f" -- waiting for {', '.join(h['symbol'] for h in L['open'])} to exit" if L["open"] else ""))
-            if est_value and est_value > L["cash"] + 0.01:
-                return f"session {sid}: a Rs {est_value:,.0f} buy is more than its Rs {L['cash']:,.0f} cash"
+            if est_value and est_value > free + 0.01:
+                return f"session {sid}: a Rs {est_value:,.0f} buy is more than its Rs {free:,.0f} cash"
         elif s.get("capital_cap") and est_value and u["open_value"] + est_value > float(s["capital_cap"]):
             return (f"session {sid}: Rs {u['open_value'] + est_value:,.0f} open would exceed its "
                     f"Rs {s['capital_cap']:,.0f} capital cap")

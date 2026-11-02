@@ -171,3 +171,49 @@ def test_data_platform_and_compliance_tabs_switch_without_errors(ctx, site):
             tabs.nth(i).click()
             v.settle(150)
         v.assert_clean()
+
+
+# ── the 2 Nov 2026 redesign: the shell on every page, the new pages, both themes, phone width ──
+
+SHELL_PAGES = [("/home", "Today · ATIP"), ("/sessions", "Sessions · ATIP"), ("/sessions/S1", "S1 · Momentum · ATIP"),
+               ("/accounting?tab=tax", "Accounting · ATIP"), ("/reports", "Reports · ATIP"),
+               ("/settings", "Settings · ATIP"), ("/more", "More · ATIP")]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [1440, 390])
+def test_redesign_pages_render_in_the_shell_without_errors(browser, site, theme, width):
+    base, _ = site
+    c = browser.new_context(viewport={"width": width, "height": 900}, color_scheme=theme)
+    c.route("**/*", lambda r: r.continue_() if r.request.url.startswith(base) else r.abort())
+    try:
+        for path, title in SHELL_PAGES + [("/command", "ATIP Command Center"), ("/", "ATIP Dashboard")]:
+            v = Visit(c, base, path + ("&" if "?" in path else "?") + f"theme={theme}")
+            assert v.page.title() == title
+            assert v.page.locator(".ax-top").count() == 1
+            assert v.page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), f"{path} overflows at {width}"
+            if width < 768:
+                assert v.page.locator(".ax-tabbar").is_visible() and not v.page.locator(".ax-rail").is_visible()
+            else:
+                assert v.page.locator(".ax-rail").is_visible()
+            v.assert_clean()
+    finally:
+        c.close()
+
+
+def test_search_palette_and_setup_drawer(ctx, site):
+    import re
+    from playwright.sync_api import expect
+    base, _ = site
+    v = Visit(ctx, base, "/sessions")
+    v.page.keyboard.press("Control+k")
+    v.page.locator("#ax-palette input").fill("tax")
+    expect(v.page.locator("#ax-palette-list")).to_contain_text("Tax register")
+    v.page.keyboard.press("Escape")
+    v.page.locator('button[aria-label="Set up S1"], button:has-text("Set up S1")').first.click()
+    expect(v.page.locator("#ax-setup")).to_have_class(re.compile("open"))
+    v.page.locator("#f-start").fill("25000")
+    v.page.locator("#f-min").fill("30000")
+    v.page.locator("#ax-setup-save").click()
+    expect(v.page.locator('[data-err="min_buy_value"]')).to_contain_text("is more than the ₹25,000 starting amount")
+    v.assert_clean()

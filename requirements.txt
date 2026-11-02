@@ -50,7 +50,15 @@ python-dotenv>=1.0.0
 # W8 field encryption (ops/crypto.py: MFA secrets); was installed but undeclared until W9
 cryptography>=41.0
 tqdm>=4.66.0
-openpyxl>=3.1.0
+openpyxl>=3.1.0                # also the session reports' XLSX (enterprise/session_reports.py)
+
+# ── Report PDFs (2 Nov 2026) ──────────────────────────────────────────────
+# No package is required: enterprise/session_reports.py prints the HTML report
+# with headless Chrome / Chromium when one is installed, and otherwise uses its
+# own dependency-free writer (enterprise/pdf_writer.py). WeasyPrint is the
+# optional richer engine; it needs Pango from Homebrew on macOS, so it is not
+# installed by default:
+# weasyprint==66.0
 
 # ── Database backends beyond SQLite (Optional) ───────────────────────────
 # SQLite is the default and needs nothing installed. The hosted deployment runs

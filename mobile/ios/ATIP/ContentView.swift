@@ -4,18 +4,22 @@ struct ContentView: View {
     @AppStorage("server") private var server = "http://192.168.1.10:8000"
     @StateObject private var status = StatusModel()
     @State private var editing = false
+    @State private var tab = 0
+    @State private var home = [0, 0, 0, 0, 0]       // per tab: bumped when the open tab is tapped again
 
     var body: some View {
         VStack(spacing: 0) {
             StatusBanner(state: status.state)
                 .onLongPressGesture { editing = true }
                 .accessibilityHint("Long-press to change the ATIP server address")
-            TabView {
-                WebScreen(url: url("/m")).tabItem { Label("Today", systemImage: "chart.line.uptrend.xyaxis") }
-                // 2026-10-31: every Dhan live feed (OFF / IDLE / LIVE / REST / STALE), refreshed every 15 s
-                WebScreen(url: url("/m?tab=live")).tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
-                WebScreen(url: url("/command")).tabItem { Label("Command", systemImage: "switch.2") }
-                WebScreen(url: url("/global-asia")).tabItem { Label("Global & Asia", systemImage: "globe.asia.australia") }
+            // 2026-11-02: the five tabs of the page shell (Home, Trade, Sessions, Reports, More), the same as Android.
+            // Sessions shows S1-S10 with gross vs actual P&L (after charges and estimated tax).
+            TabView(selection: Binding(get: { tab }, set: { if $0 == tab { home[$0] += 1 }; tab = $0 })) {
+                screen(0, "/home").tabItem { Label("Home", systemImage: "house") }.tag(0)
+                screen(1, "/command").tabItem { Label("Trade", systemImage: "chart.line.uptrend.xyaxis") }.tag(1)
+                screen(2, "/sessions").tabItem { Label("Sessions", systemImage: "square.grid.2x2") }.tag(2)
+                screen(3, "/reports").tabItem { Label("Reports", systemImage: "doc.text") }.tag(3)
+                screen(4, "/more").tabItem { Label("More", systemImage: "ellipsis.circle") }.tag(4)
             }
         }
         .task(id: server) { await status.run(server: server) }
@@ -26,7 +30,7 @@ struct ContentView: View {
         }
     }
 
-    private func url(_ path: String) -> URL? {
-        URL(string: server.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) + path)
+    private func screen(_ i: Int, _ path: String) -> WebScreen {
+        WebScreen(url: URL(string: server.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) + path), home: home[i])
     }
 }

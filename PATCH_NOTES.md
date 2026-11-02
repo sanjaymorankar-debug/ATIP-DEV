@@ -229,3 +229,81 @@ per configuration).
 my environment) — it compiles and the restructure is mechanical, but its first
 real run is the proof. No real Dhan order was placed; the order path was tested
 with a stubbed broker. Dry-run a single share before sizing up.
+
+---
+
+# 2 Nov 2026: UI/UX redesign, session accounting and periodic reports
+
+Delta on `8092f74` plus the uncommitted Dhan-feeds work of 31 Oct (branch `claude/dhan-pacing-2026-10-31`). Additive only: every old URL, API route and response key still works, and the trading guards are unchanged. Those guards are the kill switch, PAPER-only auto-send, AUTO's `ack`, the SEBI Algo ID guard, exit legs never held by `gate()`, and EOD signals. Writes still need the dashboard token, and get a 423 while ATIP is stopped and a 403 on the viewer.
+
+## What you get
+
+- **One shell on every page.** It has a left rail of 10 sections and, on phones, a bottom tab bar. The top bar carries Ctrl/⌘K search (pages, commands, symbols), the PAPER / SANDBOX / LIVE badge, the run state in `/api/status`'s own words, a kill switch on every page (it shows the ₹ in open trades), alerts, the theme and the profile. Light and dark themes are served from `/static/atip/`.
+- **New pages:** `/home` (safe, running, making money?), `/sessions`, `/sessions/S1…`, `/accounting`, `/reports`, `/settings`, `/more`, `/markets`, `/trade`, `/lab` and `/ops` (the link on `/compliance` was a 404).
+- **Each session's own money, from the UI.** Each session gets its own starting amount, a minimum per cycle that grows (FIXED, RATCHET_PCT or STEP), a compounding basis (CASH_AFTER_CHARGES or AFTER_TAX_RESERVE), exits, max cycles, auto-pick, mode and status. Validation is in plain English, and every change is logged in `session_events`.
+- **Every cycle and every total shows gross P&L, each charge, estimated tax and actual P&L.** These are never blended into one number. The §4.6 example matches to the paisa (`tests/test_session_cycles.py`).
+- **Accounting:**
+  - a double-entry ledger, a session ledger, a trial balance, the charges register and the FY tax register (set-offs, LTCG exemption once a year);
+  - funds, with VIRTUAL and ACTUAL kept apart;
+  - reconciliation of contract-note CSV and session cash;
+  - transfers between sessions (refused out of an open trade) and manual adjustments.
+- **Reports:**
+  - kinds: daily session summary, weekly performance, monthly P&L statement, quarterly review, FY tax statement, session cycle book and custom;
+  - formats: HTML, CSV, XLSX and PDF;
+  - schedules, editable in IST (daily, weekly, monthly, quarterly, FY or cron), with an archive;
+  - delivery through `enterprise/notifications.py`.
+- **Trade screens:**
+  - Command Center session tiles show gross vs actual.
+  - Trade Setup shows the chosen session's free cash and floor.
+  - Live Monitor has a cycle-progress bar for each session.
+- **Phone apps:** tabs are Home, Trade, Sessions, Reports and More, with the env badge in the native banner. Versions are 2026.11.02 (Android versionCode 3, iOS build 3).
+
+## Files
+
+**New:**
+
+| Area | Files |
+|---|---|
+| Accounting | `accounting/__init__.py`, `accounting/tax.py`, `accounting/cycles.py`, `accounting/ledger.py`, `accounting/reconcile.py` |
+| Reports | `enterprise/session_reports.py`, `enterprise/pdf_writer.py` |
+| Dashboard | `dashboard/shell.py`, `dashboard/ux_kit.py`, `dashboard/ux_pages.py`, `dashboard/ux_routes.py`, `dashboard/static/atip/atip.css`, `dashboard/static/atip/atip.js` |
+| Tests | `tests/test_session_cycles.py`, `tests/test_session_reports.py`, `tests/test_ux_shell.py` |
+| Docs | `docs/design/*` (design pack, design system, handoff), `docs/testing/ATIP_UIUX_Test_Report_2026-11-02.md` (+ `.xlsx`), `docs/testing/screenshots/` |
+
+**Changed:**
+
+- `orders/sessions.py`:
+  - 4 pool columns;
+  - `update_session` accepts the floor and basis fields and `max_occurrences`;
+  - `ledger()` adds keys;
+  - `gate()` and `pool_quantity()` read the floor and the investable cash, which are unchanged with the defaults.
+- `enterprise/reports.py`: session kinds as sections; quarterly and FY schedules.
+- `pipeline/w39_jobs.py`: the 15-minute `session_reports` job (06:00–20:45 IST), through the scheduler's documented hook. `pipeline/scheduler.py` is not touched.
+- `dashboard/server.py`: two lines registering `dashboard/ux_routes.py`.
+- `dashboard/global_asia.py`: `/api/status` gains an `env` key.
+- `config_template.json`: the `tax` and `reports` blocks.
+- `requirements.txt`: notes on the PDF engine.
+- `tests/test_w39_ui_smoke.py`: Playwright checks of the new pages.
+- `mobile/` (Android and iOS).
+- The tracker.
+
+## Migration
+
+There is nothing to run. Every new table and column is created on first use (`CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN`). The first visit to `/sessions`, or the first 15-minute job, backfills `session_cycles` and the ledger from the existing trades. To recompute stored cycles after changing tax rates, run `POST /api/v2/sessions/sync {"force": true}`.
+
+**Restart ATIP after applying,** so the dashboard and the scheduler load the new code.
+
+## Assumptions (record of the decisions made without stopping)
+
+1. **`/` stays the ATIP Scores page.** The new Home is `/home`, which the logo, the rail and the phone's Home tab open. No old URL redirects.
+2. **Older pages are wrapped in the shell; their inline styles are not rewritten.** Rewriting about 60 page modules would break "delta patches, not rewrites". The shared bundle carries the tokens and the shell. The older page bodies keep their own look; the design pack's open items HR-12, 14, 20, 21 and 24 track this.
+3. **Tax per cycle taxes net P&L after every charge, including STT**, to match the owner's §4.6 example. Under s.48 STT is not deductible from capital gains, so `"tax": {"stt_deductible": false}` taxes it the other way. A loss carries no tax per cycle; the FY view does the set-off. Surcharge and cess are shown but only added when `addons_enabled` is on, again to match §4.6. Rates are the FY 2026-27 defaults from the brief and must be verified with a CA.
+4. **A cycle is written when it closes,** by the sync that the Sessions pages, the reports and the 15-minute job run. The trading path itself is not modified to write it. Charges are itemised with the cost model the fill used. Any paisa difference from the fill's recorded charges is shown as "Other", so the totals always equal what the books paid.
+5. **The ledger follows each session's current pool.** A pool restart returns the old pool's cash to Owner capital and allocates the new amount. Charges are posted on the day the cycle closed.
+6. **RATCHET_PCT counts the starting amount and every cycle start so far,** and never goes below the base minimum. STEP counts cycles with a positive net P&L.
+7. **AFTER_TAX_RESERVE:** the tax set aside is not reinvested (`investable_cash` = `cash` − reserve). Switching the basis restates the whole current pool.
+8. **There is no `funds/report.py` in the codebase.** Funds was built from the paper account, `paper_position` and the latest Dhan holdings sync. Broker cash is read live on `/brokers`, not stored.
+9. **PDFs:** WeasyPrint when installed, else a headless Chrome print, else the built-in writer (`enterprise/pdf_writer.py`, so a PDF is always produced). WeasyPrint is not installed; it needs Pango from Homebrew, and the live venv was not changed.
+10. **Report delivery** goes to the inbox and channels of the default tenant's users through `notify()`. On an install with no enterprise users the report stays in the archive. Nothing is generated or sent on the view-only server.
+11. **"Test" and "Prod" servers are local instances,** as in the 26 and 31 Oct runs; no hosted test.bkesari.com or bkesari.com exists to deploy to. Test was a scratch folder with a seeded database and real paper trades through the order engine. Prod was a read-only SQLite backup of the live `atip.db`. The live Mac was not restarted or written to.
+12. **The phone apps were not built:** this Mac has no Android SDK, Gradle or Java, and no full Xcode or xcodegen. The Swift sources pass `swiftc -parse` and a Mac Catalyst type-check. The Kotlin was reviewed by hand.

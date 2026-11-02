@@ -1,8 +1,10 @@
 <resources>
     <string name="app_name">ATIP</string>
-    <string name="tab_today">Today</string>
-    <string name="tab_live">Live</string>
-    <string name="tab_command">Command</string>
-    <string name="tab_asia">Global &amp; Asia</string>
+    <!-- 2026-11-02: the five tabs of the page shell, the same as iOS -->
+    <string name="tab_home">Home</string>
+    <string name="tab_trade">Trade</string>
+    <string name="tab_sessions">Sessions</string>
+    <string name="tab_reports">Reports</string>
+    <string name="tab_more">More</string>
     <string name="server_title">ATIP server address</string>
 </resources>

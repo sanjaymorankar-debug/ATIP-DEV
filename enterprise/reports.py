@@ -14,7 +14,11 @@ render(conn, report, fmt)  -> {"content", "rows", "format"} for fmt html | csv |
         quant_summary        the tenant's quant experiments
         custom               params {"sections": [kinds...]} -> the listed sections in one report
 run(conn, report_id, fmt, actor) stores the output (enterprise_report_output).
-Schedules: enterprise_report.schedule = daily | weekly (Mondays) | monthly (1st);
+        daily_session_summary, weekly_performance, monthly_pnl, quarterly_review, fy_tax_statement,
+        session_cycle_book   the owner's session reports (enterprise/session_reports.py, 2 Nov 2026), as rows;
+                             that module renders them with charts, XLSX and PDF, and keeps their own schedules
+Schedules: enterprise_report.schedule = daily | weekly (Mondays) | monthly (1st) | quarterly (FY quarter start) |
+fy (1 Apr);
 run_due(conn) renders due reports in their formats and notifies the owner of the report
 (category "report", through the user's channels -- SANDBOX by default).
 """
@@ -107,6 +111,13 @@ def section(conn, kind, tenant, params) -> list:
                 continue
             out += [{"section": k, **r} for r in section(conn, k, tenant, params)]
         return out
+    try:                                    # RPT (2 Nov 2026): the session reports' sections, by their kind
+        from enterprise import session_reports as SR
+        if kind in SR.KINDS:
+            return [{k: v for k, v in r.items() if k != "_fmt"} for s in SR.build(conn, kind, params)["sections"]
+                    for r in (s.get("rows") or [])]
+    except ImportError:
+        pass
     raise ValueError(f"unknown report kind {kind}")
 
 
@@ -166,8 +177,8 @@ def output(conn, output_id) -> dict | None:
 
 
 def set_schedule(conn, report_id, tenant_id, user_id, schedule, formats=None) -> dict:
-    if schedule not in (None, "", "daily", "weekly", "monthly"):
-        raise ValueError("schedule must be daily, weekly, monthly or empty")
+    if schedule not in (None, "", "daily", "weekly", "monthly", "quarterly", "fy"):
+        raise ValueError("schedule must be daily, weekly, monthly, quarterly, fy or empty")
     fmts = formats or ["html"]
     if set(fmts) - {"html", "csv", "json"}:
         raise ValueError("formats: html, csv, json")
@@ -188,6 +199,10 @@ def _due(sched, last, today) -> bool:
         return today.weekday() == 0
     if sched == "monthly":
         return today.day == 1
+    if sched == "quarterly":                # FY quarters: 1 Apr, 1 Jul, 1 Oct, 1 Jan
+        return today.day == 1 and today.month in (1, 4, 7, 10)
+    if sched == "fy":
+        return (today.month, today.day) == (4, 1)
     return False
 
 
