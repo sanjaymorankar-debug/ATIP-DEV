@@ -1,5 +1,8 @@
 # How to run and roll back: UX audit fixes, 3 Nov 2026 (times IST)
 
+**Status:** committed (`7cd1dec`, `f3718ec` on branch `claude/ux-audit-fix-2026-11-03`, not merged, not pushed) and running
+on the Mac since the 11:29:48 IST restart (backup `atip_data/backups/atip-pre-release-20261103-112652.db`).
+
 ## Run it
 
 1. On the Mac, check nothing else is half-done in the folder: `cd ~/ATIP && git status`. Another session's uncommitted work goes
@@ -26,6 +29,6 @@ Nothing to migrate: no database, config or scheduler change. Everything stays PA
 
 1. Copy the files under the zip's `_orig/` folder back over the same paths in `~/ATIP` (they are the files as they were at
    08:18 IST, before this change; files listed as new in `docs/CHANGELOG_2026-11-03_ux_audit_fix.md` can be deleted).
-   Or, on the branch: `git checkout -- <file>` does NOT work for this change alone, because the same files also hold the
-   uncommitted C1–C4 fixes; use `_orig/`.
+   On the branch, `git revert f3718ec 7cd1dec` undoes the commits, but `7cd1dec` also holds the C1–C4 fixes and the tax /
+   Live-tab work, so prefer the zip's `_orig/` for this change alone.
 2. Restart the dashboard as above.

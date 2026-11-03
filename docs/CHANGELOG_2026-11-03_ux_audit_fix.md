@@ -40,6 +40,22 @@ Every file this change touched and why. "New" files have no `_orig/` copy in the
 | `dashboard/global_asia.py` | H3/H6 `--ga-*` colours from tokens (follows the theme); M6 the news panel's boxes named; banner ids and function signatures unchanged. |
 | `dashboard/w37_page.py` (`/brokers`), `w39_retail_page.py` (`/baskets`), `assistant_page.py` | M6 labels (tabs, file input, selects, basket legs, question box); M1 no overflow at 320. |
 
+## Owner decision: Trade of the Day only on a BUY signal (3 Nov 2026 ~11:15 IST)
+
+| File | Why |
+|---|---|
+| `dashboard/server.py` | The Scores card says "No BUY signal for today" (with the day's BUY / HOLD / WAIT / SELL counts) unless the pick is a BUY; the ⭐ only on a BUY pick. |
+| `dashboard/ux_pages.py` | Today's Trade of the Day card the same. |
+| `dashboard/w38_page.py` | `/m` reads the pick only when it is a BUY and otherwise says "No BUY signal for today". |
+| `alerts/telegram.py` | The Trade of the Day alert and the morning digest say "No BUY signal for today" on such days; a BUY pick's levels come from `compute_trade_plan` (C3's one formula). |
+| `pipeline/premarket_report.py` | `trade_of_day` is the pick only when it is a BUY (display rule; no scoring change). |
+
+## Found on the live Mac after the restart
+
+| File | Why |
+|---|---|
+| `dashboard/ux_kit.py`, `dashboard/server.py` | `feed_label()` takes the newest of the 15-minute quote snapshots, a ticking `live_feed_status` feed and the dashboard's own 15 s quote fetch (`note_quotes_fetched()`), so a working feed is not called stale between snapshots. |
+
 ## Found while testing (outside the audit)
 
 | File | Why |
@@ -54,6 +70,7 @@ Every file this change touched and why. "New" files have no `_orig/` copy in the
 | `mobile/android/app/build.gradle.kts` | versionCode 5, versionName 2026.11.03.1. |
 | `mobile/ios/ATIP/StatusBanner.swift` | H1 the native banner adds the shared feed label. |
 | `mobile/ios/project.yml` | CFBundleShortVersionString 2026.11.03.1, CFBundleVersion 5. |
+| `mobile/README.md`, `mobile/ios/ATIP/WebScreen.swift` | The version text and the user-agent fallback say 2026.11.03.1 / build 5 (edited by the redesign session to match). |
 
 ## Tests
 

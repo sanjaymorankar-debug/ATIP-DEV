@@ -1,4 +1,4 @@
-**Date of prompt:** 3 Nov 2026 Time 08:13 AM > (work 08:18–<<END>> IST; every time below is IST)
+**Date of prompt:** 3 Nov 2026 Time 08:13 AM > (work 08:18–11:45 IST; every time below is IST)
 
 # ATIP delta patch: the remaining UX audit findings (H1–H7, M1–M7, L1–L3), 3 Nov 2026
 
@@ -65,7 +65,30 @@ check `git status` for other sessions' work, `.venv/bin/python -m ops backup --k
 `ATIP_ux_audit_fix_2026-11-03.diff` is the unified diff of the same change. The `_orig/` copies are the working tree as it stood at
 08:18 IST, which already held the uncommitted C1–C4 fixes, the 3 Nov tax change and the Live-tab app change.
 
-## Open owner decision (not decided here)
+## Owner decision, 3 Nov 2026 ~11:15 IST: no Trade of the Day without a BUY signal
 
-With no BUY signal (2 Nov: 0 BUY, 327 HOLD, 172 WAIT) the Trade of the Day is always a HOLD stock. Should it be blank on days with
-no BUY? Current behaviour kept.
+The owner answered the audit's open question (6.5): "if there is no buy signal it is be blank or can say no buy signal for
+today". The engine's pick (`ai_scores.is_tod`) is unchanged; every place that shows it now shows it only when its signal is BUY,
+and otherwise says **"No BUY signal for today"**:
+- ATIP Scores: the card says so, with how the day's scores split (e.g. "0 BUY · 327 HOLD · 172 WAIT · 0 SELL") and what to do;
+  the ⭐ in the table marks the pick only when it is a BUY.
+- Today, `/m`, the Telegram Trade of the Day alert, the morning digest's line and the pre-market report's `trade_of_day`.
+- The Telegram alert and the digest now use the dashboard's one trade-plan formula (`compute_trade_plan`, C3) for a BUY pick;
+  they still used close ± k×ATR. `/api/tod` (a data endpoint with a contract test) still returns the engine's pick as stored.
+
+## Found on the live Mac after the 11:27 restart: the feed label
+
+Stored quote snapshots land every 15 minutes, so a label read from them alone said "Feed stale" most of the trading day while
+the prices on screen were seconds old. `feed_label()` now takes the newest of the snapshots, a ticking feed in
+`live_feed_status` (the index WebSocket) and the dashboard's own 15 s quote fetch. Live at 11:29:51 IST: "Live · last tick 12 s ago".
+
+## Committed and deployed
+
+- `7cd1dec` (11:22 IST, made by the redesign session at the owner's request): this work together with the C1–C4 fixes and the
+  tax-law + Live-tab work, on branch `claude/ux-audit-fix-2026-11-03`. Its message says no pipeline logic changed; strictly,
+  `alerts/telegram.py` and `pipeline/premarket_report.py` carry the display-only Trade of the Day rule above.
+- `f3718ec` (11:29 IST): the feed-label fix.
+- Not merged into master, not pushed.
+- Live Mac: `ops backup --kind pre-release` at 11:26 IST (`atip_data/backups/atip-pre-release-20261103-112652.db`), restarted
+  with `launchctl kickstart` at 11:27:06 IST and again at 11:29:48 IST for the feed fix (pid 29396). Checked at 11:29:51 IST:
+  every page 200, PAPER, running, not halted, 10 sessions running, feed live.

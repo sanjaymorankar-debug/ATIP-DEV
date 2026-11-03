@@ -1,4 +1,4 @@
-**Date of prompt:** 3 Nov 2026 Time 08:13 AM > (testing 09:38–<<END>> IST; every time in this report is IST)
+**Date of prompt:** 3 Nov 2026 Time 08:13 AM > (testing 09:38–11:43 IST; every time in this report is IST)
 
 # ATIP UX audit fixes: test report, 3 Nov 2026
 
@@ -11,7 +11,7 @@ Scope: findings H1–H7, M1–M7, L1–L3 of the 3 Nov 2026 UX audit, plus the 0
 | "Server" | What it really was | Database | When |
 |---|---|---|---|
 | **Test** | Local instance from a scratch folder, `ATIP_ENV=test`, `ATIP_OPERATING_SCHEDULE=off`, port 8790 | fresh `main.py --init` database (empty) | 09:43–09:50 IST |
-| **Prod** | Local instance, `ATIP_ENV=staging`, port 8791 (no hosted Prod server exists) | a fresh snapshot of the live `atip.db` taken 09:28 IST | 09:38–<<XEND>> IST |
+| **Prod** | Local instance, `ATIP_ENV=staging`, port 8791 (no hosted Prod server exists) | a fresh snapshot of the live `atip.db` taken 09:28 IST | 09:38–11:40 IST |
 | **Before** | The untouched code (08:18 IST working tree) on port 8789 | a copy of the same live snapshot (08:24 IST) | 08:47–08:58 IST |
 
 Config and secrets are cwd-relative, so neither instance could see the Mac's credentials. The live Mac itself (port 8000) was only
@@ -19,14 +19,14 @@ read: at 09:31 IST every page answered 200, PAPER, running, not halted, feed "Li
 
 Tools: Node Playwright 1.62.1 with the cached Chromium 1248 headless shell, Firefox 157 (Playwright build 1555), WebKit 26.5
 (Playwright 2251) and the installed Google Chrome; axe-core **4.13.0** (4.10 is not on this Mac; 4.13 runs the same WCAG rules
-plus newer ones), tags wcag2a, wcag2aa, wcag21aa, wcag22aa. Edge is not installed, so Edge is covered by its Chromium engine only.
+plus newer ones), tags wcag2a, wcag2aa, wcag21aa, wcag22aa. Edge is not installed, so Edge is covered by its Chromium engine only; WebKit could not run (§8).
 Scripts: `.ux_build/auditfix-2026-11-03/ui/` (ux_check.js, price_moved.js, app_check.js, metrics.js).
 
 ## 2. Results at a glance
 
 | Check | Test | Prod | Notes |
 |---|---|---|---|
-| Full pytest suite | **2,374 passed, 62 skipped, 9 failed, 1 teardown error** (09:59–10:07 IST) | (same code) | 9 failures identical on the untouched code (6 `test_asia_markets`: stored Asia data 8 days old, no network; 3 `test_w39_perf_budget`: the sandbox refuses local sockets). The teardown error (`test_w39_mcp` "a tool created a table") is the same race as the 10th: the dashboard's order-monitor thread, started by an earlier test's app, keeps running into later tests' temporary databases and, in market hours, creates the session tables there. Proof: the untouched code run at 10:08–10:16 IST (market open) fails 11 and errors 2, including all of the above; the 08:22 IST pre-market run had only the 9. A real gap it exposed (the data inventory missed 10 tables) is fixed in `enterprise/privacy.py`. |
+| Full pytest suite | **2,380 passed, 62 skipped, 9 failed, 0 errors** on the committed code (`f3718ec`, 11:30–11:38 IST); earlier 09:59–10:07 run: 2,374 / 62 / 9 + 1 teardown error | (same code) | 9 failures identical on the untouched code (6 `test_asia_markets`: stored Asia data 8 days old, no network; 3 `test_w39_perf_budget`: the sandbox refuses local sockets). The teardown error (`test_w39_mcp` "a tool created a table") is the same race as the 10th: the dashboard's order-monitor thread, started by an earlier test's app, keeps running into later tests' temporary databases and, in market hours, creates the session tables there. Proof: the untouched code run at 10:08–10:16 IST (market open) fails 11 and errors 2, including all of the above; the 08:22 IST pre-market run had only the 9. A real gap it exposed (the data inventory missed 10 tables) is fixed in `enterprise/privacy.py`. |
 | New tests `tests/test_ux_audit_fix_2026_11_03*.py` | 49 + 61 + 125 passed, browser test skipped (no Python Playwright) | — | its Node twin passes (below) |
 | axe, 20 audited pages × light/dark × 1440/390 (80 runs each) | **0 violations** | **0 violations** | before: 1,637 violation nodes |
 | JS errors / 5xx on those 100 page loads (+ 320 px) | 0 | 0 | before: 0 |
@@ -34,7 +34,7 @@ Scripts: `.ux_build/auditfix-2026-11-03/ui/` (ux_check.js, price_moved.js, app_c
 | `nav[aria-label="Main"]` per page | exactly 1 on every shell page | exactly 1 | |
 | Price-moved dialog (mocked 409), 1440 and 390 | PASS | PASS | Cancel focused first and sends nothing; "Place at ₹102.10" re-confirms once |
 | App mode (`ATIPApp/…`, 375 px, light + dark, 10 pages) | 20/20 | 20/20 | rail/tab bar hidden, Kill switch present, feed text = native banner's |
-| Cross-browser (8 pages, light/dark, 1440/390/320, axe) | — | <<XB>> | Firefox 157, WebKit 26.5 (Safari engine), Google Chrome |
+| Cross-browser (8 pages, light/dark, 1440/390/320, axe) | — | Firefox 157: 0 axe, 0 errors, no sideways scroll · Google Chrome: the same · WebKit/Safari: **not run** (see §8) | Firefox 157, WebKit 26.5 (Safari engine), Google Chrome |
 
 ## 3. Accessibility before vs after (axe nodes, light + dark × 1440 + 390)
 
@@ -90,18 +90,20 @@ none scroll sideways at 390 or 320 px (screenshots `after_<page>_<theme>_<width>
 | L2 | `test_shell_icons_are_svg` | PASS |
 | L3 | `test_bell_previews_five_alerts_in_ist`, `test_countdown_is_one_line`; bell popover screenshot (dark) | PASS |
 | C1–C4 | `tests/test_tod_buy_rules_2026_11_03.py` 12/12 | still PASS |
+| Owner decision: Trade of the Day only on BUY | `test_no_trade_of_the_day_without_a_buy` (HOLD, WAIT, SELL: Scores card, ⭐, Today, `/m`), `test_a_buy_pick_is_still_shown`, `test_telegram_says_no_buy_signal`; live Mac `/` shows "No BUY signal for today" (11:27 IST) | PASS |
+| Feed label on the live Mac | `test_feed_is_live_when_any_source_is_fresh`; live `/api/v2/shell/state` 11:29:51 IST: "Live · last tick 12 s ago" | PASS |
 
 ## 5. Performance and layout stability (Prod snapshot, ATIP Scores `/`, 1440 × 900, warm server)
 
 | Metric | Before | After |
 |---|---|---|
-| Page load (load event) | 1,029–1,855 ms | <<LOAD>> |
+| Page load (load event) | 1,029–1,855 ms | 303–476 ms |
 | First table row from the top | 1,035 px (below the fold) | 824 px |
 | Visible tabs / KPI tiles | 14 / 9 | 2 (of a group) / 5 |
-| Layout shift (CLS, 6 s after load) | 0.014 | <<CLS>> |
-| One live-price update, 583 CMP cells | 5.1–5.7 ms | <<UPD>> ms, CLS from the update <<UCLS>> |
+| Layout shift (CLS, 6 s after load) | 0.014 | 0.001 |
+| One live-price update, 583 CMP cells | 5.1–5.7 ms | 5.8–6.2 ms, CLS from the update 0.001 |
 | CMP cells saying "price at HH:MM:SS IST" | 0 | 583 |
-| Today / Command Center load | 190 / 94 ms | <<HOMECMD>> |
+| Today / Command Center load | 190 / 94 ms | 104 / 74 ms |
 
 Targets from the 07:03 prompt: load under 2 s (met), update under 100 ms (met), no layout shift from live prices (met).
 
@@ -138,12 +140,23 @@ Nielsen re-score (team estimate, baseline 2.1): 1 status 4, 2 real world 4, 3 co
 | 9 | suite | Live-tab test broke on an inline `data-hide` | grouping via CSS, markup unchanged |
 | 10 | helper (legacy) | "esc is not defined" on Account / Admin / Admin console | shared script loads before the page script |
 | 11 | suite (market hours) | The privacy data inventory did not classify the 10 tables added on 2 Nov; `inventory_gaps()` listed all 10 on the live DB | classified in `enterprise/privacy.py` |
+| 12 | live Mac after the restart | The feed label said "stale" with a working feed (it read only the 15-minute quote snapshots) | newest of snapshots, WebSocket ticks and the 15 s fetch (`f3718ec`) |
+
+## 7b. Deployment to the live Mac (port 8000), 3 Nov 2026
+
+| Time (IST) | Step | Result |
+|---|---|---|
+| 11:22 | Committed as `7cd1dec` (by the redesign session at the owner's request) | tree clean |
+| 11:26 | `.venv/bin/python -m ops backup --kind pre-release` | `atip_data/backups/atip-pre-release-20261103-112652.db` |
+| 11:27:06 | `launchctl kickstart -k gui/$UID/com.atip.platform` (owner: "restart now") | pid 28651; 17 pages 200; PAPER, running, not halted, 10 sessions running; "No BUY signal for today" on `/` |
+| 11:27 | Feed label said "stale" with a working feed: quote snapshots land only every 15 min | defect #12, fixed and committed as `f3718ec` |
+| 11:29:48 | Second kickstart for the fix | pid 29396; pages 200; feed "Live · last tick 12 s ago"; `X-ATIP-Quotes-At` on live quotes |
+
+The index WebSocket was ticking (14 of 14) after both restarts; the stock, tick, depth and option-chain feeds stay OFF in config.
 
 ## 8. Open issues
 
-- **Live Mac running this tree:** the Mac rebooted at 09:18 IST and launchd started ATIP at 09:21 from this folder, so the live
-  dashboard already runs these uncommitted changes (and the tax / Live-tab work), in PAPER. Read-only check at 09:31: healthy. A
-  clean restart after market close needs the owner's go-ahead.
+- **Not merged into master, not pushed** (`7cd1dec`, `f3718ec` on the branch); the owner decides the merge.
 - **Mobile builds BLOCKED:** no JDK, Android SDK or Gradle (no `gradlew`); only Xcode Command Line Tools (no Xcode), no `xcodegen`.
   The Swift change passes `swiftc -parse`; app mode was tested in the browser with the app's user agent.
 - **Live market data not exercised:** WebSocket ticks and 15 s CMP updates were simulated (mocked quotes, a stale snapshot tick);
@@ -151,9 +164,12 @@ Nielsen re-score (team estimate, baseline 2.1): 1 status 4, 2 real world 4, 3 co
 - Test hygiene (pre-existing): the dashboard's order-monitor thread leaks between tests and, in market hours, writes session
   tables into later tests' databases (`test_w39_mcp` teardown, a paper-book OCO test). Fix suggestion: let tests switch the
   monitor off (an env flag read at startup) or stop starting the app's startup hooks in tests.
+- **Safari / WebKit not tested:** Playwright 1.62 expects WebKit build 2336, only build 2251 is cached; it launches but hangs
+  opening a page. Fix: a matching WebKit download (network), or turn on Safari's Develop › Allow Remote Automation and use
+  `safaridriver` (a setting only the owner should change). Edge is not installed (its Chromium engine is covered by Chrome).
 - Clickable `<tr>`/`<div>` rows on Strategies, Backtests and Assistant are still mouse-only (no audit rule flagged them).
 - Some API status text still names a wave ("refuses every call in W4"); not in any heading.
-- Owner decision (audit 6.5): blank Trade of the Day on days with no BUY? Unchanged.
+- `/api/tod` (data endpoint, contract-tested) still returns the engine's pick as stored, BUY or not; only the screens and messages follow the owner's rule.
 
 ## 9. Screenshots
 
