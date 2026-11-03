@@ -222,8 +222,21 @@ def _waiting_on(conn, s: dict) -> str | None:
         return f"a buy of {queued[0]['symbol']} is queued ({queued[0]['status'].lower().replace('_', ' ')})"
     if L["occurrence"] >= L["max_occurrences"]:
         return f"all {L['max_occurrences']} occurrences run"
-    if L["cash"] < float(s.get("min_buy_value") or 0):
-        return f"Rs {L['cash']:,.0f} cash, under its Rs {float(s['min_buy_value']):,.0f} minimum buy"
+    # Review 3 Nov 2026 (orders M3): the same free cash and floor sessions.gate() holds an entry to (the floor rule's
+    # floor; the cash less any tax reserve), so a pick is never queued that the gate would then hold all day.
+    floor = float(L.get("floor", s.get("min_buy_value")) or 0)
+    free = float(L.get("investable_cash", L["cash"]))
+    if floor and free < floor:
+        return f"Rs {free:,.0f} free cash, under its Rs {floor:,.0f} minimum buy"
+    # Review 3 Nov 2026 (orders M2): an entry that FAILED today (a risk limit, sizing, no price) is not re-picked every
+    # 30 s -- that queued the same failing buy ~750 times a day. The session waits for tomorrow and says why.
+    today = date.today().isoformat()
+    failed = [r for r in sessions._linked_rules(conn, s["id"])
+              if (r.get("role") or "ENTRY") == "ENTRY" and r.get("status") == "FAILED"
+              and str(r.get("updated_at") or "")[:10] == today]
+    if failed:
+        return (f"today's buy of {failed[-1]['symbol']} failed ({str(failed[-1].get('execution_error') or 'no reason')[:90]}); "
+                "auto-pick tries again on the next trading day")
     return None
 
 
@@ -293,7 +306,8 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
                     passed.append(f"{c['symbol']} is {c['gap_pct']:+.1f}% above its signal close")
                 else:
                     q = sessions.pool_quantity(conn, s["id"], c["price"])["quantity"]
-                    if q < 1 or q * c["price"] < float(s.get("min_buy_value") or 0):
+                    fl = float(s["pool"].get("floor", s.get("min_buy_value")) or 0)
+                    if q < 1 or q * c["price"] < fl:
                         passed.append(f"{c['symbol']} at Rs {c['price']:,.0f} does not fit the cash")
                     else:
                         pick = c

@@ -282,7 +282,9 @@ def compute_indicators(symbol, df):
     # `fields` list written to technical_indicators — prices_daily already holds
     # the close, so this is in-memory only.
     r["close"]=cmp_
-    r["above_200dma"]=int(cmp_>sma200) if (cmp_ and sma200) else 0
+    # Review 3 Nov 2026 (ingestion M2): no 200-day average (under 200 sessions) is UNKNOWN, stored NULL -- it was 0,
+    # "below", which cost every recent listing its Trend score (the scores engine's SV-02a fixed the same thing).
+    r["above_200dma"]=int(cmp_>sma200) if (cmp_ and sma200) else None
     r["golden_cross"]=0; r["death_cross"]=0
     if len(df)>=210 and r.get("ema_50") and r.get("sma_200"):
         def _crosses():
@@ -319,7 +321,7 @@ def compute_tech_score(ind):
     e9,e21,e50=ind.get("ema_9"),ind.get("ema_21"),ind.get("ema_50")
     if all([e9,e21,e50]):
         scores["EMA"]=85 if e9>e21>e50 else 65 if e9>e21 else 15 if e9<e21<e50 else 40
-    scores["Trend"]=80 if ind.get("above_200dma") else 20
+    if ind.get("above_200dma") is not None: scores["Trend"]=80 if ind.get("above_200dma") else 20
     if ind.get("golden_cross"): scores["SR"]=90
     elif ind.get("death_cross"): scores["SR"]=10
     else: scores["SR"]=50

@@ -200,7 +200,8 @@ class Evaluator:
 
     def max_hold_exit(self, h):
         mh = self.pos.get("max_hold_sessions")
-        return mh is not None and h.get("held_sessions", 0) >= mh
+        hs = h.get("held_sessions")              # review 3 Nov 2026 (quant H1): _held stores None; None >= mh raised
+        return mh is not None and hs is not None and hs >= mh
 
     def decide(self, env, as_of, held, session_index=None) -> list:
         raise NotImplementedError

@@ -91,20 +91,71 @@ def missing_sessions(conn, symbols: list, upto: date, lookback_days: int) -> lis
     return [d for _, d in sorted(out, key=lambda x: (-x[0], -x[1].toordinal()))]
 
 
+ADJ_SOURCE = "bhavcopy_archive_adj"     # an archive row put on the post-event basis (at insert, or by the repair below)
+
+
 def fill_session(conn, d: date, symbols: set, session, download=None) -> int:
     """Insert d's Bhavcopy rows for `symbols` that are not stored yet. Returns rows inserted."""
     from data.bhavcopy import download_bhavcopy_cm, parse_bhavcopy_cm
     raw = (download or download_bhavcopy_cm)(d, session)
     df = parse_bhavcopy_cm(raw, d)
     df = df[df["symbol"].isin(symbols)]
+    from data.corporate_actions import _later
     n = 0
     for r in df.itertuples(index=False):
+        # Review 3 Nov 2026 (ingestion H1): the archive file is NSE's RAW price of that day. The stored history is on the
+        # post-event basis of every split / bonus already reconciled after d (data/corporate_actions.py), so the row is
+        # put on that basis before it goes in -- TDPOWERSYS got 165 pre-split rows at twice the price (2026-10-27..11-02).
+        pf, vf = _later(conn, r.symbol, d)
+        px = lambda v: None if _f(v) is None else round(_f(v) * pf, 2)
+        vol = _f(r.volume)
         cur = conn.execute("INSERT INTO prices_daily(symbol,date,open,high,low,close,volume,series,source) "
                            "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol,date) DO NOTHING",
-                           (r.symbol, str(d), _f(r.open), _f(r.high), _f(r.low), _f(r.close), _f(r.volume),
-                            r.series, "bhavcopy_archive"))
+                           (r.symbol, str(d), px(r.open), px(r.high), px(r.low), px(r.close),
+                            None if vol is None else round(vol / vf), r.series,
+                            "bhavcopy_archive" if pf == 1.0 and vf == 1.0 else ADJ_SOURCE))
         n += max(0, cur.rowcount or 0)
     return n
+
+
+def repair_unadjusted(conn, apply: bool = False) -> list:
+    """One-off repair (review 3 Nov 2026): archive rows stored RAW before an ex-date whose event had already been
+    reconciled -- inserted after reconciled_at (prices_daily.created_at is UTC, reconciled_at IST) with source
+    'bhavcopy_archive', which fill_session now only writes for a row that needed no adjustment. A repaired row becomes
+    ADJ_SOURCE, so running this again finds nothing and never scales a row twice. (A row-by-row "which basis is it
+    nearer" test was tried and rejected: TDPOWERSYS's own price doubled between Nov 2025 and Jul 2026, so the
+    nearest trusted row months away misjudged about one row in six.)
+    Returns [{symbol, ex_date, factor, rows}]; apply=True scales them onto the post-event basis and commits.
+
+        python -m data.ema_gap --repair            # what it would change
+        python -m data.ema_gap --repair --apply    # change it (take a backup first)
+    """
+    where = ("symbol=? AND date<? AND source='bhavcopy_archive' AND datetime(created_at, '+330 minutes') > ?")
+    out = []
+    for ev in conn.execute(
+            "SELECT symbol, ex_date, MAX(price_factor) AS pf, MIN(kind IN ('SPLIT','BONUS','CONSOLIDATION')) AS share, "
+            "MAX(reconciled_at) AS rec FROM corporate_actions WHERE status IN ('adjusted', 'already_adjusted') "
+            "AND price_factor IS NOT NULL AND price_factor != 1 AND reconciled_at IS NOT NULL "
+            "GROUP BY symbol, ex_date ORDER BY symbol, ex_date DESC").fetchall():
+        sym, ex, pf, share, rec = ev[0], str(ev[1]), float(ev[2]), ev[3], ev[4]
+        n = conn.execute(f"SELECT COUNT(*) FROM prices_daily WHERE {where}", (sym, ex, rec)).fetchone()[0]
+        if not n:
+            continue
+        out.append({"symbol": sym, "ex_date": ex, "factor": pf, "rows": n})
+        if apply:
+            # every later event's factor applies to a raw row before it (_later); the newest ex-date first, then
+            # the row is ADJ_SOURCE and an older event of the same symbol does not pick it up again
+            ids = [r[0] for r in conn.execute(f"SELECT id, date FROM prices_daily WHERE {where}", (sym, ex, rec)).fetchall()]
+            for rid in ids:
+                d = conn.execute("SELECT date FROM prices_daily WHERE id=?", (rid,)).fetchone()[0]
+                from data.corporate_actions import _later
+                p, v = _later(conn, sym, d)
+                conn.execute("UPDATE prices_daily SET open=ROUND(open*?,2), high=ROUND(high*?,2), low=ROUND(low*?,2), "
+                             "close=ROUND(close*?,2), volume=CAST(ROUND(volume/?) AS INTEGER), source=? WHERE id=?",
+                             (p, p, p, p, v, ADJ_SOURCE, rid))
+    if apply and out:
+        conn.commit()
+    return out
 
 
 def _f(v):
@@ -179,7 +230,17 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Fill short price histories from the NSE Bhavcopy archive")
     ap.add_argument("--sessions", type=int)
     ap.add_argument("--all", action="store_true", help="every prices_daily symbol, not just the scored universe")
+    ap.add_argument("--repair", action="store_true", help="list archive rows stored raw after a split / bonus was reconciled")
+    ap.add_argument("--apply", action="store_true", help="with --repair: put them on the adjusted basis")
     a = ap.parse_args(argv)
+    if a.repair:
+        from db.schema import get_connection
+        c = get_connection()
+        try:
+            print(json.dumps(repair_unadjusted(c, apply=a.apply), indent=2, default=str))
+        finally:
+            c.close()
+        return
     print(json.dumps(run(a.sessions, "all" if a.all else None), indent=2, default=str))
 
 

@@ -1,7 +1,8 @@
 /* ATIP design system (UXD-01..04, 2 Nov 2026): tokens, the shell (left rail, top bar, bottom tab bar) and the
    components every page shares. Served from /static/atip/atip.css. Every class is prefixed ax- so it cannot restyle
    the older pages it is added to; only body.ax-shelled (room for the rail and tab bar) touches their layout.
-   Themes: light by default, dark when the OS asks unless the viewer picked light, and [data-theme] wins both ways. */
+   Themes: dark by default (3 Nov 2026 brief: atip.js and the shell's head script set [data-theme="dark"] unless the
+   viewer picked light, or "auto" to follow the device); without JS the light :root set below applies. */
 
 :root {
   color-scheme: light;
@@ -690,3 +691,56 @@ body.ax-shelled:not(.ax-native) details.ax-tech[open], body.ax-shelled:not(.ax-n
 body.ax-shelled:not(.ax-native) #ax-main { visibility: hidden; animation: ax-reveal 0s linear 1.5s forwards; }
 html.ax-ready body.ax-shelled:not(.ax-native) #ax-main { visibility: visible; animation: none; }
 @keyframes ax-reveal { to { visibility: visible; } }
+
+/* ── 3 Nov 2026 (10:54 PM brief): live-data cues, the ten-session grid, the KPI strip and score badges ───────────────── */
+/* spacing scale used below: 4 · 8 · 12 · 16 · 24 px */
+.ax-updated { font: 500 12px/1.4 var(--ax-mono); color: var(--ax-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ax-updated[data-state="stale"] { color: var(--ax-warn); font-weight: 700; }
+.ax-updated[data-state="stale"]::before { content: "⚠ "; }
+/* a price that changed flashes once; the ▲/▼ in its text carries the direction for colour-blind readers */
+.ax-tick-up { animation: ax-tick-up 1.2s ease-out; }
+.ax-tick-down { animation: ax-tick-down 1.2s ease-out; }
+@keyframes ax-tick-up { 0% { background: var(--ax-pos-bg); box-shadow: inset 0 0 0 1px var(--ax-pos); } 100% { background: transparent; box-shadow: none; } }
+@keyframes ax-tick-down { 0% { background: var(--ax-neg-bg); box-shadow: inset 0 0 0 1px var(--ax-neg); } 100% { background: transparent; box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .ax-tick-up, .ax-tick-down { animation: none; } }
+/* the KPI strip: market health, Nifty 50, sessions filled, today's P&L, freshness */
+.ax-kpis { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0 0 16px; }
+.ax-kpi { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-left: 4px solid var(--ax-border); border-radius: var(--ax-radius);
+  padding: 8px 12px; min-width: 0; }
+.ax-kpi[data-tone="good"] { border-left-color: var(--ax-pos); } .ax-kpi[data-tone="bad"] { border-left-color: var(--ax-neg); }
+.ax-kpi[data-tone="warn"] { border-left-color: var(--ax-amber-line); } .ax-kpi[data-tone="info"] { border-left-color: var(--ax-info); }
+.ax-kpi .ax-lbl { font-size: 12px; color: var(--ax-muted); font-weight: 600; }
+.ax-kpi .ax-val { font: 700 18px/1.3 var(--ax-font); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ax-kpi .ax-sub2 { font-size: 12px; color: var(--ax-text-2); }
+/* score badges: colour + a band word in the accessible name + the glyph (● strong, ◐ neutral, ○ weak); CRI↓ reads low = strong */
+.ax-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.ax-score { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--ax-border);
+  font: 600 12px/1.6 var(--ax-font); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; background: var(--ax-surface-2); color: var(--ax-text-2); }
+.ax-score b { font-weight: 700; }
+.ax-score[data-band="strong"] { background: var(--ax-pos-bg); color: var(--ax-pos); border-color: transparent; }
+.ax-score[data-band="weak"] { background: var(--ax-neg-bg); color: var(--ax-neg); border-color: transparent; }
+.ax-score[data-band="neutral"] { background: var(--ax-warn-bg); color: var(--ax-warn); border-color: transparent; }
+/* the ten-session grid: one card per session, a status chip, the rank, scores, levels, P&L */
+.ax-sgrid { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ax-sgrid.compact { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.ax-tcard { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-top: 3px solid var(--ax-border); border-radius: var(--ax-radius);
+  padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ax-tcard[data-status="holding"] { border-top-color: var(--ax-pos); }
+.ax-tcard[data-status="queued"], .ax-tcard[data-status="next"] { border-top-color: var(--ax-info); }
+.ax-tcard[data-status="confirm"] { border-top-color: var(--ax-amber-line); }
+.ax-tcard[data-status="waiting"] { border-top-style: dashed; }
+.ax-tc-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ax-tc-h .ax-tc-id { font-weight: 700; margin-right: auto; }
+.ax-rank { font: 600 12px/1.5 var(--ax-mono); color: var(--ax-text-2); font-variant-numeric: tabular-nums; }
+.ax-tc-sym { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ax-tc-why { color: var(--ax-text-2); font-size: 12.5px; }
+.ax-tc-lv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.ax-tc-lv div { min-width: 0; } .ax-tc-lv dt { font-size: 11.5px; color: var(--ax-muted); } .ax-tc-lv dd { margin: 0; font: 600 13px var(--ax-font);
+  font-variant-numeric: tabular-nums; text-align: left; overflow-wrap: anywhere; }
+.ax-tc-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; border-top: 1px solid var(--ax-border-soft); padding-top: 8px; }
+.ax-tc-foot b { font-variant-numeric: tabular-nums; }
+.ax-sgrid.compact .ax-tcard { padding: 8px 10px; gap: 4px; }
+.ax-boarddetail { color: var(--ax-text-2); font-size: 12.5px; margin: -6px 0 12px; }
+/* the stamp gives way first when the top bar is narrow (watchlist open, a laptop): the feed pill still says the tick time,
+   and Home's "Data freshness" tile keeps the seconds */
+@container axtop (max-width: 1180px) { .ax-updated { display: none; } }

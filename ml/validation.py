@@ -53,13 +53,25 @@ from datetime import datetime
 
 import numpy as np
 
-ORDER = {"UP": 1, "FLAT": 0, "DOWN": -1, "1": 1, "0": 0, "POS": 1, "NEG": 0, "True": 1, "False": 0}
+ORDER = {"UP": 1, "FLAT": 0, "NEUTRAL": 0, "DOWN": -1, "1": 1, "0": 0, "POS": 1, "NEG": 0, "True": 1, "False": 0}
 
 
 def _rank(a):
+    """Average ranks (ties share their mean rank). Review 3 Nov 2026 (ml H3): ties used to be broken by row order, and
+    class labels are nearly all ties, so a score drifting over time showed IC ~0.26 against a true 0."""
     a = np.asarray(a, dtype=float)
+    order = np.argsort(a, kind="mergesort")
     r = np.empty(len(a))
-    r[np.argsort(a, kind="mergesort")] = np.arange(len(a))
+    r[order] = np.arange(len(a), dtype=float)
+    vals = a[order]
+    i = 0
+    while i < len(vals):
+        j = i
+        while j + 1 < len(vals) and vals[j + 1] == vals[i]:
+            j += 1
+        if j > i:
+            r[order[i:j + 1]] = (i + j) / 2.0
+        i = j + 1
     return r
 
 

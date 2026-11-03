@@ -108,6 +108,8 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 2026-11-03 (10:54 PM brief): dark by default, as the web pages now are; values-night/tokens.xml applies
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
         envBadge = TextView(this).apply {                         // a rounded pill; coloured in show()
             textSize = 12f; typeface = semibold; setTextColor(Color.WHITE); visibility = View.GONE

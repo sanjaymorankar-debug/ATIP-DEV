@@ -208,7 +208,7 @@ def test_home_pipeline_score_vix_gift(client):                                  
     assert '<span class="ax-num">61</span> BULL' in t and "60.73" not in t
     vix = t[t.index("India VIX"):t.index("GIFT Nifty")]
     assert "ax-warn-t" in vix and "▲" in vix and "+3.48%" in vix
-    gift = t[t.index("<dt>GIFT Nifty</dt>"):t.index("Market health")]
+    gift = t[t.index("<dt>GIFT Nifty</dt>"):t.index("Market health", t.index("<dt>GIFT Nifty</dt>"))]   # the KPI strip says it first
     assert "ax-missing" in gift and "0.00%" not in gift
     assert "Technical signals · as of 30 Oct · stale" in t               # G8 chip
 
@@ -355,7 +355,9 @@ def test_order_paths_are_untouched():
         pytest.skip("no git history here")
     # The 3 Nov ten-session fix (SES-09, merged with this branch) changes auto-pick on purpose and adds the read-only
     # board; UI fixes v2 itself still touches nothing under orders/ or execution/.
-    allowed = {"orders/autopick.py", "orders/session_board.py"}
+    # The full code review (3 Nov 2026 night) fixes the order engine on purpose: rules.py (a stale OCO sibling sent twice,
+    # failed exit legs, expired confirmations) and broker.py (a LIVE buy valued at Rs 0).
+    allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 

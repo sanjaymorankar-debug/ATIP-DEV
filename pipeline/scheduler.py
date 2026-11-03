@@ -875,6 +875,18 @@ def run_preclose_scan():
 # ═════════════════════════════════════════════════════════════════════════
 
 def run_postmarket(force=False, target_date=None, backfill=False):
+    """One post-market run at a time (review 3 Nov 2026, pipeline M5): the 16:45 slot, a start-up catch-up and the
+    dashboard's POST /api/refresh could overlap, each skipping whatever step the other held and then running the
+    unlocked tail -- alerts, held signals, the execution cycle -- twice. A run that finds one going returns SKIPPED."""
+    from ops.jobs import job_lock
+    with job_lock("postmarket_pipeline") as held:
+        if not held:
+            log.warning("⏩  Post-market pipeline already running (another thread or process) -- not started twice")
+            return "SKIPPED"
+        return _run_postmarket(force=force, target_date=target_date, backfill=backfill)
+
+
+def _run_postmarket(force=False, target_date=None, backfill=False):
     """
     Score one trading session end to end.
 
@@ -1178,13 +1190,13 @@ def run_postmarket(force=False, target_date=None, backfill=False):
     # 5:45 PM — Send Telegram alerts. Never for a backfill: an alert about a
     # session that closed days ago is noise, and the TOD pick is not actionable.
     if not backfill:
-        try:
-            from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert
-            check_cri_alerts(td)
-            check_fii_alert(td)
-            send_tod_alert(td)
-        except Exception as e:
-            log.warning(f"  Post-market alerts: {e}")
+        # Review 3 Nov 2026 (pipeline M3): each alert on its own, so one failure no longer loses the ones after it
+        from alerts.telegram import check_cri_alerts, check_fii_alert, send_tod_alert
+        for _alert in (check_cri_alerts, check_fii_alert, send_tod_alert):
+            try:
+                _alert(td)
+            except Exception as e:
+                log.warning(f"  Post-market alert {_alert.__name__}: {e}")
 
     # 6:00 PM — Rebuild dashboard state. A backfill leaves this to its caller,
     # which rebuilds once for the newest session instead of once per old one.
@@ -1299,6 +1311,8 @@ def run_fii_dii_watch():
     delivery."""
     if not is_market_day():
         return
+    if not _debounce("fii_dii_watch"):        # review 3 Nov 2026 (pipeline M6): a wake-up fires every overdue slot at once
+        return
     td = date.today()
     if _signal_log_state(td) != "held":
         return          # logged already, or post-market has not scored yet
@@ -1355,6 +1369,8 @@ def run_health_check():
     missed or failed (pipeline/recover.py: current global markets, news, portfolio,
     unscored sessions, the brief), then alert only on what is still wrong -- once a
     day per problem, on the dashboard and Telegram."""
+    if not _debounce("health_check"):         # review 3 Nov 2026 (pipeline M6): one check per burst of overdue slots
+        return
     try:
         from pipeline.health import format_problems
         from pipeline.recover import check_and_recover
@@ -2034,6 +2050,16 @@ def _ops_webhook_tick():
 def start_scheduler():
     if not HAS_SCHEDULE:
         log.error("schedule not installed. Run: pip install schedule"); return
+    try:                                      # review 3 Nov 2026 (pipeline H1): say so when the holiday list runs out
+        from utils.trading_calendar import calendar_gap
+        gap = calendar_gap()
+        if gap:
+            log.error(f"  ⚠ NSE holiday calendar: {gap} (utils/trading_calendar.py NSE_HOLIDAYS)")
+            from alerts.telegram import notify
+            notify(f"⚠️ <b>ATIP — NSE holiday calendar</b>\n{gap}. Update utils/trading_calendar.py NSE_HOLIDAYS.",
+                   category="job_health", severity="critical", key=f"calendar_stale:{date.today():%Y-%m}")
+    except Exception as e:
+        log.warning(f"  holiday calendar check: {e}")
 
     log.info(f"\n{'='*65}")
     log.info("  ATIP MASTER SCHEDULER STARTED")

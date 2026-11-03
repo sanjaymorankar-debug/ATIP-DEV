@@ -211,8 +211,10 @@ def get_global(td):
     # the opposite sign, under a label that only showed the date. Order by when
     # the row was actually written.
     conn=get_connection()
-    try: return q1(conn,"SELECT * FROM global_markets WHERE date<=? "
-                        "ORDER BY date DESC, created_at DESC, id DESC LIMIT 1",str(td))
+    # Review 3 Nov 2026 (dashboard M2): not capped at the SCORED date -- until the 16:45 scores land that showed the
+    # day before's markets under a current-looking label. Newest written row, the same as get_indexes.
+    try: return q1(conn,"SELECT * FROM global_markets "
+                        "ORDER BY date DESC, created_at DESC, id DESC LIMIT 1")
     finally: conn.close()
 
 def get_tod(td):
@@ -246,7 +248,10 @@ def get_portfolio(td):
     conn=get_connection()
     try: return q(conn,"SELECT h.*,"
                   "(SELECT p2.close FROM prices_daily p2 WHERE p2.symbol=h.symbol AND p2.date<? ORDER BY p2.date DESC LIMIT 1) AS prev_close "
-                  "FROM portfolio_holdings h WHERE h.date=? ORDER BY h.weight_pct DESC",
+                  # Review 3 Nov 2026 (dashboard M3): the latest holdings snapshot at or before the scored date, not
+                  # only that exact date (29 Oct had scores and no holdings row: the tab said "No portfolio data")
+                  "FROM portfolio_holdings h WHERE h.date=(SELECT MAX(date) FROM portfolio_holdings WHERE date<=?) "
+                  "ORDER BY h.weight_pct DESC",
                   str(td),str(td))
     finally: conn.close()
 
@@ -572,7 +577,10 @@ def build_html(state):
     def _srch(sym):
         return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
     score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank') if r.get('atip_rank') is not None else '—'}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') and r.get('signal')=='BUY' else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">{money(r.get('cmp'))}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1') or '—'}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'),signal=r.get('signal'))}</td></tr>""" for r in scores)
-    news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
+    # Review 3 Nov 2026 (dashboard M1): headlines are outside text on a page that carries the order token -- escaped
+    # (after unescaping the feed's own &amp;, so it still reads right)
+    _nx=lambda x: _html.escape(_html.unescape(str(x or '')), quote=True)
+    news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{_nx(n.get('headline'))}</td><td style="font-size:11px">{_nx(n.get('source'))}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
     port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>{money(p.get('avg_price'))}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">{money(p.get('cmp'))}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL',signal=sig_of.get(p.get('symbol')))}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
     # about where the market closed, which is the first thing you look for
@@ -719,7 +727,7 @@ def build_html(state):
                   if exec_price else ("placed" if (is_direct and status == "PLACED") else "—"))
         err = r.get("execution_error")
         err_html = (f'<div style="color:#dc2626;font-size:10px;max-width:180px;'
-                    f'white-space:normal;margin-top:2px">{err}</div>') if err else ""
+                    f'white-space:normal;margin-top:2px">{_html.escape(str(err))}</div>') if err else ""
         actions = ""
         if status == "PENDING_CONFIRMATION":
             actions = (f'<button onclick="confirmRule(\'{r["id"]}\')" '
@@ -1483,6 +1491,7 @@ async function loadMiniRules(){{
 async function deleteRule(id){{await afetch('/api/orders/'+id,{{method:'DELETE'}});loadMiniRules();}}
 
 // ── Pending confirmations + broker status (polled every 5s) ────────────
+function esc(x){{return String(x==null?'':x).replace(/[&<>"']/g,function(c){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c];}});}}
 async function pollPending(){{
   try{{
     var res=await fetch('/api/orders/pending');
@@ -1494,12 +1503,19 @@ async function pollPending(){{
     window._pendRules={{}}; rules.forEach(r=>{{window._pendRules[r.id]=r;}});
     rules.forEach(r=>{{
       var d=document.createElement('div'); d.className='pend-item';
-      d.innerHTML='<span>'+r.symbol+' '+r.side+' '+r.quantity_value+' hit '+inrf(r.trigger_hit_price||r.resolved_trigger_price)+'</span><span><button class="pconf" onclick="confirmRule(\\''+r.id+'\\')">Confirm</button><button class="prej" onclick="rejectRule(\\''+r.id+'\\')">Reject</button></span>';
+      var _q=r.quantity_type==='SHARES'?(r.quantity_value+' sh'):(r.est_qty?('~'+r.est_qty+' sh'):(r.quantity_type==='SESSION'?'session cash':r.quantity_value));
+      d.innerHTML='<span>'+esc(r.symbol)+' '+esc(r.side)+' '+esc(_q)+' hit '+inrf(r.trigger_hit_price||r.resolved_trigger_price)+(r.resolved_stoploss_price?' · stop '+inrf(r.resolved_stoploss_price):'')+'</span><span><button class="pconf" onclick="confirmRule(\\''+r.id+'\\')">Confirm</button><button class="prej" onclick="rejectRule(\\''+r.id+'\\')">Reject</button></span>';
       list.appendChild(d);
     }});
   }}catch(e){{}}
 }}
 async function confirmRule(id,force){{
+  // Safety UX (3 Nov 2026): the order, its value and its stop-loss are shown and confirmed before anything is sent
+  var pr=(window._pendRules||{{}})[id];
+  if(!pr){{ try{{ var _r=await fetch('/api/orders/pending'); var _l=_r.ok?await _r.json():[]; pr=_l.find(x=>x.id===id); }}catch(e){{}} }}
+  pr=pr||{{id:id}};
+  if(!force){{ if(!(window.AX&&AX.confirmOrder)) {{ uiSay('Not sent: the confirmation dialog did not load. Reload the page.',true); return; }}
+    if(!(await AX.confirmOrder(pr,{{action:'send'}}))) return; }}
   var res=await afetch('/api/orders/'+id+'/confirm'+(force?'?force=true':''),{{method:'POST'}});
   if(res.status===409){{
     // Price ran away between the trigger and your tap: the shell's dialog shows the trigger, the price now and the
@@ -1570,12 +1586,15 @@ async function pollLiveQuotes(){{
       var col = pct===null ? '#e2e8f0' : flat ? '#94a3b8' : (pct>0 ? '#34d399' : '#f87171');
       var sign = (pct!==null && pct>0) ? '+' : '';
       var arrow = pct===null ? '' : flat ? '• ' : (pct>0 ? '▲ ' : '▼ ');
+      var was=parseFloat(cell.dataset.cmp);   // live-data UX (3 Nov 2026): a changed price flashes once, ▲/▼ in the text
       cell.innerHTML = inrf(qd.ltp) + (pct!==null
         ? ' <span class="chg" style="font-size:12px;color:'+col+'">'+arrow+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
         : '');
       cell.dataset.cmp = qd.ltp;
+      if(!isNaN(was) && was!==qd.ltp && window.AX && AX.flash) AX.flash(cell, qd.ltp>was?1:-1);
       if(at) cell.title='price at '+at+' IST';
     }});
+    if(Object.keys(quotes).length && window.AX && AX.stamp) AX.stamp(at ? String(at).slice(-8) : null);
   }}catch(e){{}}
 }}
 setInterval(pollLiveQuotes,15000); pollLiveQuotes();
@@ -2028,6 +2047,14 @@ if HAS_FASTAPI:
     @app.post("/api/orders", dependencies=_guard)
     async def api_create_order(request: Request):
         payload = await request.json()
+        role = (payload.get("role") or oe.ROLE_ENTRY) if isinstance(payload, dict) else oe.ROLE_ENTRY
+        if role != oe.ROLE_ENTRY:
+            # Review 3 Nov 2026 (orders M5): exit legs skip the LIVE confirmation tap by design, so a rule sent from
+            # outside may only be an ENTRY. STOP / TARGET legs are built by ATIP itself from a filled entry
+            # (orders/rules._create_bracket_legs), never posted.
+            return JSONResponse({"error": f"role {role} is a bracket leg ATIP builds from a filled entry; "
+                                          f"post an ENTRY with bracket_stop_pct / bracket_target_pct instead"},
+                                status_code=400)
         try:
             return JSONResponse(json_safe(oe.create_rule(payload)))
         except (ValueError, KeyError) as e:
@@ -2039,7 +2066,20 @@ if HAS_FASTAPI:
 
     @app.get("/api/orders/pending")
     async def api_pending_orders():
-        return JSONResponse(json_safe(oe.list_rules(status=oe.PENDING_CONFIRMATION)))
+        rows = oe.list_rules(status=oe.PENDING_CONFIRMATION)
+        # Review 3 Nov 2026 (dashboard H1): the confirm dialog shows shares and value, not a raw quantity_value (a pool
+        # buy's "100" is 100 % of the session's cash). Sized read-only, the way execute_rule will size it.
+        for r in rows:
+            try:
+                px = float(r.get("trigger_hit_price") or r.get("resolved_trigger_price") or 0) or None
+                qt = r.get("quantity_type")
+                n = (int(r["quantity_value"]) if qt == "SHARES" else oe._session_sized(r, px)["quantity"] if qt == oe.QTY_SESSION
+                     else oe._risk_sized(r, px)["quantity"] if qt == oe.QTY_RISK else oe._resolve_quantity(r, px)) if px else None
+                r["est_qty"] = n or None
+                r["est_value"] = round(n * px, 2) if n and px else None
+            except Exception as e:
+                log.debug(f"  pending sizing {r.get('id')}: {e}")
+        return JSONResponse(json_safe(rows))
 
     @app.post("/api/orders/{rule_id}/confirm", dependencies=_guard)
     async def api_confirm_order(rule_id: str, force: bool = False):
@@ -2200,10 +2240,21 @@ if HAS_FASTAPI:
             return out
 
     def _quotes_out(df) -> dict:
+        import math
+        def _fin(v):
+            # Review 3 Nov 2026 (dashboard M4): pandas turns a missing price into NaN, NaN is truthy, and Starlette
+            # refuses NaN in JSON -- one bad row made /api/live-quotes a 500 and froze every CMP cell.
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                return None
+            return v if math.isfinite(v) and v > 0 else None
         out = {}
         for _, row in df.iterrows():
-            ltp = row.get("ltp")
-            prev = row.get("prev_close")
+            ltp = _fin(row.get("ltp"))
+            prev = _fin(row.get("prev_close"))
+            if ltp is None:
+                continue
             chg = round((ltp - prev) / prev * 100, 2) if ltp and prev else None
             # prev_close comes from Dhan and is the LAST COMPLETED session's
             # close, which is the only correct baseline for a live price. The

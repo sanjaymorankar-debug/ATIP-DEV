@@ -111,6 +111,7 @@ def feed_label(conn, market_open: bool | None = None, now=None) -> dict:
     else:
         state, tone, text, short = "live", "good", f"Live · last tick {_ago(age)} ago", f"Live · {_ago(age)}"
     return {"state": state, "tone": tone, "text": text, "short": short, "age_s": age, "last_tick": ts,
+            "updated": (at.strftime("%H:%M:%S") + " IST") if at else None,     # the shell's freshness stamp
             "market_open": bool(market_open),
             # the keys Command Center has always read
             "age_seconds": age, "stale": bool(market_open and state in ("stale", "none")),

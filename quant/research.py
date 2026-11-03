@@ -27,7 +27,8 @@ import numpy as np
 def _spearman(x, y):
     if len(x) < 5:
         return None
-    rx, ry = np.argsort(np.argsort(x)), np.argsort(np.argsort(y))
+    from ml.validation import _rank                      # tie-averaged ranks (review 3 Nov 2026, ml H3)
+    rx, ry = _rank(x), _rank(y)
     if np.std(rx) == 0 or np.std(ry) == 0:
         return None
     return float(np.corrcoef(rx, ry)[0, 1])

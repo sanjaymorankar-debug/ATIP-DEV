@@ -4,8 +4,22 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.03.2** (Android `versionCode` 6 / `versionName` 2026.11.03.2; iOS `CFBundleShortVersionString`
-2026.11.03.2 / `CFBundleVersion` 6). This version merges the Mac's 3 Nov work (UX audit fixes, the ten-session board,
+**Version 2026.11.03.3** (Android `versionCode` 7 / `versionName` 2026.11.03.3; iOS `CFBundleShortVersionString`
+2026.11.03.3 / `CFBundleVersion` 7), 3 Nov 2026 night (full review + design system):
+
+* **Dark by default.** Both apps start dark (iOS `preferredColorScheme(.dark)`, Android `MODE_NIGHT_YES`), as the web
+  pages now do. The page's own theme button still switches the page to light or to the device's setting.
+* **The ten sessions as cards** on Sessions and Home: a status chip with its glyph (● Holding, ◷ Queued, ! Needs your
+  tap, → Next pick, ○ Waiting), the stock's ATIP rank (#k/N), why it was picked, the seven score badges, entry /
+  target / stop, P&L and wins. Home's line says "N of 10 sessions filled" and how many are held, queued or planned.
+* **Score badges** colour + glyph + word; CRI is shown as **CRI↓** and a low value is the strong (green) one. Each
+  badge's tooltip / long-press text is the score's meaning and its formula in one line.
+* **Order safety.** Every Confirm, the order ticket's Save and a basket's Place show one dialog with the symbol,
+  quantity, price, value, stop-loss and PAPER / LIVE before anything is sent.
+* **Live data.** A changed price flashes once (▲/▼ in the text as well) and the top bar says "Updated HH:MM:SS IST";
+  it turns amber with ⚠ when the feed goes stale.
+
+Earlier, **2026.11.03.2** (Android 6 / iOS 6). This version merges the Mac's 3 Nov work (UX audit fixes, the ten-session board,
 the score fixes) with the cloud session's UI fixes v2 (watchlist, order ticket, chart, banner rule H10). The native
 tabs follow the page shell:
 

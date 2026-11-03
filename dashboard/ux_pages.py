@@ -300,6 +300,48 @@ def _session_rows(ov: dict, per: dict) -> str:
     return "".join(rows)
 
 
+def _home_kpis(conn, d: dict, idx: dict, mk: dict, td: dict) -> tuple[str, str]:
+    """The KPI strip (3 Nov 2026 brief: market health, Nifty 50, sessions filled, today's P&L, freshness) and the compact
+    ten-session grid under the three answers. Every tone has its word or arrow too, never colour alone."""
+    from dashboard import fmt as F
+    mh = F.num(mk.get("mh_score"))
+    mh_tone = "" if mh is None else "good" if mh >= 60 else "bad" if mh < 40 else "warn"
+    n50, n50c = F.num(idx.get("nifty50")), F.num(idx.get("nifty50_chg"))
+    n_tone = "" if n50c is None else F.tone(n50c).replace("up", "good").replace("down", "bad").replace("flat", "")
+    try:
+        from orders.session_board import board
+        b = board(conn)
+    except Exception as ex:                                   # the strip still draws
+        b = {"filled": None, "target": 10, "message": f"board unavailable: {ex}", "rows": [], "detail": ""}
+    c = b.get("counts") or {}
+    # green only when every session really holds or has queued its stock; ten planned picks are information, not done
+    f_tone = ("" if b.get("filled") is None else "warn" if b["filled"] < b["target"]
+              else "good" if (c.get("holding", 0) + c.get("queued", 0)) >= b["target"] else "info")
+    word, tone, sym = _pnl_word(td["total"])
+    fd = d["feed"]
+    upd = fd.get("updated")
+    kpi = lambda lbl, val, sub, t: (f'<div class="ax-kpi" data-tone="{t}" role="group" aria-label="{e(lbl)}"><div class="ax-lbl">{e(lbl)}</div>'
+                                   f'<div class="ax-val">{val}</div><div class="ax-sub2">{sub}</div></div>')
+    strip = ('<div class="ax-kpis" aria-label="Today at a glance">' +
+             kpi("Market health", F.score_html(mk.get("mh_score"), "No market-health score yet"),
+                 e((mk.get("regime") or "—").replace("_", " ").title()), mh_tone) +
+             kpi("Nifty 50", f'<span class="ax-num">{e(F.fmt_num(idx.get("nifty50")))}</span>' if n50 else F.missing_html("No Nifty 50 level yet"),
+                 F.pct_html(idx.get("nifty50_chg")), n_tone) +
+             kpi("Sessions filled", f'<span class="ax-num">{b["filled"] if b.get("filled") is not None else "—"} of {b["target"]}</span>',
+                 e(b.get("detail") or b.get("message") or ""), f_tone) +
+             kpi("Today's P&L", f'<span class="ax-amt">{F.inr_html(td["total"], True)}</span>',
+                 f'{sym} {e(word)} · realised {F.inr_html(td["realised"], True)}', tone if tone != "flat" else "") +
+             kpi("Data freshness", f'<span data-ax-updated data-state="{"stale" if fd.get("stale") else "fresh"}">'
+                                   f'{e("Updated " + upd) if upd else "Updated —"}</span>',
+                 e(fd.get("text") or ""), "bad" if fd.get("stale") else "info") + "</div>")
+    grid = ""
+    if b.get("rows"):
+        grid = (f'<div class="ax-card" data-widget="ten"><div class="ax-cardhead"><h2>The ten sessions</h2>'
+                f'<a class="ax-small" href="/sessions">All details →</a></div>'
+                f'<p class="ax-small ax-muted" role="status">{e(b["message"])}</p>{_board_cards(b, compact=True)}</div>')
+    return strip, grid
+
+
 def home(conn, root="", app=False) -> str:
     from dashboard import fmt as F
     try:
@@ -440,8 +482,9 @@ def home(conn, root="", app=False) -> str:
               "".join(f'<label><input type="checkbox" data-w="{k}" checked><span>{e(l)}</span></label>' for k, l, _ in widgets)
               + "</div></details>")
     figures = {"today": td, "since_start": ss, "month": pr["month"]}
-    body = (banners + f'<div class="ax-five ax-answers" data-ax-figures="{e(_json(figures))}">{safe}{running}{money}</div>' +
-            '<div class="ax-grid-2" id="ax-widgets">' + "".join(w for _, _, w in widgets) + "</div>" + custom +
+    kpis, grid = _home_kpis(conn, d, idx, mk, td)
+    body = (banners + kpis + f'<div class="ax-five ax-answers" data-ax-figures="{e(_json(figures))}">{safe}{running}{money}</div>' +
+            grid + '<div class="ax-grid-2" id="ax-widgets">' + "".join(w for _, _, w in widgets) + "</div>" + custom +
             """<script>(function(){var k='atip-home-hidden',h=[];try{h=JSON.parse(localStorage.getItem(k)||'[]')}catch(e){}
 function apply(){document.querySelectorAll('[data-widget]').forEach(function(w){w.hidden=h.indexOf(w.getAttribute('data-widget'))>=0;});
 document.querySelectorAll('#ax-custom [data-w]').forEach(function(c){c.checked=h.indexOf(c.getAttribute('data-w'))<0;});}
@@ -575,15 +618,59 @@ def _scard(s: dict) -> str:
             f'<a class="ax-btn sm" href="/sessions/{e(s["id"])}" aria-label="{e(s["id"])} cycles and P&amp;L">Cycles &amp; P&amp;L</a></div></div>')
 
 
+_BOARD_STATUS = {"HOLDING": ("holding", "good", "● Holding"), "QUEUED": ("queued", "info", "◷ Queued"),
+                 "AWAITING CONFIRMATION": ("confirm", "warn", "! Needs your tap"), "WAITING": ("waiting", "", "○ Waiting")}
+
+
+def _board_status(st: str) -> tuple:
+    """(data-status, chip tone, chip text with its glyph): colour is never the only cue."""
+    if str(st).startswith("NEXT PICK"):
+        return "next", "info", "→ Next pick" + (" · after the stop window" if "after" in str(st) else "")
+    return _BOARD_STATUS.get(st, ("waiting", "", st))
+
+
+def _board_cards(b: dict, compact: bool = False) -> str:
+    """The ten sessions as a card grid (3 Nov 2026 brief): status chip, rank, why, score badges, entry / target / stop,
+    P&L and wins. compact = the Home page's version: symbol, chip, rank and P&L only."""
+    from dashboard import score_glossary as G
+    cards = []
+    for r in b["rows"]:
+        ds, tone, chip = _board_status(r["status"])
+        rank = (f'<span class="ax-rank" title="ATIP rank on {e(b.get("rank_day") or "the latest scored day")}, '
+                f'of {r["rank_of"]} scored (ATIP high first, CRI↓ low first among equals)">#{r["rank"]}'
+                f'<span class="ax-muted">/{r["rank_of"]}</span></span>') if r.get("rank") else ""
+        sym = (f'<a class="ax-symchip" href="/stock/{e(r["symbol"])}">{e(r["symbol"])}</a>' if r.get("symbol")
+               else '<span class="ax-muted">no stock</span>')
+        src = f'<span class="ax-small ax-muted">{e(r["source"])}</span>' if r.get("source") and r.get("symbol") else ""
+        pnl = K.money(r["pnl"], True) if r.get("pnl") is not None else "—"
+        wins = f'{r.get("successful_trades") or 0}/{r.get("closed_trades") or 0}'
+        head = (f'<div class="ax-tc-h"><a class="ax-tc-id" href="/sessions/{e(r["session"])}">{e(r["session"])}'
+                f'{"" if compact else " " + e(r.get("name") or "")}</a>{K.status(chip, tone)}</div>')
+        if compact:
+            cards.append(f'<li class="ax-tcard" data-status="{ds}">{head}<div class="ax-tc-sym">{sym}{rank}</div>'
+                         f'<div class="ax-tc-foot"><span>P&amp;L <b>{pnl}</b></span><span title="winning closed trades / closed trades">'
+                         f'Wins <b>{wins}</b></span></div></li>')
+            continue
+        lv = "".join(f'<div><dt>{k}</dt><dd>{K.money(r[f]) if r.get(f) else "—"}</dd></div>'
+                     for k, f in (("Entry", "entry"), ("Target", "target"), ("Stop", "stoploss")))
+        why = e(r.get("rationale") or r.get("reason") or "")
+        cards.append(f'<li class="ax-tcard" data-status="{ds}">{head}<div class="ax-tc-sym">{sym}{rank}{src}</div>'
+                     f'<div class="ax-tc-why">{why}</div>{G.badges(r.get("score_snapshot")) if r.get("symbol") else ""}'
+                     f'<dl class="ax-tc-lv">{lv}</dl><div class="ax-tc-foot"><span>P&amp;L <b>{pnl}</b></span>'
+                     f'<span title="winning closed trades / closed trades">Wins <b>{wins}</b></span></div></li>')
+    return f'<ul class="ax-sgrid{" compact" if compact else ""}" aria-label="The ten sessions">{"".join(cards)}</ul>'
+
+
 def _board_html(conn) -> str:
-    """SES-09: the ten sessions as one table -- always ten rows -- under a "N of 10 sessions filled" line."""
+    """SES-09: the ten sessions -- always ten -- under a "N of 10 sessions filled" line: a card grid, with the same rows
+    as a sortable table one click away."""
     try:
         from orders.session_board import board
         b = board(conn)
     except Exception as ex:                                  # the page must still draw
         return f'<div class="ax-banner warn ax-small">Ten-session board unavailable: {e(ex)}</div>'
     cls = "ok" if b["complete"] else "warn"
-    head = ("Session", "Symbol", "Why this stock", "Scores (CRI↓ lower is better)", "Entry", "Target", "Stop", "Status", "P&L", "Wins")
+    head = ("Session", "Symbol", "Rank", "Why this stock", "Scores (CRI↓ lower is better)", "Entry", "Target", "Stop", "Status", "P&L", "Wins")
     trs = []
     for r in b["rows"]:
         sn = r.get("score_snapshot") or {}
@@ -592,12 +679,16 @@ def _board_html(conn) -> str:
                   sn["atip"], sn["vpi"], sn["mri"], sn["rri"], sn["zpi"], sn["cri"], sn["acs"]) else "—"
         trs.append("<tr>" + "".join(f'<td data-label="{e(h)}">{c}</td>' for h, c in zip(head, (
             f'<span><a href="/sessions/{e(r["session"])}">{e(r["session"])}</a> {e(r["name"])}</span>',
-            f'<b>{e(r["symbol"])}</b>' if r.get("symbol") else "—", e(r.get("rationale") or ""), sc,
+            f'<b>{e(r["symbol"])}</b>' if r.get("symbol") else "—", f'#{r["rank"]}' if r.get("rank") else "—",
+            e(r.get("rationale") or ""), sc,
             K.money(r["entry"]) if r.get("entry") else "—", K.money(r["target"]) if r.get("target") else "—",
             K.money(r["stoploss"]) if r.get("stoploss") else "—", e(r["status"]),
             K.money(r["pnl"], True) if r.get("pnl") is not None else "—",
             f'{r.get("successful_trades") or 0}/{r.get("closed_trades") or 0}'))) + "</tr>")
     return (f'<h2 class="ax-h2">The ten sessions</h2><div class="ax-banner {cls} ax-small" role="status">{e(b["message"])}</div>'
+            f'<p class="ax-boarddetail">{e(b.get("detail") or "")}'
+            f'{" · ranks from " + e(b["rank_day"]) if b.get("rank_day") else ""}</p>' + _board_cards(b) +
+            '<details class="ax-help"><summary>Table view</summary>'
             '<style>@media (max-width:700px){.ax-boardwrap{max-height:none!important;overflow:visible!important}'
             '.ax-board{min-width:0!important;width:100%!important}.ax-board thead{display:none}'
             '.ax-board tbody,.ax-board tr{display:block;width:100%}.ax-board tr{border-bottom:1px solid var(--ax-line,#ddd);'
@@ -605,8 +696,9 @@ def _board_html(conn) -> str:
             'white-space:normal!important;text-align:right;min-width:0;overflow-wrap:anywhere}.ax-board td::before{'
             'content:attr(data-label);font-weight:600;text-align:left;flex:0 0 36%}}</style>'
             f'<div class="ax-tablewrap ax-boardwrap"><table class="ax-table ax-board"><thead><tr>' + "".join(f"<th>{e(h)}</th>" for h in head) +
-            '</tr></thead><tbody>' + "".join(trs) + '</tbody></table></div>'
-            '<p class="ax-small ax-muted">Wins = closed trades that made money / closed trades. CRI↓ is crash risk: lower is better.</p>')
+            '</tr></thead><tbody>' + "".join(trs) + '</tbody></table></div></details>'
+            '<p class="ax-small ax-muted">Wins = closed trades that made money / closed trades. Rank = ATIP rank on the latest '
+            'scored day. CRI↓ is crash risk: lower is better. Hover a score for its formula.</p>')
 
 
 def sessions(conn, root="", app=False) -> str:

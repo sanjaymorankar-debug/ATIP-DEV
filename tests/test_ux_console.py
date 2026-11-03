@@ -196,6 +196,7 @@ def test_signal_explorer_rows_factors_story_and_gap(api):
 
 def test_preview_rupee_risk_reward_and_checklist(api):
     client, _ = api
+    _seed_scores()            # ACME on a BUY signal: since 3 Nov 2026 (full review) the ticket buys only on a BUY signal
     d = client.get("/api/command/preview?symbol=ACME&side=BUY&qty=10&entry=100&target=110&stop=95").json()
     assert d["risk_rs"] == 50.0 and d["reward_rs"] == 100.0 and d["rr"] == 2.0
     assert d["net_risk_rs"] >= 50.0 and d["value"] == 1000.0

@@ -143,7 +143,8 @@ def check_vix_alert(trade_date=None):
     if len(rows)<2: return False
     v1=rows[0]["india_vix"]; v2=rows[-1]["india_vix"]
     if v1 and v2 and (v2-v1)>=3.0:
-        send_telegram(fmt("🚨","VIX Spike",f"<b>VIX:</b> {v2:.1f} (+{v2-v1:.1f})\n{'🚨 PANIC — avoid new positions' if v2>25 else '⚠️ High volatility — reduce sizing'}"))
+        send_telegram(fmt("🚨","VIX Spike",f"<b>VIX:</b> {v2:.1f} (+{v2-v1:.1f})\n{'🚨 PANIC — avoid new positions' if v2>25 else '⚠️ High volatility — reduce sizing'}"),
+                      key=f"vix_spike:{trade_date}")     # review 3 Nov 2026 (pipeline M4): once a day, not every 15 min
         return True
     return False
 
@@ -156,7 +157,8 @@ def check_broad_selloff(trade_date=None):
     bearish=[(c.replace("_chg","").upper(),row[c]) for c in ["nifty50_chg","banknifty_chg","midcap150_chg","smallcap250_chg"] if row[c] and row[c]<-1.0]
     if len(bearish)>=3:
         lines="\n".join(f"  🔴 {n}: {v:+.2f}%" for n,v in bearish)
-        send_telegram(fmt("📉","Broad Selloff",f"<b>{len(bearish)} indexes down >1%:</b>\n{lines}\n\n🚨 Capital preservation mode"))
+        send_telegram(fmt("📉","Broad Selloff",f"<b>{len(bearish)} indexes down >1%:</b>\n{lines}\n\n🚨 Capital preservation mode"),
+                      key=f"broad_selloff:{trade_date}")
         return True
     return False
 
@@ -167,7 +169,7 @@ def check_zpi_alerts(trade_date=None):
     finally: conn.close()
     if not rows: return 0
     lines="".join(f"\n🎯 <b>{r['symbol']}</b>  ZPI:{r['zpi']:.0f}  VPI:{r['vpi']:.0f}" for r in rows)
-    send_telegram(fmt("🎯","ZPI Buy Zone",f"<b>Buy zone candidates:</b>{lines}"))
+    send_telegram(fmt("🎯","ZPI Buy Zone",f"<b>Buy zone candidates:</b>{lines}"), key=f"zpi:{trade_date}")
     return len(rows)
 
 def check_cri_alerts(trade_date=None):
@@ -179,8 +181,9 @@ def check_cri_alerts(trade_date=None):
             WHERE p.date=? AND s.cri>80 ORDER BY s.cri DESC""",(str(trade_date),str(trade_date))).fetchall()
     finally: conn.close()
     if not rows: return 0
-    lines="".join(f"\n🚨 <b>{r['symbol']}</b>  CRI:{r['cri']:.0f}  P&L:{r['pnl_pct']:+.1f}%" for r in rows)
-    send_telegram(fmt("🚨","CRI Danger",f"<b>High risk holdings:</b>{lines}\n\n⚠️ Review stop-loss"))
+    lines="".join(f"\n🚨 <b>{r['symbol']}</b>  CRI:{r['cri']:.0f}  P&L:"
+                  + (f"{r['pnl_pct']:+.1f}%" if r['pnl_pct'] is not None else "—") for r in rows)
+    send_telegram(fmt("🚨","CRI Danger",f"<b>High risk holdings:</b>{lines}\n\n⚠️ Review stop-loss"), key=f"cri_danger:{trade_date}")
     return len(rows)
 
 def send_tod_alert(trade_date=None):
@@ -197,19 +200,22 @@ def send_tod_alert(trade_date=None):
     # Owner decision 3 Nov 2026: a Trade of the Day only on a BUY signal; otherwise the alert says there is none today.
     if (tod["signal"] or "") != "BUY":
         send_telegram(fmt("🎯", "Trade of the Day", f"<b>No BUY signal for today</b> ({trade_date}). ATIP names a Trade of "
-                                                     f"the Day only from a BUY signal."))
+                                                     f"the Day only from a BUY signal."), key=f"tod:{trade_date}")
         return True
-    cmp=tod["cmp"] or 0
-    # one trade-plan formula on every channel (C3, 3 Nov 2026): the dashboard's scores.predictions.compute_trade_plan
-    from scores.predictions import compute_trade_plan
-    plan=compute_trade_plan("BUY", cmp, tod["atr_14"])
-    sl, t1, t2 = (plan["stop_loss"] or "—"), (plan["target_1"] or "—"), (plan["target_2"] or "—")
+    # Review 3 Nov 2026 (pipeline M3): a NULL here used to raise inside the format spec ("unsupported format string
+    # passed to NoneType", 5 times in Oct) and the alerts after it were lost; a missing price planned off Rs 0.
+    num=lambda v, f: "—" if v is None else format(v, f)
+    cmp=tod["cmp"]
+    from scores.predictions import compute_trade_plan     # one trade-plan formula on every channel (C3)
+    plan=compute_trade_plan("BUY", cmp, tod["atr_14"]) if cmp else {}
+    sl, t1, t2 = (plan.get("stop_loss") or "—"), (plan.get("target_1") or "—"), (plan.get("target_2") or "—")
     body=(f"<b>Stock:</b> {tod['symbol']}  <b>Signal:</b> {tod['signal']}\n"
-          f"<b>TOD Score:</b> {tod['tod_score']:.1f}  <b>ATIP:</b> {tod['atip_score']:.1f}\n\n"
-          f"<b>CMP:</b> ₹{cmp:,.2f}\n<b>Stop Loss:</b> ₹{sl}\n<b>Target 1:</b> ₹{t1}\n<b>Target 2:</b> ₹{t2}\n\n"
+          f"<b>TOD Score:</b> {num(tod['tod_score'], '.1f')}  <b>ATIP:</b> {num(tod['atip_score'], '.1f')}\n\n"
+          f"<b>CMP:</b> {('₹' + format(cmp, ',.2f')) if cmp else '— (no close yet)'}\n<b>Stop Loss:</b> ₹{sl}\n"
+          f"<b>Target 1:</b> ₹{t1}\n<b>Target 2:</b> ₹{t2}\n\n"
           f"<b>Factors:</b>\n  ✦ {tod['top_factor_1'] or '—'}\n  ✦ {tod['top_factor_2'] or '—'}\n"
-          f"\n<b>Market:</b> {(mh['regime'] if mh else '—')}  MH:{(mh['mh_score'] if mh else '—'):.0f}")
-    send_telegram(fmt("🎯","Trade of the Day",body))
+          f"\n<b>Market:</b> {(mh['regime'] if mh else '—')}  MH:{num(mh['mh_score'] if mh else None, '.0f')}")
+    send_telegram(fmt("🎯","Trade of the Day",body), key=f"tod:{trade_date}")
     return True
 
 def check_fii_alert(trade_date=None):
@@ -220,7 +226,8 @@ def check_fii_alert(trade_date=None):
     if not row: return False
     fii=row["fii_net_cr"] or 0; dii=row["dii_net_cr"] or 0
     if fii<-2000:
-        send_telegram(fmt("📉","FII Big Sell",f"<b>FII Net:</b> ₹{fii:,.0f} Cr\n<b>DII Net:</b> ₹{dii:+,.0f} Cr\n{'🛡️ DII cushioning' if dii>500 else '⚠️ No DII support'}"))
+        send_telegram(fmt("📉","FII Big Sell",f"<b>FII Net:</b> ₹{fii:,.0f} Cr\n<b>DII Net:</b> ₹{dii:+,.0f} Cr\n{'🛡️ DII cushioning' if dii>500 else '⚠️ No DII support'}"),
+                      key=f"fii_sell:{trade_date}")
         return True
     return False
 

@@ -81,12 +81,17 @@ def evaluate(conn, factor_key: str) -> dict:
         t = ic.get("t_stat")
         chk("t_stat", t is not None and abs(t) >= c["min_abs_t"], f"t = {t} (need |t| >= {c['min_abs_t']})")
         hr = ic.get("hit_rate")
-        hr_dir = (hr if (m or 0) >= 0 else (1 - hr)) if hr is not None else None
+        # Review 3 Nov 2026 (quant H2): the IC is measured on the stored score, which quant/engine.py has already
+        # turned the factor's way (100 - percentile for direction -1), so a working factor has a POSITIVE IC whatever
+        # its declared direction. Testing the sign against the direction again failed every working "lower is better"
+        # factor and passed an inverted one.
+        hr_dir = hr
         chk("hit_rate", hr_dir is not None and hr_dir >= c["min_hit_rate"],
             f"IC in the factor's sign on {hr_dir} of dates (need >= {c['min_hit_rate']})")
-        if m is not None and (m > 0) != (sign > 0):
+        if m is not None and m <= 0:
             checks.append({"criterion": "direction", "result": "FAIL",
-                           "detail": f"mean IC {m} has the opposite sign to the factor's declared direction {sign}"})
+                           "detail": f"mean IC {m} of the direction-adjusted score (declared direction {sign}) is not "
+                                     f"positive: the factor ranks the wrong way round"})
     if not decay:
         chk("decay", None, "no IC-decay research stored (python -m quant research KEY --kind ic_decay)")
     else:

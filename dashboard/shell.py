@@ -234,7 +234,10 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
     feed = (f'<span class="ax-pill ax-feed ax-hide-sm" data-ax-feed data-state="{_e(fd.get("state"))}" role="status" '
             f'title="Live price feed"{"" if fd else " hidden"}><span class="ax-dot" aria-hidden="true"></span>'
             f'<span class="ax-feedtext">{_e(fd.get("text"))}</span><span class="ax-feedshort" aria-hidden="true">'
-            f'{_e(fd.get("short"))}</span></span>')
+            f'{_e(fd.get("short"))}</span></span>'
+            # the freshness stamp (3 Nov 2026 brief): when the newest quote arrived, to the second, in IST
+            f'<span class="ax-updated ax-hide-sm" data-ax-updated data-state="{"stale" if fd.get("stale") else "fresh"}" '
+            f'title="When the last live quote arrived">{_e("Updated " + fd["updated"]) if fd.get("updated") else "Updated —"}</span>')
     # W5: the P&L strip on the Trade screens, its box drawn now (fixed height) so the page never shifts when it fills
     trade_page = sec == "trade" or path.startswith(("/stock/", "/trading", "/execution-lab", "/baskets"))
     pnl_strip = ('<div class="ax-pnlstrip" data-ax-pnlstrip role="status" aria-label="Today at a glance">'
@@ -300,7 +303,7 @@ def head_tags(root: str = "", app: bool = False) -> str:
     return (f'<meta name="atip-root" content="{_e(root)}"><link rel="stylesheet" href="{_e(root)}/static/atip/atip.css?v={VERSION}">'
             f'<link rel="stylesheet" href="{_e(root)}/static/atip/workspace.css?v={VERSION}">'
             "<script>(function(){var d=document.documentElement;try{var q=new URLSearchParams(location.search).get('theme');"
-            "var t=q||localStorage.getItem('atip-theme');if(t==='dark'||t==='light')d.setAttribute('data-theme',t);"
+            "var t=q||localStorage.getItem('atip-theme');if(t!=='light'&&t!=='auto')t='dark';if(t==='dark'||t==='light')d.setAttribute('data-theme',t);"
             "if(localStorage.getItem('atip-density')==='compact')d.setAttribute('data-density','compact');"
             # W1: the watchlist's room is made before the first paint, so the page never jumps when it opens
             "var w=localStorage.getItem('atip-wl'),p=location.pathname;if(innerWidth>=768&&(w==='open'||(w!=='closed'&&innerWidth>=1440"

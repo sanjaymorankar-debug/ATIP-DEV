@@ -163,7 +163,7 @@ def compute_composites(conn, as_of, names) -> dict:
         except ValueError as e:                         # W39: a neutralize name with no stored raw values
             out[key] = {"rows": 0, "error": f"normalization failed: {e}"}
             continue
-        pct = NZ.percentile(vals)
+        pct = NZ.percentile(norm)     # review 3 Nov 2026 (quant M9): of the normalised values, not the raw ones
         rk = NZ.rank(pct)
         srank = {}
         for grp in {sec.get(s) for s in vals if sec.get(s)}:

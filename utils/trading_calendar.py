@@ -68,6 +68,20 @@ NSE_HOLIDAYS = {
 }
 
 
+def calendar_gap(today: date | None = None) -> str | None:
+    """None while NSE_HOLIDAYS covers this year (and, from December, next year); else what is missing. Review 3 Nov
+    2026 (pipeline H1): the list ends at 2026-12-25, so 26 Jan 2027 (Republic Day) would read as a trading day --
+    intraday polling, paper matching, SIP orders and a "missed post-market" alarm on a closed market. NSE publishes
+    the next year's list each December; this only says it is missing, it never guesses the dates."""
+    today = today or date.today()
+    years = {d.year for d in NSE_HOLIDAYS}
+    if today.year not in years:
+        return f"no NSE holidays listed for {today.year}: every weekday reads as a trading day"
+    if today.month == 12 and today.year + 1 not in years:
+        return f"no NSE holidays listed for {today.year + 1} yet: add NSE's circular before 1 Jan"
+    return None
+
+
 # Weekend days on which NSE nonetheless held a full session -- both Union
 # Budget days, each confirmed by a Bhavcopy in NSE's archive. Treating them as
 # closed would mark two days of real prices as non-session data, and a cleanup

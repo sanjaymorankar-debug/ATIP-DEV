@@ -214,6 +214,13 @@
   function tkSave() {
     var st = tkRead(), p = TK.preview, qty = TK.qty; if (!p || !p.ok || !qty) return;
     var trig = num(st.trig) || num(st.ltp), sl = num(st.sl), tg = num(st.tg);
+    // Safety UX (3 Nov 2026): the rule is shown -- symbol, quantity, price, value, stop-loss -- and confirmed before it is saved
+    if (!TK.asked) {
+      var ask = AX.confirmOrder ? AX.confirmOrder({ symbol: st.symbol, side: st.side, quantity_type: "SHARES", quantity_value: qty,
+        trigger_value: st.ot === "LIMIT" ? num(st.lim) : trig, stop: sl, target: tg }, { action: "save" }) : Promise.resolve(false);
+      ask.then(function (yes) { if (yes) { TK.asked = true; try { tkSave(); } finally { TK.asked = false; } } });
+      return;
+    }
     var pct = function (x) { return Math.round(Math.abs(x - trig) / trig * 100000) / 1000; };
     var payload = { symbol: st.symbol, side: st.side, trigger_type: "PRICE", trigger_value: trig, trigger_percent: null,
       reference_price: num(st.ltp) || trig, quantity_type: st.qm, quantity_value: st.qm === "SHARES" ? qty : num(st.q),
