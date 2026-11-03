@@ -31,11 +31,17 @@ jobs:
           # parses docker-compose.yml with it. No runtime module imports yaml,
           # so it stays out of requirements.txt.
           #
-          # dhanhq, kiteconnect, schedule, anthropic and the rest stay OUT
-          # deliberately — every one is behind a guarded import, and no CI job
-          # should be able to reach a real brokerage account.
+          # schedule (the in-process job timer: pipeline/scheduler.py,
+          # pipeline/operating_schedule.py) and openpyxl (the XLSX report writer:
+          # enterprise/session_reports.py) are declared runtime requirements;
+          # without them 13 scheduler and report tests failed with
+          # ModuleNotFoundError (master, 3 Nov 2026). Neither reaches a broker.
+          #
+          # dhanhq, kiteconnect, anthropic and the rest stay OUT deliberately —
+          # every one is behind a guarded import, and no CI job should be able
+          # to reach a real brokerage account.
           pip install pytest httpx pandas numpy ta fastapi uvicorn requests yfinance \
-                      cryptography PyYAML
+                      cryptography PyYAML schedule openpyxl
 
       - name: Run tests
         run: python -m pytest tests/ -v
