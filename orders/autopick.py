@@ -48,6 +48,18 @@ GAP_PCT = 3.0                       # dashboard/command_more.py GAP_WARN_PCT: a 
 MAX_SIGNAL_AGE_DAYS = 5             # a weekend and a holiday; older scores mean the pipeline stopped
 QUEUED = ("ACTIVE", "PENDING_CONFIRMATION")
 HOLD_SETTING = "autopick_hold_min_score"   # session_settings: the HOLD fallback's cut-off, OFF = BUY only
+# SES-09 (3 Nov 2026): rank-fill. A session is never left empty because the day had fewer BUY signals than
+# sessions (3 Nov 2026: 0 BUY of 499 scored, so all ten waited). After the BUY signals (and the HOLD cut-off
+# above, when the owner has set one) the next-ranked ELIGIBLE stocks fill the free sessions: ATIP score
+# highest first, lower CRI first among equals (CRI is lower-is-better), never a SELL or WAIT signal, a CRI at
+# or above SELL_CRI_DANGER, a price under FILL_MIN_PRICE, or a 20-day turnover under FILL_MIN_TURNOVER.
+# Every such pick is labelled RANK-FILL in its rule note and on the board; the board says "N of 10 sessions
+# filled" and why. Off with session_settings autopick_rank_fill = OFF.
+FILL_SETTING = "autopick_rank_fill"
+FILL_TARGET = 10
+FILL_MIN_PRICE = 20.0
+FILL_MIN_TURNOVER = 2e7             # Rs 2 crore a day (20-day average close x volume)
+SOURCE_BUY, SOURCE_HOLD, SOURCE_FILL = "BUY", "HOLD-CUT", "RANK-FILL"
 
 
 def _row(r):
@@ -84,6 +96,36 @@ def set_hold_min_score(conn, value, reason: str = "") -> dict:
     return {"hold_min_score": v, "was": was}
 
 
+def rank_fill_enabled(conn) -> bool:
+    """On unless the owner set session_settings autopick_rank_fill to OFF."""
+    from orders.sessions import ensure_tables
+    ensure_tables(conn)
+    r = conn.execute("SELECT value FROM session_settings WHERE name = ?", (FILL_SETTING,)).fetchone()
+    return not (r and str(_row(r)["value"]).strip().upper() == "OFF")
+
+
+def _fill_rows(conn, d, skip: set) -> list:
+    """The next-ranked eligible stocks on score day d (see the rank-fill note above), best first."""
+    from scores.engine import SELL_CRI_DANGER
+    out = []
+    for r in map(_row, conn.execute(
+            "SELECT a.symbol, a.atip_score, a.cri, a.`signal` AS `signal`, p.close, "
+            "(SELECT AVG(q.close * q.volume) FROM (SELECT close, volume FROM prices_daily WHERE symbol = a.symbol "
+            " AND date <= a.date AND series = 'EQ' ORDER BY date DESC LIMIT 20) q) AS turnover "
+            "FROM ai_scores a LEFT JOIN prices_daily p ON p.symbol = a.symbol AND p.date = a.date AND p.series = 'EQ' "
+            "WHERE a.date = ? AND a.`signal` = 'HOLD' AND a.atip_score IS NOT NULL "
+            "ORDER BY a.atip_score DESC, (a.cri IS NULL), a.cri ASC, a.symbol", (d,)).fetchall()):
+        if r["symbol"] in skip or not r["close"]:
+            continue
+        if r["cri"] is not None and r["cri"] >= SELL_CRI_DANGER:       # CRI: lower is better
+            continue
+        if float(r["close"]) < FILL_MIN_PRICE or float(r["turnover"] or 0) < FILL_MIN_TURNOVER:
+            continue
+        out.append({"symbol": r["symbol"], "score": r["atip_score"], "signal": r["signal"], "signal_price": float(r["close"]),
+                    "cri": r["cri"], "source": SOURCE_FILL})
+    return out
+
+
 def candidates(conn, today: date | None = None) -> dict:
     """{"date", "hold_min_score", "rows": [{symbol, score, signal, signal_price}], "reason"}: the latest
     scored day's BUY signals by ATIP score, then -- with the HOLD fallback on -- its HOLD stocks scoring
@@ -100,14 +142,25 @@ def candidates(conn, today: date | None = None) -> dict:
         return {"date": str(d), "rows": [], "reason": f"the latest ATIP scores are from {d}: too old to pick from"}
     hold = " OR (a.`signal` = 'HOLD' AND a.atip_score >= ?)" if cut else ""
     rows = [{"symbol": r["symbol"], "score": r["atip_score"], "signal": r["signal"],
-             "signal_price": float(r["close"]) if r["close"] else None}
+             "signal_price": float(r["close"]) if r["close"] else None,
+             "source": SOURCE_BUY if r["signal"] == "BUY" else SOURCE_HOLD}
             for r in map(_row, conn.execute(
                 "SELECT a.symbol, a.atip_score, a.`signal` AS `signal`, p.close FROM ai_scores a LEFT JOIN prices_daily p "
                 f"ON p.symbol = a.symbol AND p.date = a.date WHERE a.date = ? AND (a.`signal` = 'BUY'{hold}) "
                 "ORDER BY CASE a.`signal` WHEN 'BUY' THEN 0 ELSE 1 END, a.atip_score DESC",
                 (d, cut) if cut else (d,)).fetchall())]
     what = f"BUY signal or HOLD stock scoring {cut:g}+" if cut else "BUY signal"
-    return {"date": str(d), "hold_min_score": cut, "what": what, "rows": rows,
+    n_signal = len(rows)
+    filled = []
+    fill_on = rank_fill_enabled(conn)
+    if fill_on:
+        filled = _fill_rows(conn, d, {r["symbol"] for r in rows})
+        rows = rows + filled
+    return {"date": str(d), "hold_min_score": cut, "what": what, "rows": rows, "n_signal": n_signal,
+            "n_fill": len(filled), "rank_fill": fill_on,
+            "fill_note": (f"rank-fill: {len(filled)} eligible stock(s) on {d} (HOLD, CRI under the sell level, "
+                          f"price Rs {FILL_MIN_PRICE:g}+, 20-day turnover Rs {FILL_MIN_TURNOVER / 1e7:g} crore+)")
+                         if fill_on else "rank-fill is off",
             "reason": None if rows else f"no {what} on {d}"}
 
 
@@ -205,11 +258,14 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
         mine = [s for s in sessions.list_sessions(conn)["sessions"] if s.get("auto_pick") and s.get("pool")]
         if not mine:
             return []
-        if broker_env() != PAPER:
+        if broker_env() != PAPER and not dry_run:
             return [{"session": s["id"], "type": "WAITING", "reason": "auto-pick is PAPER only"} for s in mine]
-        h, _ = halted()
-        if h:
+        h, why = halted()
+        if h and not dry_run:
             return [{"session": s["id"], "type": "WAITING", "reason": "trading is halted"} for s in mine]  # the banner says why
+        # dry_run (the board, the P&L page, --dry-run) still works out who WOULD be picked while halted, so "10 of 10"
+        # is not hidden behind the overnight stop window; the held flag says the buy waits for the halt to lift.
+        halted_note = why if h else None
         if not dry_run:
             cancel_stale(conn, today)
             mine = [s for s in sessions.list_sessions(conn)["sessions"] if s.get("auto_pick") and s.get("pool")]
@@ -252,6 +308,7 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
             n = s["pool"]["occurrence"] + 1
             ev = {"session": s["id"], "type": "PICKED", "symbol": pick["symbol"], "occurrence": n,
                   "score": pick["score"], "signal": pick["signal"], "signal_date": cands["date"], "price": pick["price"],
+                  "source": pick.get("source", SOURCE_BUY),
                   "trigger": round(pick["price"] * (1 + PICK_BAND_PCT / 100), 2)}
             if not dry_run:
                 r = rules.create_rule({
@@ -260,7 +317,7 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
                     "quantity_type": "SESSION", "quantity_value": 100, "product_type": "CNC", "order_type": "MARKET",
                     "require_confirmation": True,
                     "notes": f"{NOTE} {s['id']} occurrence #{n}: ATIP {pick['signal']} {cands['date']}, "
-                             f"score {pick['score']}"})
+                             f"score {pick['score']}, {pick.get('source', SOURCE_BUY)}"})
                 sessions.link_rule(conn, s["id"], r["id"])
                 sessions._event(conn, s["id"], "AUTO_PICK", {**ev, "rule_id": r["id"]})
                 conn.commit()
@@ -268,6 +325,8 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
                 log.info(f"  auto-pick: {s['id']} occurrence #{n} -> {pick['symbol']} (ATIP {pick['score']}, "
                          f"buys at up to Rs {ev['trigger']:,.2f})")
             busy.add(pick["symbol"])
+            if halted_note:
+                ev["held"] = halted_note
             out.append(ev)
         return out
     finally:

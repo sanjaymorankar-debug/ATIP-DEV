@@ -229,6 +229,13 @@ def register(app, guard, Req, get_connection, json_safe):
         from orders.sessions import list_sessions
         return await run_in_threadpool(call, list_sessions)
 
+    @app.get("/api/sessions/board")
+    async def api_session_board():
+        """SES-09: the ten sessions with symbol, rationale, score snapshot, entry/target/stop, status, P&L,
+        successful trades, and "N of 10 sessions filled -- reason"."""
+        from orders.session_board import board
+        return await run_in_threadpool(call, board)
+
     @app.get("/api/sessions/events")
     async def api_session_events(sid: str = None, limit: int = 50):
         from orders.sessions import events

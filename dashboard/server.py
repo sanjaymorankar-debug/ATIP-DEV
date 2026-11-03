@@ -1140,7 +1140,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
       <select id="hsf" aria-label="Signal" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
       <span id="hcnt" style="font-size:11px;color:#64748b;align-self:center"></span>
     </div>
-    <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
+    <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th title="Crash-Risk Index: lower is better">CRI↓</th>
       {th_heads}<th title="Date the first target was reached">Target hit</th><th>Best</th><th>Worst</th><th>Model</th></tr></thead>
       <tbody>{hist_rows_or_empty}</tbody></table>
   </div>

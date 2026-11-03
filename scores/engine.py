@@ -11,7 +11,8 @@ def load_weights(conn, index_name):
     return {r["variable"]:r["weight"] for r in rows}
 
 def minmax(val, mn, mx, invert=False):
-    if val is None or mn==mx: return 50.0
+    # SV-02: a NaN is "no reading", never a number: max(0, min(100, nan)) is 100 in Python, a falsely top score.
+    if val is None or val!=val or mn==mx: return 50.0
     s=max(0.0,min(100.0,(val-mn)/(mx-mn)*100))
     return round(100.0-s if invert else s,2)
 
@@ -399,6 +400,19 @@ def ensure_ins_weights(conn):
                      "VALUES ('INS',?,?,?,'ALL')",(var,wt,desc))
     conn.commit()
 
+# SV-04 (3 Nov 2026): ATIP had no crash-risk input at all, and CRI is the one score whose ranking holds out of
+# sample (lower CRI -> higher next-day / 5-day return, IC -0.045 t -4.4 at 1 day). SAFETY = 100 - CRI enters the
+# composite at 0.2, VPI's weight. Point-in-time, ATIP's 5-day IC goes from +0.008 to +0.017 out of sample and
+# +0.013 to +0.028 in-sample; 0.3 was better still in both and was NOT taken (fit to one 5-month window).
+# weighted_score divides by the weight present, so the other weights keep their proportions.
+ATIP_SAFETY_WEIGHT = 0.2
+
+def ensure_atip_safety_weight(conn):
+    """Seed ATIP's SAFETY component on existing databases (INSERT OR IGNORE: an owner's edit is kept)."""
+    conn.execute("INSERT OR IGNORE INTO weight_config (index_name,variable,weight,description,regime) "
+                 "VALUES ('ATIP','SAFETY',?,'100 - CRI: crash risk, lower is better (SV-04)','ALL')",(ATIP_SAFETY_WEIGHT,))
+    conn.commit()
+
 def compute_ins(fii,fund,bulk,weights,own=None):
     """
     Institutional Score -- was always None in run_scoring_pipeline() before
@@ -448,6 +462,14 @@ def compute_ins(fii,fund,bulk,weights,own=None):
     if not c: return None
     return round(weighted_score(c,weights,"INS"),2)
 
+def above_200(tech):
+    """True / False against the 200-day average, or None when the stock has no 200-day average yet (under 200
+    sessions: a recent listing). SV-02: technical_indicators stores above_200dma 0 for those, which the scores
+    read as "below the 200-DMA" -- a falsely weak Support / Trend and +40 on CRI's WeakTrend for every new listing.
+    None drops the component (weighted_score renormalises over what is present)."""
+    if tech.get("sma_200") is None: return None
+    return bool(tech.get("above_200dma"))
+
 def compute_vpi(tech,prices,fund,inst,ns,weights,rs=None,liquidity=None):
     c={}
     if tech.get("atr_pct"): c["V"]=min(tech["atr_pct"]*12,100)
@@ -474,11 +496,18 @@ def compute_mri(tech,ns,weights):
     # data.technical.MACD_HIST_FULL_SCALE_PCT.
     from data.technical import macd_component
     macd=macd_component(tech.get("macd_hist_pct"))
-    if macd is not None: c["MACD"]=macd
+    # SV-03 (3 Nov 2026): this is the REVERSAL half of "Momentum-Reversal" -- a falling histogram scores high.
+    # It was read as momentum (rising = high) and the score ranked backwards: point-in-time over 353 sessions
+    # and 489 symbols, signed rank IC of the old MRI was -0.017 in-sample and -0.031 out-of-sample at 5 days
+    # (t -2.1); with MACD reversed and ADX read straight (below) it is +0.014 / +0.018. See
+    # docs/reports/2026-11-03/SCORE_VALIDATION_REPORT.md.
+    if macd is not None: c["MACD"]=round(100.0-macd,2)
     rsi=tech.get("rsi_14")
     if rsi is not None: c["RSI"]=(85 if 40<=rsi<=55 else 60 if rsi<40 else 20 if rsi>70 else 50)
     adx=tech.get("adx_14")
-    if adx: c["ADX"]=minmax(adx,0,60,invert=True)
+    # SV-03: ADX was inverted (a trendless stock scored high). Out of sample a trending one ranks better
+    # (IC +0.029 at 5 days, +0.054 at 20; same sign in-sample), so it is read straight, as VPI's TS already does.
+    if adx: c["ADX"]=minmax(adx,0,60)
     vr=tech.get("volume_ratio")
     if vr: c["Volume"]=min(vr/2*100,100)
     e9,e21=tech.get("ema_9"),tech.get("ema_21")
@@ -498,7 +527,8 @@ def compute_rri(tech,prices,inst,ns,weights):
     if not inst.empty:
         dii=(inst["dii_net_cr"].sum() if "dii_net_cr" in inst.columns else 0)
         c["Institutional"]=minmax(float(dii),-200,500)
-    c["Support"]=80 if tech.get("above_200dma") else 30
+    a200=above_200(tech)
+    if a200 is not None: c["Support"]=80 if a200 else 30
     c["News"]=ns
     return round(weighted_score(c,weights,"RRI"),2)
 
@@ -510,10 +540,11 @@ def compute_cri(tech,fund,ns,mh,weights):
     if de is not None: c["Debt"]=minmax(de,0,5)
     vr=tech.get("volume_ratio")
     c["Distribution"]=min((vr or 1)*30,100) if (vr and vr>1.5) else 20
-    w=0
-    if not tech.get("above_200dma",1): w+=40
-    if tech.get("death_cross",0): w+=40
-    c["WeakTrend"]=min(w,100)
+    w=0; a200=above_200(tech)
+    if a200 is not None:                     # unknown (no 200-DMA yet) is not "weak trend"
+        if not a200: w+=40
+        if tech.get("death_cross",0): w+=40
+        c["WeakTrend"]=min(w,100)
     c["NegativeNews"]=max(0,100-ns)
     mh_s=mh.get("mh_score",50) or 50; vix=mh.get("vix_level")   # None: no VIX for the session
     mw=0
@@ -564,16 +595,21 @@ def compute_delivery_accumulation(prices):
 
 def compute_zpi(tech,inst,ns,sector_val,weights,accumulation=None):
     c={}
-    c["Support"]=80 if tech.get("above_200dma") else 30
+    a200=above_200(tech)
+    if a200 is not None: c["Support"]=80 if a200 else 30
     adx=tech.get("adx_14")
-    if adx: c["Resistance"]=max(0,100-adx*2)
+    # SV-03: "Resistance" was 100 - 2*ADX (a strong trend = more overhead = lower). Read straight -- a trend with
+    # strength behind it ranks better -- the in-sample and out-of-sample signs agree (see compute_mri).
+    if adx: c["Resistance"]=min(100,adx*2)
     rsi=tech.get("rsi_14")
     if rsi is not None: c["RSI"]=(90 if 30<=rsi<=50 else 70 if rsi<30 else 60 if rsi<=60 else 20)
     atr_pct=tech.get("atr_pct")
-    if atr_pct: c["ATR"]=min(atr_pct*12,100)
+    # SV-03: a buy ZONE is a calm one. ATR% was read as "more range = better" (atr_pct*12); high-ATR stocks
+    # returned LESS in every window (IC -0.037 in-sample, -0.030 out-of-sample at 5 days), so it is inverted.
+    if atr_pct: c["ATR"]=round(100-min(atr_pct*12,100),2)
     vr=tech.get("volume_ratio")
     if vr: c["Volume"]=(80 if vr<0.7 else 65 if vr<1.0 else 45 if vr<1.5 else 20)
-    c["Trend"]=85 if tech.get("above_200dma") else 15
+    if a200 is not None: c["Trend"]=85 if a200 else 15
     if accumulation is not None:
         c["Institutional"]=accumulation   # delivery-based -- see compute_delivery_accumulation()
     c["News"]=ns
@@ -797,21 +833,23 @@ def compute_acs(sym,td,all_scores,mh,conn,weights,liquidity=None,news_conf=None)
 BUY_STRICT = {"atip": 75, "vpi": 70, "zpi": 65, "acs": 60, "mh": 50}
 BUY_LOOSE  = {"atip": 65, "vpi": 60, "zpi": 55, "mh": 40}
 SELL_CRI_DANGER = 75      # above this, exit/avoid regardless of other scores
+BUY_MAX_CRI = 60          # SV-04: a BUY needs a CRI below this -- CRI is lower-is-better and the BUY gates had no cap on it
 SELL_ATIP_FLOOR = 30      # below this, treat as a sell candidate
 HOLD_ATIP_FLOOR = 50      # below this (and not a sell), sit out as WAIT
 
 def determine_signal(scores,mh):
     vpi=scores.get("vpi",0) or 0; zpi=scores.get("zpi",0) or 0
-    cri=scores.get("cri",100) or 100; acs=scores.get("acs",0) or 0
+    cri=scores.get("cri"); cri=100 if cri is None else cri; acs=scores.get("acs",0) or 0   # a CRI of 0 is the SAFEST, not missing
     atip=scores.get("atip_score",0) or 0; mh_s=mh.get("mh_score",50) or 50
     regime=mh.get("regime","NEUTRAL")
     if cri>SELL_CRI_DANGER: return "SELL" if atip<40 else "HOLD"
     if regime=="HIGH_RISK": return "WAIT"
     if regime=="BEAR" and atip<70: return "WAIT"
     b=BUY_STRICT
-    if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and acs>=b["acs"] and mh_s>=b["mh"]: return "BUY"
-    b=BUY_LOOSE
-    if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and mh_s>=b["mh"]: return "BUY"
+    if cri<BUY_MAX_CRI:
+        if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and acs>=b["acs"] and mh_s>=b["mh"]: return "BUY"
+        b=BUY_LOOSE
+        if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and mh_s>=b["mh"]: return "BUY"
     if atip<SELL_ATIP_FLOOR or (cri>60 and scores.get("mri",50)<40): return "SELL"
     return "HOLD" if atip>=HOLD_ATIP_FLOOR else "WAIT"
 
@@ -823,6 +861,8 @@ def run_scoring_pipeline(trade_date=None):
         w_vpi=load_weights(conn,"VPI"); w_mri=load_weights(conn,"MRI")
         w_rri=load_weights(conn,"RRI"); w_cri=load_weights(conn,"CRI")
         w_zpi=load_weights(conn,"ZPI"); w_acs=load_weights(conn,"ACS")
+        try: ensure_atip_safety_weight(conn)
+        except Exception as e: log.warning(f"  ATIP SAFETY weight not seeded: {e}")
         w_atip=load_weights(conn,"ATIP"); w_tod=load_weights(conn,"TOD")
         w_mh=load_weights(conn,"MH"); w_msi=load_weights(conn,"MSI")
         flags=w27_flags(); result["w27_flags"]=flags
@@ -903,7 +943,8 @@ def run_scoring_pipeline(trade_date=None):
                 all_s={"vpi":vpi,"spi":spi,"rri":rri,"mri":mri,"cri":cri,"msi":msi,"zpi":zpi,"tech_score":ts}
                 acs=compute_acs(sym,trade_date,all_s,mh,conn,w_acs,liquidity=liquidity,news_conf=news_conf)
                 all_s["acs"]=acs
-                atip_comp={"VPI":vpi,"SPI":spi,"RRI":rri,"MRI":mri,"MSI":msi,"ZPI":zpi,"TS":ts,"FS":fs,"INS":ins}
+                atip_comp={"VPI":vpi,"SPI":spi,"RRI":rri,"MRI":mri,"MSI":msi,"ZPI":zpi,"TS":ts,"FS":fs,"INS":ins,
+                           "SAFETY":None if cri is None else round(100-cri,2)}   # SV-04: CRI is lower-is-better
                 atip_score=round(weighted_score({k:v for k,v in atip_comp.items() if v is not None},w_atip,"ATIP"),2)
                 all_s["atip_score"]=atip_score
                 tod_comp={"VPI":vpi,"ZPI":zpi,"MRI":mri,"MSI":msi,"Volume":min((tech.get("volume_ratio",1) or 1)*40,100),"Breakout":breakout,"Sector":sector_val,"ACS":acs}

@@ -325,6 +325,40 @@ def _scard(s: dict) -> str:
             f'<a class="ax-btn sm" href="/sessions/{e(s["id"])}" aria-label="{e(s["id"])} cycles and P&amp;L">Cycles &amp; P&amp;L</a></div></div>')
 
 
+def _board_html(conn) -> str:
+    """SES-09: the ten sessions as one table -- always ten rows -- under a "N of 10 sessions filled" line."""
+    try:
+        from orders.session_board import board
+        b = board(conn)
+    except Exception as ex:                                  # the page must still draw
+        return f'<div class="ax-banner warn ax-small">Ten-session board unavailable: {e(ex)}</div>'
+    cls = "ok" if b["complete"] else "warn"
+    head = ("Session", "Symbol", "Why this stock", "Scores (CRI↓ lower is better)", "Entry", "Target", "Stop", "Status", "P&L", "Wins")
+    trs = []
+    for r in b["rows"]:
+        sn = r.get("score_snapshot") or {}
+        sc = (f'ATIP {sn["atip"]:.0f} · VPI {sn["vpi"]:.0f} · MRI {sn["mri"]:.0f} · RRI {sn["rri"]:.0f} · ZPI {sn["zpi"]:.0f} · '
+              f'CRI↓ {sn["cri"]:.0f} · ACS {sn["acs"]:.0f} · {e(sn["signal"])}') if sn and None not in (
+                  sn["atip"], sn["vpi"], sn["mri"], sn["rri"], sn["zpi"], sn["cri"], sn["acs"]) else "—"
+        trs.append("<tr>" + "".join(f'<td data-label="{e(h)}">{c}</td>' for h, c in zip(head, (
+            f'<span><a href="/sessions/{e(r["session"])}">{e(r["session"])}</a> {e(r["name"])}</span>',
+            f'<b>{e(r["symbol"])}</b>' if r.get("symbol") else "—", e(r.get("rationale") or ""), sc,
+            K.money(r["entry"]) if r.get("entry") else "—", K.money(r["target"]) if r.get("target") else "—",
+            K.money(r["stoploss"]) if r.get("stoploss") else "—", e(r["status"]),
+            K.money(r["pnl"], True) if r.get("pnl") is not None else "—",
+            f'{r.get("successful_trades") or 0}/{r.get("closed_trades") or 0}'))) + "</tr>")
+    return (f'<h2 class="ax-h2">The ten sessions</h2><div class="ax-banner {cls} ax-small" role="status">{e(b["message"])}</div>'
+            '<style>@media (max-width:700px){.ax-boardwrap{max-height:none!important;overflow:visible!important}'
+            '.ax-board{min-width:0!important;width:100%!important}.ax-board thead{display:none}'
+            '.ax-board tbody,.ax-board tr{display:block;width:100%}.ax-board tr{border-bottom:1px solid var(--ax-line,#ddd);'
+            'padding:8px 0}.ax-board td{display:flex;justify-content:space-between;gap:12px;border:0;padding:2px 0;'
+            'white-space:normal!important;text-align:right;min-width:0;overflow-wrap:anywhere}.ax-board td::before{'
+            'content:attr(data-label);font-weight:600;text-align:left;flex:0 0 36%}}</style>'
+            f'<div class="ax-tablewrap ax-boardwrap"><table class="ax-table ax-board"><thead><tr>' + "".join(f"<th>{e(h)}</th>" for h in head) +
+            '</tr></thead><tbody>' + "".join(trs) + '</tbody></table></div>'
+            '<p class="ax-small ax-muted">Wins = closed trades that made money / closed trades. CRI↓ is crash risk: lower is better.</p>')
+
+
 def sessions(conn, root="", app=False) -> str:
     from accounting import cycles as C
     ov = C.overview(conn)
@@ -359,7 +393,7 @@ def sessions(conn, root="", app=False) -> str:
              '</div></fieldset><div class="ax-err"></div></div><div class="ax-dfoot"><button class="ax-btn" type="button" '
              'data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">Fill in amounts</button></div></form></dialog>')
     help_ = _worked_example()
-    body = (_closed_banner() + tiles + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
+    body = (_closed_banner() + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
             "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split +
             f'<div id="ax-sdata" hidden data-json="{e(json.dumps(data, default=str))}"></div>' + SETUP_JS)
     return page("Sessions", body, "/sessions", root=root, app=app,

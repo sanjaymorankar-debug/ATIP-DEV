@@ -1,11 +1,22 @@
-# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02, Live tab back 2026-11-03
+# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02, Live tab back 2026-11-03, ten-session board and corrected scores 2026-11-03
 
 ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only PWA). These are thin native
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.03.1** (Android `versionCode` 5 / `versionName` 2026.11.03.1; iOS `CFBundleShortVersionString`
-2026.11.03.1 / `CFBundleVersion` 5). The native tabs follow the page shell's five, with **Live in place of Reports**
+**Version 2026.11.03.2** (Android `versionCode` 6 / `versionName` 2026.11.03.2; iOS `CFBundleShortVersionString`
+2026.11.03.2 / `CFBundleVersion` 6).
+
+**2026.11.03.2 — what changed for the phone (SES-09, SV-02..04).** The apps draw the server's pages, so the
+changes arrive with the server; this version only moves the version number the web views report
+(`ATIPApp/2026.11.03.2`), so a phone on the new server can be told apart in the logs.
+- **Sessions tab**: a "The ten sessions" board above the cards, always ten rows, under one line that says
+  `N of 10 sessions filled` and, when fewer than ten, which sessions wait and why. Each row: symbol, why this
+  stock (BUY signal / rank-filled / HOLD cut-off), the score snapshot, entry / target / stop, status, P&L and
+  wins / closed trades. Under 700 px wide each row stacks as a labelled card, so nothing scrolls sideways.
+- **Scores**: MRI, ZPI and ATIP use the corrected formulas (see `docs/reports/2026-11-03/SCORE_AUDIT_REPORT.md`).
+- **CRI↓**: every CRI column the app shows is headed `CRI↓` (lower is better) and coloured that way: a low CRI
+  is green (strong), a high one red (weak). A BUY now needs a CRI under 60. The native tabs follow the page shell's five, with **Live in place of Reports**
 (the owner asked for the Live tab back on 2026-11-03; Reports is one tap away under More). Five is the most
 Android's bottom bar takes, and a sixth tab on iPhone would fold into the system's own "More":
 
@@ -23,7 +34,7 @@ app) gets the page shell's own bottom bar, which keeps Reports: Home, Trade, Ses
 Android icons are Material Icons vector drawables in `app/src/main/res/drawable/ic_tab_*.xml`.
 
 **The page shell hides its own navigation in the apps.** Both web views append `ATIPApp/<version>` (today
-`ATIPApp/2026.11.03.1`) to the platform's default user agent; the shell hides its left rail / bottom tab bar
+`ATIPApp/2026.11.03.2`) to the platform's default user agent; the shell hides its left rail / bottom tab bar
 for that user agent (or `?app=1`), because the apps have native tabs.
 
 **Moving around.** Pull down on any tab (Sessions included) to reload the page on screen. Tap the open tab
