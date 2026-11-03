@@ -681,6 +681,11 @@ W7_TABLES = {
             severity TEXT, title TEXT, body TEXT, created_at TIMESTAMP, read_at TIMESTAMP)""",
         "CREATE INDEX IF NOT EXISTS idx_ent_notif_user ON enterprise_notification(user_id, read_at)",
     ),
+    "enterprise_approval_log": (
+        """CREATE TABLE IF NOT EXISTS enterprise_approval_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at_utc TIMESTAMP NOT NULL, at_ist TEXT NOT NULL,
+            user_id TEXT NOT NULL, username TEXT, action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT)""",
+    ),
     "enterprise_audit": (
         """CREATE TABLE IF NOT EXISTS enterprise_audit (
             id INTEGER PRIMARY KEY AUTOINCREMENT, at TIMESTAMP, tenant_id TEXT, user_id TEXT, actor TEXT,
@@ -1303,7 +1308,8 @@ W3_W4_COLUMNS = {
     "quant_portfolio": {"tenant_id": "TEXT DEFAULT 'default'"},
     # W8: MFA (TOTP secret encrypted with ops/crypto.py) and the audit hash chain
     "enterprise_user": {"mfa_enabled": "INTEGER NOT NULL DEFAULT 0", "mfa_secret_enc": "TEXT",
-                        "mfa_pending_enc": "TEXT", "email_verified_at": "TIMESTAMP", "deleted_at": "TIMESTAMP"},
+                        "mfa_pending_enc": "TEXT", "email_verified_at": "TIMESTAMP", "deleted_at": "TIMESTAMP",
+                        "rejection_reason": "TEXT"},
     "enterprise_audit": {"prev_hash": "TEXT", "row_hash": "TEXT"},
     # W27: fundamentals from NSE filings -- point-in-time availability, SPI stored beside FS,
     # and which inputs each score actually used

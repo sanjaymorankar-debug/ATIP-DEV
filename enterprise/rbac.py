@@ -48,6 +48,8 @@ PERMISSIONS = {
 _READ = ["dashboard:read", "notifications:read", "workspace:write", "wealth:read", "wealth:write"]
 ROLES = {
     "SUPER_ADMIN": ("platform / tenant administrator: every permission", list(PERMISSIONS)),
+    "ADMIN": ("approves registrations and manages ordinary users; cannot grant ADMIN / SUPER_ADMIN",
+              _READ + ["admin:users", "audit:read"]),
     "RESEARCHER": ("research, factors, strategies (read), backtests",
                    _READ + ["research:read", "research:run", "strategy:read", "quant:read", "ml:read",
                             "portfolio:read"]),

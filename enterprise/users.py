@@ -40,7 +40,7 @@ from enterprise import audit
 from enterprise import security as S
 from enterprise.config import settings
 
-STATUSES = ("PENDING", "ACTIVE", "LOCKED", "DISABLED")
+STATUSES = ("PENDING", "ACTIVE", "LOCKED", "DISABLED", "REJECTED")
 
 
 class AuthError(ValueError):
@@ -187,6 +187,10 @@ def login(conn, username, password, tenant_id=None, ip=None, user_agent=None, ot
         u["status"] = "ACTIVE"
     if u["status"] != "ACTIVE":
         audit.record(conn, "auth.login_refused", user_id=u["user_id"], ip=ip, details={"status": u["status"]})
+        if u["status"] == "REJECTED":
+            reason = (conn.execute("SELECT rejection_reason FROM enterprise_user WHERE user_id=?",
+                                   (u["user_id"],)).fetchone() or [None])[0]
+            raise AuthError("registration was rejected" + (f": {reason}" if reason else ""))
         raise AuthError(f"account is {u['status']}")
     if not S.verify_password(password or "", u["password_hash"]):
         fails = (u["failed_logins"] or 0) + 1
@@ -389,8 +393,12 @@ def reset_password(conn, reset_token, new) -> None:
     if not r or r[2] or str(r[1]) < str(_now()):
         raise AuthError("reset token invalid or expired")
     _pw_check(new)
-    conn.execute("UPDATE enterprise_user SET password_hash=?, status='ACTIVE', failed_logins=0, locked_until=NULL, "
-                 "must_change_password=0, updated_at=? WHERE user_id=?", (S.hash_password(new), _now(), r[0]))
+    # A reset must not approve an account: PENDING / REJECTED users stay as they are until an
+    # administrator decides (approvals.decide); LOCKED / DISABLED users are re-enabled as before.
+    conn.execute("UPDATE enterprise_user SET password_hash=?, "
+                 "status=CASE WHEN status IN ('PENDING','REJECTED') THEN status ELSE 'ACTIVE' END, failed_logins=0, "
+                 "locked_until=NULL, must_change_password=0, updated_at=? WHERE user_id=?",
+                 (S.hash_password(new), _now(), r[0]))
     conn.execute("UPDATE enterprise_password_reset SET used_at=? WHERE token_hash=?", (_now(), S.digest(reset_token)))
     revoke_sessions(conn, r[0])
     audit.record(conn, "user.password_reset", user_id=r[0], actor=r[0], commit=False)

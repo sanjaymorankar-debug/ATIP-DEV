@@ -34,7 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 
 def register(app, guard, Req, get_connection, json_safe):
-    from enterprise import apikeys, audit, billing, notifications, profiles, rbac, service, tenants, users, workspace
+    from enterprise import apikeys, approvals, audit, billing, notifications, profiles, rbac, service, tenants, users, workspace
     from enterprise.config import COOKIE, REFRESH_COOKIE, enabled, settings
     from enterprise.users import AuthError
 
@@ -351,7 +351,50 @@ def register(app, guard, Req, get_connection, json_safe):
             p = me(req)
             t = b.get("tenant_id") or p["tenant_id"]
             scope_tenant(p, t)
+            # only a SUPER_ADMIN may grant or revoke ADMIN / SUPER_ADMIN, or change a SUPER_ADMIN's roles
+            held = set(users.memberships(c, uid).get(t, []))
+            if (held | set(b.get("roles") or [])) & {"ADMIN", "SUPER_ADMIN"} and "SUPER_ADMIN" not in p.get("roles", []):
+                raise ValueError("only a SUPER_ADMIN can grant or revoke ADMIN / SUPER_ADMIN")
+            if "SUPER_ADMIN" in held and "SUPER_ADMIN" not in (b.get("roles") or []):
+                last = c.execute("SELECT COUNT(*) FROM enterprise_user_role r JOIN enterprise_user u ON u.user_id=r.user_id"
+                                 " WHERE r.tenant_id=? AND r.role='SUPER_ADMIN' AND u.status='ACTIVE'", (t,)).fetchone()[0]
+                if last <= 1:
+                    raise ValueError("cannot remove the last SUPER_ADMIN of a tenant")
             return users.set_roles(c, uid, t, b.get("roles") or [], actor=p.get("username"))
+        return await run(f)(request)
+
+    # -- pending registrations (approve / reject) --------------------------------------
+    def _approval_scope(p):
+        return None if p.get("platform_admin") else p["tenant_id"]
+
+    @app.get("/api/admin/approvals/pending")
+    async def adm_pending(request: Req):
+        async def f(req, c):
+            t = _approval_scope(me(req))
+            return {"count": approvals.count(c, t), "users": approvals.pending(c, t)}
+        return await run(f)(request)
+
+    @app.get("/api/admin/approvals/count")
+    async def adm_pending_count(request: Req):
+        async def f(req, c):
+            return {"count": approvals.count(c, _approval_scope(me(req)))}
+        return await run(f)(request)
+
+    @app.get("/api/admin/approvals/history")
+    async def adm_approval_history(request: Req):
+        async def f(req, c):
+            if not me(req).get("platform_admin"):
+                raise ValueError("platform administrator only")
+            return approvals.history(c)
+        return await run(f)(request)
+
+    @app.post("/api/admin/approvals/{uid}")
+    async def adm_decide(uid: str, request: Req):
+        async def f(req, c):
+            b = await body(req)
+            p = me(req)
+            return approvals.decide(c, uid, b.get("action"), p.get("username"), b.get("reason"),
+                                    tenant_id=_approval_scope(p))
         return await run(f)(request)
 
     @app.post("/api/admin/users/{uid}/mfa-reset")

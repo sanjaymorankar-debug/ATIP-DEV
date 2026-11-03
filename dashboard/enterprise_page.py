@@ -23,9 +23,10 @@ async function j(u,o){const r=await fetch(u,Object.assign({credentials:'same-ori
 const send=(m,u,b)=>j(u,{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
 async function logout(){await send('POST','/api/auth/logout');location='/login'}
+j('/api/admin/approvals/count').then(r=>{if(r.count){const b=document.getElementById('nb');if(b){b.textContent=r.count;b.style.display='inline-block'}}}).catch(()=>{});
 </script>"""
 _TOP = """<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">{title}</span></div>
-<div><a href="/">Dashboard</a><a href="/account">Account</a><a href="/admin">Admin</a><a href="#" onclick="logout()">Sign out</a></div></div>"""
+<div><a href="/">Dashboard</a><a href="/account">Account</a><a href="/admin">Admin<span id="nb" style="display:none;margin-left:4px;background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px"></span></a><a href="#" onclick="logout()">Sign out</a></div></div>"""
 
 
 def _page(title, body):
@@ -83,6 +84,7 @@ load().catch(e=>document.body.insertAdjacentHTML('beforeend',`<p class="note" st
 
 def render_admin():
     return _page("Admin", """
+<h2>Pending approvals <span id="pbadge" class="note"></span></h2><div id="pa" class="scroll"></div>
 <h2>Users</h2><div id="us" class="scroll"></div>
 <div><input id="nu" placeholder="username"><input id="npw" type="password" placeholder="initial password"><input id="nr" placeholder="roles e.g. TRADER,VIEWER"><input id="nt2" placeholder="tenant (default: yours)"><button onclick="addUser()">Create user</button> <span id="um" class="note"></span></div>
 <h2>Tenants</h2><div id="tn" class="scroll"></div>
@@ -91,6 +93,8 @@ def render_admin():
 <h2>Audit (latest)</h2><div id="au" class="scroll"></div>
 """ + r"""<script>
 async function load(){
+ const P=await j('/api/admin/approvals/pending');document.getElementById('pbadge').textContent=P.count?'('+P.count+' waiting)':'';
+ document.getElementById('pa').innerHTML=P.users.length?table(['User','E-mail','Requested',''],P.users.map(u=>`<tr><td><b>${esc(u.username)}</b></td><td>${esc(u.email||'')}</td><td>${esc(u.requested_at)}</td><td><button onclick="dec('${u.user_id}','APPROVE')">Approve</button><button onclick="dec('${u.user_id}','REJECT')">Reject</button></td></tr>`)):'<span class="muted">No pending requests.</span>';
  const U=await j('/api/admin/users');document.getElementById('us').innerHTML=table(['User','Status','Memberships','Last login',''],U.map(u=>`<tr><td><b>${esc(u.username)}</b><br><span class="muted">${u.user_id}</span></td><td>${u.status}</td><td>${esc(Object.entries(u.memberships||{}).map(([t,r])=>t+': '+r.join(',')).join(' | '))}</td><td>${esc(u.last_login_at||'')}</td><td>${u.status!=='ACTIVE'?`<button onclick="st('${u.user_id}','ACTIVE')">Activate</button>`:`<button onclick="st('${u.user_id}','DISABLED')">Disable</button>`}<button onclick="rs('${u.user_id}')">Reset password</button></td></tr>`));
  const T=await j('/api/admin/tenants');document.getElementById('tn').innerHTML=table(['Tenant','Status','Plan','Usage','Limits'],T.map(t=>`<tr><td><b>${esc(t.tenant_id)}</b> ${esc(t.name)}</td><td>${t.status}</td><td>${esc((t.subscription||{}).plan_id||'—')} ${esc((t.subscription||{}).status||'')}</td><td class="muted">${esc(JSON.stringify(t.usage))}</td><td class="muted">${esc(JSON.stringify(t.effective_limits))}</td></tr>`));
  const R=await j('/api/admin/roles');document.getElementById('rl').innerHTML=table(['Role','Description','Permissions'],Object.entries(R).map(([r,v])=>`<tr><td><b>${r}</b></td><td>${esc(v.description)}</td><td class="muted">${esc(v.permissions.join(' · '))}</td></tr>`));
@@ -98,6 +102,7 @@ async function load(){
  const A=await j('/api/admin/audit?limit=100');document.getElementById('au').innerHTML=table(['When','Tenant','Actor','Action','Path','Status'],A.map(a=>`<tr><td>${esc(a.at)}</td><td>${esc(a.tenant_id)}</td><td>${esc(a.actor)}</td><td>${esc(a.action)}</td><td class="muted">${esc((a.method||'')+' '+(a.path||a.resource||''))}</td><td>${a.status_code??''}</td></tr>`));
 }
 async function addUser(){try{await send('POST','/api/admin/users',{username:nu.value,password:npw.value,roles:nr.value.split(',').map(s=>s.trim()).filter(Boolean),tenant_id:nt2.value||null});um.textContent='created (must change password at first sign-in)';load()}catch(e){um.textContent=e.message}}
+async function dec(id,a){let reason=null;if(a==='REJECT'){reason=prompt('Reason for rejection (optional, shown to the user):');if(reason===null)return}try{await send('POST','/api/admin/approvals/'+id,{action:a,reason});load()}catch(e){alert(e.message)}}
 async function st(id,s){try{await send('PUT','/api/admin/users/'+id,{status:s});load()}catch(e){alert(e.message)}}
 async function rs(id){try{const r=await send('POST',`/api/admin/users/${id}/password-reset`);prompt('One-time reset token (30 min) — give it to the user:',r.reset_token)}catch(e){alert(e.message)}}
 load().catch(e=>document.body.insertAdjacentHTML('beforeend',`<p class="note" style="padding:16px">${esc(e.message)}</p>`));

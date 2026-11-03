@@ -56,6 +56,7 @@ INVENTORY = {
     "enterprise_consent": ("personal", True, "kept as proof of consent"),
     "enterprise_privacy_request": ("personal", True, "kept as proof of handling"),
     "enterprise_audit": ("audit", True, "append-only; never purged by ATIP"),
+    "enterprise_approval_log": ("audit", True, "append-only record of who approved / rejected whom; never purged by ATIP"),
     "enterprise_api_usage": ("operational", False, "purged after 400 days"),
     "enterprise_usage": ("operational", False, "billing evidence; kept"),
     "enterprise_invoice": ("financial", False, "kept (accounting)"),

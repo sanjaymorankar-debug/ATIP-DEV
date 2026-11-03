@@ -67,6 +67,7 @@ ROUTE_RULES = [
     ("GET", r"^/api/risk/exposure", "portfolio:read"),          # the owner's W1 book
     ("POST", r"^/api/execution/run$", "system:operate"),       # runs the cycle for every tenant
     ("*", r"^/api/admin/users/[^/]+/mfa-reset$", "admin:users"),
+    ("*", r"^/api/admin/approvals", "admin:users"),
     # W8 operations: metrics, status, backups, config, secrets status, webhooks
     ("*", r"^/api/ops", "system:operate"),
     ("POST", r"^/api/health/recover$", "system:operate"),          # re-run missed jobs (pipeline/recover.py)

@@ -79,7 +79,7 @@ def forgot_password(conn, identifier, ip=None) -> dict:
                      "LOWER(email)=?", (ident, ident)).fetchone()
     audit.record(conn, "auth.forgot_password", user_id=r[0] if r else None, actor=ident[:40], ip=ip,
                  details={"matched": bool(r)})
-    if not r or not r[1] or not r[2] or r[3] in ("DISABLED",):
+    if not r or not r[1] or not r[2] or r[3] in ("DISABLED", "REJECTED"):
         return GENERIC
     out = issue_reset(conn, r[0], actor="self-service")
     _mail(conn, r[0], r[1], "Reset your ATIP password",
