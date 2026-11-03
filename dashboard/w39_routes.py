@@ -660,3 +660,6 @@ def register(app, guard, Req, get_connection, json_safe):
         if not isinstance(legs, list):
             return JSONResponse({"error": "legs must be a list"}, status_code=400)
         return await run(lambda c: _analyse(c, b, legs))
+
+    from dashboard.options_v2 import register as _options_v2       # UI fixes v2 (W6): the option chain with OI, IV, Greeks
+    _options_v2(app, guard, run)

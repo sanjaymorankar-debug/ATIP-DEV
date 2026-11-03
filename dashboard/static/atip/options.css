@@ -1,0 +1,156 @@
+/* ATIP option chain card (W6, 3 Nov 2026): the Option chain + strategy payoff on /options-builder
+   (dashboard/static/atip/options.js). Design tokens of atip.css only, so it follows the light and dark themes; every
+   class is prefixed ax-oc- and every rule is scoped to the card, so it cannot restyle the page around it. Numbers are
+   tabular and right-aligned; buttons are at least 44 px; the chain scrolls inside its own box with the strike column
+   sticky, so a 360 px screen never scrolls sideways. */
+
+.ax-oc { background: var(--ax-surface); color: var(--ax-text); border: 1px solid var(--ax-border-soft);
+  border-radius: var(--ax-radius); box-shadow: var(--ax-shadow); padding: 14px 16px; margin: 0 0 12px;
+  font: 14px/1.45 var(--ax-font); min-width: 0; max-width: 100%; box-sizing: border-box; }
+.ax-oc *, .ax-oc *::before, .ax-oc *::after { box-sizing: border-box; }
+.ax-oc :focus-visible { outline: 3px solid var(--ax-focus); outline-offset: 2px; }
+.ax-oc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ── header and controls ─────────────────────────────────────────────────────────────────── */
+.ax-oc-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 0 0 8px; }
+.ax-oc .ax-oc-head h2 { margin: 0; font: 700 16px/1.3 var(--ax-font); color: var(--ax-text); flex: 1 1 140px; }
+.ax-oc-ctrls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0; min-width: 0; }
+.ax-oc-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; font: 600 12px/1.3 var(--ax-font); color: var(--ax-muted); }
+.ax-oc .ax-oc-in { min-height: 44px; margin: 0; padding: 0 10px; border-radius: 8px; border: 1px solid var(--ax-border);
+  background: var(--ax-surface); color: var(--ax-text); font: 14px var(--ax-font); }
+.ax-oc .ax-oc-in[aria-invalid="true"] { border-color: var(--ax-neg); box-shadow: 0 0 0 1px var(--ax-neg); }
+#ax-oc-sym { width: 128px; text-transform: uppercase; }
+.ax-oc .ax-oc-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px;
+  min-width: 44px; margin: 0; padding: 0 14px; border-radius: 8px; border: 1px solid var(--ax-border);
+  background: var(--ax-surface); color: var(--ax-text); font: 600 13.5px/1.2 var(--ax-font); cursor: pointer;
+  white-space: nowrap; text-decoration: none; }
+.ax-oc .ax-oc-btn:hover { background: var(--ax-surface-2); }
+.ax-oc .ax-oc-btn[aria-pressed="true"] { background: var(--ax-text); border-color: var(--ax-text); color: var(--ax-surface); }
+.ax-oc .ax-oc-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ax-oc .ax-oc-btn.ax-oc-primary { background: var(--ax-brand); border-color: var(--ax-brand); color: var(--ax-brand-ink); }
+.ax-oc .ax-oc-btn.ax-oc-ghost { border-color: transparent; background: transparent; color: var(--ax-brand); }
+
+/* ── the numbers above the chain ─────────────────────────────────────────────────────────── */
+.ax-oc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 2px 0 10px; font-size: 13px; min-height: 22px; }
+.ax-oc-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.ax-oc-stat { white-space: nowrap; }
+.ax-oc-lbl { color: var(--ax-muted); font: 600 12px/1.4 var(--ax-font); }
+.ax-oc-num, .ax-oc-val, .ax-oc .ax-oc-table td, .ax-oc .ax-oc-table th, .ax-oc-svg text { font-variant-numeric: tabular-nums; }
+.ax-oc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ax-oc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px;
+  font: 600 12px/1.6 var(--ax-font); background: var(--ax-surface-2); color: var(--ax-text-2);
+  border: 1px solid var(--ax-border-soft); }
+.ax-oc-chips .ax-oc-chip { border-radius: 12px; }
+.ax-oc-chip.ax-oc-warn { background: var(--ax-warn-bg); color: var(--ax-warn); border-color: var(--ax-amber-line); }
+
+/* ── layout: chain | strategy side by side on a wide screen, stacked below ───────────────── */
+.ax-oc-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 1280px) { .ax-oc-body { grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr); } }
+.ax-oc-chain, .ax-oc-strat { min-width: 0; }
+.ax-oc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 8px; font-size: 12.5px; color: var(--ax-muted); }
+.ax-oc-seg { display: inline-flex; border: 1px solid var(--ax-border); border-radius: 8px; overflow: hidden; }
+.ax-oc .ax-oc-seg .ax-oc-btn { border: 0; border-radius: 0; }
+.ax-oc .ax-oc-seg .ax-oc-btn + .ax-oc-btn { border-left: 1px solid var(--ax-border); }
+
+/* ── the chain table ─────────────────────────────────────────────────────────────────────── */
+.ax-oc-scroll { position: relative; max-width: 100%; max-height: min(70vh, 660px); overflow: auto;
+  -webkit-overflow-scrolling: touch; border: 1px solid var(--ax-border-soft); border-radius: var(--ax-radius-sm);
+  background: var(--ax-surface); }
+.ax-oc.ax-oc-loading .ax-oc-scroll { opacity: .6; }
+.ax-oc .ax-oc-table { width: 100%; min-width: 540px; margin: 0; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.ax-oc .ax-oc-table th, .ax-oc .ax-oc-table td { height: 44px; padding: 0 8px; border: 0; border-bottom: 1px solid var(--ax-border-soft);
+  text-align: right; vertical-align: middle; white-space: nowrap; color: var(--ax-text); font-weight: 400;
+  background: var(--ax-surface); line-height: 1.25; }
+.ax-oc .ax-oc-table thead th { position: sticky; top: 0; z-index: 2; height: 30px; padding: 0 8px; line-height: 1.2;
+  background: var(--ax-surface-2); color: var(--ax-muted); font-size: 12px; font-weight: 700; }
+.ax-oc .ax-oc-table thead tr + tr th { top: 30px; }
+.ax-oc .ax-oc-table thead .ax-oc-sideh { text-align: center; color: var(--ax-text-2); letter-spacing: .04em; text-transform: uppercase; }
+.ax-oc .ax-oc-table abbr { text-decoration: none; cursor: help; }
+.ax-oc .ax-oc-table .ax-oc-k { position: sticky; left: 0; right: 0; z-index: 1; min-width: 84px; text-align: center;
+  font-weight: 700; background: var(--ax-surface-2); border-left: 1px solid var(--ax-border); border-right: 1px solid var(--ax-border); }
+.ax-oc .ax-oc-table thead .ax-oc-k { z-index: 3; color: var(--ax-text); }
+.ax-oc .ax-oc-table td.ax-oc-itm { background: var(--ax-warn-bg); }
+.ax-oc .ax-oc-table tr.ax-oc-atm > td, .ax-oc .ax-oc-table tr.ax-oc-atm > th { border-top: 1px solid var(--ax-brand); border-bottom: 1px solid var(--ax-brand); }
+.ax-oc .ax-oc-table tr.ax-oc-atm > .ax-oc-k { background: var(--ax-brand-soft); color: var(--ax-brand); }
+.ax-oc-tag { display: block; font: 700 12px/1.1 var(--ax-font); letter-spacing: .04em; }
+.ax-oc .ax-oc-table tr.ax-oc-spot > td, .ax-oc .ax-oc-table tr.ax-oc-spot > th { height: 26px; padding: 0; border-bottom: 0;
+  background: linear-gradient(var(--ax-brand), var(--ax-brand)) center / 100% 2px no-repeat, var(--ax-surface); }
+.ax-oc-spotlbl { display: inline-block; padding: 0 8px; border-radius: 999px; background: var(--ax-brand); color: var(--ax-brand-ink);
+  font: 700 12px/20px var(--ax-font); white-space: nowrap; }
+.ax-oc .ax-oc-table td.ax-oc-oi { position: relative; min-width: 76px; }
+.ax-oc-bar { position: absolute; top: 10px; bottom: 10px; border-radius: 3px; opacity: .32; pointer-events: none; }
+.ax-oc-ce .ax-oc-bar { right: 4px; background: var(--ax-series-1); }
+.ax-oc-pe .ax-oc-bar { left: 4px; background: var(--ax-series-2); }
+.ax-oc-oi .ax-oc-v { position: relative; }
+.ax-oc .ax-oc-table td.ax-oc-ltpc { padding: 0 2px; }
+.ax-oc .ax-oc-ltp { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%;
+  min-width: 72px; min-height: 44px; margin: 0; padding: 2px 6px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--ax-text); font: 700 13px/1.2 var(--ax-font); font-variant-numeric: tabular-nums;
+  text-align: right; cursor: pointer; }
+.ax-oc .ax-oc-ltp:hover { border-color: var(--ax-brand); background: var(--ax-brand-soft); }
+#ax-oc .ax-oc-table .ax-oc-ltp:focus-visible { outline: 3px solid var(--ax-focus); outline-offset: -3px; }
+.ax-oc-sub { display: block; font-size: 12px; font-weight: 500; }
+.ax-oc-up, .ax-oc-pos { color: var(--ax-pos); }
+.ax-oc-down, .ax-oc-neg { color: var(--ax-neg); }
+.ax-oc-flat, .ax-oc-muted, .ax-oc-na { color: var(--ax-muted); }
+.ax-oc-na { cursor: help; }
+.ax-oc-implied { font-style: italic; color: var(--ax-text-2); }
+.ax-oc-empty, .ax-oc-msg { margin: 0; padding: 14px; border-radius: 8px; background: var(--ax-surface-2); color: var(--ax-text-2); font-size: 13.5px; }
+.ax-oc-msg { background: var(--ax-neg-bg); color: var(--ax-neg); }
+.ax-oc-note, .ax-oc-foot { margin: 6px 0 0; font-size: 12.5px; color: var(--ax-muted); }
+.ax-oc-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px;
+  background: var(--ax-warn-bg); border: 1px solid var(--ax-amber-line); }
+
+/* ── the strategy: legs, summary, payoff ────────────────────────────────────────────────── */
+.ax-oc .ax-oc-strat h3 { margin: 0 0 8px; font: 700 15px/1.3 var(--ax-font); color: var(--ax-text); }
+.ax-oc .ax-oc-legs { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ax-oc-leg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border: 1px solid var(--ax-border-soft);
+  border-radius: 8px; background: var(--ax-surface-2); }
+.ax-oc-legname { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; font-size: 13px; }
+.ax-oc-legname .ax-oc-sub { color: var(--ax-muted); font-variant-numeric: tabular-nums; }
+.ax-oc .ax-oc-btn.ax-oc-buy { color: var(--ax-pos); border-color: var(--ax-pos); background: var(--ax-pos-bg); }
+.ax-oc .ax-oc-btn.ax-oc-sell { color: var(--ax-neg); border-color: var(--ax-neg); background: var(--ax-neg-bg); }
+.ax-oc-lots { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.ax-oc-lots .ax-oc-num { min-width: 48px; text-align: center; }
+.ax-oc-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.ax-oc-tile { padding: 8px 10px; border: 1px solid var(--ax-border-soft); border-radius: 8px; background: var(--ax-surface-2); min-width: 0; }
+.ax-oc-val { margin-top: 2px; font: 700 15px/1.3 var(--ax-font); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.ax-oc-tile .ax-oc-sub { color: var(--ax-muted); text-align: right; }
+.ax-oc-be { display: block; }
+.ax-oc-greekline { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; margin: 2px 0 6px; }
+.ax-oc-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 4px; font-size: 12.5px; color: var(--ax-muted); }
+.ax-oc-sw { display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 3px solid var(--ax-series-1); }
+.ax-oc-sw.ax-oc-sw-now { border-top: 2px dashed var(--ax-series-2); }
+.ax-oc-chart { position: relative; width: 100%; min-width: 0; }
+.ax-oc-svg { display: block; max-width: 100%; height: auto; touch-action: pan-y; overflow: visible; }
+.ax-oc-svg text { font: 12px var(--ax-font); }
+.ax-oc-tick { fill: var(--ax-muted); }
+.ax-oc-spott { fill: var(--ax-text-2); font-weight: 600; }
+.ax-oc-bel { fill: var(--ax-text); font-weight: 600; }
+.ax-oc-gl { stroke: var(--ax-grid); stroke-width: 1; }
+.ax-oc-zero { stroke: var(--ax-muted); stroke-width: 1.5; }
+.ax-oc-spotl { stroke: var(--ax-text-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.ax-oc-fill-up { fill: var(--ax-pos-bg); stroke: none; }
+.ax-oc-fill-dn { fill: var(--ax-neg-bg); stroke: none; }
+.ax-oc-pl-exp { fill: none; stroke: var(--ax-series-1); stroke-width: 2.5; stroke-linejoin: round; }
+.ax-oc-pl-now { fill: none; stroke: var(--ax-series-2); stroke-width: 2; stroke-dasharray: 6 4; stroke-linejoin: round; }
+.ax-oc-bep { fill: var(--ax-surface); stroke: var(--ax-text); stroke-width: 2; }
+.ax-oc-xh { stroke: var(--ax-text-2); stroke-width: 1; }
+.ax-oc-dot1 { fill: var(--ax-series-1); stroke: var(--ax-surface); stroke-width: 2; }
+.ax-oc-dot2 { fill: var(--ax-series-2); stroke: var(--ax-surface); stroke-width: 2; }
+.ax-oc-hit { fill: transparent; cursor: crosshair; }
+.ax-oc-tip { position: absolute; z-index: 5; pointer-events: none; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--ax-border);
+  background: var(--ax-surface); color: var(--ax-text); box-shadow: var(--ax-shadow); font-size: 12.5px; line-height: 1.45;
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ax-oc-tip[hidden] { display: none; }
+
+@media (max-width: 600px) {
+  .ax-oc { padding: 12px; }
+  .ax-oc-f { flex: 1 1 120px; }
+  .ax-oc .ax-oc-in, #ax-oc-sym { width: 100%; }
+  .ax-oc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* no layout shift when the chain arrives: the card keeps the chain's height from the first paint */
+.ax-oc-body { min-height: min(70vh, 660px); }
+.ax-oc-scroll { min-height: min(60vh, 560px); }

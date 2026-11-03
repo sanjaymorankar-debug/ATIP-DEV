@@ -20,6 +20,39 @@
   AX.pct = function (v) { if (v === null || v === undefined || isNaN(v)) return "—"; v = Number(v); return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + "%"; };
   AX.esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
 
+
+  // ── UI fixes v2: the one formatter, mirroring dashboard/fmt.py (same text for the same value) ──────────────
+  var TICKS = [[250, 0.01], [1000, 0.05], [5000, 0.10], [10000, 0.50], [20000, 1.00], [Infinity, 5.00]];
+  function fnum(v) { if (v === null || v === undefined || v === "" || typeof v === "boolean") return null; var f = typeof v === "string" ? Number(v.replace(/[,₹\s]/g, "")) : Number(v); return isFinite(f) ? f : null; }
+  function group(w) { return w.length > 3 ? w.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," + w.slice(-3) : w; }
+  AX.fmt = {
+    num: fnum,
+    inr: function (v, sign, compact) {
+      var f = fnum(v); if (f === null) return "—";
+      var pre = f < -0.004 ? "−" : (sign && f > 0.004 ? "+" : ""), a = Math.abs(f);
+      if (compact) { if (a >= 1e7) return pre + "₹" + (a / 1e7).toFixed(2) + " Cr"; if (a >= 1e5) return pre + "₹" + (a / 1e5).toFixed(2) + " L"; if (a >= 1e3) return pre + "₹" + (a / 1e3).toFixed(1) + "K"; return pre + "₹" + a.toFixed(0); }
+      var p = a.toFixed(2).split("."); return pre + "₹" + group(p[0]) + "." + p[1];
+    },
+    number: function (v, dp) { var f = fnum(v); if (f === null) return "—"; dp = dp === undefined ? 2 : dp; var p = Math.abs(f).toFixed(dp).split("."); return (f < 0 && Number(Math.abs(f).toFixed(dp)) ? "−" : "") + group(p[0]) + (dp ? "." + p[1] : ""); },
+    tick: function (price) { var f = Math.abs(fnum(price) || 0); for (var i = 0; i < TICKS.length; i++) if (f < TICKS[i][0]) return TICKS[i][1]; return 5; },
+    roundTick: function (price, tick) { var f = fnum(price); if (f === null) return null; var t = tick || AX.fmt.tick(f); return Math.round(Math.round(f / t) * t * 100) / 100; },
+    price: function (v, tick) { var f = AX.fmt.roundTick(v, tick); return f === null ? "—" : AX.fmt.inr(f); },
+    score: function (v) { var f = fnum(v); return f === null ? "—" : String(Math.floor(f + 0.5)); },
+    tone: function (v) { var f = fnum(v); if (f === null) return "none"; if (Math.abs(f) < 0.005) return "flat"; return f > 0 ? "up" : "down"; },
+    pct: function (v, sign) { var f = fnum(v); if (f === null) return "—"; if (Math.abs(f) < 0.005) return "0.00%"; return (sign === false ? (f < 0 ? "−" : "") : (f > 0 ? "+" : "−")) + Math.abs(f).toFixed(2) + "%"; },
+    toneClass: function (v, inverse) { var t = AX.fmt.tone(v); if (t === "none") return "ax-muted"; if (t === "flat") return "ax-flat"; if (inverse) return t === "up" ? "ax-warn-t" : "ax-pos"; return t === "up" ? "ax-pos" : "ax-neg"; },
+    pctHtml: function (v, inverse, why) {
+      if (fnum(v) === null) return '<span class="ax-muted ax-missing" title="' + AX.esc(why || "No value") + '">—</span>';
+      var t = AX.fmt.tone(v), a = t === "up" ? "▲ " : t === "down" ? "▼ " : "";
+      return '<span class="ax-num ' + AX.fmt.toneClass(v, inverse) + '">' + a + AX.fmt.pct(v) + "</span>";
+    },
+    inrHtml: function (v, sign, why) {
+      if (fnum(v) === null) return '<span class="ax-muted ax-missing" title="' + AX.esc(why || "No value") + '">—</span>';
+      var t = AX.fmt.tone(v), a = sign ? (t === "up" ? "▲ " : t === "down" ? "▼ " : "") : "";
+      return '<span class="ax-num ' + (sign ? AX.fmt.toneClass(v) : "") + '">' + a + AX.fmt.inr(v, sign) + "</span>";
+    }
+  };
+
   // ── token and API ─────────────────────────────────────────────────────────────────────────
   AX.token = function () {
     var m = document.querySelector('meta[name="atip-token"]');
@@ -93,6 +126,9 @@
     }
     var n = document.querySelector("[data-ax-unread]");
     if (n) { n.hidden = !d.unread; n.textContent = d.unread > 99 ? "99+" : String(d.unread || ""); }
+    var n2 = document.querySelector("[data-ax-unread2]"), n3 = document.querySelector("[data-ax-unread3]");
+    if (n2) { n2.hidden = !d.unread; n2.textContent = d.unread > 99 ? "99+" : String(d.unread || ""); }
+    if (n3) n3.textContent = d.unread ? "(" + d.unread + " new)" : "";
   }
   function poll() { AX.api("/api/v2/shell/state").then(paint).catch(function () {}); }
   AX.state = function () { return state; };
@@ -151,7 +187,7 @@
     clearTimeout(timer);
     if (t.length >= 2) timer = setTimeout(function () {
       AX.api("/api/v2/search?q=" + encodeURIComponent(t)).then(function (d) {
-        var syms = (d.symbols || []).map(function (s) { return { label: s.symbol + (s.signal ? " · " + s.signal : "") + (s.atip_score != null ? " · ATIP " + Number(s.atip_score).toFixed(0) : ""), kind: "symbol", href: "/?stock=" + encodeURIComponent(s.symbol) }; });
+        var syms = (d.symbols || []).map(function (s) { return { label: s.symbol + (s.signal ? " · " + s.signal : "") + (s.atip_score != null ? " · ATIP " + Number(s.atip_score).toFixed(0) : ""), kind: "symbol", href: "/stock/" + encodeURIComponent(s.symbol) }; });
         paletteRender(base.concat(syms));
       }).catch(function () {});
     }, 180);
@@ -179,7 +215,12 @@
   document.addEventListener("keydown", function (e) {
     var tag = (e.target && e.target.tagName) || "", typing = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
     if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
-    if (e.key === "Escape") { rail(false); document.querySelectorAll(".ax-drawer.open").forEach(function (d) { AX.closeDrawer(d); }); return; }
+    if (e.key === "Escape") {
+      // an open dialog closes first (browsers may not, under their close-request rules), then drawers and the menu
+      var dlg = document.querySelector("dialog[open]");
+      if (dlg) { e.preventDefault(); dlg.close(); return; }
+      rail(false); document.querySelectorAll(".ax-drawer.open").forEach(function (d) { AX.closeDrawer(d); }); return;
+    }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); openPalette(); return; }
     if (e.key === "?") { help(); return; }
@@ -191,12 +232,12 @@
   var lastFocus = null;
   AX.openDrawer = function (el) {
     if (typeof el === "string") el = document.getElementById(el);
-    if (!el) return; lastFocus = document.activeElement; el.classList.add("open"); el.setAttribute("aria-hidden", "false");
+    if (!el) return; lastFocus = document.activeElement; el.removeAttribute("inert"); el.classList.add("open"); el.setAttribute("aria-hidden", "false");
     var f = el.querySelector("input,select,textarea,button:not([data-ax-close])"); if (f) setTimeout(function () { f.focus(); }, 60);
   };
   AX.closeDrawer = function (el) {
     if (typeof el === "string") el = document.getElementById(el);
-    if (!el) return; el.classList.remove("open"); el.setAttribute("aria-hidden", "true"); if (lastFocus && lastFocus.focus) lastFocus.focus();
+    if (!el) return; el.classList.remove("open"); el.setAttribute("aria-hidden", "true"); el.setAttribute("inert", ""); if (lastFocus && lastFocus.focus) lastFocus.focus();
   };
   document.addEventListener("click", function (e) {
     var c = e.target.closest && e.target.closest("[data-ax-close]"); if (c) { AX.closeDrawer(c.closest(".ax-drawer")); }
@@ -365,6 +406,178 @@
     }
   }
 
+
+  // ── UI fixes v2: older pages inside the shell ────────────────────────────────────────────────────────────
+  var SHELL_SKIP = ".ax-top,.ax-rail,.ax-tabbar,.ax-dialog,.ax-drawer,.ax-seealso,.ax-ovmenu,.ax-wl,.ax-ticket";
+  function pathOf(a) { try { return new URL(a.href, location.href).pathname; } catch (e) { return ""; } }
+  // G2: a block of links to other ATIP pages in an older page's own top bar or side list is a second navigation bar.
+  // The shell's rail and breadcrumb already do that job: the block hides and its links move to one "See also" row.
+  AX.foldLegacyNav = function () {
+    var main = document.getElementById("ax-main"); if (!main || document.body.classList.contains("ax-native")) return;
+    var here = location.pathname, seen = {}, links = [];
+    var cands = main.querySelectorAll(".top, header, nav, .nav, .links, .topbar, .tabs-links, aside.side, .side-nav, .cc-nav, [data-legacy-nav]");
+    Array.prototype.forEach.call(cands, function (b) {
+      if (b.closest(SHELL_SKIP) || b.__axFolded) return;
+      var all = Array.prototype.slice.call(b.querySelectorAll('a[href^="/"]'));
+      var as = all.filter(function (a) { var p = pathOf(a); return p && p !== here; });
+      var uniq = {}; as.forEach(function (a) { uniq[pathOf(a)] = 1; });
+      if (Object.keys(uniq).length < 4) return;
+      all.forEach(function (a) { if (pathOf(a) === here) { a.classList.add("ax-legacy-nav-hidden"); a.setAttribute("aria-hidden", "true"); a.tabIndex = -1; } });
+      b.__axFolded = true;
+      // keep anything in the bar that is not a link to another page (status chips, buttons, the page title)
+      var keep = Array.prototype.filter.call(b.querySelectorAll("button, select, input, .pill, .chip, [role=status], h1"), function (x) { return !x.closest('a[href^="/"]'); });
+      as.forEach(function (a) { var p = pathOf(a); if (!seen[p]) { seen[p] = 1; links.push({ href: a.getAttribute("href"), text: (a.textContent || "").replace(/^[←→\s]+|[←→\s]+$/g, "").trim() }); } });
+      if (keep.length || b.matches("header, .top, .topbar")) {
+        as.forEach(function (a) { a.classList.add("ax-legacy-nav-hidden"); a.setAttribute("aria-hidden", "true"); a.tabIndex = -1; });
+        // a bar left with only separators / an empty wrapper collapses too
+        Array.prototype.forEach.call(b.querySelectorAll("div, span"), function (w) { if (!w.closest(SHELL_SKIP) && w.querySelector("a.ax-legacy-nav-hidden") && !(w.textContent || "").replace(/[·|•\s]/g, "").replace(new RegExp(Array.prototype.map.call(w.querySelectorAll("a.ax-legacy-nav-hidden"), function (a) { return (a.textContent || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|") || "$^", "g"), "").trim()) w.classList.add("ax-legacy-nav-hidden"); });
+      } else {
+        b.classList.add("ax-legacy-nav-hidden"); b.setAttribute("aria-hidden", "true");
+      }
+      b.setAttribute("data-ax-folded", "1");
+    });
+    if (links.length) {
+      var row = document.createElement("div"); row.className = "ax-seealso"; row.setAttribute("role", "navigation"); row.setAttribute("aria-label", "See also");
+      row.innerHTML = '<span>See also</span>' + links.filter(function (l) { return l.text; }).map(function (l) { return '<a href="' + AX.esc(l.href) + '">' + AX.esc(l.text) + "</a>"; }).join("");
+      main.appendChild(row);
+    }
+  };
+  // G3: file names, CLI commands, API paths and config keys are not user text. In an older page (and in API messages
+  // painted into it), each such fragment folds into a closed "Technical details" disclosure next to its sentence.
+  var DEV = /(python -m [\w.]+(?: [\w.\-]+)*|\b(?:[\w-]+\/)+[\w-]+\.py\b|\b[\w-]+\.py\b|(?:atip_data\/)?config\.json(?: [\w.]+(?: = \w+)?)?|\b(?:GET|POST|PUT|DELETE) \/api\/[\w\/{}.\-]+(?: \{[^}]*\})?|\b[a-z]+(?:\.[a-z0-9_]+)+\(\)|\b[a-z]+\.[a-z_]+\.[a-z_]+\b)/;
+  function techFold(node) {
+    var t = node.nodeValue; if (!t || !DEV.test(t)) return;
+    var el = node.parentElement; if (!el || el.closest("code,pre,script,style,textarea,details,.ax-tech,input,select,option," + SHELL_SKIP)) return;
+    var bits = [], plain = t;
+    // 1. a parenthetical that holds a technical fragment goes whole: "End-of-day scans (research/technicals.py): ..."
+    plain = plain.replace(/\s*\(([^()]*)\)/g, function (m, inner) { if (DEV.test(inner)) { bits.push(inner.trim()); return ""; } return m; });
+    // 2. a clause after ";" or " — " or ":" that is technical goes too
+    plain = plain.replace(/([;:—]|\s-\s)\s*([^;:—]*)/g, function (m, sep, clause) { if (DEV.test(clause) && clause.length < 220) { bits.push(clause.trim()); return ""; } return m; });
+    // 3. what is left still technical: the fragment itself
+    var guard = 0;
+    while (DEV.test(plain) && guard++ < 6) { var mm = plain.match(DEV); bits.push(mm[0]); plain = plain.replace(mm[0], "").replace(/\s{2,}/g, " "); }
+    plain = plain.replace(/\s+([,.;:])/g, "$1").replace(/\(\s*\)/g, "").replace(/(with|or|and|run|set|via|use|see|in|from|by|:)\s*([.,;]|$)/i, "$2");
+    if (!bits.length) return;
+    node.nodeValue = plain.trim() ? plain.replace(/\s+$/, " ") : "";
+    // one disclosure per paragraph / cell, at its end, so a sentence is never split by it
+    var block = el.closest("p,li,td,dd,th,section,article,div,label") || el;
+    if (block.closest(SHELL_SKIP)) block = el;
+    var d = block.querySelector(":scope > details.ax-tech[data-ax-auto]");
+    if (!d) {
+      d = document.createElement("details"); d.className = "ax-tech"; d.setAttribute("data-ax-auto", "");
+      d.innerHTML = '<summary title="Commands and settings for the operator">ⓘ Technical details</summary><code></code>';
+      block.appendChild(document.createTextNode(" ")); block.appendChild(d);
+    }
+    var c = d.querySelector("code"); c.textContent = (c.textContent ? c.textContent + "\n" : "") + bits.join("\n");
+  }
+  AX.foldTech = function (rootEl) {
+    var r = rootEl || document.getElementById("ax-main"); if (!r) return;
+    var w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT), n, todo = [];
+    while ((n = w.nextNode())) if (n.nodeValue && n.nodeValue.length > 3 && DEV.test(n.nodeValue)) todo.push(n);
+    todo.forEach(techFold);
+    // a <code> block in user text (outside a technical disclosure) moves into one as well
+    Array.prototype.forEach.call(r.querySelectorAll("code"), function (c) {
+      if (c.closest("details,pre,.ax-tech,textarea," + SHELL_SKIP) || !DEV.test(c.textContent || "")) return;
+      var d = document.createElement("details"); d.className = "ax-tech"; d.innerHTML = '<summary>ⓘ Technical details</summary>';
+      c.parentNode.insertBefore(d, c); d.appendChild(c);
+    });
+  };
+  // G5: an older page's clickable <div>/<span>/<tr> becomes keyboard reachable: role, tab stop, Enter / Space
+  AX.keyboardClickables = function (rootEl) {
+    var r = rootEl || document.getElementById("ax-main") || document.body;
+    Array.prototype.forEach.call(r.querySelectorAll("[onclick]"), function (el) {
+      if (el.__axKey || /^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL|OPTION)$/.test(el.tagName) || el.closest(SHELL_SKIP)) return;
+      el.__axKey = true;
+      // a clickable container whose own buttons / links do the work (a modal's backdrop, a row with actions) needs no role
+      if (el.querySelector("a,button,input,select,textarea,[tabindex],[role=dialog]") || /-back$|backdrop|overlay/i.test(el.id + " " + el.className)) { el.setAttribute("data-ax-container", ""); return; }
+      el.setAttribute("data-ax-clickable", "");
+      if (!el.hasAttribute("role")) {
+        var tab = el.classList.contains("tab") || !!el.closest(".tabs,[role=tablist]");
+        el.setAttribute("role", tab ? "tab" : el.tagName === "TR" ? "link" : "button");
+        if (tab && el.parentElement && !el.parentElement.hasAttribute("role")) el.parentElement.setAttribute("role", "tablist");
+        if (tab) el.setAttribute("aria-selected", el.classList.contains("active") || el.classList.contains("on") ? "true" : "false");
+      }
+      if (!el.hasAttribute("tabindex")) el.tabIndex = 0;
+      el.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); el.click(); } });
+    });
+  };
+  // accessibility of older pages: a field with no label gets one (its title, placeholder, the text before it or its
+  // first option); a box that scrolls gets a tab stop so the keyboard can scroll it
+  AX.a11yFix = function (rootEl) {
+    var r = rootEl || document.getElementById("ax-main"); if (!r) return;
+    Array.prototype.forEach.call(r.querySelectorAll("input:not([type=hidden]),select,textarea"), function (f) {
+      if (f.closest(SHELL_SKIP) || f.getAttribute("aria-label") || f.getAttribute("aria-labelledby") || f.closest("label") ||
+          (f.id && document.querySelector('label[for="' + f.id + '"]'))) return;
+      var prev = f.previousSibling, txt = "";
+      while (prev && !txt) { txt = (prev.textContent || "").trim(); prev = prev.previousSibling; }
+      var name = f.getAttribute("title") || f.getAttribute("placeholder") || txt ||
+        (f.tagName === "SELECT" && f.options && f.options[0] ? f.options[0].text : "") || f.name || f.id;
+      if (name) f.setAttribute("aria-label", String(name).slice(0, 80));
+    });
+    Array.prototype.forEach.call(r.querySelectorAll(".ax-hscroll,.scroll,.sx,[style*='overflow']"), function (b) {
+      if (b.hasAttribute("tabindex") || b.closest(SHELL_SKIP)) return;
+      if (b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1) {
+        if (!b.querySelector("a,button,input,select,textarea,[tabindex]")) { b.tabIndex = 0; if (!b.getAttribute("role")) { b.setAttribute("role", "region"); b.setAttribute("aria-label", "Scrollable table"); } }
+      }
+    });
+    var sv = document.getElementById("sv"); if (sv && !sv.getAttribute("aria-label")) sv.setAttribute("aria-label", "Stock details");
+  };
+  // G4: ATIP's own terms explain themselves on hover / focus
+  AX.terms = function (rootEl) {
+    var g = AX.data("ax-glossary", null); if (!g) return;
+    var r = rootEl || document.getElementById("ax-main"); if (!r) return;
+    Array.prototype.forEach.call(r.querySelectorAll("th, b, .ax-lbl, label"), function (el) {
+      if (el.__axTerm || el.closest(SHELL_SKIP)) return;
+      var k = (el.textContent || "").trim().toLowerCase(); if (!g[k] || el.querySelector("*")) return;
+      el.__axTerm = true; el.classList.add("ax-term"); el.title = g[k]; if (!el.hasAttribute("tabindex") && el.tagName !== "TH") el.tabIndex = 0;
+    });
+  };
+  // H4: a clamped text gets "Show more" only when it really overflows its two lines
+  AX.clamps = function () {
+    document.querySelectorAll("[data-ax-clamp]").forEach(function (c) {
+      if (c.__ax || c.closest("details:not([open])")) return; c.__ax = true;
+      if (c.scrollHeight <= c.clientHeight + 2) return;
+      var b = document.createElement("button"); b.type = "button"; b.className = "ax-linkbtn"; b.textContent = "Show more"; b.setAttribute("aria-expanded", "false");
+      b.addEventListener("click", function () { var o = c.classList.toggle("open"); b.textContent = o ? "Show less" : "Show more"; b.setAttribute("aria-expanded", o ? "true" : "false"); });
+      c.parentNode.insertBefore(b, c.nextSibling);
+    });
+  };
+  function overflowMenu() {
+    var b = document.querySelector("[data-ax-overflow]"), m = document.getElementById("ax-ovmenu"); if (!b || !m) return;
+    var set = function (o) { m.hidden = !o; b.setAttribute("aria-expanded", o ? "true" : "false"); if (o) { var f = m.querySelector("a,button"); if (f) f.focus(); } };
+    b.addEventListener("click", function (e) { e.stopPropagation(); set(m.hidden); });
+    document.addEventListener("click", function (e) { if (!m.hidden && !m.contains(e.target)) set(false); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !m.hidden) { set(false); b.focus(); } });
+  }
+  // §3: no horizontal page scroll at 360 px -- an older page's wide table scrolls inside its own box
+  AX.wrapWide = function (rootEl) {
+    var r = rootEl || document.getElementById("ax-main"); if (!r) return;
+    Array.prototype.forEach.call(r.querySelectorAll("table"), function (t) {
+      if (t.__axWrap || t.closest(SHELL_SKIP + ",.ax-tablewrap,.ax-hscroll")) return;
+      t.__axWrap = true;
+      var p = t.parentElement, cs = p ? getComputedStyle(p) : null;
+      if (cs && /(auto|scroll)/.test(cs.overflowX)) return;
+      var w = document.createElement("div"); w.className = "ax-hscroll"; p.insertBefore(w, t); w.appendChild(t);
+    });
+  };
+  function legacy() {
+    if (document.body.classList.contains("ax-native")) { AX.terms(); return; }
+    try { AX.wrapWide(); } catch (e) {}
+    try { AX.foldLegacyNav(); } catch (e) {}
+    try { AX.foldTech(); } catch (e) {}
+    try { AX.keyboardClickables(); } catch (e) {}
+    try { AX.terms(); } catch (e) {}
+    try { AX.a11yFix(); } catch (e) {}
+    root.classList.add("ax-ready");                          // the page's content may show now (see atip.css)
+    // older pages paint from their APIs after load: fold what they add, at most once per frame
+    var main = document.getElementById("ax-main"); if (!main || !window.MutationObserver) return;
+    var queued = false;
+    new MutationObserver(function () {
+      if (queued) return; queued = true;
+      (window.requestAnimationFrame || setTimeout)(function () { queued = false; try { AX.foldLegacyNav(); AX.foldTech(); AX.keyboardClickables(); AX.terms(); AX.wrapWide(); AX.a11yFix(); } catch (e) {} });
+    }).observe(main, { childList: true, subtree: true });
+  }
+
   // ── start ─────────────────────────────────────────────────────────────────────────────────
   function start() {
     try { enhanceTrade(); } catch (e) {}
@@ -378,7 +591,7 @@
     var pi = document.querySelector("#ax-palette input");
     if (pi) { pi.addEventListener("input", function () { paletteFilter(pi.value); }); pi.addEventListener("keydown", paletteKeys); }
     document.querySelectorAll("table.ax-table").forEach(AX.enhanceTable);
-    toolbar(); AX.charts();
+    toolbar(); AX.charts(); overflowMenu(); AX.clamps(); legacy();
     var init = AX.data("ax-state", null); if (init) { try { paint(init); } catch (e) {} }
     poll(); setInterval(poll, 30000);
     // a symbol picked in the search opens the stock panel on the ATIP Scores page

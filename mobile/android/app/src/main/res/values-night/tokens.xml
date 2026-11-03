@@ -1,0 +1,16 @@
+<resources>
+    <!-- 2026-11-03 (UI fixes v2): the web tokens of dashboard/static/atip/atip.css, dark theme
+         (prefers-color-scheme: dark). Light: values/tokens.xml. -->
+    <color name="ax_bg">#0B1220</color>
+    <color name="ax_surface">#111A2C</color>
+    <color name="ax_text">#E6EBF5</color>
+    <color name="ax_muted">#9AA8C1</color>
+    <color name="ax_border">#2A3A57</color>
+    <color name="ax_brand">#60A5FA</color>
+    <color name="ax_brand_ink">#0B1220</color>
+    <color name="ax_brand_soft">#142B4D</color>
+    <color name="ax_pos">#6EE7B7</color>
+    <color name="ax_neg">#FCA5A5</color>
+    <!-- light status-bar and navigation-bar icons on the dark surface -->
+    <bool name="ax_light_bars">false</bool>
+</resources>

@@ -55,7 +55,7 @@ async function load(){
   const P=await j('/api/ml/predictions?limit=100');
   document.getElementById('pred').innerHTML=table(['Date','Symbol','Prediction','Confidence','ML score','Model','Status','Top features'],P.map(p=>`<tr><td>${p.as_of}</td><td>${esc(p.symbol)}</td><td><b>${esc(p.prediction)}</b></td><td>${num(p.confidence)}</td><td>${num(p.ml_score,1)}</td><td>${esc(p.model_id)} ${p.model_version}</td><td>${pill(p.version_status)}</td><td class="muted">${esc(((p.explanation||{}).top_features||[]).join(', '))}</td></tr>`));
   const F=await j('/api/ml/feature-sets');
-  document.getElementById('fs').innerHTML=table(['Name','Version','Features','Hash','Created'],F.map(f=>`<tr><td>${esc(f.name)}</td><td>${f.version}</td><td>${f.features.length} <span class="muted">${esc(f.features.join(', '))}</span></td><td class="muted">${f.content_hash.slice(0,12)}</td><td>${esc(f.created_at)}</td></tr>`));
+  document.getElementById('fs').innerHTML=table(['Name','Version','Features','Hash','Created'],F.map(f=>`<tr><td>${esc(f.name)}</td><td>${f.version}</td><td>${f.features.length} <span class="muted">${esc(f.features.join(', '))}</span></td><td class="muted">${f.content_hash.slice(0,12)}</td><td>${esc(String(f.created_at||'—').replace('T',' ').slice(0,16))} IST</td></tr>`));
   const D=await j('/api/ml/datasets');
   document.getElementById('ds').innerHTML=table(['Dataset','Feature set','Label','Period','Status','Rows'],D.map(d=>`<tr><td>${esc(d.dataset_id)}</td><td>${esc(d.feature_set)}</td><td>${esc(JSON.stringify(d.label))}</td><td>${d.start_date} → ${d.end_date}</td><td>${pill(d.status)}</td><td>${(d.summary||{}).rows??'—'}</td></tr>`));
   const T=await j('/api/ml/training-runs');

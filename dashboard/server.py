@@ -1,5 +1,7 @@
 """ATIP — FastAPI Dashboard Server (http://localhost:8000)"""
 import json, logging, threading, time
+import html as _html
+from dashboard import fmt as _F
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from db.schema import get_connection
@@ -77,10 +79,12 @@ def chg_span(last, prev, size=10):
     if p is None:
         return ""
     diff = float(last) - float(prev)
-    col = "#059669" if p >= 0 else "#dc2626"
-    sign = "+" if p >= 0 else ""
-    return (f'<span style="font-size:{size}px;color:{col}"> {sign}{diff:.2f} '
-            f'({sign}{p:.2f}%)</span>')
+    if abs(p) < 0.005:                                   # UI fixes v2 (G1): no move is grey, never red or green
+        return f'<span style="font-size:{size}px;color:#94a3b8"> 0.00 (0.00%)</span>'
+    col = "#34d399" if p > 0 else "#f87171"           # 6:1+ on the dark page (#059669 / #dc2626 were < 4.5:1)
+    sign, arrow = ("+", "▲") if p > 0 else ("-", "▼")
+    return (f'<span style="font-size:{size}px;color:{col}"> {arrow} {sign}{abs(diff):.2f} '
+            f'({sign}{abs(p):.2f}%)</span>')
 
 
 def get_scores(td,limit=50):
@@ -419,10 +423,10 @@ def alerts_panel_html():
               '🩺 Pipeline: every monitored job has run' + (f'{rerun_html}' if rerun_html else '') + '</div>')
     sev_col={"error":"#f87171","warning":"#fbbf24"}
     items="".join(
-        f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#64748b;width:44px">{str(a["created_at"])[11:16]}</span>'
+        f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#94a3b8;width:44px">{str(a["created_at"])[11:16]}</span>'
         f'<span style="color:{sev_col.get(a["severity"],"#94a3b8")};width:72px">{_h.escape(a["category"])}</span>'
         f'<span style="flex:1">{_h.escape(a["title"] or "")}</span>'
-        f'<span style="color:#64748b">{"📨 sent" if a["telegram_sent"] else "dashboard only"}</span></div>'
+        f'<span style="color:#94a3b8">{"📨 sent" if a["telegram_sent"] else "dashboard only"}</span></div>'
         for a in alerts)
     tg_note=("" if tg else ' · <span style="color:#fbbf24">Telegram not configured — alerts appear only here '
              '(<code>python -m alerts.telegram --test</code> explains the setup)</span>')
@@ -441,8 +445,9 @@ def pill(val,inv=False):
     if val is None: return "—"
     v=float(val)
     if inv: v=100-v
-    col="#059669" if v>=70 else "#f59e0b" if v>=45 else "#dc2626"
-    return f'<span style="background:{col}20;color:{col};padding:2px 7px;border-radius:4px;font-weight:600;font-size:11px">{float(val):.0f}</span>'
+    # UI fixes v2: the light shades read at 4.5:1+ on the dark table (#059669 / #dc2626 did not)
+    col="#6ee7b7" if v>=70 else "#fcd34d" if v>=45 else "#fca5a5"     # the dark-theme --ax-pos / amber / --ax-neg
+    return f'<span style="background:{col}20;color:{col};padding:2px 7px;border-radius:4px;font-weight:600;font-size:11px">{_F.fmt_score(val)}</span>'
 
 def bval(v):
     """Render a beta figure: >1 (more volatile than Nifty) in amber, <1 in slate, missing as a dash."""
@@ -520,24 +525,33 @@ def build_html(state):
     mh_txt=f"{mh_s:.0f}" if mh_known else "—"
     mh_col=("#059669" if mh_s>=60 else "#f59e0b" if mh_s>=40 else "#dc2626") if mh_known else "#64748b"
     gen=state.get("generated_at","")[:16]
-    def chg(v): c="#059669" if (v or 0)>0 else "#dc2626"; return f'<span style="color:{c};font-weight:600">{(v or 0):+.2f}%</span>'
+    def chg(v, inverse=False, why="No value yet"):
+        # UI fixes v2 (G1 / H9): a missing change is a grey dash with the reason, never a red 0.00%; a change of
+        # zero is grey; a rise / fall carries its arrow and sign; inverse metrics (VIX) rise in amber
+        from dashboard import fmt as F
+        if F.num(v) is None:
+            return f'<span style="color:#94a3b8" title="{_html.escape(why)}">—</span>'
+        t = F.tone(v)
+        c = "#94a3b8" if t == "flat" else ("#fbbf24" if t == "up" else "#34d399") if inverse else ("#34d399" if t == "up" else "#f87171")
+        a = "▲ " if t == "up" else "▼ " if t == "down" else ""
+        return f'<span style="color:{c};font-weight:600">{a}{F.fmt_pct(v)}</span>'
     names=load_company_names()
     def cname(sym):
         n=names.get((sym or "").upper())
-        return f'<div style="font-size:9.5px;color:#64748b;font-weight:400;white-space:normal">{n}</div>' if n else ""
+        return f'<div style="font-size:9.5px;color:#94a3b8;font-weight:400;white-space:normal">{n}</div>' if n else ""
     import html as _html
     def _srch(sym):
         return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
-    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores)
+    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank') if r.get('atip_rank') is not None else '—'}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">{_F.fmt_price(r.get('cmp'))}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#34d399' if r.get('signal')=='BUY' else '#f87171' if r.get('signal')=='SELL' else '#93c5fd'};font-weight:600">{r.get('signal') or '—'}</td><td style="font-size:10px;color:#94a3b8">{r.get('top_factor_1') or '—'}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores)
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
-    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
+    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>{_F.fmt_price(p.get('avg_price'))}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">{_F.fmt_price(p.get('cmp'))}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal') or '—'}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
     # about where the market closed, which is the first thing you look for
     # outside market hours -- and pre-open every change legitimately reads 0.00%
     # because Dhan's prev_close equals the last traded price until the bell.
     def _lvl(v):
         x = idx.get(v)
-        return (f'<span style="color:#64748b;font-size:11px;margin-right:6px">{x:,.0f}</span>'
+        return (f'<span style="color:#94a3b8;font-size:11px;margin-right:6px">{x:,.0f}</span>'
                 if isinstance(x, (int, float)) else '')
     idx_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span><span>{_lvl(v[:-4])}{chg(idx.get(v))}</span></div>' for k,v in [("Nifty50","nifty50_chg"),("BankNifty","banknifty_chg"),("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg_chg"),("Metal","nifty_metal_chg"),("Realty","nifty_realty_chg"),("PSUBank","nifty_psubank_chg"),("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg")])
     glb_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span>{chg(glb.get(v))}</div>' for k,v in [("S&P500","sp500_chg"),("Dow","dow_chg"),("Nasdaq","nasdaq_chg"),("Nikkei","nikkei_chg"),("Crude","crude_wti_chg"),("Gold","gold_chg"),("USD/INR","usd_inr_chg")])
@@ -547,9 +561,9 @@ def build_html(state):
     def t25_row(r,mid,primary="BUY",sig_style=""):
         return (f'<tr data-sym="{r.get("symbol")}">'
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>{mid}'
-                f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">₹{r.get("cmp") or "—"}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
+                f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">{_F.fmt_price(r.get("cmp"))}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
                 f'<td data-v="{r.get("beta_1y") if r.get("beta_1y") is not None else ""}">{bval(r.get("beta_1y"))}</td>'
-                f'<td{sig_style}>{r.get("signal","—")}</td>'
+                f'<td{sig_style}>{r.get("signal") or "—"}</td>'
                 f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary)}</td></tr>')
 
     def by_signal(r):
@@ -572,7 +586,7 @@ def build_html(state):
     fii_dii=state.get("fii_dii",[]) or []
     def cr(v):
         """₹Cr flow, green for net buying, red for net selling."""
-        if v is None: return '<span style="color:#64748b">—</span>'
+        if v is None: return '<span style="color:#94a3b8">—</span>'
         c="#059669" if v>0 else "#dc2626" if v<0 else "#94a3b8"
         return f'<span style="color:{c};font-weight:600">{v:+,.0f}</span>'
     fii_rows="".join(
@@ -594,7 +608,7 @@ def build_html(state):
     idx_time=str(idx.get("time") or "")
     idx_note=(f'<span style="color:#f59e0b">as of {idx_date} {idx_time}</span>'
               if idx_date and idx_date != str(state.get("trade_date") or "")
-              else f'<span style="color:#64748b">{idx_time}</span>')
+              else f'<span style="color:#94a3b8">{idx_time}</span>')
     # The Global panel carried no date at all, so a stale reading was
     # indistinguishable from a live one. global_markets had not been written
     # since 2026-08-03 — over a month — and the sidebar showed those figures
@@ -606,7 +620,7 @@ def build_html(state):
     glb_note=(f'<span style="color:{"#dc2626" if glb_stale and glb_stale>3 else "#f59e0b"}">'
               f'as of {glb_date}</span>'
               if glb_date and glb_date != str(state.get("trade_date") or "")
-              else f'<span style="color:#64748b">{glb_date}</span>')
+              else f'<span style="color:#94a3b8">{glb_date}</span>')
     sectors=get_sector_rotation(idx)
     def heat(v):
         """Background intensity scaled to ±2%, which covers a normal NSE day."""
@@ -618,7 +632,7 @@ def build_html(state):
         f'padding:7px 9px;min-width:96px;text-align:center">'
         f'<div style="font-size:11px;color:#e2e8f0">{lbl}</div>'
         f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
-        for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
+        for lbl,v in sectors) or '<div style="color:#94a3b8;font-size:12px">No sector data for this date.</div>'
     # ── Signal history + momentum success rates ──────────────────────────────
     ob = state.get("orders_book") or []
 
@@ -689,7 +703,7 @@ def build_html(state):
                       f'border-radius:4px;cursor:pointer;padding:2px 8px;font-size:11px">Cancel</button>')
         created = str(r.get("created_at") or "")[:19].replace("T", " ")
         return (f'<tr data-sym="{r.get("symbol")}">'
-                f'<td style="font-size:11px;color:#64748b">{created}</td>'
+                f'<td style="font-size:11px;color:#94a3b8">{created}</td>'
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>'
                 f'<td style="color:{"#059669" if r.get("side")=="BUY" else "#dc2626"};'
                 f'font-weight:600">{r.get("side")}{role_badge}</td>'
@@ -699,12 +713,12 @@ def build_html(state):
                 f'border-radius:4px;font-weight:600;font-size:11px">{status}</span></td>'
                 f'<td>{mode}</td>'
                 f'<td>{exec_s}{err_html}</td>'
-                f'<td style="font-size:10px;color:#64748b">{oid or "—"}</td>'
+                f'<td style="font-size:10px;color:#94a3b8">{oid or "—"}</td>'
                 f'<td class="acts">{actions}</td></tr>')
 
     order_rows = "".join(_order_row(r) for r in ob)
     order_rows_or_empty = order_rows or (
-        '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px">'
+        '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:20px">'
         'No orders yet. Use the Buy/Sell buttons on any stock to create one.</td></tr>')
 
     sh = state.get("sighist") or {}
@@ -713,12 +727,12 @@ def build_html(state):
 
     def _pct(v, good=55.0):
         if v is None:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         c = "#059669" if v >= good else "#f59e0b" if v >= 35 else "#dc2626"
         return f'<span style="color:{c};font-weight:700">{v:.0f}%</span>'
 
     def _num(v, suffix="d"):
-        return f"{v}{suffix}" if v else '<span style="color:#64748b">n/a</span>'
+        return f"{v}{suffix}" if v else '<span style="color:#94a3b8">n/a</span>'
 
     def _signed(v):
         if v is None:
@@ -736,10 +750,10 @@ def build_html(state):
     def _cell_1y(sig, th):
         b = by_1y.get((sig, th))
         if not b or not b.get("watched"):
-            return ('<span style="color:#64748b" title="no signal from the last '
+            return ('<span style="color:#94a3b8" title="no signal from the last '
                     '12 months has been watched for a session yet">-</span>')
         return (f'{_pct(b["hit_rate"])}'
-                f'<span style="color:#64748b;font-size:10px"> ({b["hits"]}/{b["watched"]})</span>')
+                f'<span style="color:#94a3b8;font-size:10px"> ({b["hits"]}/{b["watched"]})</span>')
 
     succ_rows = ""
     for b in sh_rep.get("buckets", []):
@@ -754,15 +768,15 @@ def build_html(state):
             f'<td>{_num(b["slowest_sessions"])}</td>'
             f'<td>{_signed(b.get("avg_mfe"))}</td>'
             f'<td>{_signed(b.get("avg_mae"))}</td>'
-            f'<td style="color:#64748b">{b.get("not_yet_watched", 0)}</td>'
+            f'<td style="color:#94a3b8">{b.get("not_yet_watched", 0)}</td>'
             f'<td>{_cell_1y(b["signal"], b["threshold_pct"])}</td></tr>')
 
     def _oc(o):
         """One threshold cell: hit / miss / still open, with sessions taken."""
         if not o:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         if o.get("still_open"):
-            return '<span style="color:#64748b">open</span>'
+            return '<span style="color:#94a3b8">open</span>'
         if o.get("hit"):
             d = o.get("sessions_to_hit")
             gap = o.get("data_gap_sessions") or 0
@@ -790,7 +804,7 @@ def build_html(state):
         """
         hits = [o for o in outs if o.get("hit") and o.get("hit_date")]
         if not hits:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         first = min(hits, key=lambda o: str(o["hit_date"]))
         return (f'<span style="color:#059669">{str(first["hit_date"])[:10]}</span>'
                 f'<span style="color:#94a3b8;font-size:10px"> @{first["threshold_pct"]:g}%</span>')
@@ -807,16 +821,16 @@ def build_html(state):
             f'<tr data-sym="{r.get("symbol")}" data-signal="{r.get("signal") or ""}"><td>{r.get("signal_date")}</td>'
             f'<td><b>{r.get("symbol")}</b>{"*" if r.get("is_tod") else ""}</td>'
             f'<td style="color:{sig_c};font-weight:600">{r.get("signal")}</td>'
-            f'<td>Rs{r.get("entry_price") or "-"}</td>'
+            f'<td>{_F.fmt_price(r.get("entry_price"))}</td>'
             f'<td>{pill(r.get("atip_score"))}</td><td>{pill(r.get("zpi"))}</td>'
             f'<td>{pill(r.get("cri"),inv=True)}</td>{cells}'
             f'<td>{_first_hit(outs)}</td>'
             f'<td>{_signed(mfe)}</td><td>{_signed(mae)}</td>'
-            f'<td style="font-size:10px;color:#64748b">{r.get("model_version") or "-"}</td></tr>')
+            f'<td style="font-size:10px;color:#94a3b8">{r.get("model_version") or "-"}</td></tr>')
 
     th_heads = "".join(f'<th style="text-align:center">{t:g}%</th>' for t in ths)
     hist_rows_or_empty = hist_rows or (
-        '<tr><td colspan="15" style="text-align:center;color:#64748b;padding:20px">'
+        '<tr><td colspan="15" style="text-align:center;color:#94a3b8;padding:20px">'
         'No signals logged yet. The post-market run appends them; backfill past '
         'dates with: python -m scores.signal_log --backfill</td></tr>')
     sh_total = sh_rep.get("total_signals", 0)
@@ -856,7 +870,7 @@ def build_html(state):
         stale_banner = (f'<div style="background:#065f46;color:#d1fae5;padding:5px 18px;font-size:11.5px">'
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
     health_panel = alerts_panel_html()
-    tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
+    tod_sym=tod.get('symbol') or '—'; tod_sig=tod.get('signal') or '—'; tod_cmp=_F.fmt_price(tod.get('cmp'), symbol=False)
     # Served with the page so the dashboard keeps working; see dashboard/security.py.
     from dashboard.security import page_token as _dash_token
     token_js = json.dumps(_dash_token())
@@ -869,21 +883,21 @@ def build_html(state):
     from dashboard.news_impact_view import panel_html as _ni_panel                     # NI-05
     ni_news_panel=_ni_panel("niNewsBox")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
-<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:10px;color:#475569;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
+<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#94a3b8;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:12px;color:#94a3b8;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
 .ob{{background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer}}.ob:hover{{background:#38bdf8;color:#0f172a}}
 .acts{{white-space:nowrap}}.acts button{{padding:3px 11px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;margin-right:4px}}
-.obuy{{background:#059669;border:1px solid #059669;color:#fff}}.obuy:hover{{background:#047857}}
-.osell{{background:#dc2626;border:1px solid #dc2626;color:#fff}}.osell:hover{{background:#b91c1c}}
-.acts button.ghost{{background:transparent}}.obuy.ghost{{color:#059669}}.osell.ghost{{color:#dc2626}}
-.acts button.ghost:hover{{color:#fff}}.obuy.ghost:hover{{background:#059669}}.osell.ghost:hover{{background:#dc2626}}
+.obuy{{background:#047857;border:1px solid #047857;color:#fff}}.obuy:hover{{background:#065f46}}
+.osell{{background:#b91c1c;border:1px solid #b91c1c;color:#fff}}.osell:hover{{background:#991b1b}}
+.acts button.ghost{{background:transparent}}.obuy.ghost{{color:#34d399}}.osell.ghost{{color:#f87171}}
+.acts button.ghost:hover{{color:#fff}}.obuy.ghost:hover{{background:#047857}}.osell.ghost:hover{{background:#b91c1c}}
 .tod-card .acts button{{padding:6px 20px;font-size:12.5px;margin-top:4px}}
 .cmpwarn{{color:#f59e0b;font-size:11px;margin-bottom:8px;display:none}}.cmpwarn.show{{display:block}}
 .brk{{background:#0f172a;border:1px solid #334155;border-radius:7px;padding:10px;margin:10px 0}}
 .brk .mrow{{margin-bottom:6px}}.brk input[type=number]{{max-width:80px;flex:0 0 auto}}
-.u{{font-size:11px;color:#64748b}}
+.u{{font-size:11px;color:#94a3b8}}
 .modal-bg{{display:none;position:fixed;inset:0;background:#00000090;z-index:100;align-items:center;justify-content:center}}.modal-bg.open{{display:flex}}
 .modal{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:18px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto}}
-.modal h3{{font-size:15px;margin-bottom:4px}}.modal .sub{{font-size:11px;color:#64748b;margin-bottom:12px}}
+.modal h3{{font-size:15px;margin-bottom:4px}}.modal .sub{{font-size:11px;color:#94a3b8;margin-bottom:12px}}
 .mrow{{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap}}.mrow label{{width:64px;font-size:12px;color:#94a3b8;flex-shrink:0}}
 .mrow input,.mrow select{{flex:1;min-width:90px}}
 .seg{{display:inline-flex;border:1px solid #334155;border-radius:6px;overflow:hidden}}.seg button{{border:none;background:#0f172a;color:#94a3b8;padding:5px 16px;font-size:12px;cursor:pointer}}.seg button.on[data-v="BUY"]{{background:#059669;color:#fff}}.seg button.on[data-v="SELL"]{{background:#dc2626;color:#fff}}
@@ -897,18 +911,18 @@ def build_html(state):
 .hide{{display:none!important}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
+<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#94a3b8">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#94a3b8">Data as of: {gen}</span><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
 {op_banner}
 {stale_banner}
 {health_panel}
 <div id="brokerBanner" class="banner dry">Checking broker status…</div>
 <div id="pendBox" class="pend" style="margin:10px 18px 0"><b style="color:#dc2626">⚠️ Awaiting confirmation</b><div id="pendList"></div></div>
 <div class="kpi-row">
-  <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_txt}</div><div style="font-size:11px;color:#64748b">{regime}</div></div>
-  <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('nifty50'):,.2f}" if idx.get('nifty50') else '—')}</div></div>
-  <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
+  <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_txt}</div><div style="font-size:11px;color:#94a3b8">{regime}</div></div>
+  <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div><div style="font-size:11px;color:#94a3b8">{(f"{idx.get('nifty50'):,.2f}" if idx.get('nifty50') else '—')}</div></div>
+  <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#94a3b8">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">India VIX</div><div class="kpi-v" style="color:{'#dc2626' if (idx.get('india_vix') or 0)>20 else '#94a3b8'}">{idx.get('india_vix','—')}</div></div>
-  <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
+  <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg') if idx.get('gift_nifty') else None, why="No GIFT Nifty quote in the latest index read" + (f" ({idx.get('time')} IST)" if idx.get('time') else ""))}</div><div style="font-size:11px;color:#94a3b8">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">Sentiment</div><div class="kpi-v" style="color:{'#059669' if idx.get('overall_sentiment')=='BULLISH' else '#dc2626' if idx.get('overall_sentiment')=='BEARISH' else '#94a3b8'}">{idx.get('overall_sentiment') or '—'}</div></div>
   <div class="kpi"><div class="kpi-l">S&P 500</div><div class="kpi-v">{chg(glb.get('sp500_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">Gold</div><div class="kpi-v">{chg(glb.get('gold_chg'))}</div></div>
@@ -920,16 +934,16 @@ def build_html(state):
   <div class="section"><div class="st">🎯 Trade of the Day</div>
     <div class="tod-card" data-sym="{tod_sym}">
       <div class="tod-sym">{tod_sym} <span style="font-size:13px;color:#059669">{tod_sig}</span>{f'<div style="font-size:12px;color:#94a3b8;font-weight:400">{tod_cname}</div>' if tod_cname else ''}</div>
-      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">₹{tod_cmp}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
-      <div><div class="tod-l">Stop Loss</div><div class="tod-v" style="color:#dc2626">₹{tod.get('sl','—')}</div></div>
-      <div><div class="tod-l">Target 1</div><div class="tod-v" style="color:#059669">₹{tod.get('t1','—')}</div></div>
-      <div><div class="tod-l">Target 2</div><div class="tod-v" style="color:#059669">₹{tod.get('t2','—')}</div></div>
+      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">{'₹' + tod_cmp if tod_cmp != '—' else '—'}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
+      <div><div class="tod-l">Stop Loss</div><div class="tod-v" style="color:#dc2626">{_F.fmt_price(tod.get('sl'))}</div></div>
+      <div><div class="tod-l">Target 1</div><div class="tod-v" style="color:#059669">{_F.fmt_price(tod.get('t1'))}</div></div>
+      <div><div class="tod-l">Target 2</div><div class="tod-v" style="color:#059669">{_F.fmt_price(tod.get('t2'))}</div></div>
       <div><div class="tod-l">ACS Confidence</div><div class="tod-v">{(tod.get('acs') or 0):.0f}/100</div></div>
-      <div style="grid-column:1/-1;font-size:11px;color:#94a3b8">✦ {tod.get('top_factor_1','—')} &nbsp; ✦ {tod.get('top_factor_2','—')}</div>
+      <div style="grid-column:1/-1;font-size:11px;color:#94a3b8">✦ {tod.get('top_factor_1') or '—'} &nbsp; ✦ {tod.get('top_factor_2') or '—'}</div>
       <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'))}</div>
     </div>
   </div>
-  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
+  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#94a3b8;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
   </div>
   <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
@@ -943,20 +957,20 @@ def build_html(state):
         <div class="kpi-l">Portfolio Health</div>
         <div style="font-size:32px;font-weight:700;color:{phs_col}">{phs_score:.0f}</div>
         <div style="font-size:12px;color:#94a3b8">{phs.get("band","—")} · {phs.get("holdings",0)} holdings</div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
         {f'<div style="font-size:11px;color:#f59e0b;margin-top:4px">⚠ holdings as of {phs.get("date")} — portfolio sync has not run since</div>' if phs.get("stale") else ''}
       </div>
       <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;min-width:270px">
         <div class="kpi-l" style="margin-bottom:5px">Components</div>{phs_comp}
       </div>
     </div>''' if phs_score is not None else ''}
-    <table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
+    <table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
   <div id="vpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ATIP</th><th>VPI</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('vpi','')}</tbody></table></div>
   <div id="zpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ZPI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('zpi','')}</tbody></table></div>
-  <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>RRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>
-  <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>MRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
+  <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>RRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>
+  <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>MRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
   <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>CRI 🔴</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','')}</tbody></table></div>
-  <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
+  <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
   <div id="news" class="tc section">{ni_news_panel}<div class="st" style="margin-top:14px">Headlines</div><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
   <div id="hist" class="tc section">
     <div class="st">Momentum success rate &mdash; did price move the way the signal said?</div>
@@ -971,11 +985,11 @@ def build_html(state):
       <tbody>{succ_rows}</tbody></table>
     {sh_note}
     <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)
-      <span style="font-size:11px;color:#64748b;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
+      <span style="font-size:11px;color:#94a3b8;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input id="hsrch" placeholder="Filter by symbol..." oninput="hft()">
       <select id="hsf" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
-      <span id="hcnt" style="font-size:11px;color:#64748b;align-self:center"></span>
+      <span id="hcnt" style="font-size:11px;color:#94a3b8;align-self:center"></span>
     </div>
     <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
       {th_heads}<th title="Date the first target was reached">Target hit</th><th>Best</th><th>Worst</th><th>Model</th></tr></thead>
@@ -984,7 +998,7 @@ def build_html(state):
   <div id="orders" class="tc section">
     <div id="brokerBanner2" class="banner dry" style="margin-bottom:12px">Checking broker status…</div>
     <div class="st">Order book — every order and rule ATIP is tracking, in every state</div>
-    <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.5">
+    <div style="font-size:11.5px;color:#94a3b8;margin-bottom:10px;line-height:1.5">
       Two kinds of row here. <b style="color:#38bdf8">[ENTRY]/[TARGET]/[STOP]</b> rules are
       conditional watches: a rule with no order id has never been sent anywhere — it is still
       watching its trigger price, checked by this dashboard every 30 seconds, and Dhan has no
@@ -1014,7 +1028,7 @@ def build_html(state):
   <div class="brk">
     <div style="font-size:11.5px;color:#38bdf8;font-weight:600;margin-bottom:7px">🎯 Bracket — auto-exit after this order fills</div>
     <div class="mrow"><label><input type="checkbox" id="mBrk" checked onchange="mPrev()"> Enable</label>
-      <span style="font-size:11px;color:#64748b">exits are measured from the actual fill price</span></div>
+      <span style="font-size:11px;color:#94a3b8">exits are measured from the actual fill price</span></div>
     <div class="mrow"><label>Target 1</label><input type="number" step="0.1" id="mBT1" value="3" oninput="mPrev()"><span class="u">% profit — exits</span><input type="number" step="5" id="mBSplit" value="50" oninput="mPrev()" style="max-width:60px"><span class="u">% of qty</span></div>
     <div class="mrow"><label>Target 2</label><input type="number" step="0.1" id="mBT2" value="6" oninput="mPrev()"><span class="u">% — exits the remainder (blank = single target)</span></div>
     <div class="mrow"><label>Stoploss</label><input type="number" step="0.1" id="mBSL" value="2" oninput="mPrev()"><span class="u">% loss</span></div>
@@ -1027,7 +1041,7 @@ def build_html(state):
   </div>
   <div class="mrow"><label style="width:auto"><input type="checkbox" id="mConfirm" checked> Require confirmation before the ENTRY order is placed</label></div>
   <div class="preview" id="mPreviewTxt">—</div>
-  <div class="rules-mini"><b style="font-size:11px;color:#64748b">Active rules for this stock</b><ul id="mRulesList"></ul></div>
+  <div class="rules-mini"><b style="font-size:11px;color:#94a3b8">Active rules for this stock</b><ul id="mRulesList"></ul></div>
   <div class="mactions"><button class="msave" onclick="saveOrderRule()">Save Rule</button><button class="mcancel" onclick="closeOrderModal()">Close</button></div>
 </div></div>
 <script>
@@ -1220,7 +1234,7 @@ async function loadMiniRules(){{
   if(!res.ok)return;
   var rules=await res.json();
   var ul=document.getElementById('mRulesList'); ul.innerHTML='';
-  if(!rules.length){{ul.innerHTML='<li style="justify-content:center;color:#64748b">No active rules</li>';return;}}
+  if(!rules.length){{ul.innerHTML='<li style="justify-content:center;color:#94a3b8">No active rules</li>';return;}}
   rules.forEach(r=>{{
     var li=document.createElement('li');
     var role=r.role&&r.role!=='ENTRY'?' <b style="color:'+(r.role==='STOP'?'#dc2626':'#059669')+'">['+r.role+']</b>':'';
@@ -1311,10 +1325,13 @@ async function pollLiveQuotes(){{
       var prev=parseFloat(cell.dataset.prev);
       if(qd.prev_close!=null && qd.prev_close>0) prev=qd.prev_close;
       var pct = (!isNaN(prev) && prev>0) ? ((qd.ltp-prev)/prev*100) : null;
-      var col = pct===null ? '#e2e8f0' : (pct>=0 ? '#059669' : '#dc2626');
-      var sign = (pct!==null && pct>=0) ? '+' : '';
-      cell.innerHTML = '₹'+qd.ltp.toFixed(2) + (pct!==null
-        ? ' <span style="font-size:10px;color:'+col+'">'+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
+      // UI fixes v2: tick-rounded price (AX.fmt), grey when unchanged, an arrow and a sign beside the colour
+      var flat = pct!==null && Math.abs(pct)<0.005;
+      var col = pct===null ? '#e2e8f0' : flat ? '#94a3b8' : (pct>0 ? '#34d399' : '#f87171');
+      var sign = pct===null || flat ? '' : pct>0 ? '▲ +' : '▼ −';
+      var px = (window.AX && AX.fmt) ? AX.fmt.price(qd.ltp) : '₹'+qd.ltp.toFixed(2);
+      cell.innerHTML = px + (pct!==null
+        ? ' <span style="font-size:10px;color:'+col+'">'+sign+Math.abs(qd.ltp-prev).toFixed(2)+' ('+(flat?'0.00':(pct>0?'+':'−')+Math.abs(pct).toFixed(2))+'%)</span>'
         : '');
       cell.dataset.cmp = qd.ltp;
     }});
