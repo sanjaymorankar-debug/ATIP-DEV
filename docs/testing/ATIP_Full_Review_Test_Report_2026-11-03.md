@@ -131,4 +131,25 @@ Screenshots: `docs/testing/screenshots/full-review-2026-11-03/` (`before_*` 5, `
 | 11 | Rank-fill now trades HOLD stocks in PAPER at the open (9:23 PM session's change, live from this deploy); the validation shows negative expectancy | Owner: `session_settings.autopick_rank_fill = OFF` to stop it |
 
 ## 6. Deployment on the Mac
-DEPLOY
+Owner: "once this is done deploy code on mac". The market was closed and ATIP was in its 21:00–06:00 stop window
+(read-only, no orders), and no other ATIP session was running.
+
+| Step | IST (4 Nov 2026) | Result |
+|---|---|---|
+| Live folder check | 00:07 | `/Users/agtci/ATIP` on master `29b488e`, no tracked change; no other ATIP session running |
+| Pre-release backup | 00:07:58 | `atip_data/backups/atip-pre-release-20261104-000758.db`, 501,866,496 bytes, sha256 `f9f7d4cc…7cbd6` |
+| Merge into master | 00:08:11 | `0dbecdd` (branch `claude/full-review-2026-11-03`, not pushed) |
+| Data repair | 00:08:29 | `python -m data.ema_gap --repair --apply`: TDPOWERSYS 165 rows; a second run finds nothing; 214 rows, no day-to-day jump > 25 % |
+| Restart (`launchctl kickstart -k gui/$UID/com.atip.platform`) | 00:08:43 | pid 8697 → 36085; "Every recent session through 2026-11-03 is scored"; order monitor started; no error |
+| Live check | 00:09 | `/home`, `/sessions`, `/`, `/command`, the board and shell APIs 200; dark; PAPER; 5 KPI tiles, 10 cards; board "10 of 10 sessions filled — 0 holding · 0 queued · 10 to buy at the next pick" |
+| Defect found live | 00:09 | in the stop window the compact chip "→ Next pick · after the stop window" widened Home by 8 px (1,448 px in 1,440) |
+| Fix, tests, merge | 00:11:10 | `e0f653e` → master `fac38d3`; UI test files 206 / 206 |
+| Restart | 00:11:17 | pid 36453; no error; Home 1,425 px in 1,440, Sessions 390 px in 390; screenshot `live_mac_home_dark_1440_after_deploy.jpg` |
+
+**Rollback:** `git checkout 29b488e -- .` is not needed for data. To undo the code, revert merges `fac38d3` and `0dbecdd`
+and restart. To undo the data repair, restore the 00:07:58 backup (`python -m ops restore …`); the repair touched only
+those 165 TDPOWERSYS rows.
+
+**What the next session does on this code (Wed 4 Nov, 09:15 IST):** the ten PAPER sessions auto-pick at the open. On
+3 Nov's scores there is no BUY signal, so all ten rank-fill HOLD stocks (PVRINOX, BALRAMCHIN, LODHA, …), as the
+9:23 PM session built and this board now shows. To keep them empty instead: `session_settings.autopick_rank_fill = OFF`.
