@@ -2,6 +2,10 @@
 The /wealth page (W11-W17): the Investor-mode home. One tab per wave, all read
 from /api/wealth/*; nothing is computed in the page. Tabs are registered in
 TABS (id, title, html, js) so each wave adds its own without touching the rest.
+
+UX audit (3 Nov 2026): every input / select is labelled (the questionnaire's labels are tied to their
+controls), tables scroll inside keyboard-reachable regions, pills and messages use paired light / dark
+tokens instead of dark-only fills, 12px minimum text.
 """
 
 import json
@@ -9,38 +13,40 @@ import json
 HEAD = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Wealth</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#10b981;--bad:#ef4444;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
 .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line)}
-.tabs button{background:none;border:none;color:var(--muted);padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent}
+.tabs button{background:none;border:none;color:var(--muted);padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;border-radius:0}
 .tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
 .tab{display:none}.tab.on{display:block}
-h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-h3{font-size:12px;color:var(--muted);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:12px}
-th,td{padding:5px 7px;border-bottom:1px solid #33415566;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
+h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;overflow-wrap:anywhere}
+h3{font-size:12.5px;color:var(--muted);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap}
+thead th{position:sticky;top:0;z-index:1}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}.warn{color:var(--warn)}.bad{color:var(--bad)}.good{color:var(--good)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}
-.card .k{font-size:11px;color:var(--muted)}.card .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
-.bar{height:6px;background:#334155;border-radius:3px;margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
-.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;background:#334155}
-.pill.warning{background:#78350f}.pill.info{background:#1e3a5f}.pill.HIGH{background:#7f1d1d}.pill.MODERATE{background:#78350f}.pill.LOW{background:#065f46}
-.pill.CURRENT,.pill.OK,.pill.ON_TRACK{background:#065f46}.pill.STALE,.pill.AT_RISK{background:#78350f}.pill.OFF_TRACK{background:#7f1d1d}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;overflow-wrap:anywhere}
+.card .k{font-size:12px;color:var(--muted)}.card .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--panel2);border-radius:3px;margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;background:var(--panel2);color:var(--text)}
+.pill.warning,.pill.MODERATE,.pill.STALE,.pill.AT_RISK{background:var(--warnbg);color:var(--warn)}.pill.info{background:var(--ax-info-bg,#1e3a5f);color:var(--ax-info,#dbeafe)}
+.pill.HIGH,.pill.OFF_TRACK{background:var(--badbg);color:var(--bad)}.pill.LOW,.pill.CURRENT,.pill.OK,.pill.ON_TRACK{background:var(--goodbg);color:var(--good)}
 form .q{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px}
-form .q label{display:block;margin-bottom:4px}form .q .help{font-size:11px;color:var(--muted)}
-input,select,button,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
-button.primary{background:#0369a1;border-color:#0369a1;cursor:pointer}button{cursor:pointer}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tw{overflow-x:auto;max-width:100%}.scroll{max-height:420px;overflow:auto}
-.disc{font-size:11px;color:var(--muted);margin-top:18px;border-top:1px solid var(--line);padding-top:8px}
-.msg{padding:6px 10px;border-radius:6px;margin:6px 0;background:#1e3a5f}.msg.e{background:#7f1d1d}
-@media(max-width:640px){.wrap{padding:10px}.top a{margin-left:8px}}
-body.simple .adv{display:none!important}#vw button{padding:2px 9px;font-size:11.5px}#vw button.on{background:#0369a1;border-color:#0369a1}
+form .q label{display:block;margin-bottom:4px}form .q .help{font-size:12px;color:var(--muted)}
+input,select,button,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;max-width:100%}
+button.primary{background:#0369a1;border-color:#0369a1;color:#fff;cursor:pointer}button{cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tw{overflow-x:auto;max-width:100%}.scroll .tw{max-height:420px;overflow:auto}.scroll.s260 .tw{max-height:260px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.disc{font-size:12px;color:var(--muted);margin-top:18px;border-top:1px solid var(--line);padding-top:8px}
+.msg{padding:6px 10px;border-radius:6px;margin:6px 0;background:var(--ax-info-bg,#1e3a5f);color:var(--ax-info,#dbeafe);overflow-wrap:anywhere}.msg.e{background:var(--badbg);color:var(--bad)}.msg.w{background:var(--warnbg);color:var(--warn)}
+@media(max-width:640px){.wrap{padding:10px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
+body.simple .adv{display:none!important}#vw button{padding:2px 9px;font-size:12px}#vw button.on{background:#0369a1;border-color:#0369a1;color:#fff}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="vw" title="Simple hides the audit, ledger and trade-level detail"><button data-v="simple" onclick="setView('simple')">Simple</button><button data-v="detailed" onclick="setView('detailed')">Detailed</button></span> <span id="ld" class="muted" style="font-size:11px"></span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Investor mode</span> <span id="vw" title="Simple hides the audit, ledger and trade-level detail"><button data-v="simple" onclick="setView('simple')">Simple</button><button data-v="detailed" onclick="setView('detailed')">Detailed</button></span> <span id="ld" class="muted" style="font-size:12px" role="status"></span></div>
 <div><a href="/">Trader dashboard</a><a href="/strategies">Strategies</a><a href="/trading">Trading</a><a href="/backtests">Backtests</a></div></div>
 <div class="wrap"><div id="uat_banner"></div><div class="tabs" id="tabs"></div>
 """
@@ -55,8 +61,10 @@ async function j(u,o){const r=await fetch(u,o);let t={};try{t=await r.json()}cat
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 const put=(u,b)=>j(u,{method:'PUT',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 const del=u=>j(u,{method:'DELETE',headers:{'X-ATIP-Token':TOKEN}});
-const table=(h,rows)=>`<div class="tw"><table><thead><tr>${h.map(x=>`<th${x.startsWith('#')?' class="n"':''}>${x.replace(/^#/,'')}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table></div>`;
-const card=(k,v,sub,bar)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="muted" style="font-size:11px">${sub}</div>`:''}${bar!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,bar))}%"></i></div>`:''}</div>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(x=>String(x).replace(/^#/,'').replace(/<[^>]*>/g,'')).join(', '));
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col"${x.startsWith('#')?' class="n"':''}>${x.replace(/^#/,'')}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">${o.empty||'Nothing here yet.'}</td></tr>`}</tbody></table></div>`};
+const card=(k,v,sub,bar)=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="muted" style="font-size:12px">${sub}</div>`:''}${bar!=null?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,bar))}%"></i></div>`:''}</div>`;
 const msg=(el,t,e)=>{document.getElementById(el).innerHTML=`<div class="msg${e?' e':''}">${esc(t)}</div>`};
 const LOADERS={};let CUR=null;
 // W39 (UX-01) progressive disclosure: Simple hides every .adv block; Detailed (the default) shows all.
@@ -108,9 +116,9 @@ function dnaForm(answers){
   for(const q of DNAQ.questions){
     if(q.section!==sec){sec=q.section;h+=`<h3>${esc(sec)}</h3>`}
     const v=answers?answers[q.id]:undefined;
-    let inp;if(q.type==='number')inp=`<input type="number" name="${q.id}" min="${q.min??''}" max="${q.max??''}" step="any" value="${v??''}" style="width:180px">`;
-    else inp=`<select name="${q.id}"><option value="">— choose —</option>${q.options.map(o=>`<option value="${esc(o.value)}"${String(v)===o.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
-    h+=`<div class="q"><label>${esc(q.text)}</label>${inp}${q.help?`<div class="help">${esc(q.help)}</div>`:''}</div>`;
+    let inp;if(q.type==='number')inp=`<input type="number" id="dna_${q.id}" name="${q.id}" min="${q.min??''}" max="${q.max??''}" step="any" value="${v??''}" style="width:180px">`;
+    else inp=`<select id="dna_${q.id}" name="${q.id}"><option value="">— choose —</option>${q.options.map(o=>`<option value="${esc(o.value)}"${String(v)===o.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
+    h+=`<div class="q"><label for="dna_${q.id}">${esc(q.text)}</label>${inp}${q.help?`<div class="help">${esc(q.help)}</div>`:''}</div>`;
   }
   f.innerHTML=h;
 }
@@ -130,7 +138,7 @@ FEEDBACK_JS = r"""
 function fbOpen(on){document.getElementById('fb_box').style.display=on===false?'none':'block';document.getElementById('fb_res').textContent=''}
 async function fbSend(){const b={page:CUR,category:document.getElementById('fb_cat').value,severity:document.getElementById('fb_sev').value,message:document.getElementById('fb_msg').value,context:{url:location.pathname,tab:CUR,width:window.innerWidth}};
  try{const r=await post('/api/wealth/feedback',b);document.getElementById('fb_res').textContent='Thanks, recorded ('+r.feedback_id+').';document.getElementById('fb_msg').value=''}catch(e){document.getElementById('fb_res').textContent=e.message}}
-j('/api/wealth/uat/context').then(u=>{if(u.active)document.getElementById('uat_banner').innerHTML=`<div class="msg" style="background:#78350f">UAT persona: <b>${esc(u.owner.owner_id)}</b> (tenant ${esc(u.owner.tenant_id)}). This is test data, not your own. Remove wealth.uat_owner from config.json to return to your own data.</div>`}).catch(()=>{});
+j('/api/wealth/uat/context').then(u=>{if(u.active)document.getElementById('uat_banner').innerHTML=`<div class="msg w">UAT persona: <b>${esc(u.owner.owner_id)}</b> (tenant ${esc(u.owner.tenant_id)}). This is test data, not your own. Remove wealth.uat_owner from config.json to return to your own data.</div>`}).catch(()=>{});
 """
 
 
@@ -145,10 +153,10 @@ FEEDBACK = r"""
 <div style="position:fixed;right:14px;bottom:14px;z-index:5"><button class="primary" onclick="fbOpen()">Feedback</button></div>
 <div id="fb_box" style="display:none;position:fixed;right:14px;bottom:56px;width:min(360px,calc(100vw - 28px));z-index:6" class="card">
 <div class="k">Report a problem or idea about this tab</div>
-<div class="row" style="margin:6px 0"><select id="fb_cat"><option>BUG</option><option>UX</option><option>DATA</option><option>METHODOLOGY</option><option>IDEA</option></select>
-<select id="fb_sev"><option value="P3">P3 minor</option><option value="P2">P2 annoying</option><option value="P1">P1 wrong result</option><option value="P0">P0 blocker / unsafe</option></select></div>
-<textarea id="fb_msg" rows="4" style="width:100%" placeholder="What happened, and what did you expect?"></textarea>
-<div class="row" style="margin-top:6px"><button class="primary" onclick="fbSend()">Send</button><button onclick="fbOpen(false)">Close</button><span id="fb_res" class="muted"></span></div></div>
+<div class="row" style="margin:6px 0"><select id="fb_cat" aria-label="Feedback category"><option>BUG</option><option>UX</option><option>DATA</option><option>METHODOLOGY</option><option>IDEA</option></select>
+<select id="fb_sev" aria-label="Severity"><option value="P3">P3 minor</option><option value="P2">P2 annoying</option><option value="P1">P1 wrong result</option><option value="P0">P0 blocker / unsafe</option></select></div>
+<textarea id="fb_msg" rows="4" style="width:100%" aria-label="What happened, and what did you expect?" placeholder="What happened, and what did you expect?"></textarea>
+<div class="row" style="margin-top:6px"><button class="primary" onclick="fbSend()">Send</button><button onclick="fbOpen(false)">Close</button><span id="fb_res" class="muted" role="status"></span></div></div>
 """
 
 FOOT = r"""

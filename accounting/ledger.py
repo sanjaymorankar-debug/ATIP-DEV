@@ -15,6 +15,8 @@ session, symbol, order id, env (VIRTUAL = paper, ACTUAL = broker -- never added 
 
 post_all() is idempotent (UNIQUE txn_id + line): the current pool's allocation and every stored cycle
 (accounting/cycles.py session_cycles) are posted once. A cycle's charges are posted on the day it closed.
+Posted lines are never edited: when a cycle's tax estimate changes (the tax settings changed), true_up_tax() posts
+the difference as a further TAX_PROVISION (and TAX_RESERVE) on the cycle's closing day.
 Transfers and adjustments are posted when made, and logged in session_events.
 """
 
@@ -32,6 +34,7 @@ log = logging.getLogger("atip.ledger")
 
 KINDS = ("ALLOCATION", "BUY", "SELL", "CHARGE", "TAX_PROVISION", "TAX_RESERVE", "TRANSFER", "ADJUSTMENT")
 OWNER = "Owner capital"
+TAX_EXPENSE, TAX_PAYABLE = "Tax expense (est.)", "Tax payable (est.)"
 
 
 def _now() -> str:
@@ -119,7 +122,7 @@ def post_cycle(conn, c: dict) -> int:
     tax = float(c.get("tax_est") or 0)
     if tax > 0:
         n += _post(conn, f"CYC:{sid}:{rid}:TAX", c["closed_at"], "TAX_PROVISION",
-                   [("Tax expense (est.)", tax, 0, None), ("Tax payable (est.)", 0, tax, None)],
+                   [(TAX_EXPENSE, tax, 0, None), (TAX_PAYABLE, 0, tax, None)],
                    memo=f"cycle {c['n']} {c.get('tax_head') or 'STCG'} est.", **common)
         if c.get("compound_basis") == C.AFTER_TAX_RESERVE:
             n += _post(conn, f"CYC:{sid}:{rid}:RSV", c["closed_at"], "TAX_RESERVE",
@@ -159,6 +162,45 @@ def post_all(conn) -> dict:
             n += post_cycle(conn, c)
     conn.commit()
     return {"posted_lines": n}
+
+
+def true_up_tax(conn) -> int:
+    """Each current-pool cycle's provisional tax (and reserve) in the ledger brought to its stored estimate: the
+    difference is posted, dated the day the cycle closed so it stays in that FY. Returns lines posted."""
+    n = 0
+    for s in map(_row, conn.execute("SELECT id, pool_started_at FROM trading_sessions "
+                                    "WHERE start_capital IS NOT NULL AND start_capital > 0").fetchall()):
+        sid = s["id"]
+        for c in C.stored(conn, sid, since=s["pool_started_at"]):
+            rid = c["rule_id"]
+            if not conn.execute("SELECT 1 FROM ledger_entries WHERE txn_id = ?", (f"CYC:{sid}:{rid}:SELL",)).fetchone():
+                continue
+
+            def posted(account):
+                return round(float(conn.execute(
+                    "SELECT COALESCE(SUM(debit - credit), 0) FROM ledger_entries WHERE account = ? AND session_id = ? "
+                    "AND rule_id = ? AND source = 'CYCLE'", (account, sid, rid)).fetchone()[0]), 2)
+
+            common = {"session_id": sid, "symbol": c["symbol"], "rule_id": rid, "env": c.get("env") or C.VIRTUAL,
+                      "source": "CYCLE", "source_id": rid}
+            tag = uuid.uuid4().hex[:8]
+            tax = round(float(c.get("tax_est") or 0), 2)
+            d = round(tax - posted(TAX_EXPENSE), 2)
+            if abs(d) >= 0.005:
+                lines = [(TAX_EXPENSE, d, 0, None), (TAX_PAYABLE, 0, d, None)] if d > 0 else \
+                    [(TAX_PAYABLE, -d, 0, None), (TAX_EXPENSE, 0, -d, None)]
+                n += _post(conn, f"CYC:{sid}:{rid}:TAX:{tag}", c["closed_at"], "TAX_PROVISION", lines,
+                           memo=f"cycle {c['n']} tax re-estimated to ₹{tax:,.2f} (tax settings changed)", **common)
+            reserve = tax if c.get("compound_basis") == C.AFTER_TAX_RESERVE else 0.0
+            d = round(reserve - posted(f"Tax reserve:{sid}"), 2)
+            if abs(d) >= 0.005:
+                cash = f"Cash:{sid}"
+                lines = [(f"Tax reserve:{sid}", d, 0, None), (cash, 0, d, None)] if d > 0 else \
+                    [(cash, -d, 0, None), (f"Tax reserve:{sid}", 0, -d, None)]
+                n += _post(conn, f"CYC:{sid}:{rid}:RSV:{tag}", c["closed_at"], "TAX_RESERVE", lines,
+                           memo=f"cycle {c['n']} tax set aside brought to ₹{reserve:,.2f}", **common)
+    conn.commit()
+    return n
 
 
 def _env() -> str:

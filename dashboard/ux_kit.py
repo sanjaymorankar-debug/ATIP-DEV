@@ -50,6 +50,73 @@ def compact(v) -> str:
     return f"{s}₹{a:.0f}"
 
 
+FEED_STALE_SECONDS = 120              # a tick older than this in market hours is stale (UX audit H1)
+
+
+def _ago(s: int) -> str:
+    return f"{s} s" if s < 120 else f"{s // 60} min" if s < 3600 else f"{s // 3600} h {s % 3600 // 60} min"
+
+
+_last_fetch = {"at": None}            # when this process last fetched live quotes (dashboard/server.py, every 15 s)
+
+
+def note_quotes_fetched(at=None) -> None:
+    """dashboard/server.py calls this after each successful /api/live-quotes fetch from the broker."""
+    from datetime import datetime
+    _last_fetch["at"] = at or datetime.now()
+
+
+def feed_label(conn, market_open: bool | None = None, now=None) -> dict:
+    """The live price feed's state in one place, so Today, the shell, Command Center and /m say the same thing
+    (UX audit H1, 3 Nov 2026). state: live | stale | closed | none; text: what every page shows.
+    Outside market hours the feed is never "live": it reads "Market closed · last tick HH:MM IST"."""
+    from datetime import datetime, timedelta
+    if market_open is None:
+        try:
+            from pipeline.scheduler import is_market_hours
+            market_open = bool(is_market_hours())
+        except Exception:
+            market_open = False
+    now = now or datetime.now()
+    # The newest price ATIP has, from any source: the stored quote snapshots (every 15 min), a ticking WebSocket
+    # feed (live_feed_status), or this dashboard's own 15 s quote fetch. Using the snapshots alone called a working
+    # feed "stale" between snapshots (3 Nov 2026, seen on the live Mac).
+    stamps = []
+    for sql in ("SELECT MAX(timestamp) FROM live_quotes",
+                "SELECT MAX(last_tick_at) FROM live_feed_status WHERE mode IS NOT NULL AND mode != 'OFF'"):
+        try:
+            v = conn.execute(sql).fetchone()[0]
+            if v:
+                stamps.append(datetime.fromisoformat(str(v).replace("T", " ")[:26]))
+        except Exception:
+            pass
+    if _last_fetch["at"]:
+        stamps.append(_last_fetch["at"])
+    stamps = [s for s in stamps if s <= now + timedelta(seconds=5)]          # ignore a clock ahead of `now`
+    at = max(stamps) if stamps else None
+    ts = at.strftime("%Y-%m-%d %H:%M:%S") if at else None
+    age = max(0, round((now - at).total_seconds())) if at else None
+    hm = ""
+    if at:
+        hm = at.strftime("%H:%M") + " IST" + ("" if at.date() == now.date() else at.strftime(" on %d %b").replace(" 0", " "))
+    if at is None:
+        state, tone = "none", "warn" if market_open else ""
+        text = "No live prices: no tick received yet" if market_open else "Market closed · no live tick yet"
+        short = "No ticks" if market_open else "Closed"
+    elif not market_open:
+        state, tone, text, short = "closed", "", f"Market closed · last tick {hm}", f"Closed · {at:%H:%M}"
+    elif age > FEED_STALE_SECONDS:
+        state, tone, text = "stale", "bad", f"Feed stale · last tick {_ago(age)} ago ({hm})"
+        short = f"Stale · {_ago(age)}"
+    else:
+        state, tone, text, short = "live", "good", f"Live · last tick {_ago(age)} ago", f"Live · {_ago(age)}"
+    return {"state": state, "tone": tone, "text": text, "short": short, "age_s": age, "last_tick": ts,
+            "market_open": bool(market_open),
+            # the keys Command Center has always read
+            "age_seconds": age, "stale": bool(market_open and state in ("stale", "none")),
+            "cutoff_seconds": FEED_STALE_SECONDS}
+
+
 def tile(label: str, value_html: str, sub: str = "", key: bool = False) -> str:
     return (f'<div class="ax-tile{" ax-key" if key else ""}"><div class="ax-lbl">{e(label)}</div>'
             f'<div class="ax-val">{value_html}</div>{f"<div class=ax-sub2>{sub}</div>" if sub else ""}</div>')

@@ -11,6 +11,7 @@ struct OperatingState: Equatable {
     var halted = false                      // the kill switch (orders/risk.py)
     var haltReason: String? = nil
     var role = ""                           // "VIEWER" on the view-only web server
+    var feedText: String? = nil             // the live price feed in the web pages' words (UX audit H1, 3 Nov 2026)
     var reachable = true
 
     /// Environment badge colours (design system): PAPER teal, SANDBOX violet, LIVE red.
@@ -28,6 +29,7 @@ struct OperatingState: Equatable {
         halted = js["halted"] as? Bool ?? false
         haltReason = js["halt_reason"] as? String
         role = js["role"] as? String ?? ""
+        feedText = (js["feed"] as? [String: Any])?["text"] as? String
     }
 
     init() {}
@@ -44,6 +46,7 @@ struct OperatingState: Equatable {
         default: parts = [banner.isEmpty ? "ATIP status unknown" : banner]
         }
         if halted { parts.insert("Kill switch ON" + (haltReason.map { $0.isEmpty ? "" : " — \($0)" } ?? ""), at: 1) }
+        if let f = feedText, !f.isEmpty { parts.insert(f, at: halted ? 2 : 1) }
         if role == "VIEWER" { parts.append("view only") }
         if let lastUpdated { parts.append("last updated " + (lastUpdated.isEmpty ? "—" : lastUpdated)) }
         return parts.joined(separator: " · ")

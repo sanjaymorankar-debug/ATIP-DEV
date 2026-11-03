@@ -6,8 +6,8 @@ HTML = r"""
 <h2>Drift vs target</h2><div id="rbl_drift"></div>
 <h2>Triggers</h2><div id="rbl_trig"></div>
 <h2>Build a plan</h2>
-<div class="row"><select id="r_mode"><option value="to_band">To band edges (least turnover)</option><option value="to_target">All the way to target</option><option value="cash_flow">Invest new cash only (no selling)</option></select>
-<input id="r_cash" type="number" placeholder="new cash to invest (Rs)" style="width:180px"><button class="primary" onclick="rblPlan()">Build plan</button></div>
+<div class="row"><select id="r_mode" aria-label="Plan mode"><option value="to_band">To band edges (least turnover)</option><option value="to_target">All the way to target</option><option value="cash_flow">Invest new cash only (no selling)</option></select>
+<input id="r_cash" aria-label="New cash to invest (Rs)" type="number" placeholder="new cash to invest (Rs)" style="width:180px"><button class="primary" onclick="rblPlan()">Build plan</button></div>
 <div id="rbl_plan"></div>
 <h2>Plans</h2><div id="rbl_hist"></div>
 """
@@ -30,7 +30,7 @@ LOADERS.rbl=async()=>{
  let C;try{C=await j('/api/wealth/rebalance/check')}catch(e){msg('rbl_msg',e.message,1);return}
  const vc={REBALANCE:'OFF_TRACK',REVIEW:'AT_RISK',NO_ACTION:'ON_TRACK'}[C.verdict];
  document.getElementById('rbl_cards').innerHTML=card('Verdict',pill(C.verdict,vc))+card('Investable value',inr(C.investable_value),'net-worth assets '+inr(C.net_worth_assets))+card('Current volatility',pct(C.stats.current.volatility_pct,2),'target '+pct(C.stats.target.volatility_pct,2))+card('Current bad year',pct(C.stats.current.bad_year_pct,1),'target '+pct(C.stats.target.bad_year_pct,1))+card('Target from',esc(C.target_source));
- document.getElementById('rbl_drift').innerHTML=table(['Class','#Current','#Target','#Drift (pts)','#Relative','Band','#Current value','#Target value'],C.drift.map(d=>`<tr${d.out_of_band?' style="background:#7f1d1d33"':''}><td>${d.class}</td><td class="n">${pct(d.current_pct)}</td><td class="n">${pct(d.target_pct)}</td><td class="n ${d.out_of_band?'bad':''}">${d.drift_pp>0?'+':''}${num(d.drift_pp,2)}</td><td class="n">${d.relative_pct==null?'—':num(d.relative_pct,1)+'%'}</td><td class="muted">${num(d.band[0],1)}–${num(d.band[1],1)}%</td><td class="n">${inr(d.current_value)}</td><td class="n">${inr(d.target_value)}</td></tr>`))+`<div class="muted">Bands: ±${C.bands.abs_pct} pts or ±${C.bands.rel_pct}% of target, whichever is tighter. ${esc(C.tax_note)}</div>`;
+ document.getElementById('rbl_drift').innerHTML=table(['Class','#Current','#Target','#Drift (pts)','#Relative','Band','#Current value','#Target value'],C.drift.map(d=>`<tr${d.out_of_band?' style="background:var(--badbg)"':''}><td>${d.class}</td><td class="n">${pct(d.current_pct)}</td><td class="n">${pct(d.target_pct)}</td><td class="n ${d.out_of_band?'bad':''}">${d.drift_pp>0?'+':''}${num(d.drift_pp,2)}</td><td class="n">${d.relative_pct==null?'—':num(d.relative_pct,1)+'%'}</td><td class="muted">${num(d.band[0],1)}–${num(d.band[1],1)}%</td><td class="n">${inr(d.current_value)}</td><td class="n">${inr(d.target_value)}</td></tr>`))+`<div class="muted">Bands: ±${C.bands.abs_pct} pts or ±${C.bands.rel_pct}% of target, whichever is tighter. ${esc(C.tax_note)}</div>`;
  document.getElementById('rbl_trig').innerHTML=C.triggers.length?C.triggers.map(t=>`<div>${pill(t.trigger,t.severity==='action'?'OFF_TRACK':'AT_RISK')} ${esc(t.detail)}</div>`).join(''):'<div class="good">No trigger: holdings are within their bands.</div>';
  rblHist();
 };

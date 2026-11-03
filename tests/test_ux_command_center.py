@@ -33,7 +33,9 @@ def test_page_serves_with_token_and_kill_switch(api):
     client, h, _ = api
     r = client.get("/command")
     assert r.status_code == 200
-    assert "Halt all trading" in r.text and h["X-ATIP-Token"] in r.text
+    assert "data-ax-kill" in r.text and h["X-ATIP-Token"] in r.text
+    # the page's own halt button is gone; only a hidden Resume control remains (3 Nov 2026)
+    assert "Halt all trading</button>" not in r.text and 'id="killBtn" class="halted" type="button" hidden' in r.text
     assert "__TOKEN__" not in r.text
 
 

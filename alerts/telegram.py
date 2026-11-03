@@ -194,8 +194,16 @@ def send_tod_alert(trade_date=None):
         mh=conn.execute("SELECT mh_score,regime FROM market_health WHERE date=?",(str(trade_date),)).fetchone()
     finally: conn.close()
     if not tod: return False
-    cmp=tod["cmp"] or 0; atr=tod["atr_14"] or 0
-    sl=round(cmp-1.5*atr,2) if atr else "—"; t1=round(cmp+2.0*atr,2) if atr else "—"; t2=round(cmp+3.5*atr,2) if atr else "—"
+    # Owner decision 3 Nov 2026: a Trade of the Day only on a BUY signal; otherwise the alert says there is none today.
+    if (tod["signal"] or "") != "BUY":
+        send_telegram(fmt("🎯", "Trade of the Day", f"<b>No BUY signal for today</b> ({trade_date}). ATIP names a Trade of "
+                                                     f"the Day only from a BUY signal."))
+        return True
+    cmp=tod["cmp"] or 0
+    # one trade-plan formula on every channel (C3, 3 Nov 2026): the dashboard's scores.predictions.compute_trade_plan
+    from scores.predictions import compute_trade_plan
+    plan=compute_trade_plan("BUY", cmp, tod["atr_14"])
+    sl, t1, t2 = (plan["stop_loss"] or "—"), (plan["target_1"] or "—"), (plan["target_2"] or "—")
     body=(f"<b>Stock:</b> {tod['symbol']}  <b>Signal:</b> {tod['signal']}\n"
           f"<b>TOD Score:</b> {tod['tod_score']:.1f}  <b>ATIP:</b> {tod['atip_score']:.1f}\n\n"
           f"<b>CMP:</b> ₹{cmp:,.2f}\n<b>Stop Loss:</b> ₹{sl}\n<b>Target 1:</b> ₹{t1}\n<b>Target 2:</b> ₹{t2}\n\n"
@@ -383,7 +391,7 @@ def send_morning_digest(trade_date=None):
         tod=conn.execute("""SELECT s.symbol,s.acs,p.close cmp,t.atr_14 FROM ai_scores s
                             LEFT JOIN prices_daily p ON p.symbol=s.symbol AND p.date=s.date
                             LEFT JOIN technical_indicators t ON t.symbol=s.symbol AND t.date=s.date
-                            WHERE s.date=? AND s.is_tod=1 LIMIT 1""",(td,)).fetchone()
+                            WHERE s.date=? AND s.is_tod=1 AND s.`signal`='BUY' LIMIT 1""",(td,)).fetchone()
         risky=conn.execute("SELECT COUNT(*) n FROM ai_scores WHERE date=? AND cri>75",(td,)).fetchone()
         try: market=_market_lines(conn,td)
         except Exception as e:                      # a bad row in these lines must not cost the whole brief
@@ -417,9 +425,14 @@ def send_morning_digest(trade_date=None):
 
     if tod:
         lv=""
-        if tod["cmp"] and tod["atr_14"]:
-            lv=f", SL ₹{tod['cmp']-1.5*tod['atr_14']:.1f}, T1 ₹{tod['cmp']+2.0*tod['atr_14']:.1f}"
+        if tod["cmp"]:
+            from scores.predictions import compute_trade_plan          # the dashboard's one trade-plan formula
+            pl=compute_trade_plan("BUY", tod["cmp"], tod["atr_14"])
+            if pl["stop_loss"]:
+                lv=f", SL ₹{pl['stop_loss']:.1f}, T1 ₹{pl['target_1']:.1f}"
         body.append(f"\n🎯 <b>Trade of the Day:</b> {tod['symbol']} (ACS {(tod['acs'] or 0):.0f}{lv})")
+    else:
+        body.append("\n🎯 <b>Trade of the Day:</b> no BUY signal for today")
 
     if buys:
         body.append("\n🟢 <b>BUY candidates</b>")

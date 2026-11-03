@@ -62,11 +62,11 @@ contract note):
 
 F&O SEGMENT (W40, QR-05 / QR-06): FuturesCostModel charges a stock-futures leg of the W2
 backtest (backtest/futures.py) -- the equity CostModel above is untouched. Preset
-nse_futures, NSE equity futures as published for 2024-10-01 onward (unchanged at 2026-10;
-check a recent contract note):
+nse_futures, NSE equity futures as of 2026-11 (check a recent contract note):
 
-    STT            0.02% of the SELL-side value         Finance (No. 2) Act 2024, from 2024-10-01
-                                                        (was 0.0125%); nothing on the buy side
+    STT            0.05% of the SELL-side value         Finance Act 2026, from 2026-04-01 (NSE circular
+                                                        NSE/FATAX/73524 of 2026-03-31; 0.02% from
+                                                        2024-10-01, 0.0125% before); nothing on the buy side
     exchange       0.00173% of value (Rs 173 / crore)   NSE equity-futures transaction charge
                                                         from 2024-10-01 (SEBI's uniform-charges
                                                         circular of 2024-07)
@@ -187,7 +187,7 @@ class FuturesCostModel:
     brokerage_max: float | None = 20.0   # ... capped at Rs 20 per executed order (Dhan F&O)
     brokerage_per_lot: float = 0.0       # Rs per lot, on top
     stt_buy_pct: float = 0.0
-    stt_sell_pct: float = 0.02
+    stt_sell_pct: float = 0.05           # Finance Act 2026, from 2026-04-01 (0.02% before)
     exchange_txn_pct: float = 0.00173
     sebi_fee_pct: float = 0.0001
     stamp_buy_pct: float = 0.002

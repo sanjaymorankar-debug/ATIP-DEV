@@ -96,3 +96,25 @@ Both apps were updated (tabs Home / Trade / Sessions / Reports / More; env badge
 - Test: `docs/testing/screenshots/test_<page>_<light|dark>_<1440|390>.png` (48).
 - Prod snapshot: `docs/testing/screenshots/prod/prod_<page>_<theme>_<width>.png` (48).
 - Per-page logs: `test_screenshots.json` and `prod/prod_screenshots.json` record each capture's JS errors, server errors and overflow.
+
+## 8. Addendum, 3 Nov 2026: tax defaults set to the law
+
+The owner asked for the tax rates and the STT setting to follow Indian law (PATCH_NOTES.md, 3 Nov entry). Checks:
+
+| Check | Result |
+|---|---|
+| `test_session_cycles.py`: the brief's worked example under the brief's own settings, still to the paisa (₹135.55 / ₹542.18) | passed |
+| The same example under the law: STT added back, 4% cess, tax ₹151.52, actual ₹526.21, AFTER_TAX_RESERVE next cycle ₹25,526.21 | passed |
+| Slabs for tax year 2026-27, new and old regimes; marginal rate from other income; the unused nil slab against STCG; surcharge capped at 15 on capital gains | passed |
+| Changing the settings re-estimates a stored cycle and posts the difference: books balance, the reserve matches, the cash reconciles | passed |
+| Futures STT 0.05% hand-computed (`test_w40_futures_backtest.py`, 45 tests) | passed |
+| **Test server** (local, 8771), restarted on the new code: its 12 stored cycles were re-estimated at the first sync (provisional tax ₹1,446.38 → ₹1,616.46). The ledger's tax expense equals the stored estimates. The trial balance balances (₹10,07,045.79 each side). S2's reserve equals its two cycles. All 10 sessions MATCHED. | passed |
+| **Test server**, Settings › Tax: regime, other income and slab table render. Saving ₹9 lakh moves intraday and F&O to the 10% slab. A bad value gets a plain-English error. The FY tax statement (HTML, PDF, XLSX, CSV) lists the regime and the STT rule. No server errors. | passed |
+
+The live Mac was not restarted or written to. On it (read-only): one stored cycle, a loss with no tax. All sessions are on CASH_AFTER_CHARGES, so the change cannot alter any order size.
+
+**Phone apps, 3 Nov 2026: the Live tab is back** in place of Reports, which is now under More.
+- `test_both_apps_have_a_live_tab` checks the order Home, Trade, Live, Sessions, More in both apps. It passed, as did `test_ux_shell.py`.
+- `swiftc -parse` passed.
+- `/m?tab=live` and `/more` in app mode at 375 px on the Test server: no overflow, no errors.
+- The Catalyst type-check could not run: it now fails inside the Command Line Tools, on the old code as well.

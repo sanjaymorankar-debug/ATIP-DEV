@@ -12,13 +12,15 @@ struct ContentView: View {
             StatusBanner(state: status.state)
                 .onLongPressGesture { editing = true }
                 .accessibilityHint("Long-press to change the ATIP server address")
-            // 2026-11-02: the five tabs of the page shell (Home, Trade, Sessions, Reports, More), the same as Android.
+            // The five tabs, the same as Android: Home, Trade, Live, Sessions, More. The page shell's five (2026-11-02)
+            // with Live (every Dhan live feed, OFF / IDLE / LIVE / REST / STALE) in place of Reports (now under More),
+            // as the owner asked on 2026-11-03.
             // Sessions shows S1-S10 with gross vs actual P&L (after charges and estimated tax).
             TabView(selection: Binding(get: { tab }, set: { if $0 == tab { home[$0] += 1 }; tab = $0 })) {
                 screen(0, "/home").tabItem { Label("Home", systemImage: "house") }.tag(0)
                 screen(1, "/command").tabItem { Label("Trade", systemImage: "chart.line.uptrend.xyaxis") }.tag(1)
-                screen(2, "/sessions").tabItem { Label("Sessions", systemImage: "square.grid.2x2") }.tag(2)
-                screen(3, "/reports").tabItem { Label("Reports", systemImage: "doc.text") }.tag(3)
+                screen(2, "/m?tab=live").tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }.tag(2)
+                screen(3, "/sessions").tabItem { Label("Sessions", systemImage: "square.grid.2x2") }.tag(3)
                 screen(4, "/more").tabItem { Label("More", systemImage: "ellipsis.circle") }.tag(4)
             }
         }

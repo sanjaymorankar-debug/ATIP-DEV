@@ -97,7 +97,7 @@ def test_home_page_lists_the_seeded_scores_and_opens_the_stock_panel(ctx, site):
     from playwright.sync_api import expect
     base, info = site
     v = Visit(ctx, base, "/")
-    assert v.page.title() == "ATIP Dashboard"
+    assert v.page.title() == "ATIP Scores · ATIP"            # the breadcrumb's leaf (UX audit L1, 3 Nov 2026)
     expect(v.page.locator("#st tbody tr")).to_have_count(len(info["symbols"]))      # ACME + LOAD000..009
     expect(v.page.locator('#st tbody tr[data-sym="ACME"]')).to_have_count(1)
     v.page.evaluate("openStock('ACME')")
@@ -176,7 +176,7 @@ def test_data_platform_and_compliance_tabs_switch_without_errors(ctx, site):
 # ── the 2 Nov 2026 redesign: the shell on every page, the new pages, both themes, phone width ──
 
 SHELL_PAGES = [("/home", "Today · ATIP"), ("/sessions", "Sessions · ATIP"), ("/sessions/S1", "S1 · Momentum · ATIP"),
-               ("/accounting?tab=tax", "Accounting · ATIP"), ("/reports", "Reports · ATIP"),
+               ("/accounting?tab=tax", "Tax register · ATIP"), ("/reports", "Reports · ATIP"),
                ("/settings", "Settings · ATIP"), ("/more", "More · ATIP")]
 
 
@@ -187,7 +187,7 @@ def test_redesign_pages_render_in_the_shell_without_errors(browser, site, theme,
     c = browser.new_context(viewport={"width": width, "height": 900}, color_scheme=theme)
     c.route("**/*", lambda r: r.continue_() if r.request.url.startswith(base) else r.abort())
     try:
-        for path, title in SHELL_PAGES + [("/command", "ATIP Command Center"), ("/", "ATIP Dashboard")]:
+        for path, title in SHELL_PAGES + [("/command", "Command Center · ATIP"), ("/", "ATIP Scores · ATIP")]:
             v = Visit(c, base, path + ("&" if "?" in path else "?") + f"theme={theme}")
             assert v.page.title() == title
             assert v.page.locator(".ax-top").count() == 1

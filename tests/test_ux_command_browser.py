@@ -44,10 +44,15 @@ def test_command_center_flows(browser, site, halt_flag, width, height, name):
         if SHOTS:
             p.screenshot(path=f"{SHOTS}/command-{name}-session.png", full_page=True)
         # kill switch
-        p.click("#killBtn")
-        expect(p.locator("#haltModal")).to_have_class("modal open")
-        p.click("#hmGo")
-        expect(p.locator("#haltBanner")).to_be_visible()
+        # kill switch: one control, the shell's top-bar button (3 Nov 2026). The
+        # page's own button stays hidden until halted, then offers Resume.
+        expect(p.locator("#killBtn")).to_be_hidden()
+        p.click("[data-ax-kill]")
+        expect(p.locator("#ax-kill-dialog")).to_be_visible()
+        p.fill("#ax-kill-reason", "browser test")
+        p.click('#ax-kill-dialog button[type="submit"]')
+        expect(p.locator("#haltBanner")).to_be_visible(timeout=20000)
+        expect(p.locator("#killBtn")).to_be_visible()
         expect(p.locator("#killBtn")).to_contain_text("Resume")
         assert halt_flag.halted()[0] is True
         if SHOTS:

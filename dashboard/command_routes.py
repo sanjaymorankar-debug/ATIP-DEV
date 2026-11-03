@@ -41,7 +41,7 @@ from zoneinfo import ZoneInfo
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-FEED_STALE_SECONDS = 60
+from dashboard.ux_kit import FEED_STALE_SECONDS  # noqa: F401  (one cutoff, 120 s: UX audit H1)
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -76,16 +76,9 @@ def _market_open() -> bool:
 
 
 def _feed(conn, market_open: bool) -> dict:
-    row = _rows(conn, "SELECT MAX(timestamp) AS ts FROM live_quotes")
-    ts = row[0]["ts"] if row else None
-    age = None
-    if ts:
-        try:
-            age = round((datetime.now() - datetime.fromisoformat(str(ts).replace("T", " "))).total_seconds())
-        except ValueError:
-            age = None
-    stale = bool(market_open and (age is None or age > FEED_STALE_SECONDS))
-    return {"last_tick": ts, "age_seconds": age, "stale": stale, "cutoff_seconds": FEED_STALE_SECONDS}
+    """The one feed label every page shows (dashboard/ux_kit.feed_label, UX audit H1)."""
+    from dashboard.ux_kit import feed_label
+    return feed_label(conn, market_open)
 
 
 def _broker() -> dict:

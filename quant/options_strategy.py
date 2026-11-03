@@ -336,3 +336,62 @@ def probability_of_profit(legs, spot, first_exp: date, today: date, lot_size: in
 def templates() -> list:
     return [{"key": k, "name": t["name"], "description": t["description"], "view": t["view"]}
             for k, t in TEMPLATES.items()]
+
+
+# ── suitability tier (UX audit M2, 3 Nov 2026) ───────────────────────────────
+# The labels are wealth/dna.py's knowledge levels. The rule looks only at whether every leg that can lose without a
+# floor is covered by a bought leg:
+#   upside exposure   = lots of sold calls + sold futures      covered by bought calls + bought futures
+#   downside exposure = lots of sold puts  + bought futures    covered by bought puts  + sold futures
+# a cover only counts if it lives at least as long as the leg it covers (a bought near-month call does not cover a
+# sold far-month one). Beginner: you only buy options. Intermediate: every exposure is covered (spreads, iron condor,
+# butterflies, a protective put or a collar). Advanced: anything uncovered -- a short straddle or strangle, a ratio
+# spread, a naked short put, an unhedged future, or a futures covered call (a synthetic short put).
+
+TIERS = ("Beginner", "Intermediate", "Advanced")
+
+
+def suitability(legs: list, analysis: dict | None = None) -> dict:
+    """{"tier", "level" (1-3), "reason", "uncovered_up_lots", "uncovered_down_lots"} for a set of legs."""
+    norm = []
+    for leg in legs or []:
+        kind, side = str(leg.get("kind", "")).upper(), str(leg.get("side", "")).upper()
+        if kind not in ("CE", "PE", "FUT") or side not in ("BUY", "SELL"):
+            continue
+        try:
+            exp = _d(leg.get("expiry"))
+        except (TypeError, ValueError):
+            exp = date.max
+        norm.append((kind, side, max(1, int(leg.get("lots") or 1)), exp))
+    if not norm:
+        return {"tier": None, "level": 0, "reason": "Add a leg to see who this strategy suits.",
+                "uncovered_up_lots": 0, "uncovered_down_lots": 0}
+
+    def uncovered(exposed, covers):
+        legs_out = [x for x in norm if (x[0], x[1]) in exposed]
+        if not legs_out:
+            return 0
+        need = sum(x[2] for x in legs_out)
+        last = max(x[3] for x in legs_out)
+        have = sum(x[2] for x in norm if (x[0], x[1]) in covers and x[3] >= last)
+        return max(0, need - have)
+
+    up = uncovered({("CE", "SELL"), ("FUT", "SELL")}, {("CE", "BUY"), ("FUT", "BUY")})
+    down = uncovered({("PE", "SELL"), ("FUT", "BUY")}, {("PE", "BUY"), ("FUT", "SELL")})
+    unlimited = bool(analysis and analysis.get("unlimited_loss"))
+    if up or down or unlimited:
+        where = " and ".join(w for w, n in (("a sharp rise", up), ("a sharp fall", down)) if n) or "a big move"
+        lots = up + down
+        what = f"{lots} lot{'s' if lots != 1 else ''} sold or held without a bought option behind {'them' if lots != 1 else 'it'}" \
+            if lots else "a leg with no floor under its loss"
+        return {"tier": "Advanced", "level": 3,
+                "reason": f"Undefined risk: {what}, so {where} can cost far more than the premium involved.",
+                "uncovered_up_lots": up, "uncovered_down_lots": down}
+    if all(k in ("CE", "PE") and s == "BUY" for k, s, _, _ in norm):
+        return {"tier": "Beginner", "level": 1,
+                "reason": "You only buy options, so the most you can lose is the premium you pay.",
+                "uncovered_up_lots": 0, "uncovered_down_lots": 0}
+    return {"tier": "Intermediate", "level": 2,
+            "reason": "Defined risk: every leg you sell (or future you hold) is covered by an option you buy, "
+                      "so the loss is capped, but there are several legs to manage.",
+            "uncovered_up_lots": 0, "uncovered_down_lots": 0}

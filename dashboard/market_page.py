@@ -8,6 +8,9 @@ study (AD-03) and the live-feed status (DP-01). Reads /api/market/*; computes no
 GET /api/live-feeds (every Dhan feed from live_feed_status: OFF, IDLE, LIVE, REST, STALE ...) on this
 page, on the main dashboard's Live tab (live_tab_html) and on the phone's Live screen (/m?tab=live,
 which the Android and iOS apps open). One renderer, so the three never disagree.
+
+UX audit (3 Nov 2026): every control has a label, tables scroll inside keyboard-reachable regions (the live
+feeds table too), colours come from the page variables (re-pointed to the shell's light / dark tokens).
 """
 
 import json
@@ -15,51 +18,66 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Market</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#10b981;--bad:#f87171;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
 h2{font-size:13px;color:var(--accent);margin:18px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
-.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}.kl{color:var(--muted);font-size:11px}.kv{font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #33415555;text-align:left;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap}
-.muted{color:var(--muted)}.note{color:var(--warn)}.scroll{max-height:380px;overflow:auto}.up{color:var(--good)}.dn{color:var(--bad)}
-input,select,button{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;overflow-wrap:anywhere}.kl{color:var(--muted);font-size:12px}.kv{font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap;position:sticky;top:0;z-index:1}
+.muted{color:var(--muted)}.note{color:var(--warn)}.up{color:var(--good)}.dn{color:var(--bad)}
+input,select,button{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;max-width:100%}
+label{color:var(--muted);font-size:12px}
+.ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
 button{cursor:pointer}svg{display:block}
-@media(max-width:600px){.wrap{padding:12px}}
+p,.wrap>div{overflow-wrap:anywhere}
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw{max-height:380px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--muted);padding:8px 2px;margin:2px 0}
+.err{background:var(--badbg);color:var(--bad);border:1px solid var(--bad);border-radius:6px;padding:8px 10px;margin:4px 0}
+.skel{display:grid;gap:8px;padding:6px 0}.skel .ax-skel{height:14px}.ax-skel{background:var(--panel2);border-radius:6px;min-height:14px}
+@media(max-width:760px){.wrap{padding:12px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📈 ATIP</b> <span class="muted">Market data (W27)</span></div>
+<div class="top"><div><b style="color:var(--accent)">📈 ATIP</b> <span class="muted">Market data</span></div>
 <div><a href="/quant">Quant</a><a href="/trading">Trading</a><a href="/data-platform">Data platform</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<h2>Pre-open · GIFT Nifty</h2><div id="pre" class="grid"></div><div id="preNote" class="muted" style="margin-top:6px"></div>
+<h2>Pre-open · GIFT Nifty</h2><div id="pre" class="grid" data-load></div><div id="preNote" class="muted" style="margin-top:6px"></div>
 <div id="giftChart" style="margin-top:8px"></div>
-<h2>Global markets &amp; US yields</h2><div id="glob" class="grid"></div>
-<div style="margin:8px 0"><select id="ser" onchange="hist()"></select> <select id="days" onchange="hist()"><option>90</option><option selected>365</option><option>1825</option></select>
-<button onclick="refresh('global_history',{period:'5y'})">Backfill 5y history</button></div><div id="hist"></div>
+<h2>Global markets &amp; US yields</h2><div id="glob" class="grid" data-load></div>
+<div class="ctl"><label for="ser">Series</label><select id="ser" onchange="hist()"></select> <label for="days">Days</label><select id="days" onchange="hist()"><option>90</option><option selected>365</option><option>1825</option></select>
+<button onclick="refresh('global_history',{period:'5y'})">Backfill 5y history</button></div><div id="hist" data-load></div>
 <h2>Derivatives · OI, PCR, max pain <span id="fodate" class="muted"></span></h2>
-<div style="margin-bottom:6px"><select id="kind" onchange="fo()"><option value="">all</option><option>INDEX</option><option>STOCK</option></select>
-<button onclick="refresh('fo',{sessions:5})">Fetch last 5 sessions</button></div><div id="fo" class="scroll"></div>
+<div class="ctl"><label for="kind">Underlying kind</label><select id="kind" onchange="fo()"><option value="">all</option><option>INDEX</option><option>STOCK</option></select>
+<button onclick="refresh('fo',{sessions:5})">Fetch last 5 sessions</button></div><div id="fo" class="scroll" data-load></div>
 <h2>Fundamentals &amp; ownership</h2>
-<div style="margin-bottom:6px"><input id="sym" placeholder="Symbol e.g. INFY" style="width:160px" onkeydown="if(event.key==='Enter')look()"> <button onclick="look()">Look up</button>
+<div class="ctl"><label for="sym">Symbol</label><input id="sym" placeholder="e.g. INFY" style="width:160px" autocomplete="off" onkeydown="if(event.key==='Enter')look()"> <button onclick="look()">Look up</button>
 <button onclick="refresh('fundamentals',{symbols:[cur()]})">Refresh from NSE</button> <button onclick="refresh('institutional',{symbols:[cur()]})">Refresh ownership</button></div>
-<div id="fund" class="scroll"></div><div id="own" style="margin-top:8px"></div>
-<h2>Bulk / block deal signal (AD-03)</h2><div id="deal"></div><button style="margin-top:6px" onclick="refresh('deal_signal',{})">Re-run study</button>
-<h2>Live feeds</h2><div id="feed"></div>
-<div id="msg" class="note" style="margin-top:12px"></div>
+<div id="fund" class="scroll"><p class="muted">Type a symbol and press Look up for its quarterly fundamentals and ownership.</p></div><div id="own" style="margin-top:8px"></div>
+<h2>Bulk / block deal signal</h2><div id="deal" data-load></div><button style="margin-top:6px" onclick="refresh('deal_signal',{})">Re-run study</button>
+<h2>Live feeds</h2><div id="feed" data-load></div>
+<div id="msg" class="note" style="margin-top:12px" role="status"></div>
 </div>
 __LIVEFEEDS__<script>
 const TOKEN=__TOKEN__;
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num=(v,d=2)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=(v,d=2)=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${Number(v).toFixed(d)}%</span>`;
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);return t}
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
-const kpi=(l,v,s='')=>`<div class="kpi"><div class="kl">${l}</div><div class="kv">${v}</div><div class="muted" style="font-size:11px">${s}</div></div>`;
-function spark(pts,w=620,h=110){if(!pts||pts.length<2)return '<span class="muted">not enough history</span>';
+// UX audit: tables scroll inside their own keyboard-reachable region; loading / empty / error states
+const SKEL='<div class="skel" role="status" aria-busy="true" aria-label="Loading"><div class="ax-skel"></div><div class="ax-skel"></div><div class="ax-skel"></div></div>';
+document.querySelectorAll('[data-load]').forEach(el=>{if(!el.innerHTML.trim())el.innerHTML=SKEL});
+function fail(id,what,e,tip){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="err" role="alert"><b>Could not load ${esc(what)}:</b> ${esc((e&&e.message)||e)}. ${tip||'Check that the ATIP server is running, then reload this page.'}</div>`}
+const strip=x=>String(x).replace(/<[^>]*>/g,'');
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(strip).join(', '));
+  if(!rows.length)return `<p class="empty" role="status">${o.empty||'Nothing to show yet.'}</p>`;
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`};
+const kpi=(l,v,s='')=>`<div class="kpi"><div class="kl">${l}</div><div class="kv">${v}</div><div class="muted" style="font-size:12px">${s}</div></div>`;
+function spark(pts,w=620,h=110){if(!pts||pts.length<2)return '<p class="muted">Not enough history to draw yet. “Backfill 5y history” fetches it.</p>';
   const v=pts.map(p=>p.close),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
   const d=pts.map((p,i)=>`${i?'L':'M'}${(i/(pts.length-1)*(w-10)+5).toFixed(1)},${(h-5-(p.close-mn)/r*(h-10)).toFixed(1)}`).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--panel);border-radius:6px" role="img" aria-label="price history"><path d="${d}" fill="none" stroke="#38bdf8" stroke-width="1.6"/><text x="6" y="12" fill="#94a3b8" font-size="10">${num(mx)}</text><text x="6" y="${h-4}" fill="#94a3b8" font-size="10">${num(mn)}</text><text x="${w-6}" y="12" fill="#94a3b8" font-size="10" text-anchor="end">${esc(pts[pts.length-1].date)}</text></svg>`}
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--panel);border-radius:6px" role="img" aria-label="price history from ${esc(pts[0].date)} to ${esc(pts[pts.length-1].date)}, high ${num(mx)}, low ${num(mn)}"><path d="${d}" fill="none" style="stroke:var(--accent)" stroke-width="1.6"/></svg><div class="muted" style="display:flex;flex-wrap:wrap;gap:2px 14px;font-size:12px;max-width:${w}px;margin-top:3px"><span>high ${num(mx)}</span><span>low ${num(mn)}</span><span>${esc(pts[0].date)} → ${esc(pts[pts.length-1].date)}</span></div>`}
 const cur=()=>document.getElementById('sym').value.trim().toUpperCase();
 async function refresh(job,body){try{const r=await j('/api/market/refresh/'+job,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(body)});document.getElementById('msg').textContent=`${job}: started in the background — reload in a minute.`}catch(e){document.getElementById('msg').textContent=job+': '+e.message}}
 async function pre(){const p=await j('/api/market/preopen');const g=p.gift||{},n=p.nifty_last_close||{};
@@ -75,34 +93,34 @@ async function pre(){const p=await j('/api/market/preopen');const g=p.gift||{},n
   document.getElementById('glob').innerHTML=cols.map(([k,l])=>kpi(l,num(G[k],2),pct(G[k+'_chg']))).join('')+kpi('Global score',num(G.global_score,1),esc(G.global_sentiment||'')+' · '+esc(G.date||''));
   document.getElementById('ser').innerHTML=cols.map(([k,l])=>`<option value="${k}"${k==='us_10y'?' selected':''}>${l}</option>`).join('');hist()}
 async function hist(){const s=document.getElementById('ser').value,d=document.getElementById('days').value;
-  try{const h=await j(`/api/market/global-history?series=${s}&days=${d}`);document.getElementById('hist').innerHTML=spark(h.points)}catch(e){document.getElementById('hist').textContent=e.message}}
+  try{const h=await j(`/api/market/global-history?series=${s}&days=${d}`);document.getElementById('hist').innerHTML=spark(h.points)}catch(e){fail('hist','the history',e,'Pick another series, or reload this page.')}}
 async function fo(){const k=document.getElementById('kind').value;const r=await j('/api/market/derivatives?limit=60'+(k?'&kind='+k:''));
   document.getElementById('fodate').textContent=r.date?`· ${r.date}`:'';
-  document.getElementById('fo').innerHTML=r.note?`<span class="muted">${esc(r.note)}</span>`:table(['Underlying','Kind','Spot','Fut','Fut OI chg','Call OI','Put OI','PCR OI','PCR vol','Max pain','Near expiry'],
-   r.rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${esc(x.kind)}</td><td>${num(x.underlying_price)}</td><td>${num(x.fut_close)}</td><td>${num(x.fut_oi_chg,0)}</td><td>${num(x.call_oi,0)}</td><td>${num(x.put_oi,0)}</td><td>${num(x.pcr_oi,3)}</td><td>${num(x.pcr_volume,3)}</td><td>${num(x.max_pain,0)}</td><td>${esc(x.near_expiry)}</td></tr>`))}
+  document.getElementById('fo').innerHTML=r.note?`<p class="muted">${esc(r.note)}</p>`:table(['Underlying','Kind','Spot','Fut','Fut OI chg','Call OI','Put OI','PCR OI','PCR vol','Max pain','Near expiry'],
+   r.rows.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${esc(x.kind)}</td><td>${num(x.underlying_price)}</td><td>${num(x.fut_close)}</td><td>${num(x.fut_oi_chg,0)}</td><td>${num(x.call_oi,0)}</td><td>${num(x.put_oi,0)}</td><td>${num(x.pcr_oi,3)}</td><td>${num(x.pcr_volume,3)}</td><td>${num(x.max_pain,0)}</td><td>${esc(x.near_expiry)}</td></tr>`),{label:'Derivatives: OI, PCR and max pain',empty:'No F&O rows for this date. “Fetch last 5 sessions” downloads the NSE bhavcopies.'})}
 async function look(){const s=cur();if(!s)return;try{
   const f=await j('/api/market/fundamentals/'+encodeURIComponent(s));
   document.getElementById('fund').innerHTML=`<div class="muted" style="margin-bottom:4px">filings stored: ${esc(JSON.stringify(f.filings))} · values in ₹ crore; ratios as fractions; FS / SPI valued at the latest close</div>`+table(['Quarter','Basis','Revenue','Profit','Rev YoY','EPS YoY','Profit QoQ','Op margin','ROE','ROCE','D/E','EPS TTM','P/E','P/B','FS','SPI','Filed'],
-   f.quarters.map(q=>`<tr><td><b>${esc(q.quarter)}</b></td><td class="muted">${esc(q.nature||q.source)}</td><td>${num(q.revenue_cr,0)}</td><td>${num(q.profit_cr,0)}</td><td>${pct(q.revenue_growth_yoy,1)}</td><td>${pct(q.eps_growth_yoy,1)}</td><td>${pct(q.qoq_profit_chg,1)}</td><td>${num(q.operating_margin,3)}</td><td>${num(q.roe,3)}</td><td>${num(q.roce,3)}</td><td>${num(q.debt_equity,2)}</td><td>${num(q.eps_ttm)}</td><td>${num(q.pe_ratio,1)}</td><td>${num(q.pb_ratio,1)}</td><td>${num(q.fundamental_score,1)}</td><td>${num(q.spi_score,1)}</td><td class="muted">${esc(String(q.available_from||'').slice(0,10))}</td></tr>`));
+   f.quarters.map(q=>`<tr><td><b>${esc(q.quarter)}</b></td><td class="muted">${esc(q.nature||q.source)}</td><td>${num(q.revenue_cr,0)}</td><td>${num(q.profit_cr,0)}</td><td>${pct(q.revenue_growth_yoy,1)}</td><td>${pct(q.eps_growth_yoy,1)}</td><td>${pct(q.qoq_profit_chg,1)}</td><td>${num(q.operating_margin,3)}</td><td>${num(q.roe,3)}</td><td>${num(q.roce,3)}</td><td>${num(q.debt_equity,2)}</td><td>${num(q.eps_ttm)}</td><td>${num(q.pe_ratio,1)}</td><td>${num(q.pb_ratio,1)}</td><td>${num(q.fundamental_score,1)}</td><td>${num(q.spi_score,1)}</td><td class="muted">${esc(String(q.available_from||'').slice(0,10))}</td></tr>`),{label:'Quarterly fundamentals',empty:'No quarterly results stored for this symbol. “Refresh from NSE” fetches them.'});
   const o=await j('/api/market/ownership/'+encodeURIComponent(s));const F=o.features||{};
   document.getElementById('own').innerHTML=`<div class="grid">${kpi('Promoter %',num(F.promoter_pct),F.promoter_chg==null?'':'QoQ '+num(F.promoter_chg)+' pp')}${kpi('Mutual funds %',num(F.mf_pct),F.mf_chg==null?'':'QoQ '+num(F.mf_chg)+' pp')}${kpi('FPI %',num(F.fpi_pct),F.fpi_chg==null?'':'QoQ '+num(F.fpi_chg)+' pp')}${kpi('Pledged % of promoter',num(F.pledged_pct))}${kpi('Insider net 90d (Cr)',num(F.insider_net_cr_90d,2),`${F.insider_buys_90d??0} buys · ${F.insider_sells_90d??0} sells`)}</div>`
-   +'<div style="margin-top:8px">'+table(['As of','Promoter','MF','FPI','Insurance','DII','Retail','Filed'],o.shareholding.map(r=>`<tr><td>${esc(r.as_of)}</td><td>${num(r.promoter_pct)}</td><td>${num(r.mf_pct)}</td><td>${num(r.fpi_pct)}</td><td>${num(r.insurance_pct)}</td><td>${num(r.dii_pct)}</td><td>${num(r.retail_pct)}</td><td class="muted">${esc(String(r.submitted_at||'').slice(0,10))}</td></tr>`))+'</div>'
-   +'<div class="scroll" style="margin-top:8px">'+table(['Disclosed','Person','Category','Type','Qty','Value (₹)','Mode'],o.insider.slice(0,20).map(r=>`<tr><td>${esc(String(r.disclosed_at||'').slice(0,10))}</td><td>${esc(r.person)}</td><td class="muted">${esc(r.person_category)}</td><td class="${r.txn_type==='BUY'?'up':r.txn_type==='SELL'?'dn':''}">${esc(r.txn_type)}</td><td>${num(r.qty,0)}</td><td>${num(r.value_rs,0)}</td><td class="muted">${esc(r.mode)}</td></tr>`))+'</div>';
- }catch(e){document.getElementById('fund').textContent=e.message;document.getElementById('own').textContent=''}}
-async function deal(){const d=await j('/api/market/deal-signal');if(d.note){document.getElementById('deal').innerHTML=`<span class="muted">${esc(d.note)}</span>`;return}
+   +'<div style="margin-top:8px">'+table(['As of','Promoter','MF','FPI','Insurance','DII','Retail','Filed'],o.shareholding.map(r=>`<tr><td>${esc(r.as_of)}</td><td>${num(r.promoter_pct)}</td><td>${num(r.mf_pct)}</td><td>${num(r.fpi_pct)}</td><td>${num(r.insurance_pct)}</td><td>${num(r.dii_pct)}</td><td>${num(r.retail_pct)}</td><td class="muted">${esc(String(r.submitted_at||'').slice(0,10))}</td></tr>`),{label:'Shareholding pattern',empty:'No shareholding filings stored. “Refresh ownership” fetches them.'})+'</div>'
+   +'<div class="scroll" style="margin-top:8px">'+table(['Disclosed','Person','Category','Type','Qty','Value (₹)','Mode'],o.insider.slice(0,20).map(r=>`<tr><td>${esc(String(r.disclosed_at||'').slice(0,10))}</td><td>${esc(r.person)}</td><td class="muted">${esc(r.person_category)}</td><td class="${r.txn_type==='BUY'?'up':r.txn_type==='SELL'?'dn':''}">${esc(r.txn_type)}</td><td>${num(r.qty,0)}</td><td>${num(r.value_rs,0)}</td><td class="muted">${esc(r.mode)}</td></tr>`),{label:'Insider trades',empty:'No insider trades disclosed for this symbol.'})+'</div>';
+ }catch(e){fail('fund','the fundamentals for '+s,e,'Check the symbol, or press “Refresh from NSE”.');document.getElementById('own').textContent=''}}
+async function deal(){const d=await j('/api/market/deal-signal');if(d.note){document.getElementById('deal').innerHTML=`<p class="muted">${esc(d.note)}</p>`;return}
   const rows=Object.entries(d.horizons||{}).map(([h,v])=>`<tr><td>${h}d</td><td>${v.BUY.n}</td><td>${pct(v.BUY.mean_abnormal_pct)}</td><td>${num(v.BUY.t_stat)}</td><td>${v.SELL.n}</td><td>${pct(v.SELL.mean_abnormal_pct)}</td><td>${num(v.SELL.t_stat)}</td><td>${num(v.pooled_ic,3)}</td></tr>`);
-  document.getElementById('deal').innerHTML=`<div style="margin-bottom:6px">Verdict <b>${esc(d.verdict)}</b> · ${d.events} events · ${esc(d.period)} · computed ${esc(String(d.computed_at||'').slice(0,16))}</div><div class="muted" style="margin-bottom:6px">Abnormal = stock − NIFTY50 forward return after the deal session. Small, recent sample: descriptive only.</div>`+table(['Horizon','BUY n','BUY mean','BUY t','SELL n','SELL mean','SELL t','Pooled IC'],rows)}
+  document.getElementById('deal').innerHTML=`<div style="margin-bottom:6px">Verdict <b>${esc(d.verdict)}</b> · ${d.events} events · ${esc(d.period)} · computed ${esc(String(d.computed_at||'').slice(0,16))}</div><div class="muted" style="margin-bottom:6px">Abnormal = stock − NIFTY50 forward return after the deal session. Small, recent sample: descriptive only.</div>`+table(['Horizon','BUY n','BUY mean','BUY t','SELL n','SELL mean','SELL t','Pooled IC'],rows,{label:'Bulk and block deal study',empty:'No horizons computed yet. “Re-run study” computes them.'})}
 async function feed(){atipLoadFeeds('feed')}
-pre().catch(e=>document.getElementById('pre').textContent=e.message);fo().catch(e=>document.getElementById('fo').textContent=e.message);
-deal().catch(()=>{});feed().catch(()=>{});setInterval(()=>{if(!document.hidden)feed()},15000);
+pre().catch(e=>{fail('pre','the pre-open view',e);fail('glob','the global markets',e)});fo().catch(e=>fail('fo','the derivatives',e));
+deal().catch(e=>fail('deal','the deal study',e));feed().catch(()=>{});setInterval(()=>{if(!document.hidden)feed()},15000);
 </script></body></html>"""
 
 LIVE_FEEDS_CSS = """<style>
-.lf-head{margin:0 0 8px;font-size:12px;color:var(--muted,#94a3b8)}.lf-wrap{overflow-x:auto}
-.lf-t{width:100%;border-collapse:collapse;background:var(--panel,#1e293b);font-size:12px}
-.lf-t th,.lf-t td{padding:6px 8px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}
+.lf-head{margin:0 0 8px;font-size:12.5px;color:var(--muted,#94a3b8)}.lf-wrap{overflow-x:auto;max-width:100%}.lf-wrap:focus-visible{outline:2px solid var(--accent,#38bdf8);outline-offset:2px}
+.lf-t{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel,#1e293b);font-size:12.5px;font-variant-numeric:tabular-nums}
+.lf-t th,.lf-t td{padding:6px 8px;border-bottom:1px solid var(--line,#334155);text-align:left;vertical-align:top}
 .lf-t th{color:var(--muted,#94a3b8);background:var(--bg,#0f172a);white-space:nowrap;font-weight:600}
-.lf-s{display:inline-block;min-width:64px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-align:center;white-space:nowrap}
+.lf-s{display:inline-block;min-width:64px;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;text-align:center;white-space:nowrap}
 .lf-ok{background:#064e3b;color:#a7f3d0}.lf-warn{background:#78350f;color:#fde68a}.lf-bad{background:#7f1d1d;color:#fecaca}
 .lf-off{background:#334155;color:#cbd5e1}.lf-idle{background:#1e3a8a;color:#dbeafe}.lf-d{color:var(--muted,#94a3b8);max-width:420px;white-space:normal}
 @media(max-width:600px){.lf-hide{display:none}.lf-t td,.lf-t th{padding:8px 6px}}
@@ -119,8 +137,8 @@ window.atipFeedsHtml=function(d){
    `<td class="lf-d">${E(f.detail)}</td><td class="lf-hide">${f.subscribed??'—'}</td><td>${E(String(f.last_data_at||'—').slice(5,19))}</td><td class="lf-hide">${age(f.data_age_s)}</td></tr>`).join('');
   const bad=(d.feeds||[]).filter(f=>f.problem).length;
   return `<div class="lf-head">${d.window_open?'Feed window open (09:00–15:45 IST)':'Market closed — enabled feeds wait, idle, for 09:00 on the next trading day'}`+
-   ` · ${bad?`<b style="color:#fca5a5">${bad} feed(s) need attention</b>`:'no feed problems'} · checked ${E(String(d.checked_at||'').slice(11,19))}</div>`+
-   `<div class="lf-wrap"><table class="lf-t"><thead><tr><th>Feed</th><th>State</th><th>Detail</th><th class="lf-hide">Instruments</th><th>Last data</th><th class="lf-hide">Age</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+   ` · ${bad?`<b style="color:var(--bad,#fca5a5)">${bad} feed(s) need attention</b>`:'no feed problems'} · checked ${E(String(d.checked_at||'').slice(11,19))}</div>`+
+   `<div class="lf-wrap" tabindex="0" role="region" aria-label="Live feed status"><table class="lf-t"><thead><tr><th>Feed</th><th>State</th><th>Detail</th><th class="lf-hide">Instruments</th><th>Last data</th><th class="lf-hide">Age</th></tr></thead><tbody>${rows}</tbody></table></div>`+
    `<div class="lf-head" style="margin-top:6px">OFF = switched off in config.json (all feeds are off until the owner turns them on). Read-only: no feed places an order.</div>`};
 window.atipLoadFeeds=async function(id){const el=document.getElementById(id);if(!el)return;
   try{const r=await fetch('/api/live-feeds',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);el.innerHTML=atipFeedsHtml(await r.json())}
@@ -132,8 +150,8 @@ window.atipLoadFeeds=async function(id){const el=document.getElementById(id);if(
 def live_tab_html() -> str:
     """The main dashboard's Live tab: every feed's state, refreshed every 15 s while the tab is open."""
     return (LIVE_FEEDS_CSS + LIVE_FEEDS_JS + '<div id="livefeeds" class="tc section"><div class="st">🛰 Live feeds '
-            '<span style="font-size:11px;color:#64748b;font-weight:400">— Dhan WebSocket, depth and option chain · '
-            'refreshes every 15 s · <a href="/market" style="color:#38bdf8">market page</a></span></div>'
+            '<span style="font-size:12px;color:var(--muted,#94a3b8);font-weight:400">— Dhan WebSocket, depth and option chain · '
+            'refreshes every 15 s · <a href="/market" style="color:var(--accent,#38bdf8)">market page</a></span></div>'
             '<div id="lfBox" class="lf-head">Loading…</div></div>'
             "<script>setInterval(function(){var t=document.getElementById('livefeeds');"
             "if(t&&t.classList.contains('active')&&!document.hidden)atipLoadFeeds('lfBox')},15000);</script>")

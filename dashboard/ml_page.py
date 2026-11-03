@@ -3,6 +3,8 @@ The /ml page (W5): models (type, version, status, feature set, dataset,
 activation), predictions (symbol, prediction, confidence, ML score, model,
 date), feature sets, datasets, training runs, and lifecycle buttons. Read
 from /api/ml/*; nothing is computed here.
+
+UX audit (3 Nov 2026): labelled controls, tables in keyboard-reachable scroll regions, themed colours.
 """
 
 import json
@@ -10,39 +12,50 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP ML</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#059669;--bad:#dc2626;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
-h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
-.muted{color:var(--muted)}.note{color:var(--warn)}.scroll{max-height:360px;overflow:auto}
-.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;background:#334155}
-.ACTIVE,.COMPLETED,.TRAINED,.BUILT{background:#065f46}.FAILED{background:#7f1d1d}.VALIDATION,.APPROVED,.PAUSED,.RUNNING{background:#78350f}
-button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin:1px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
+h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap;position:sticky;top:0;z-index:1}
+.muted{color:var(--muted)}.note{color:var(--warn)}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;background:var(--panel2);color:var(--text)}
+.pill.ACTIVE,.pill.COMPLETED,.pill.TRAINED,.pill.BUILT{background:var(--goodbg);color:var(--good)}.pill.FAILED{background:var(--badbg);color:var(--bad)}.pill.VALIDATION,.pill.APPROVED,.pill.PAUSED,.pill.RUNNING{background:var(--warnbg);color:var(--warn)}
+button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;margin:1px}
+select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-size:12.5px;max-width:100%}
+label{color:var(--muted);font-size:12px;font-weight:400}
+p,.wrap>div{overflow-wrap:anywhere}
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw{max-height:360px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--muted);padding:8px 2px;margin:2px 0}
+@media(max-width:760px){.wrap{padding:12px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">AI / ML (W5)</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">AI / ML</span></div>
 <div><a href="/strategies">Strategies</a><a href="/trading">Trading</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<p class="muted">Models produce predictions only. ML reaches trading solely as a strategy feature (ml_score…), and every strategy decision still passes the W4 risk engine. Nothing here is validated: metrics are descriptive.</p>
+<p class="muted">Models produce predictions only. ML reaches trading solely as a strategy feature (ml_score…), and every strategy decision still passes the risk engine. Nothing here is validated: metrics are descriptive.</p>
 <h2>Status</h2><div id="st"></div>
 <h2>Models</h2><div id="mod" class="scroll"></div>
 <h2>Latest predictions</h2><div id="pred" class="scroll"></div>
 <h2>Feature sets</h2><div id="fs" class="scroll"></div>
 <h2>Datasets</h2><div id="ds" class="scroll"></div>
 <h2>Training runs</h2><div id="tr" class="scroll"></div>
-<h2>AI-driven strategies <span class="muted">(W28 SE-05: the first gate each ML strategy is blocked at)</span></h2><div id="aist"></div>
-<h2>Model monitoring <select id="monm" onchange="loadMon()"></select> <span class="muted">(W28 DB-18: feature drift PSI, realised metrics, health checks)</span></h2><div id="mon"></div>
+<h2>AI-driven strategies <span class="muted">(the first gate each ML strategy is blocked at)</span></h2><div id="aist"></div>
+<h2>Model monitoring <label for="monm">Model</label><select id="monm" onchange="loadMon()"></select> <span class="muted">(feature drift PSI, realised metrics, health checks)</span></h2><div id="mon"></div>
 </div>
 <script>
 const TOKEN=__TOKEN__;
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num=(v,d=3)=>v==null?'—':Number(v).toFixed(d);
 const pill=s=>`<span class="pill ${s}">${s}</span>`;
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region
+const strip=x=>String(x).replace(/<[^>]*>/g,'');
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(strip).join(', '));
+  if(!rows.length)return `<p class="empty" role="status">${o.empty||'Nothing to show yet.'}</p>`;
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`};
 const NEXT={TRAINED:['VALIDATION'],VALIDATION:['APPROVED'],APPROVED:['ACTIVE'],ACTIVE:['PAUSED'],PAUSED:['ACTIVE']};
 async function load(){
   const s=await j('/api/ml/status');
@@ -65,7 +78,7 @@ async function move(m,v,to){const reason=prompt(`Reason for ${m} ${v} → ${to}?
 function chart(pts,key,label,w=560,h=120){const v=pts.filter(p=>p[key]!=null);if(v.length<2)return `<div class="muted">${label}: not enough points</div>`;
   const ys=v.map(p=>p[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=mx-mn||1;
   const d=v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-10)+5).toFixed(1)},${(h-14-(p[key]-mn)/r*(h-24)).toFixed(1)}`).join('');
-  return `<div class="muted" style="margin-top:6px">${label} · ${v[0].as_of||v[0].period_end} → ${v[v.length-1].as_of||v[v.length-1].period_end}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--panel);border-radius:6px"><path d="${d}" fill="none" stroke="#38bdf8" stroke-width="1.6"/><text x="6" y="12" fill="#94a3b8" font-size="10">${num(mx)}</text><text x="6" y="${h-3}" fill="#94a3b8" font-size="10">${num(mn)}</text></svg>`}
+  return `<div class="muted" style="margin-top:6px">${label} · ${v[0].as_of||v[0].period_end} → ${v[v.length-1].as_of||v[v.length-1].period_end}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--panel);border-radius:6px" role="img" aria-label="${esc(label)}"><path d="${d}" fill="none" style="stroke:var(--accent)" stroke-width="1.6"/></svg><div class="muted" style="font-size:12px;margin-top:2px">high ${num(mx)} · low ${num(mn)}</div>`}
 async function loadAI(){try{const R=await j('/api/ml/ai-strategy-readiness');
   document.getElementById('aist').innerHTML=table(['Strategy','Status','ML features','Ready','Blocked at','Next step','Gates'],R.strategies.map(s=>`<tr><td><b>${esc(s.strategy_id)}</b> ${esc(s.version)}</td><td>${pill(s.status)}</td><td class="muted">${esc(s.ml_features.join(', '))}</td><td>${s.ready?'yes':'no'}</td><td>${esc(s.blocked_at||'—')}</td><td>${esc(s.next_step)}</td><td>${s.gates.map(g=>`<span title="${esc(g.detail)}">${g.ok?'✓':'✗'} ${esc(g.gate)}</span>`).join('<br>')}</td></tr>`))}catch(e){document.getElementById('aist').textContent=e.message}}
 async function loadMon(){const sel=document.getElementById('monm');try{const M=await j('/api/ml/monitoring-series'+(sel.value?'?model_id='+encodeURIComponent(sel.value):''));

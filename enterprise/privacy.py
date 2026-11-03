@@ -106,6 +106,18 @@ INVENTORY = {
     "enterprise_onboarding": ("personal", True, "account lifetime"),
     "enterprise_mfa_recovery": ("credential", True, "digest only; cleared when MFA is reset"),
     "intraday_scan_hit": ("research", False, "derived research: kept"),
+    # 2026-11-02 sessions, accounting and reports (classified 2026-11-03: they were missing from the inventory, so
+    # inventory_gaps() and the compliance run's data_inventory check flagged them on the live database)
+    "trading_sessions": ("financial", False, "the ten sessions' settings and money: kept (trade audit)"),
+    "session_events": ("financial", False, "every change to a session, with its reason: kept (audit)"),
+    "session_rules": ("financial", False, "per-session floor / sizing rules: kept (audit)"),
+    "session_settings": ("operational", False, "configuration"),
+    "session_cycles": ("financial", False, "closed buy-sell cycles with charges and tax: kept (accounting, tax)"),
+    "session_transfers": ("financial", False, "money moved between sessions: kept (accounting)"),
+    "ledger_entries": ("financial", False, "double-entry ledger, never edited: kept (accounting, tax)"),
+    "recon_items": ("financial", False, "ATIP vs broker reconciliation lines: kept (accounting)"),
+    "report_schedules": ("operational", False, "configuration"),
+    "report_archive": ("financial", False, "generated statements: kept (accounting)"),
 }
 DEFAULT_RETENTION = {"notifications_read": 180, "deliveries": 90, "report_outputs": 90, "api_usage": 400}
 EXPORT_DIR = Path("atip_data") / "privacy_exports"

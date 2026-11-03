@@ -442,7 +442,7 @@ SHELL = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <header>
  <div class="brand"><div class="logo" aria-hidden="true">AT</div><div>ATIP <span class="muted" style="font-weight:400">__TITLE__</span></div></div>
  <span id="pEnv" class="pill">…</span>
- <button id="killBtn" class="kill" type="button">Halt all trading</button>
+ <button id="killBtn" class="halted" type="button" hidden>Halted · Resume…</button>
 </header>
 __OPBANNER__
 <div id="haltBanner" class="banner bad" hidden></div>
@@ -464,11 +464,11 @@ const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json',
 let HALTED=false;
 async function head(){try{const d=await j('/api/command/summary');const r=d.risk||{},b=d.broker||{};HALTED=!!r.halted;
  $('pEnv').className='pill '+(b.is_live?'bad':'warn');$('pEnv').textContent=b.is_live?'LIVE · real money':(b.broker_env||'PAPER');
- const kb=$('killBtn');if(r.halted){kb.className='halted';kb.textContent='Halted · Resume on Command Center';$('haltBanner').hidden=false;$('haltBanner').textContent='Trading halted — '+(r.halt_reason||'')+'. Nothing is sent until you resume.'}
- else{kb.className='kill';kb.textContent='Halt all trading';$('haltBanner').hidden=true}}catch(e){}}
-$('killBtn').onclick=async()=>{if(HALTED){location.href='/command';return}
- if(!confirm('Halt all trading?\n\nNo order will be sent, PAPER or LIVE, until you resume on the Command Center. Running sessions are paused. Open positions stay open.'))return;
- try{await post('/api/risk/halt',{reason:'Manual halt from '+document.title});}catch(e){alert(e.message)} head()};
+ const kb=$('killBtn');if(r.halted){kb.className='halted';kb.textContent='Halted · Resume on Command Center';$('haltBanner').hidden=false;$('haltBanner').textContent='Trading halted — '+(r.halt_reason||'')+'. Nothing is sent until you resume.';kb.hidden=false}
+ else{kb.hidden=true;$('haltBanner').hidden=true}}catch(e){}}
+// One kill switch (3 Nov 2026): halting is the top-bar Kill switch only. This
+// button appears only while trading is halted and takes you to resume it.
+$('killBtn').onclick=()=>{location.href='/command#kill'};
 head();setInterval(head,30000);
 __SCRIPT__
 </script></body></html>"""
@@ -567,7 +567,9 @@ const later=()=>{clearTimeout(t);t=setTimeout(run,350)};
 $('f').addEventListener('input',later);$('f').addEventListener('change',later);
 $('f').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;const i=$(b.dataset.s);const d=parseFloat(b.dataset.d);
  const base=parseFloat(i.value||(b.dataset.s==='qty'?(last?last.qty:0):(last?last.entry:0)))||0;i.value=b.dataset.s==='qty'?Math.max(1,Math.round(base+d)):(Math.max(0.05,base+d)).toFixed(2);later()});
-$('save').onclick=async()=>{if(!last)return;if(!confirm('Save a watched '+last.side+' rule for '+(last.pool?'all of '+$('ses').value+"'s cash in":last.qty)+' '+last.symbol+' at '+inr(last.entry,2)+'?\nIt asks you before sending when it triggers.'))return;
+// questions use the shell's dialog (UX audit H7); without the shell nothing is saved
+const ask=o=>(window.AX&&AX.ask)?AX.ask(o):Promise.resolve(false);
+$('save').onclick=async()=>{if(!last)return;if(!(await ask({title:'Save this watched rule?',html:'<p><b>'+esc(last.side+' '+(last.pool?'all of '+$('ses').value+"'s cash in":last.qty)+' '+last.symbol)+'</b> at <b>'+inr(last.entry,2)+'</b>.</p><p class="ax-small ax-muted">It asks you before sending when it triggers.</p>',ok:'Save rule'})))return;
  try{const r=await post('/api/command/setup',qs());$('msg').innerHTML='Saved rule '+esc(r.rule.id.slice(0,8))+(r.session?' in '+esc(r.session):'')+'. <a href="/command/monitor">Watch it on the Live Monitor →</a>';$('save').disabled=true}catch(e){$('msg').textContent=e.message}};
 sessions().then(run);
 """
@@ -685,7 +687,8 @@ $('scope').onchange=load;$('by').onchange=load;
 $('pf').addEventListener('input',count);count();
 $('pGo').onclick=async()=>{const b={total:$('pTot').value,capital:$('pCap').value,max_occurrences:$('pOcc').value,target_pct:$('pTgt').value,stop_pct:$('pStop').value,trail_pct:$('pTrail').value,hold_days:$('pHold').value,min_buy_value:$('pMin').value,auto_pick:$('pAuto').checked};
  const ex=+b.trail_pct?'stop −'+b.stop_pct+'%; from +'+b.target_pct+'% the stop trails '+b.trail_pct+'% under the high'+(+b.hold_days?'; after '+b.hold_days+' days sells at +'+b.target_pct+'% or more':''):'sell all at +'+b.target_pct+'%, stop −'+b.stop_pct+'%';
- if(!confirm('Start '+Math.floor(b.total/b.capital)+' sessions of '+inr(+b.capital)+', '+b.max_occurrences+' occurrences each ('+ex+')?\nEach starts its books from now. '+(b.auto_pick?'ATIP picks each next stock from its BUY signals while a session is RUNNING (paper only).':'Nothing is bought until you save buy rules in a session.')))return;
+ const ask=o=>(window.AX&&AX.ask)?AX.ask(o):Promise.resolve(false);
+ if(!(await ask({title:'Start '+Math.floor(b.total/b.capital)+' sessions of '+inr(+b.capital)+'?',html:'<p>'+esc(b.max_occurrences+' occurrences each ('+ex+').')+'</p><p class="ax-small ax-muted">Each starts its books from now. '+esc(b.auto_pick?'ATIP picks each next stock from its BUY signals while a session is RUNNING (paper only).':'Nothing is bought until you save buy rules in a session.')+'</p>',ok:'Start sessions'})))return;
  try{const r=await post('/api/sessions/pools',b);$('pMsg').textContent='Started '+r.sessions.length+' sessions of '+inr(r.each)+' — '+inr(r.total)+' in all.'+(r.ended.length?' Ended: '+r.ended.join(', ')+'.':'')+(Object.keys(r.skipped).length?' Skipped: '+Object.entries(r.skipped).map(([k,v])=>k+' ('+v+')').join('; '):'');await scopes();load()}
  catch(e){$('pMsg').textContent=e.message}};
 scopes().then(load);setInterval(load,60000);

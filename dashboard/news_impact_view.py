@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 NI_CSS = """<style>
 .ni-head{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin:4px 0 10px}
 .ni-pos{color:var(--ga-up,#6ee7b7);font-weight:700}.ni-neg{color:var(--ga-dn,#fca5a5);font-weight:700}
-.ni-neu{color:var(--ga-muted,#94a3b8);font-weight:700}.ni-wrap{white-space:normal!important;min-width:240px}
+.ni-neu{color:var(--ga-muted,var(--ax-muted,#94a3b8));font-weight:700}.ni-wrap{white-space:normal!important;min-width:240px}
 .ni-ul{margin:6px 0 0 18px;padding:0}.ni-ul li{margin:3px 0}
 </style>"""
 
@@ -47,10 +47,10 @@ NI_JS = r"""<script>
    '<div class="ga-muted">'+n(A.sessions,0)+' session(s)'+(Object.keys(bl).length?' · naive baselines: '+Object.keys(bl).map(function(k){return lab(k)+' '+(bl[k]==null?'—':n(bl[k],0)+'%')}).join(' · '):' · scored after each session closes')+'</div>'+
    '<div class="ga-small">'+esc(A.note||'')+'</div></div></div>';
   var S=L.sectors||[];
-  if(S.length){h+='<h3 class="ga-h">Sectors</h3><div class="ga-scroll"><table class="ga-t"><thead><tr><th>Sector</th><th class="r">Score</th><th>Bias</th><th class="r">Headlines</th></tr></thead><tbody>'+
+  if(S.length){h+='<h3 class="ga-h">Sectors</h3><div class="ga-scroll" tabindex="0" role="region" aria-label="News impact by sector"><table class="ga-t"><thead><tr><th>Sector</th><th class="r">Score</th><th>Bias</th><th class="r">Headlines</th></tr></thead><tbody>'+
    S.map(function(s){return '<tr><td>'+esc(s.name)+'</td><td class="r ga-num">'+n(s.score,0)+'</td><td class="'+(BC[s.bias]||'')+'">'+esc(s.bias)+' <span class="ga-muted">'+lab(s.strength)+'</span></td><td class="r ga-num">'+n(s.headlines,0)+'</td></tr>'}).join('')+'</tbody></table></div>';}
   var D=L.drivers||[];
-  h+='<h3 class="ga-h">What is driving it</h3>'+(D.length?'<div class="ga-scroll"><table class="ga-t"><thead><tr><th>Nifty</th><th>Size</th><th>Channel</th><th>Headline</th><th>Why</th><th>Sectors</th></tr></thead><tbody>'+
+  h+='<h3 class="ga-h">What is driving it</h3>'+(D.length?'<div class="ga-scroll" tabindex="0" role="region" aria-label="Headlines driving the market"><table class="ga-t"><thead><tr><th>Nifty</th><th>Size</th><th>Channel</th><th>Headline</th><th>Why</th><th>Sectors</th></tr></thead><tbody>'+
    D.map(function(x){return '<tr><td>'+(DIR[x.direction]||'—')+'</td><td>'+lab(x.magnitude)+'</td><td>'+lab(x.transmission)+'</td><td class="ni-wrap">'+esc(x.headline)+' <span class="ga-muted">'+esc(x.source||'')+'</span></td>'+
     '<td class="ni-wrap ga-muted">'+esc(x.rationale)+'</td><td>'+(x.sectors||[]).map(function(s){return esc(s.sector)+' '+(s.direction==='UP'?'▲':'▼')}).join(', ')+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="ga-muted">No market-moving headline in the window.</div>');
   h+='<p class="ga-muted ga-small">An estimate of direction and size only — no price levels or forecasts. Informational: it feeds no ATIP score and places no orders. Updated '+esc(d.now_ist||'')+' IST.</p>';
@@ -64,7 +64,7 @@ NI_JS = r"""<script>
 
 def panel_html(box_id: str = "niBox", title: bool = True) -> str:
     """A container + its loader; pages that already carry NI_CSS / NI_JS pass them once themselves."""
-    head = ('<div class="st">📰&nbsp; News impact on the Indian market <span style="font-size:11px;color:#64748b;'
+    head = ('<div class="st">📰&nbsp; News impact on the Indian market <span style="font-size:12px;color:var(--ax-muted,#64748b);'
             'font-weight:400">— Indian + world news, estimated direction and size · informational, no orders</span>'
             '</div>') if title else ""
     return f'{head}<div id="{box_id}" class="ga-muted">Loading…</div>'
