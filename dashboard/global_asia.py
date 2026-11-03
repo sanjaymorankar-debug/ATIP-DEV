@@ -73,8 +73,10 @@ BANNER = r"""<div id="atipRoleBanner" role="status" style="display:none;padding:
  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
  function token(t){if(!t||!t.message){tb.style.display='none';return;}
   var w=t.severity==='warn';tb.style.background=w?'#78350f':'#7f1d1d';tb.style.color=w?'#fef3c7':'#fee2e2';
-  tb.innerHTML='⚠ '+esc(t.message)+(t.fix||[]).map(function(f){return '<div style="font-weight:400;margin-top:3px">'+esc(f.text)+
+  /* UI fixes v2 (G3): the plain-English message first, the steps with their commands in a closed How-to-fix */
+  var steps=(t.fix||[]).map(function(f){return '<div style="font-weight:400;margin-top:3px">'+esc(f.text)+
    (f.cmd?' <code style="background:rgba(0,0,0,.35);padding:1px 6px;border-radius:4px;user-select:all">'+esc(f.cmd)+'</code>':'')+'</div>'}).join('');
+  tb.innerHTML='⚠ '+esc(t.message)+(steps?'<details class="ax-tech ax-onbanner" style="margin-top:4px;color:inherit"><summary style="cursor:pointer;font-weight:600;color:inherit;text-decoration:underline">How to fix</summary>'+steps+'</details>':'');
   tb.style.display='block';tb.setAttribute('data-state',t.state);}
  function role(d){if(!d||d.role!=='VIEWER'){rb.style.display='none';return;}var v=d.viewer||{};
   rb.innerHTML='👁 View only — trading, orders and changes run on the Mac · '+(v.data_from?'data from the Mac at '+esc(String(v.data_from).replace('T',' ').slice(0,16))+' IST':'no data from the Mac yet');
@@ -85,7 +87,12 @@ BANNER = r"""<div id="atipRoleBanner" role="status" style="display:none;padding:
   else if(d.status==='RESUMING'){var s=d.resume_steps||[];t+=' · step '+s.length+'/6'+(s.length?' ('+esc(s[s.length-1].name)+' '+esc(s[s.length-1].status)+')':'')+lu;}
   else{t+=' · stops '+esc(String(d.next_stop||'').slice(11))+' IST'+(d.live_feeds?'':' · no live feeds today (weekend/holiday)')+lu;}
   if(d.override){t+=' · manual '+esc(d.override.mode);}
-  el.innerHTML=t;el.style.display='block';el.setAttribute('data-status',d.status);document.documentElement.setAttribute('data-atip-status',d.status);}
+  /* UI fixes v2 (H10): a normal run shows only the pill in the top bar; the full-width banner is for what is not normal --
+     stopped, resuming, the kill switch on, LIVE money, a manual override -- or a page with no shell (?shell=0) */
+  var abnormal=d.status!=='RUNNING'||d.halted||d.env==='LIVE'||d.override||!document.querySelector('[data-ax-run]');
+  if(d.halted&&d.status==='RUNNING'){el.style.background='#7f1d1d';el.style.color='#fee2e2';t='⛔ Trading halted (kill switch on)'+(d.halt_reason?': '+esc(d.halt_reason):'')+' · no order of any kind is placed until you resume it on Trade › Command Center'+lu;}
+  else if(d.env==='LIVE'&&d.status==='RUNNING'){el.style.background='#7f1d1d';el.style.color='#fee2e2';t='● LIVE: orders use real money · '+t;}
+  el.innerHTML=t;el.style.display=abnormal?'block':'none';el.setAttribute('data-status',d.status);document.documentElement.setAttribute('data-atip-status',d.status);}
  async function poll(){try{var r=await fetch('/api/status',{cache:'no-store'});if(r.ok)show(await r.json());}catch(e){}}
  show(__INITIAL__);poll();setInterval(poll,60000);
 })();
@@ -118,6 +125,14 @@ def status_payload() -> dict:
     try:
         from ops.dhan_token import status as token_status
         out["dhan_token"] = token_status()
+    except Exception:
+        pass
+    try:                                        # UI fixes v2 (H10): the kill switch itself, for the banner
+        from dashboard.shell import _flag_halt
+        out["halted"] = _flag_halt()
+        if out["halted"]:
+            from orders.risk import halted
+            out["halt_reason"] = halted()[1] or None
     except Exception:
         pass
     return out

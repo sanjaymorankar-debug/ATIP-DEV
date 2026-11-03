@@ -15,6 +15,7 @@
   --ax-env-paper: #0E7490; --ax-env-sandbox: #6941C6; --ax-env-live: #B42318;
   --ax-run: #064E3B; --ax-run-ink: #D1FAE5; --ax-stop: #7C2D12; --ax-stop-ink: #FFEDD5; --ax-resume: #1E3A8A; --ax-resume-ink: #DBEAFE;
   --ax-kill: #B42318;
+  --ax-amber: #B54708; --ax-amber-line: #F79009; --ax-flat-line: #98A2B3;
   --ax-radius: 10px; --ax-radius-sm: 6px; --ax-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
   --ax-font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --ax-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -31,6 +32,7 @@
     --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
     --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
     --ax-shadow: 0 1px 2px rgba(0,0,0,.4);
+    --ax-amber: #FDB022; --ax-amber-line: #F79009; --ax-flat-line: #667085;
   }
 }
 :root[data-theme="dark"] {
@@ -43,6 +45,7 @@
   --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
   --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
   --ax-shadow: 0 1px 2px rgba(0,0,0,.4);
+  --ax-amber: #FDB022; --ax-amber-line: #F79009; --ax-flat-line: #667085;
 }
 
 /* ── the shell ─────────────────────────────────────────────────────────────────────────────── */
@@ -103,8 +106,9 @@ body.ax-native { margin: 0; background: var(--ax-bg); color: var(--ax-text); fon
 
 @media (max-width: 1023px) {
   body.ax-shelled { padding-left: 0 !important; }
-  .ax-rail { transform: translateX(-102%); transition: transform .18s ease; box-shadow: var(--ax-shadow); }
-  .ax-rail.open { transform: none; }
+  /* closed, the rail is also hidden from the keyboard and screen readers, not just moved off-screen */
+  .ax-rail { transform: translateX(-102%); visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s; box-shadow: var(--ax-shadow); }
+  .ax-rail.open { transform: none; visibility: visible; transition: transform .18s ease; }
   .ax-scrim.open { display: block; position: fixed; inset: 0; background: rgba(3,6,14,.45); z-index: 940; }
   .ax-menu { display: inline-grid; }
 }
@@ -145,7 +149,7 @@ html.ax-app .ax-rail, html.ax-app .ax-tabbar, html.ax-app .ax-menu, html.ax-app 
 .ax-card { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-radius: var(--ax-radius); padding: 14px 16px;
   box-shadow: var(--ax-shadow); min-width: 0; }
 .ax-card > h2, .ax-card > h3 { margin: 0 0 8px; font-size: 15px; }
-.ax-card.ax-attn { border-color: #F79009; }
+.ax-card.ax-attn { border-color: var(--ax-amber-line); }
 .ax-tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
 .ax-tile { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-radius: var(--ax-radius); padding: 10px 12px; min-width: 0; }
 .ax-tile .ax-lbl { font-size: 12px; color: var(--ax-muted); font-weight: 600; }
@@ -153,12 +157,16 @@ html.ax-app .ax-rail, html.ax-app .ax-tabbar, html.ax-app .ax-menu, html.ax-app 
 .ax-tile .ax-sub2 { font-size: 12px; color: var(--ax-muted); margin-top: 2px; }
 .ax-tile.ax-key { border-color: var(--ax-brand); }
 .ax-five { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom: 16px; }
+/* UI fixes v2 (H2): the three answers -- one row of three equal cards from 900 px, stacked below */
+.ax-five.ax-answers { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .ax-five.ax-answers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .ax-answer { border-radius: var(--ax-radius); padding: 14px 16px; border: 1px solid var(--ax-border-soft); background: var(--ax-surface); }
 .ax-answer .ax-q { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ax-muted); font-weight: 700; }
 .ax-answer .ax-a { font-size: 22px; font-weight: 700; margin: 4px 0 2px; display: flex; align-items: center; gap: 8px; }
 .ax-answer[data-tone="good"] { border-left: 5px solid var(--ax-pos); }
 .ax-answer[data-tone="bad"] { border-left: 5px solid var(--ax-neg); }
-.ax-answer[data-tone="warn"] { border-left: 5px solid #F79009; }
+.ax-answer[data-tone="warn"] { border-left: 5px solid var(--ax-amber-line); }
+.ax-answer[data-tone="flat"] { border-left: 5px solid var(--ax-flat-line); }
 
 /* status pills (always a word, never colour alone) */
 .ax-st { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font: 600 12px/1.5 var(--ax-font);
@@ -335,3 +343,114 @@ details.ax-help summary { cursor: pointer; font-weight: 600; }
   .ax-rail, .ax-top, .ax-tabbar, .ax-skip { display: none !important; }
   body.ax-shelled { padding: 0 !important; }
 }
+
+/* ── UI fixes v2 (3 Nov 2026) ──────────────────────────────────────────────────────────────────── */
+/* numbers: one formatter (dashboard/fmt.py, AX.fmt); a flat change is grey, an inverse metric rising is amber */
+.ax-flat { color: var(--ax-muted); }
+.ax-warn-t { color: var(--ax-amber); }
+.ax-missing { cursor: help; }
+/* the three answers (H3): icon + word + amount, the same in every card */
+.ax-answer .ax-a { flex-wrap: wrap; row-gap: 2px; }
+.ax-answer .ax-sym { width: 1.1em; text-align: center; }
+.ax-answer[data-tone="good"] .ax-sym, .ax-answer[data-tone="good"] .ax-word { color: var(--ax-pos); }
+.ax-answer[data-tone="bad"] .ax-sym, .ax-answer[data-tone="bad"] .ax-word { color: var(--ax-neg); }
+.ax-answer[data-tone="warn"] .ax-sym, .ax-answer[data-tone="warn"] .ax-word { color: var(--ax-amber); }
+.ax-answer[data-tone="flat"] .ax-sym, .ax-answer[data-tone="flat"] .ax-word { color: var(--ax-muted); }
+.ax-answer .ax-amt { font-size: 18px; margin-left: 4px; }
+.ax-answer .ax-small b { color: var(--ax-text-2); }
+/* chips: freshness, "as of", symbols */
+.ax-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font: 600 12px/1.6 var(--ax-font);
+  background: var(--ax-surface-2); color: var(--ax-text-2); border: 1px solid var(--ax-border-soft); white-space: nowrap; vertical-align: middle; }
+.ax-chip.warn { background: var(--ax-warn-bg); color: var(--ax-warn); border-color: transparent; }
+.ax-card h2 .ax-chip { font-weight: 500; margin-left: 6px; }
+.ax-fresh { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
+.ax-symchip { display: inline-flex; align-items: center; min-height: 28px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--ax-border);
+  background: var(--ax-surface); color: var(--ax-brand) !important; font: 600 12px var(--ax-mono); text-decoration: none !important; }
+.ax-symchip:hover { background: var(--ax-brand-soft); }
+.ax-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* alerts (H4): one group per kind, two lines then "Show more" */
+.ax-alert { padding: 8px 0; border-bottom: 1px solid var(--ax-border-soft); font-size: 13px; }
+.ax-alert:last-child { border-bottom: 0; }
+.ax-alert-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
+.ax-clamp { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ax-clamp.open { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+.ax-linkbtn { background: none; border: 0; padding: 0; min-height: 28px; color: var(--ax-brand); font: 600 12.5px var(--ax-font); cursor: pointer; text-decoration: underline; }
+.ax-more summary { cursor: pointer; color: var(--ax-brand); font-size: 12.5px; margin-top: 4px; min-height: 28px; display: list-item; }
+.ax-more .ax-clamp { margin-top: 4px; color: var(--ax-text-2); }
+/* card header with a control, segmented toggle */
+.ax-cardhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ax-cardhead h2 { margin: 0; font-size: 15px; flex: 1; }
+.ax-seg { display: inline-flex; border: 1px solid var(--ax-border); border-radius: 8px; overflow: hidden; }
+.ax-seg button { border: 0; background: var(--ax-surface); color: var(--ax-text-2); font: 600 12.5px var(--ax-font); padding: 0 12px; min-height: 32px; cursor: pointer; }
+.ax-seg button + button { border-left: 1px solid var(--ax-border); }
+.ax-seg button[aria-pressed="true"] { background: var(--ax-text); color: var(--ax-surface); }
+.ax-home-sessions th[scope="row"] { position: static; background: none; border-bottom: 1px solid var(--ax-border-soft); font-weight: 600; }
+.ax-idle-sum td { background: var(--ax-surface-2); }
+.ax-jobrow { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--ax-border-soft); }
+/* technical details (G3) and "how this works" (G4) disclosures */
+details.ax-tech, details.ax-how { display: inline-block; vertical-align: baseline; font-size: 12.5px; color: var(--ax-text-2); }
+details.ax-tech > summary, details.ax-how > summary { cursor: pointer; color: var(--ax-brand); font-weight: 600; display: inline; list-style: none; }
+details.ax-tech > summary::-webkit-details-marker, details.ax-how > summary::-webkit-details-marker { display: none; }
+details.ax-tech[open], details.ax-how[open] { display: block; margin: 4px 0; padding: 8px 10px; border: 1px solid var(--ax-border-soft); border-radius: 8px;
+  background: var(--ax-surface-2); }
+details.ax-tech.ax-onbanner[open] { background: rgba(0,0,0,.25); border-color: rgba(255,255,255,.25); color: inherit; }
+details.ax-tech code { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px var(--ax-mono); }
+.ax-term { border-bottom: 1px dotted currentColor; cursor: help; }
+/* "See also" (G2): the links an older page had in its own top bar, now one quiet row at the bottom */
+.ax-seealso { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 24px 16px 12px; padding-top: 12px;
+  border-top: 1px solid var(--ax-border-soft); font: 13px var(--ax-font); color: var(--ax-muted); }
+.ax-seealso a { color: var(--ax-brand); }
+.ax-legacy-nav-hidden { display: none !important; }
+/* keyboard reach for older clickable elements (G5) */
+[data-ax-clickable] { cursor: pointer; }
+[data-ax-clickable]:focus-visible, .ax-shelled #ax-main :focus-visible { outline: 3px solid var(--ax-focus); outline-offset: 2px; }
+/* the breadcrumb has priority (H8): the section never truncates; the page part hides below 600 px */
+.ax-crumbs { display: flex; align-items: baseline; flex: 0 1 auto; min-width: 0; }
+.ax-crumbs .ax-crumb-sec { flex: none; }
+.ax-crumbs .ax-crumb-page { min-width: 4ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-search { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 1279px) { .ax-search .ax-searchlabel { display: none; } .ax-search { min-width: 0; } }
+@media (max-width: 767px) { .ax-crumbs { display: flex !important; font-size: 12.5px; } .ax-top { flex-wrap: nowrap; } }
+@media (max-width: 599px) { .ax-crumbs .ax-crumb-page { display: none; } }
+@media (max-width: 380px) { .ax-crumbs { display: none !important; } }
+/* the top bar's icons fold into "⋯" below 1100 px (G7), so the bar never wraps */
+.ax-topicons { display: inline-flex; align-items: center; gap: 2px; }
+.ax-overflow { display: none; position: relative; }
+.ax-ovmenu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 230px; display: flex; flex-direction: column; padding: 6px;
+  background: var(--ax-surface); border: 1px solid var(--ax-border); border-radius: var(--ax-radius); box-shadow: 0 8px 24px rgba(16,24,40,.18); z-index: 960; }
+.ax-ovmenu a, .ax-ovmenu button { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 6px;
+  background: none; color: var(--ax-text); font: 14px var(--ax-font); text-align: left; cursor: pointer; text-decoration: none; }
+.ax-ovmenu a:hover, .ax-ovmenu button:hover { background: var(--ax-surface-2); }
+@media (max-width: 1099px) { .ax-topicons { display: none; } .ax-overflow { display: inline-flex; } .ax-run .ax-runtext { display: none; } }
+.ax-top { flex-wrap: nowrap !important; }
+/* wide tables of older pages scroll in their own box (§3: no page scroll at 360 px) */
+.ax-hscroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ax-shelled #ax-main img, .ax-shelled #ax-main svg, .ax-shelled #ax-main canvas { max-width: 100%; }
+.ax-shelled #ax-main pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* the design system's own tables: the first column stays in view while the rest scrolls (phones) */
+@media (max-width: 767px) {
+  .ax-tablewrap .ax-table th:first-child, .ax-tablewrap .ax-table td:first-child { position: sticky; left: 0; z-index: 2; background: var(--ax-surface); }
+  .ax-tablewrap .ax-table thead th:first-child { z-index: 3; background: var(--ax-surface-2); }
+}
+.ax-shelled #ax-main { overflow-wrap: break-word; }     /* a long unbroken string (JSON, a path) wraps instead of widening the page */
+/* the top bar fits its own width (the watchlist can take room beside the rail): container queries, not the viewport */
+.ax-top { container-type: inline-size; container-name: axtop; }
+.ax-search { white-space: nowrap; }
+@container axtop (max-width: 1000px) { .ax-search .ax-searchlabel { display: none; } .ax-search { min-width: 0; } }
+@container axtop (max-width: 860px) { .ax-topicons { display: none; } .ax-overflow { display: inline-flex; } .ax-run .ax-runtext { display: none; } }
+@container axtop (max-width: 560px) { .ax-crumbs .ax-crumb-page { display: none; } }
+/* on older (dark) pages the disclosures and See also take the page's own colours, so they keep its contrast */
+body.ax-shelled:not(.ax-native) details.ax-tech, body.ax-shelled:not(.ax-native) details.ax-how,
+body.ax-shelled:not(.ax-native) details.ax-tech > summary, body.ax-shelled:not(.ax-native) details.ax-how > summary,
+body.ax-shelled:not(.ax-native) .ax-seealso, body.ax-shelled:not(.ax-native) .ax-seealso a { color: inherit; text-decoration: underline; }
+body.ax-shelled:not(.ax-native) .ax-seealso > span { text-decoration: none; font-weight: 600; }
+body.ax-shelled:not(.ax-native) details.ax-tech[open], body.ax-shelled:not(.ax-native) details.ax-how[open] { background: transparent; color: inherit;
+  border-color: currentColor; }
+/* the older pages' own up / down text colours (#059669 / #dc2626 on their dark panels are under 4.5:1) */
+body.ax-shelled:not(.ax-native) #ax-main .pos, body.ax-shelled:not(.ax-native) #ax-main .good { color: #34d399; }
+body.ax-shelled:not(.ax-native) #ax-main .neg, body.ax-shelled:not(.ax-native) #ax-main .bad:not(.banner):not(.pill) { color: #f87171; }
+/* no layout shift from the fixes above: an older page's content stays invisible (its layout is computed) until atip.js
+   has folded its own nav bar and wrapped its tables; a CSS fail-safe shows it after 1.5 s whatever happens */
+body.ax-shelled:not(.ax-native) #ax-main { visibility: hidden; animation: ax-reveal 0s linear 1.5s forwards; }
+html.ax-ready body.ax-shelled:not(.ax-native) #ax-main { visibility: visible; animation: none; }
+@keyframes ax-reveal { to { visibility: visible; } }

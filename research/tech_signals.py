@@ -910,6 +910,36 @@ def run_job() -> dict:
     return out
 
 
+CATCHUP_SESSIONS = 3            # scored sessions the morning catch-up looks back over
+
+
+def missing_sessions(conn, today: date | None = None, lookback: int = CATCHUP_SESSIONS) -> list:
+    """Scored sessions before `today` (ai_scores has the date) with no technical_snapshot row, oldest first: the
+    20:30 runs that never happened -- the evening queue still busy at the 21:00 stop (run_job then refuses it),
+    a deferred slot lost to an overnight restart, or ATIP not running at 20:30. Today is left to its 20:30 slot."""
+    ensure_tables(conn)
+    today = today or date.today()
+    days = [str(r[0])[:10] for r in conn.execute(
+        "SELECT DISTINCT date FROM ai_scores WHERE date<? ORDER BY date DESC LIMIT ?", (str(today), int(lookback)))]
+    if not days:
+        return []
+    have = {str(r[0])[:10] for r in conn.execute(
+        f"SELECT DISTINCT date FROM technical_snapshot WHERE date IN ({','.join('?' * len(days))})", days)}
+    return sorted(d for d in days if d not in have)
+
+
+def run_missing(today: date | None = None) -> dict:
+    """Catch-up (06:00 resume, step 4): the technical snapshot + signals of each scored session that lacks them."""
+    from db.schema import get_connection
+    conn = get_connection()
+    try:
+        todo = missing_sessions(conn, today)
+    finally:
+        conn.close()
+    done = {d: run_technical(as_of=d).get("rows", 0) for d in todo}
+    return {"status": "SUCCESS" if todo else "NO_NEW", "rows": sum(done.values()), "sessions": done}
+
+
 def main(argv=None):
     import argparse
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

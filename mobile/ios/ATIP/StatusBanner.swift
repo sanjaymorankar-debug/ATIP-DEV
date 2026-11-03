@@ -10,6 +10,7 @@ struct OperatingState: Equatable {
     var env: String? = nil                  // PAPER / SANDBOX / LIVE; nil when unknown (older server): badge hidden
     var halted = false                      // the kill switch (orders/risk.py)
     var haltReason: String? = nil
+    var overrideMode: String? = nil         // the manual override's mode (override.mode); nil: no override
     var role = ""                           // "VIEWER" on the view-only web server
     var reachable = true
 
@@ -27,30 +28,52 @@ struct OperatingState: Equatable {
         self.env = Self.envColours.keys.contains(env) ? env : nil
         halted = js["halted"] as? Bool ?? false
         haltReason = js["halt_reason"] as? String
+        if let o = js["override"] as? [String: Any] { overrideMode = o["mode"] as? String ?? "override" }
         role = js["role"] as? String ?? ""
     }
 
     init() {}
 
-    /// The banner line, with the same wording as the web banner (dashboard/global_asia.py). The state always
-    /// carries a symbol (● running, ⏸ stopped, ↻ resuming) so it never depends on colour alone.
+    /// UI fixes v2 (H10, 2026-11-03), as on the web: a normal run -- RUNNING, kill switch off, not LIVE, no manual
+    /// override, ATIP answering -- shows only the environment pill and a small "● Running" pill. The full-width
+    /// strip is for what is not normal: stopped, resuming, halted, LIVE money, a manual override, not reachable.
+    var isNormal: Bool { reachable && status == "RUNNING" && !halted && env != "LIVE" && overrideMode == nil }
+
+    /// The run pill's words when normal, else the strip's, with the same wording as the web banner
+    /// (dashboard/global_asia.py). The strip always carries a symbol (● running, ⏸ stopped, ↻ resuming, ⛔ halted)
+    /// so it never depends on colour alone.
     var text: String {
         if !reachable { return "ATIP not reachable — long-press to change the server" }
-        var parts: [String]
+        if isNormal { return "● Running" + (role == "VIEWER" ? " · view only" : "") }
+        var state: [String]
         switch status {
-        case "STOPPED": parts = ["⏸ \(banner)", "read-only, no orders"]
-        case "RESUMING": parts = ["↻ \(banner)"]
-        case "RUNNING": parts = ["● \(banner)", "stops \(nextStop.suffix(5)) IST"] + (liveFeeds ? [] : ["no live feeds today"])
-        default: parts = [banner.isEmpty ? "ATIP status unknown" : banner]
+        case "STOPPED": state = ["⏸ \(banner)", "read-only, no orders"]
+        case "RESUMING": state = ["↻ \(banner)"]
+        case "RUNNING": state = ["● \(banner)", "stops \(nextStop.suffix(5)) IST"] + (liveFeeds ? [] : ["no live feeds today"])
+        default: state = [banner.isEmpty ? "ATIP status unknown" : banner]
         }
-        if halted { parts.insert("Kill switch ON" + (haltReason.map { $0.isEmpty ? "" : " — \($0)" } ?? ""), at: 1) }
+        var parts: [String]
+        if halted {
+            let reason = haltReason ?? ""
+            parts = ["⛔ Trading halted (kill switch on)" + (reason.isEmpty ? "" : ": \(reason)")]
+            parts += status == "RUNNING" ? ["no order of any kind is placed until you resume it on Trade › Command Center"] : state
+        } else if liveRun {
+            parts = ["● LIVE: orders use real money"] + state
+        } else {
+            parts = state
+        }
+        if let overrideMode { parts.append("manual \(overrideMode)") }
         if role == "VIEWER" { parts.append("view only") }
         if let lastUpdated { parts.append("last updated " + (lastUpdated.isEmpty ? "—" : lastUpdated)) }
         return parts.joined(separator: " · ")
     }
 
+    private var liveRun: Bool { env == "LIVE" && status == "RUNNING" }
+
+    /// (background, text): the strip's colours, or the run pill's when normal.
     var colours: (Color, Color) {
         if !reachable { return (Color(hex: 0x78350F), Color(hex: 0xFDE68A)) }
+        if halted || liveRun { return (Color(hex: 0x7F1D1D), Color(hex: 0xFEE2E2)) }
         switch status {
         case "STOPPED": return (Color(hex: 0x7C2D12), Color(hex: 0xFFEDD5))
         case "RESUMING": return (Color(hex: 0x1E3A8A), Color(hex: 0xDBEAFE))
@@ -101,20 +124,40 @@ final class StatusModel: ObservableObject {
 
 struct StatusBanner: View {
     let state: OperatingState
+    @Environment(\.pixelLength) private var hairline
+
     var body: some View {
         let (bg, fg) = state.colours
-        HStack(spacing: 8) {
-            if let env = state.shownEnv { EnvBadge(env: env) }
-            Text(state.text)
-                .font(.footnote.weight(.semibold))          // 13 pt at the default text size
-                .foregroundStyle(fg)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if state.isNormal {
+                // normal (H10): only the pills, on the surface colour, with the web top bar's bottom border
+                HStack(spacing: 8) {
+                    if let env = state.shownEnv { EnvBadge(env: env) }
+                    Pill(text: state.text, fill: bg, ink: fg)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Color.axSurface)
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.axBorder).frame(height: hairline) }
+            } else {
+                // not normal: the full-width strip in the state's colours
+                HStack(spacing: 8) {
+                    if let env = state.shownEnv { EnvBadge(env: env) }
+                    Text(state.text)
+                        .font(.footnote.weight(.semibold))          // 13 pt at the default text size
+                        .foregroundStyle(fg)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(bg)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .background(bg)
+        .contentShape(Rectangle())                          // the whole row takes the long-press
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("ATIP status: " + (state.shownEnv.map { "\($0) environment. " } ?? "") + state.text)
     }
@@ -124,12 +167,23 @@ struct StatusBanner: View {
 struct EnvBadge: View {
     let env: String
     var body: some View {
-        Text(env)
-            .font(.caption.weight(env == "LIVE" ? .bold : .semibold))
-            .foregroundStyle(.white)
+        Pill(text: env, fill: Color(hex: OperatingState.envColours[env] ?? 0x334155), ink: .white, bold: env == "LIVE")
+    }
+}
+
+/// A small rounded pill: the environment pill, and the normal state's "● Running" (#064E3B / #D1FAE5).
+struct Pill: View {
+    let text: String
+    let fill: Color
+    let ink: Color
+    var bold = false
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(bold ? .bold : .semibold))
+            .foregroundStyle(ink)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Capsule().fill(Color(hex: OperatingState.envColours[env] ?? 0x334155)))
+            .background(Capsule().fill(fill))
             .fixedSize()
     }
 }

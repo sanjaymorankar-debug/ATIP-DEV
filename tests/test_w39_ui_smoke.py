@@ -24,6 +24,11 @@ import pytest
 from tools import load_test as LT
 
 CHROMIUM_CANDIDATES = [os.environ.get("ATIP_CHROMIUM"), "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"]
+try:                                       # UI fixes v2: whichever Playwright Chromium this machine has
+    from tools.ui_review import chromium_path as _cp
+    CHROMIUM_CANDIDATES.append(_cp())
+except Exception:
+    pass
 WEALTH_TABS = ["ovw", "wlt", "gol", "aal", "rbl", "prf", "adv", "dna"]
 
 

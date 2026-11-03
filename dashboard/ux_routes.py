@@ -446,3 +446,7 @@ def register(app, guard, Req, get_connection, json_safe):
     async def api_v2_run_due():
         from enterprise import session_reports as R
         return await run_in_threadpool(call, R.run_due)
+
+    # UI fixes v2 (W1-W5): watchlists, quotes, depth, the P&L strip, freshness, /stock/{symbol} and /watchlist
+    from dashboard import workspace
+    workspace.register(app, guard, call, html_page, ctx, Req)

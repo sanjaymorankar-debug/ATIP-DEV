@@ -59,9 +59,157 @@ def _session_ids(conn) -> list:
 
 
 # ── Home ─────────────────────────────────────────────────────────────────────────────────────
+# UI fixes v2 (3 Nov 2026): every money figure says its period (H1), the three answers share one card pattern in
+# one row from 900 px (H2, H3), alerts are unescaped once, clamped, de-duplicated and grouped (H4), idle sessions
+# fold into one row (H5), jobs have names and one row each (H6), scores are whole numbers (H7), India VIX colours
+# the other way round (H9). Numbers go through dashboard/fmt.py.
+
+ALERT_STOP = {"ATIP", "VWAP", "IST", "NSE", "BSE", "BUY", "SELL", "HOLD", "WAIT", "LONG", "SHORT", "LIVE", "PAPER", "ATR",
+              "RSI", "MACD", "EMA", "SMA", "OK", "FII", "DII", "ETF", "GIFT", "NIFTY", "SENSEX", "FAILED", "SUCCESS", "DHAN",
+              "API", "PNL", "EOD", "LTP", "CMP", "UTC", "AM", "PM", "SL", "TP", "OHLC", "BANKNIFTY", "VIX", "SEBI", "STT",
+              "GST", "HTML", "URL", "ID", "N"}
+
+
+def _ist(ts, today: str | None = None) -> str:
+    """'13:50 IST' today, '2 Nov 13:50 IST' another day, '' when missing."""
+    s = str(ts or "").replace("T", " ")
+    if len(s) < 16:
+        return e(s[:10]) if s else ""
+    d, t = s[:10], s[11:16]
+    if d == (today or date.today().isoformat()):
+        return f"{t} IST"
+    try:
+        dd = date.fromisoformat(d)
+        return f"{dd.day} {dd.strftime('%b')} {t} IST"
+    except ValueError:
+        return f"{d} {t} IST"
+
+
+def _symbols_known(conn) -> set:
+    return {r["symbol"] for r in _rows(conn, "SELECT DISTINCT symbol FROM ai_scores WHERE date = "
+                                             "(SELECT MAX(date) FROM ai_scores)")}
+
+
+def clean_alert(title, message) -> str:
+    """H4: the alert's text once: tags dropped, HTML entities decoded ONCE (the page escapes it once on the way out),
+    whitespace collapsed, and the title not repeated at the start of the body."""
+    import html as _html
+    t = re.sub(r"<[^>]+>", " ", str(message or ""))
+    for _ in range(2):                                   # a message stored escaped twice (&amp;#x27;) still reads right
+        u = _html.unescape(t)
+        if u == t:
+            break
+        t = u
+    t = re.sub(r"\s+", " ", t).strip()
+    ti = re.sub(r"\s+", " ", _html.unescape(str(title or ""))).strip()
+    if ti and t.lower().startswith(ti.lower()):
+        t = t[len(ti):].lstrip(" :—-–·|\n").strip()
+        t = t[:1].upper() + t[1:]
+    return _job_words(t)
+
+
+def _job_words(text: str) -> str:
+    """A job's internal name inside a sentence reads as its plain name ("Job failed: technical_signals" ->
+    "Job failed: Technical signals")."""
+    from dashboard.labels import JOB_NAMES
+    return re.sub(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", lambda m: JOB_NAMES.get(m.group(0), m.group(0)), text or "")
+
+
+def alert_symbols(text: str, known: set) -> list:
+    out = []
+    for tok in re.findall(r"\b[A-Z][A-Z0-9&-]{2,19}\b", text or ""):
+        if tok in out or tok in ALERT_STOP:
+            continue
+        if tok in known or (len(tok) >= 4 and re.search(r"[A-Z]{3}", tok)):
+            out.append(tok)
+    return out[:8]
+
+
+def group_alerts(rows: list, known: set, limit: int = 6) -> list:
+    """Alerts of the same kind (category + title) as one group, newest first: {"title", "severity", "count",
+    "latest", "items": [{"text", "at"}], "symbols"}."""
+    groups, order = {}, []
+    sev_rank = {"critical": 3, "error": 3, "warning": 2, "warn": 2, "info": 1}
+    for a in rows:
+        title = _job_words(clean_alert("", a.get("title"))) or str(a.get("category") or "Alert").replace("_", " ").title()
+        k = (str(a.get("category") or ""), title)
+        if k not in groups:
+            groups[k] = {"title": title, "category": a.get("category"), "severity": a.get("severity") or "info",
+                         "count": 0, "latest": a.get("created_at"), "items": [], "symbols": []}
+            order.append(k)
+        g = groups[k]
+        text = clean_alert(title, a.get("message"))
+        g["count"] += 1
+        g["items"].append({"text": text, "at": a.get("created_at")})
+        if sev_rank.get(str(a.get("severity")), 0) > sev_rank.get(str(g["severity"]), 0):
+            g["severity"] = a.get("severity")
+        for s in alert_symbols(text, known):
+            if s not in g["symbols"]:
+                g["symbols"].append(s)
+    return [groups[k] for k in order][:limit]
+
+
+def latest_jobs(rows: list, limit: int = 6) -> list:
+    """H6: one row per job with its latest run (rows newest first)."""
+    from dashboard.labels import job_label
+    seen, out = set(), []
+    for p in rows:
+        n = p.get("job_name")
+        if not n or n in seen:
+            continue
+        seen.add(n)
+        out.append({**p, "label": job_label(n)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def freshness(conn, now=None) -> list:
+    """G8: each EOD dataset's latest date against the trading day it should have reached by now ("stale" when
+    behind): ATIP scores after post-market (16:45 IST), technical signals after their 20:30 run."""
+    from datetime import datetime, time as dtime, timedelta
+    try:
+        from utils.trading_calendar import is_trading_day
+    except Exception:
+        is_trading_day = lambda d: d.weekday() < 5            # noqa: E731
+    now = now or datetime.now()
+
+    def expected(run_at: dtime):
+        d = now.date() if now.time() >= run_at else now.date() - timedelta(days=1)
+        while not is_trading_day(d):
+            d -= timedelta(days=1)
+        return d
+    out = []
+    for key, label, sql, run_at in (
+            ("scores", "ATIP scores", "SELECT MAX(date) AS d FROM ai_scores", dtime(18, 30)),
+            ("technical", "Technical signals", "SELECT MAX(date) AS d FROM technical_signal", dtime(21, 0)),
+            ("market", "Market health", "SELECT MAX(date) AS d FROM market_health", dtime(18, 30))):
+        r = _rows(conn, sql)
+        last = str((r[0] if r else {}).get("d") or "")[:10] or None
+        exp = expected(run_at)
+        stale = bool(last) and last < exp.isoformat()
+        out.append({"key": key, "label": label, "date": last, "expected": exp.isoformat(), "stale": stale,
+                    "missing": not last})
+    return out
+
+
+def freshness_chips(items: list) -> str:
+    def nice(d):
+        try:
+            x = date.fromisoformat(d)
+            return f"{x.day} {x.strftime('%b')}"
+        except (TypeError, ValueError):
+            return "—"
+    return '<div class="ax-fresh" aria-label="How fresh the data is">' + "".join(
+        f'<span class="ax-chip {"warn" if i["stale"] or i["missing"] else ""}" title="'
+        f'{e(i["label"])}: latest {e(i["date"] or "none")}, expected {e(i["expected"])}">'
+        f'{e(i["label"])} · as of {e(nice(i["date"]))}{" · stale" if i["stale"] else " · none yet" if i["missing"] else ""}</span>'
+        for i in items) + "</div>"
+
 
 def home_data(conn) -> dict:
     from accounting import cycles as C
+    from accounting.periods import periods
     from dashboard.command_routes import _feed
     from dashboard.shell import state
     st = state(conn)
@@ -69,17 +217,27 @@ def home_data(conn) -> dict:
     ov = C.overview(conn)
     today = date.today().isoformat()
     t = C.totals([c for c in C.stored(conn) if str(c.get("closed_at") or "")[:10] == today])
+    known = _symbols_known(conn)
     out = {"state": st, "market_open": mo, "feed": _feed(conn, mo), "sessions": ov, "today": t,
+           "periods": periods(conn, ov),
            "market": (_rows(conn, "SELECT date, mh_score, regime, nifty_close, vix_level FROM market_health "
                                   "ORDER BY date DESC LIMIT 1") or [{}])[0],
            "index": (_rows(conn, "SELECT date, time, nifty50, nifty50_chg, banknifty, banknifty_chg, india_vix, "
-                                 "india_vix_chg FROM index_levels ORDER BY date DESC, time DESC LIMIT 1") or [{}])[0],
+                                 "india_vix_chg, gift_nifty FROM index_levels ORDER BY date DESC, time DESC LIMIT 1")
+                     or [{}])[0],
+           "gift_last": (_rows(conn, "SELECT date, time, gift_nifty FROM index_levels WHERE gift_nifty > 0 "
+                                     "ORDER BY date DESC, time DESC LIMIT 1") or [None])[0],
            "tod": (_rows(conn, "SELECT pred_date, symbol, `signal`, atip_score, entry_price, stop_loss, target_1, reasoning "
                                "FROM predictions WHERE is_tod = 1 ORDER BY pred_date DESC LIMIT 1") or [None])[0],
            "alerts": _rows(conn, "SELECT created_at, category, severity, title, message FROM alert_log "
                                  "ORDER BY id DESC LIMIT 6"),
+           "alert_groups": group_alerts(_rows(conn, "SELECT created_at, category, severity, title, message FROM alert_log "
+                                                    "ORDER BY id DESC LIMIT 40"), known),
            "pipeline": _rows(conn, "SELECT job_name, start_time, status, duration_s, error_msg FROM pipeline_log "
                                    "WHERE kind = 'run' OR kind IS NULL ORDER BY id DESC LIMIT 6"),
+           "jobs": latest_jobs(_rows(conn, "SELECT job_name, start_time, status, duration_s, error_msg FROM pipeline_log "
+                                           "WHERE kind = 'run' OR kind IS NULL ORDER BY id DESC LIMIT 80")),
+           "freshness": freshness(conn),
            "pending": (_rows(conn, "SELECT COUNT(*) AS n FROM order_rules WHERE status = 'PENDING_CONFIRMATION'")
                        or [{"n": 0}])[0]["n"],
            "scores_date": (_rows(conn, "SELECT MAX(date) AS d FROM ai_scores") or [{"d": None}])[0]["d"]}
@@ -91,18 +249,66 @@ def home_data(conn) -> dict:
     return out
 
 
-def _answer(q: str, a: str, sub: str, tone: str, sym: str) -> str:
+def _answer(q: str, word: str, value: str, sub: str, tone: str, sym: str) -> str:
+    """One of the three answers: icon + word + (value) + one line, with the coloured left border of its tone
+    (good / flat / warn / bad). The same pattern for all three cards (H3)."""
     return (f'<section class="ax-answer" data-tone="{tone}" aria-label="{e(q)}"><div class="ax-q">{e(q)}</div>'
-            f'<div class="ax-a"><span aria-hidden="true">{sym}</span>{a}</div><div class="ax-small ax-muted">{sub}</div></section>')
+            f'<div class="ax-a"><span class="ax-sym" aria-hidden="true">{sym}</span><span class="ax-word">{e(word)}</span>'
+            f'{value}</div><div class="ax-small ax-muted">{sub}</div></section>')
+
+
+def _pnl_word(v) -> tuple:
+    from dashboard import fmt as F
+    t = F.tone(v)
+    return {"up": ("Up", "good", "▲"), "down": ("Down", "bad", "▼")}.get(t, ("Flat", "flat", "—"))
+
+
+def _session_rows(ov: dict, per: dict) -> str:
+    """H5: active sessions first; sessions with money but no trade yet fold into one expandable row."""
+    from dashboard import fmt as F
+    active, idle = [], []
+    for s in ov["sessions"]:
+        ti = s.get("tiles")
+        if not ti:
+            continue
+        p = per.get(s["id"]) or {}
+        has = bool(ti.get("cycles_done") or s.get("open") or abs(float(ti.get("actual_pnl") or 0)) > 0.004
+                   or abs(float(ti.get("unrealised") or 0)) > 0.004)
+        (active if has else idle).append((s, p))
+
+    def cells(s, p):
+        out = []
+        for key in ("today", "since_start"):
+            b = p.get(key) or {}
+            hide = ' hidden' if key != "today" else ""
+            out.append(f'<td class="n ax-p-{key}"{hide} data-v="{b.get("realised", 0)}">{F.inr_html(b.get("realised"), True)}</td>'
+                       f'<td class="n ax-p-{key}"{hide} data-v="{b.get("open", 0)}">{F.inr_html(b.get("open"), True)}</td>')
+        sp = K.spark(s.get("spark") or [], s["id"] + " actual equity since start")
+        trend = sp or ('<span class="ax-muted" title="No closed cycle yet: the trend starts with the first sale">—</span>')
+        return "".join(out) + f"<td>{trend}</td>"
+    rows = [f'<tr><th scope="row"><a href="/sessions/{e(s["id"])}">{e(s["id"])}</a> <span class="ax-small">{e(s["name"])}</span></th>'
+            f'{cells(s, p)}</tr>' for s, p in active]
+    if idle:
+        ids = [s["id"] for s, _ in idle]
+        nums = [int(i[1:]) for i in ids if i[1:].isdigit()]
+        label = (f"S{nums[0]}–S{nums[-1]}" if len(nums) == len(ids) and len(ids) > 2 and nums == list(range(nums[0], nums[-1] + 1))
+                 else ", ".join(ids))
+        rows.append(f'<tr class="ax-idle-sum"><td colspan="4"><button class="ax-linkbtn" type="button" data-ax-idle aria-expanded="false">'
+                    f'{e(label)} · no trades yet ({len(ids)})</button></td></tr>')
+        rows += [f'<tr class="ax-idle-row" hidden><th scope="row"><a href="/sessions/{e(s["id"])}">{e(s["id"])}</a> '
+                 f'<span class="ax-small">{e(s["name"])}</span></th>{cells(s, p)}</tr>' for s, p in idle]
+    return "".join(rows)
 
 
 def home(conn, root="", app=False) -> str:
+    from dashboard import fmt as F
     try:
         d = home_data(conn)
     except Exception as ex:
         return page("Today", f'<div class="ax-banner bad" role="alert">The home page could not read ATIP\'s data: '
                              f'{e(ex)}. The other pages may still work.</div>', "/home", root=root, app=app)
-    st, ov, t = d["state"], d["sessions"], d["today"]
+    st, ov, pr = d["state"], d["sessions"], d["periods"]
+    today_iso = date.today().isoformat()
     # 1. safe?
     problems = []
     if st.get("halted"):
@@ -115,76 +321,112 @@ def home(conn, root="", app=False) -> str:
     env = st.get("env", "PAPER")
     if env == "LIVE":
         problems.append("LIVE: real money")
-    safe = _answer("Is ATIP safe?", "Yes" if not problems else ("Halted" if st.get("halted") else "Check"),
-                   (f"{env} · feed {'live' if not d['feed'].get('stale') else 'stale'} · kill switch off"
+    safe = _answer("Is ATIP safe?", "Yes" if not problems else ("Halted" if st.get("halted") else "Check"), "",
+                   (f"{e(env)} · feed {'live' if not d['feed'].get('stale') else 'stale'} · kill switch off"
                     if not problems else "; ".join(problems)),
                    "good" if not problems else "bad" if st.get("halted") or env == "LIVE" else "warn",
                    "✓" if not problems else "!")
     # 2. running?
     run_n = st.get("sessions_running", 0)
     if st.get("status") == "STOPPED":
-        running = _answer("Is it running?", "Stopped", f"{e(st.get('banner'))} · read-only, no orders", "warn", "⏸")
+        running = _answer("Is it running?", "Stopped", "", f"{e(st.get('banner'))} · read-only, no orders", "warn", "⏸")
     else:
-        running = _answer("Is it running?", "Yes" if run_n else "Idle",
+        running = _answer("Is it running?", "Yes" if run_n else "Idle", "",
                           f"{run_n} of 10 sessions running · auto-send {'on' if st.get('auto_send') else 'off'} · "
-                          f"data updated {e(str(st.get('last_updated') or '—')[:16])}", "good" if run_n else "warn",
+                          f"data {_ist(st.get('last_updated'), today_iso) or '—'}", "good" if run_n else "warn",
                           "●" if run_n else "○")
-    # 3. making money?
-    tot = ov["total"]
-    money = _answer("Making money today?", K.money(t["actual_pnl"], True) + ' <span class="ax-small ax-muted">actual</span>',
-                    f"today: gross {K.money(t['gross_pnl'], True)} − charges {K.money(t['charges'])} − tax est. "
-                    f"{K.money(t['tax_est'])} · {t['cycles']} cycle(s) closed · open {K.money(tot['unrealised'], True)}",
-                    "good" if t["actual_pnl"] > 0 else "bad" if t["actual_pnl"] < 0 else "", "₹")
+    # 3. making money today? (H1: today = realised today + open now; every figure says its period)
+    td, ss = pr["today"], pr["since_start"]
+    word, tone, sym = _pnl_word(td["total"])
+    money = _answer("Making money today?", word,
+                    f'<span class="ax-amt">{F.inr_html(td["total"], True)}</span>',
+                    f'<b>Today</b>: realised {F.inr_html(td["realised"], True)} + open {F.inr_html(td["open"], True)} · '
+                    f'<b>Since start</b> {F.inr_html(ss["total"], True)}', tone, sym)
     banners = _closed_banner()
-    if d["scores_date"]:
+    fr = d["freshness"]
+    if any(i["stale"] for i in fr if i["key"] == "scores") and d["scores_date"]:
         try:
             age = (date.today() - date.fromisoformat(str(d["scores_date"])[:10])).days
-            if age > 3:
-                banners += (f'<div class="ax-banner warn" role="status">Stale data: the latest ATIP scores are from '
-                            f'{e(d["scores_date"])} ({age} days ago).</div>')
+            banners += (f'<div class="ax-banner warn" role="status">Stale data: the latest ATIP scores are from '
+                        f'{e(d["scores_date"])} ({age} days ago).</div>')
         except ValueError:
             pass
     idx, mk = d["index"], d["market"]
-    w_market = (f'<div class="ax-card" data-widget="market"><h2>Market</h2>' + K.kv([
-        ("Nifty 50", (K.money(idx.get("nifty50")).replace("₹", "") if idx.get("nifty50") else "—") + " " + K.pct(idx.get("nifty50_chg"))),
-        ("India VIX", (f'{idx["india_vix"]:.2f}' if idx.get("india_vix") else "—") + " " + K.pct(idx.get("india_vix_chg"))),
-        ("Market health", f'{mk.get("mh_score") or "—"} {e(mk.get("regime") or "")}'),
-        ("As of", e(f'{idx.get("date") or mk.get("date") or "—"} {idx.get("time") or ""} IST'))]) +
-        '<a href="/market">Markets →</a></div>')
+    gl = d.get("gift_last")
+    gift_why = (("No GIFT Nifty quote since " + _ist(f"{gl['date']} {gl['time']}", today_iso)) if gl
+                else "No GIFT Nifty quote yet")
+    gift = (F.fmt_num(idx.get("gift_nifty")) if F.num(idx.get("gift_nifty")) else F.missing_html(gift_why))
+    w_market = (f'<div class="ax-card" data-widget="market"><h2>Market <span class="ax-chip" title="When these figures were read">'
+                f'as of {e(_ist(str(idx.get("date") or mk.get("date") or "") + " " + str(idx.get("time") or "00:00"), today_iso) or "—")}</span></h2>' + K.kv([
+                    ("Nifty 50", f'<span class="ax-num">{e(F.fmt_num(idx.get("nifty50")))}</span> {F.pct_html(idx.get("nifty50_chg"))}'),
+                    ("India VIX", f'<span class="ax-num">{e(F.fmt_num(idx.get("india_vix")))}</span> '
+                                  f'{F.pct_html(idx.get("india_vix_chg"), inverse=True)}'
+                                  '<span class="ax-small ax-muted"> (rising = more fear)</span>'),
+                    ("GIFT Nifty", gift),
+                    ("Market health", f'{F.score_html(mk.get("mh_score"), "No market-health score yet")} {e(mk.get("regime") or "")}')]) +
+                '<a href="/market">Markets →</a></div>')
     tod = d["tod"]
     w_tod = ('<div class="ax-card" data-widget="tod"><h2>Trade of the Day</h2>' + (K.kv([
-        ("Stock", f'<a href="/?stock={e(tod["symbol"])}">{e(tod["symbol"])}</a> {K.status(tod.get("signal") or "", "good" if tod.get("signal") == "BUY" else "")}'),
-        ("ATIP score", e(f'{float(tod["atip_score"]):.0f}' if tod.get("atip_score") is not None else "—")),
-        ("Entry · stop · target", f'{K.money(tod.get("entry_price"))} · {K.money(tod.get("stop_loss"))} · {K.money(tod.get("target_1"))}'),
-        ("Date", e(tod["pred_date"]))]) if tod else '<div class="ax-empty">No Trade of the Day yet.</div>') + "</div>")
-    srows = []
-    for s in ov["sessions"]:
-        ti = s["tiles"]
-        if not ti:
-            continue
-        srows.append(f'<tr><td><a href="/sessions/{e(s["id"])}">{e(s["id"])}</a> {e(s["name"])}</td>'
-                     f'<td class="n" data-v="{ti["gross_pnl"]}">{K.money(ti["gross_pnl"], True)}</td>'
-                     f'<td class="n" data-v="{ti["actual_pnl"]}">{K.money(ti["actual_pnl"], True)}</td>'
-                     f'<td>{K.spark(s["spark"], s["id"] + " actual equity")}</td></tr>')
-    w_sessions = ('<div class="ax-card" data-widget="sessions"><h2>Sessions</h2>' + (
-        f'<div class="ax-tablewrap" style="max-height:none"><table class="ax-table"><thead><tr><th>Session</th><th class="n">Gross P&amp;L</th>'
-        f'<th class="n">Actual P&amp;L</th><th data-nosort>Trend</th></tr></thead><tbody>{"".join(srows)}</tbody></table></div>'
-        if srows else '<div class="ax-empty">No session has money yet. <a href="/sessions">Set one up</a>.</div>') +
-        f'<p class="ax-small ax-muted">All sessions: gross {K.money(tot["gross_pnl"], True)} · actual {K.money(tot["actual_pnl"], True)}'
-        f' · {tot["waiting"]} waiting below their minimum</p></div>')
+        ("Stock", f'<a class="ax-symchip" href="/stock/{e(tod["symbol"])}">{e(tod["symbol"])}</a> '
+                  f'{K.status(tod.get("signal") or "", "good" if tod.get("signal") == "BUY" else "")}'),
+        ("ATIP score", F.score_html(tod.get("atip_score"))),
+        ("Entry · stop · target", f'<span class="ax-num">{e(F.fmt_price(tod.get("entry_price")))} · {e(F.fmt_price(tod.get("stop_loss")))}'
+                                  f' · {e(F.fmt_price(tod.get("target_1")))}</span>'),
+        ("Signal from", e(f'the close of {tod["pred_date"]} (EOD)'))]) +
+        f'<div class="ax-row" style="margin-top:8px"><button class="ax-btn sm primary" type="button" data-ax-trade="BUY" '
+        f'data-sym="{e(tod["symbol"])}" data-entry="{e(tod.get("entry_price") or "")}" data-stop="{e(tod.get("stop_loss") or "")}" '
+        f'data-target="{e(tod.get("target_1") or "")}">Buy {e(tod["symbol"])}</button>'
+        f'<a class="ax-btn sm" href="/stock/{e(tod["symbol"])}">Chart</a></div>'
+        if tod else '<div class="ax-empty">No Trade of the Day yet: it is picked after the evening scoring (18:30 IST).</div>') + "</div>")
+    per = pr["sessions"]
+    srows = _session_rows(ov, per)
+    toggle = ('<div class="ax-seg" role="group" aria-label="Period"><button type="button" data-ax-period="today" aria-pressed="true">'
+              'Today</button><button type="button" data-ax-period="since_start" aria-pressed="false">Since start</button></div>')
+    th = ('<thead><tr><th scope="col">Session</th>'
+          '<th class="n ax-p-today" scope="col">Today realised</th><th class="n ax-p-today" scope="col">Open now</th>'
+          '<th class="n ax-p-since_start" scope="col" hidden>Since start realised</th><th class="n ax-p-since_start" scope="col" hidden>Open now</th>'
+          '<th data-nosort scope="col">Trend</th></tr></thead>')
+    foot = (f'<p class="ax-small ax-muted ax-p-today">All sessions · <b>Today</b>: realised {F.inr_html(td["realised"], True)} '
+            f'(gross {F.inr_html(td["gross"], True)} − charges {e(F.fmt_inr(td["charges"]))} − tax est. {e(F.fmt_inr(td["tax_est"]))}) '
+            f'· open {F.inr_html(td["open"], True)} · {td["cycles"]} cycle(s) closed today</p>'
+            f'<p class="ax-small ax-muted ax-p-since_start" hidden>All sessions · <b>Since start</b>: realised {F.inr_html(ss["realised"], True)} '
+            f'(gross {F.inr_html(ss["gross"], True)}) · open {F.inr_html(ss["open"], True)} · {ss["cycles"]} cycle(s) · '
+            f'{ov["total"]["waiting"]} waiting below their minimum</p>')
+    w_sessions = (f'<div class="ax-card" data-widget="sessions" data-period="today"><div class="ax-cardhead"><h2>Sessions</h2>{toggle}</div>' + (
+        f'<div class="ax-tablewrap" style="max-height:none"><table class="ax-table ax-home-sessions">{th}<tbody>{srows}</tbody></table></div>'
+        if srows else '<div class="ax-empty">No session has money yet. <a href="/sessions">Give one a starting amount</a>.</div>') +
+        foot + '<p class="ax-small ax-muted">Realised = after charges and estimated tax. <a href="/accounting?tab=pnl">Reconcile in Accounting →</a></p></div>')
     sev = {"critical": "bad", "error": "bad", "warning": "warn", "warn": "warn"}
-    w_alerts = ('<div class="ax-card" data-widget="alerts"><h2>Alerts</h2>' + ("".join(
-        f'<div class="ax-small" style="padding:6px 0;border-bottom:1px solid var(--ax-border-soft)">{K.status(a["severity"], sev.get(a["severity"], "info"))} '
-        f'<b>{e(a.get("title") or a["category"])}</b> <span class="ax-muted">{e(str(a["created_at"])[:16])}</span><br>{e(re.sub(r"<[^>]+>", "", str(a["message"]))[:160])}</div>'
-        for a in d["alerts"]) or '<div class="ax-empty">No alerts.</div>') + "</div>")
+    sev_word = {"critical": "Critical", "error": "Error", "warning": "Warning", "warn": "Warning", "info": "Info"}
+
+    def chips(syms):
+        return "".join(f'<a class="ax-symchip" href="/stock/{e(s)}" aria-label="Open {e(s)}">{e(s)}</a>' for s in syms)
+
+    def agroup(g):
+        first, rest = g["items"][0], g["items"][1:]
+        more = ("<details class='ax-more'><summary>" + str(len(rest)) + " earlier</summary>" + "".join(
+            f'<div class="ax-clamp" data-ax-clamp>{e(i["text"])} <span class="ax-muted">{e(_ist(i["at"], today_iso))}</span></div>'
+            for i in rest) + "</details>") if rest else ""
+        count = f' <span class="ax-muted">· {g["count"]}</span>' if g["count"] > 1 else ""
+        syms = f'<div class="ax-chips">{chips(g["symbols"])}</div>' if g["symbols"] else ""
+        return (f'<div class="ax-alert"><div class="ax-alert-h">{K.status(sev_word.get(str(g["severity"]), "Info"), sev.get(str(g["severity"]), "info"))} '
+                f'<b>{e(g["title"])}</b>{count}'
+                f'<span class="ax-spacer"></span><span class="ax-small ax-muted">{e(_ist(g["latest"], today_iso))}</span></div>'
+                f'<div class="ax-clamp" data-ax-clamp>{e(first["text"])}</div>'
+                f'{syms}{more}</div>')
+    w_alerts = ('<div class="ax-card" data-widget="alerts"><h2>Alerts</h2>' + ("".join(agroup(g) for g in d["alert_groups"])
+                or '<div class="ax-empty">No alerts. ATIP raises one when a job fails, a signal fires or a limit is near.</div>') + "</div>")
+    stw = {"SUCCESS": ("Done", "good"), "OK": ("Done", "good"), "DONE": ("Done", "good"), "FAILED": ("Failed", "bad"),
+           "SKIPPED": ("Skipped", ""), "EMPTY": ("Nothing new", "warn"), "RUNNING": ("Running", "info"), "HELD": ("Held", "warn")}
     w_pipe = ('<div class="ax-card" data-widget="pipeline"><h2>Pipeline</h2>' + ("".join(
-        f'<div class="ax-small" style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--ax-border-soft)">'
-        f'{K.status(p.get("status") or "?", "good" if str(p.get("status")).upper() in ("SUCCESS", "OK", "DONE") else "bad" if "FAIL" in str(p.get("status")).upper() else "")}'
-        f'<span style="flex:1">{e(p["job_name"])}</span><span class="ax-muted">{e(str(p.get("start_time") or "")[5:16])}</span></div>'
-        for p in d["pipeline"]) or '<div class="ax-empty">No job has run yet.</div>') + '<a href="/ops">Ops &amp; health →</a></div>')
+        f'<div class="ax-small ax-jobrow" title="{e(p["job_name"])}{(" — " + e(p["error_msg"])) if p.get("error_msg") else ""}">'
+        f'{K.status(*stw.get(str(p.get("status")).upper(), (str(p.get("status") or "?").title(), "")))}'
+        f'<span style="flex:1">{e(p["label"])}</span><span class="ax-muted ax-num">{e(_ist(p.get("start_time"), today_iso))}</span></div>'
+        for p in d["jobs"]) or '<div class="ax-empty">No job has run yet: the first runs at 06:00 IST.</div>') +
+        freshness_chips(fr) + '<a href="/ops">Ops &amp; health →</a></div>')
     w_todo = ('<div class="ax-card" data-widget="todo"><h2>Needs you</h2>' + K.kv([
         ("Orders waiting for your tap", f'<a href="/command">{d["pending"]}</a>'),
-        ("Sessions waiting (below minimum)", f'<a href="/sessions">{tot["waiting"]}</a>'),
+        ("Sessions waiting (below minimum)", f'<a href="/sessions">{ov["total"]["waiting"]}</a>'),
         ("Reconciliation", '<a href="/accounting?tab=recon">check charges and cash</a>')]) + "</div>")
     widgets = [("market", "Market", w_market), ("tod", "Trade of the Day", w_tod), ("sessions", "Sessions", w_sessions),
                ("todo", "Needs you", w_todo), ("alerts", "Alerts", w_alerts), ("pipeline", "Pipeline", w_pipe)]
@@ -192,13 +434,22 @@ def home(conn, root="", app=False) -> str:
               'Choose the widgets you want here. This is remembered in this browser only.</p><div class="ax-choice">' +
               "".join(f'<label><input type="checkbox" data-w="{k}" checked><span>{e(l)}</span></label>' for k, l, _ in widgets)
               + "</div></details>")
-    body = (banners + f'<div class="ax-five">{safe}{running}{money}</div>' +
+    figures = {"today": td, "since_start": ss, "month": pr["month"]}
+    body = (banners + f'<div class="ax-five ax-answers" data-ax-figures="{e(_json(figures))}">{safe}{running}{money}</div>' +
             '<div class="ax-grid-2" id="ax-widgets">' + "".join(w for _, _, w in widgets) + "</div>" + custom +
             """<script>(function(){var k='atip-home-hidden',h=[];try{h=JSON.parse(localStorage.getItem(k)||'[]')}catch(e){}
 function apply(){document.querySelectorAll('[data-widget]').forEach(function(w){w.hidden=h.indexOf(w.getAttribute('data-widget'))>=0;});
 document.querySelectorAll('#ax-custom [data-w]').forEach(function(c){c.checked=h.indexOf(c.getAttribute('data-w'))<0;});}
 document.querySelectorAll('#ax-custom [data-w]').forEach(function(c){c.addEventListener('change',function(){var w=c.getAttribute('data-w');
-h=h.filter(function(x){return x!==w});if(!c.checked)h.push(w);try{localStorage.setItem(k,JSON.stringify(h))}catch(e){}apply();});});apply();})();</script>""")
+h=h.filter(function(x){return x!==w});if(!c.checked)h.push(w);try{localStorage.setItem(k,JSON.stringify(h))}catch(e){}apply();});});apply();
+var card=document.querySelector('[data-widget=sessions]');function period(p){if(!card)return;card.setAttribute('data-period',p);
+card.querySelectorAll('[data-ax-period]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-ax-period')===p?'true':'false');});
+card.querySelectorAll('.ax-p-today,.ax-p-since_start').forEach(function(el){el.hidden=!el.classList.contains('ax-p-'+p);});
+try{localStorage.setItem('atip-home-period',p)}catch(e){}}
+if(card){card.querySelectorAll('[data-ax-period]').forEach(function(b){b.addEventListener('click',function(){period(b.getAttribute('data-ax-period'));});});
+var pp=null;try{pp=localStorage.getItem('atip-home-period')}catch(e){}if(pp==='since_start')period(pp);
+var ib=card.querySelector('[data-ax-idle]');if(ib)ib.addEventListener('click',function(){var open=ib.getAttribute('aria-expanded')!=='true';
+ib.setAttribute('aria-expanded',open?'true':'false');card.querySelectorAll('.ax-idle-row').forEach(function(r){r.hidden=!open;});});}})();</script>""")
     return page("Today", body, "/home", job="Is ATIP safe, running and making money today? The three answers first; "
                 "everything else below.", root=root, app=app,
                 actions='<a class="ax-btn" href="/sessions">Sessions</a><a class="ax-btn primary" href="/command">Command Center</a>')
@@ -207,7 +458,7 @@ h=h.filter(function(x){return x!==w});if(!c.checked)h.push(w);try{localStorage.s
 # ── Sessions ─────────────────────────────────────────────────────────────────────────────────
 
 SETUP_DRAWER = """
-<aside class="ax-drawer" id="ax-setup" aria-hidden="true" aria-labelledby="ax-setup-h">
+<aside class="ax-drawer" id="ax-setup" aria-hidden="true" inert aria-labelledby="ax-setup-h">
 <header><h2 id="ax-setup-h">Session setup</h2><button class="ax-iconbtn" type="button" data-ax-close aria-label="Close">✕</button></header>
 <form id="ax-setup-form" novalidate class="ax-body">
  <div class="ax-banner warn" id="ax-open-note" hidden></div>
@@ -532,7 +783,7 @@ AX.api('/api/v2/reports/generate',{{body:{{kind:'session_cycle_book',params:{{se
 
 # ── Accounting ───────────────────────────────────────────────────────────────────────────────
 
-ACC_TABS = [("ledger", "General ledger"), ("session", "Session ledger"), ("charges", "Charges register"), ("tax", "Tax register"),
+ACC_TABS = [("pnl", "P&L by period"), ("ledger", "General ledger"), ("session", "Session ledger"), ("charges", "Charges register"), ("tax", "Tax register"),
             ("funds", "Funds"), ("recon", "Reconciliation"), ("transfers", "Transfers"), ("trial", "Trial balance")]
 
 
@@ -557,7 +808,32 @@ def accounting(conn, q: dict, root="", app=False) -> str:
         f'<a href="/accounting?tab={k}"{" aria-current=page" if k == tab else ""}>{e(l)}</a>' for k, l in ACC_TABS) + "</nav>"
     fys = LG.by_fy_options(conn)
     body = ""
-    if tab == "ledger":
+    if tab == "pnl":                      # UI fixes v2 (H1): the figures Home shows, and the ledger's own read of them
+        from accounting.periods import reconcile
+        from dashboard import fmt as F
+        rc = reconcile(conn)
+        ok = (f'<div class="ax-banner {"good" if rc["ok"] else "bad"}" role="status">'
+              f'{"✓ Home and the general ledger agree" if rc["ok"] else "✗ Home and the general ledger disagree"} '
+              f'for Today, This month and Since start (realised, after charges and estimated tax).</div>')
+        rows = "".join(
+            f'<tr data-period="{e(r["key"])}"><th scope="row">{e(r["period"])}</th>'
+            f'<td class="n" data-v="{r["gross"]}">{F.inr_html(r["gross"], True)}</td>'
+            f'<td class="n" data-v="{r["charges"]}">{e(F.fmt_inr(r["charges"]))}</td>'
+            f'<td class="n" data-v="{r["tax_est"]}">{e(F.fmt_inr(r["tax_est"]))}</td>'
+            f'<td class="n" data-v="{r["realised"]}" data-k="realised">{F.inr_html(r["realised"], True)}</td>'
+            f'<td class="n" data-v="{r["open"]}" data-k="open">{F.inr_html(r["open"], True)}</td>'
+            f'<td class="n" data-v="{r["total"]}" data-k="total">{F.inr_html(r["total"], True)}</td>'
+            f'<td class="n" data-v="{r["ledger"]}">{F.inr_html(r["ledger"], True)} {"✓" if r["match"] else "✗"}</td>'
+            f'<td class="n">{r["cycles"]}</td></tr>' for r in rc["rows"])
+        body = (ok + '<div class="ax-tablewrap"><table class="ax-table" id="t-pnl"><thead><tr><th scope="col">Period</th>'
+                '<th class="n" scope="col">Gross</th><th class="n" scope="col">Charges</th><th class="n" scope="col">Tax (est.)</th>'
+                '<th class="n" scope="col">Realised</th><th class="n" scope="col">Open now</th><th class="n" scope="col">Total</th>'
+                '<th class="n" scope="col">Ledger realised</th><th class="n" scope="col">Cycles</th></tr></thead>'
+                f'<tbody>{rows}</tbody></table></div>'
+                '<p class="ax-small ax-muted">Realised = cycles closed in the period, after charges and estimated tax. '
+                'Open now = the trades still open, at their current price; it is the same in every period. '
+                'Today is the calendar day in IST; Since start is each session\'s current books.</p>')
+    elif tab == "ledger":
         r = LG.entries(conn, q.get("session"), None, q.get("kind"), q.get("env"), q.get("fy"))
         tb = LG.trial_balance(conn)
         filt = ('<form class="ax-row" method="get"><input type="hidden" name="tab" value="ledger">' +
@@ -878,8 +1154,9 @@ def settings(conn, root="", app=False) -> str:
             '<section class="ax-card" id="risk"><h2>Risk limits</h2>' + K.kv([(k.replace("_", " "), e(v)) for k, v in lim.items()] or
                                                                             [("Limits", "none configured")]) +
             f'<p>Kill switch: {K.status("ON — " + str(st.get("halt_reason") or ""), "bad") if st.get("halted") else K.status("off", "good")}</p>'
-            '<p class="ax-small ax-muted">Limits are set in atip_data/config.json ("risk"). The kill switch and resume are on '
-            '<a href="/command">Command Center</a>.</p></section>'
+            '<p class="ax-small ax-muted">These limits are part of ATIP\'s configuration on the Mac; the operator changes them. '
+            'The kill switch and resume are on <a href="/command">Command Center</a>. '
+            '<details class="ax-tech"><summary>ⓘ Technical details</summary><code>atip_data/config.json → "risk"</code></details></p></section>'
             '<section class="ax-card" id="tax"><h2>Tax rates (estimates)</h2>'
             f'<div class="ax-banner warn">{e(TX.DISCLAIMER)} Verify these before relying on them.</div><form id="txf">' +
             f'<div class="ax-field"><label for="tx-eff">Effective from</label><input class="ax-input" id="tx-eff" name="effective_from" type="date" value="{e(tx["effective_from"])}"></div>'
@@ -931,7 +1208,7 @@ def more(root="", app=False) -> str:
         f'<div class="ax-small ax-muted">{e(j)}</div></div>' for l, h, j in kids) + "</section>"
                    for key, label, ico, _, kids in NAV if key not in ("home",))
     return page("More", f'<div class="ax-grid">{secs}</div>', "/more", root=root, app=app,
-                job="Every part of ATIP. The phone's tabs cover Home, Trade, Sessions and Reports; everything else is here.")
+                job="Every part of ATIP, Reports included. The phone's tabs cover Home, Watchlist, Trade and Sessions; everything else is here.")
 
 
 def ops(conn, root="", app=False) -> str:

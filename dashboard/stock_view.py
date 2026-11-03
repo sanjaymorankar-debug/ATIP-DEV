@@ -460,15 +460,15 @@ ASSETS = r"""
 th[data-sorted="asc"]::after{content:" \25B2";color:#38bdf8;font-size:9px}
 th[data-sorted="desc"]::after{content:" \25BC";color:#38bdf8;font-size:9px}
 tr[data-sym]{cursor:pointer}.tod-card[data-sym]{cursor:pointer}
-.tfilter{display:flex;gap:6px;align-items:center;margin:0 0 8px;flex-wrap:wrap}.tfilter .cnt{font-size:11px;color:#64748b}
+.tfilter{display:flex;gap:6px;align-items:center;margin:0 0 8px;flex-wrap:wrap}.tfilter .cnt{font-size:11px;color:#94a3b8}
 #sv-back{position:fixed;inset:0;background:rgba(2,6,23,.72);display:none;z-index:900;overflow:auto;padding:24px 12px}
 #sv-back.on{display:block}
 #sv{max-width:1040px;margin:0 auto;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px 16px;color:#e2e8f0}
 #sv .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 #sv .sym{font-size:20px;font-weight:700}#sv .nm{font-size:12px;color:#94a3b8}
-#sv .px{font-size:22px;font-weight:700}#sv .up{color:#059669}#sv .dn{color:#dc2626}#sv .mut{color:#64748b}
+#sv .px{font-size:22px;font-weight:700}#sv .up{color:#059669}#sv .dn{color:#dc2626}#sv .mut{color:#94a3b8}
 #sv .btns button{border:none;border-radius:6px;padding:6px 14px;margin-left:4px;cursor:pointer;font-weight:600;color:#fff}
-#sv .b-buy{background:#059669}#sv .b-sell{background:#dc2626}#sv .b-x{background:#334155}
+#sv .b-buy{background:#047857}#sv .b-sell{background:#dc2626}#sv .b-x{background:#334155}
 #sv .bar{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 6px;align-items:center}
 #sv .bar button{background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11.5px}
 #sv .bar button.on{background:#2563eb;color:#fff;border-color:#2563eb}
@@ -478,7 +478,7 @@ tr[data-sym]{cursor:pointer}.tod-card[data-sym]{cursor:pointer}
 #sv #svnoid{background:#0f172a;border-radius:8px;padding:14px 12px;margin:0;font-size:12px}
 #sv .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:10px 0}
 #sv .kv div{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:6px 9px}
-#sv .kv span{display:block;font-size:10px;color:#64748b;text-transform:uppercase}
+#sv .kv span{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase}
 #sv .kv b{font-size:13px}
 #sv .tabs2{display:flex;gap:4px;margin:12px 0 8px;flex-wrap:wrap}
 #sv .tabs2 div{padding:4px 11px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;color:#94a3b8}
@@ -652,11 +652,17 @@ function nm(v){var a=Math.abs(v);return n(v,a>=100?1:a>=1?2:4)}
 function indTip(N,i){var t=[];if(N.rsi&&N.rsi[i]!=null)t.push('<span style="color:'+RSIC+'">RSI 14</span> <b>'+n(N.rsi[i])+'</b>');
   if(N.macd&&N.macd.line[i]!=null)t.push('<span style="color:'+MACDC+'">MACD</span> <b>'+nm(N.macd.line[i])+'</b>'+(N.macd.signal[i]!=null?' <span style="color:'+SIGC+'">signal</span> '+nm(N.macd.signal[i])+' hist '+nm(N.macd.hist[i]):''));
   return t.length?' &nbsp;| '+t.join(' · '):''}
+/* UI fixes v2 (G6): the 52-week range and the returns move with the live price (dashboard/fmt.py live_stats) */
+function liveStats(st,ltp){var o={},k;for(k in st)o[k]=st[k];
+  ['high_52w','high_all'].forEach(function(q){if(o[q]!=null)o[q]=Math.max(+o[q],ltp)});['low_52w','low_all'].forEach(function(q){if(o[q]!=null)o[q]=Math.min(+o[q],ltp)});
+  var last=+o.last_close;if(last>0)Object.keys(o).forEach(function(q){if(q.indexOf('ret_')===0&&o[q]!=null){var base=last/(1+o[q]/100);if(base)o[q]=Math.round((ltp/base-1)*10000)/100}});
+  o.ltp=ltp;return o}
 function pth(a,x,f){var s='',on=false;a.forEach(function(v,i){if(v==null){on=false;return}s+=(on?'L':'M')+x(i).toFixed(1)+' '+f(v).toFixed(1)+' ';on=true});return s}
 function render(){
   var d=S.data,s=d.stats,p=document.getElementById('sv'),kind=S.ix?S.ikind:S.kind;
   var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;
   var cmp=(live&&live>0)?live:s.last_close, chg=s.prev_close?((cmp-s.prev_close)/s.prev_close*100):null;
+  if(live&&live>0)s=liveStats(s,live);
   var h='<div class="hd"><div><div class="sym">'+esc(d.symbol)+'</div><div class="nm">'+esc(d.name||'')+'</div></div>'+
    '<div><div class="px">₹'+n(cmp)+' '+pc(chg)+'</div><div class="nm">'+(live&&live>0?'live':'close '+esc(s.last_date))+'</div></div>'+
    '<div class="btns"><button class="b-buy" onclick="svOrder(\'BUY\')">Buy</button><button class="b-sell" onclick="svOrder(\'SELL\')">Sell</button><button class="b-x" onclick="svClose()">✕</button></div></div>';
@@ -749,9 +755,17 @@ function chart(){
   (M.in_place||[]).forEach(function(z){inBy[bk(z.date)]=z.text});
   var cl=function(v){return Math.max(T+4,Math.min(H-HV-4,v))};
   if(S.pat&&!ix){o+='<g id="svmarks">';
+    /* UI fixes v2 (G6): pattern line labels are placed collision-aware -- inside the plot, clear of the price axis,
+       of each other and of the live price's level -- with a halo so a line never runs through them */
+    var labs=[];
     segs.forEach(function(g){var c=mc[g.pt.side]||mc.BOTH,y0=y(g.v0),y1=y(g.v1),t=g.pt.name+': '+g.ln.label.toLowerCase()+' '+n(g.v1);
-      o+='<line class="svm-line" x1="'+x(g.i0)+'" y1="'+y0+'" x2="'+x(g.i1)+'" y2="'+y1+'" stroke="'+c+'" stroke-width="1.4" stroke-dasharray="6 4"><title>'+esc(t)+'</title></line>'+
-         '<text x="'+(x(g.i1)-4)+'" y="'+(y1-4)+'" text-anchor="end" font-size="10.5" fill="'+c+'">'+esc(g.ln.label+' '+n(g.v1))+'</text>'});
+      o+='<line class="svm-line" x1="'+x(g.i0)+'" y1="'+y0+'" x2="'+x(g.i1)+'" y2="'+y1+'" stroke="'+c+'" stroke-width="1.4" stroke-dasharray="6 4"><title>'+esc(t)+'</title></line>';
+      labs.push({x:Math.min(x(g.i1)-8,W-R-8),y:y1-5,c:c,t:g.ln.label+' '+n(g.v1)})});
+    var lv=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null,cmpv=(lv&&lv>0)?lv:+(d.stats||{}).last_close,avoid=[];if(cmpv>0){var yc=y(cmpv);if(yc>T&&yc<H-HV)avoid.push(yc)}
+    labs.sort(function(a,b){return a.y-b.y});
+    labs.forEach(function(l,k){var tries=0;l.y=Math.max(T+11,Math.min(H-HV-4,l.y));
+      while(tries++<20&&(labs.slice(0,k).some(function(o2){return Math.abs(o2.y-l.y)<12&&Math.abs(o2.x-l.x)<150})||avoid.some(function(a){return Math.abs(a-l.y)<11}))){l.y+=12;if(l.y>H-HV-4){l.y=T+11+tries*3}}});
+    labs.forEach(function(l){o+='<text class="svm-lab" x="'+l.x+'" y="'+l.y+'" text-anchor="end" font-size="10.5" fill="'+l.c+'" paint-order="stroke" stroke="#0f172a" stroke-width="3" stroke-linejoin="round">'+esc(l.t)+'</text>'});
     P.forEach(function(p,i){var hy=y(+p.high||+p.close),ly=y(+p.low||+p.close),sd={};
       (cdlBy[p.k]||[]).forEach(function(z){if((z.side!=='BULL'&&z.side!=='BEAR')||sd[z.side])return;sd[z.side]=1;
         o+='<circle class="svm-cdl" cx="'+x(i)+'" cy="'+cl(z.side==='BULL'?ly+5:hy-5)+'" r="2.2" fill="'+mc[z.side]+'"/>'});
