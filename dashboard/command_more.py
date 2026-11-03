@@ -231,7 +231,7 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
     sig = signals(conn, q=symbol, limit=5)
     srow = next((r for r in sig["rows"] if r["symbol"] == symbol), None)
     if srow and srow.get("signal_price"):
-        g = (entry - srow["signal_price"]) / srow["signal_price"] * 100
+        g = round((entry - srow["signal_price"]) / srow["signal_price"] * 100, 2) + 0.0     # never "-0.00%"
         chk("Entry near the signal price", abs(g) < GAP_WARN_PCT,
             f"entry is {g:+.2f}% from the {sig['date']} close (signal {srow['signal']})", blocking=False)
     if session:

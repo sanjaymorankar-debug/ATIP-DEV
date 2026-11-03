@@ -1,5 +1,7 @@
 """ATIP — FastAPI Dashboard Server (http://localhost:8000)"""
 import json, logging, threading, time
+import html as _html
+from dashboard import fmt as _F
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from db.schema import get_connection
@@ -77,7 +79,9 @@ def chg_span(last, prev, size=12):
     if p is None:
         return ""
     diff = float(last) - float(prev)
-    col = "#059669" if p >= 0 else "#dc2626"
+    if abs(p) < 0.005:                                   # UI fixes v2 (G1): no move is grey, never red or green
+        return f'<span class="chg" style="font-size:{size}px;color:#94a3b8"> • 0.00 (0.00%)</span>'
+    col = "#34d399" if p >= 0 else "#f87171"           # 4.5:1+ on the dark page; the shell maps both to its tokens
     sign = "+" if p >= 0 else ""
     arrow = "▲" if p > 0 else "▼" if p < 0 else "•"
     return (f'<span class="chg" style="font-size:{size}px;color:{col}"> {arrow} {sign}{diff:.2f} '
@@ -429,10 +433,10 @@ def alerts_panel_html():
               '🩺 Pipeline: every monitored job has run' + (f'{rerun_html}' if rerun_html else '') + '</div>')
     sev_col={"error":"#f87171","warning":"#fbbf24"}
     items="".join(
-        f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#64748b;width:44px">{str(a["created_at"])[11:16]}</span>'
+        f'<div style="display:flex;gap:10px;padding:2px 0"><span style="color:#94a3b8;width:44px">{str(a["created_at"])[11:16]}</span>'
         f'<span style="color:{sev_col.get(a["severity"],"#94a3b8")};width:72px">{_h.escape(a["category"])}</span>'
         f'<span style="flex:1">{_h.escape(a["title"] or "")}</span>'
-        f'<span style="color:#64748b">{"📨 sent" if a["telegram_sent"] else "dashboard only"}</span></div>'
+        f'<span style="color:#94a3b8">{"📨 sent" if a["telegram_sent"] else "dashboard only"}</span></div>'
         for a in alerts)
     tg_note=("" if tg else ' · <span style="color:#fbbf24">Telegram not configured — alerts appear only here '
              '(<code>python -m alerts.telegram --test</code> explains the setup)</span>')
@@ -548,17 +552,26 @@ def build_html(state):
     mh_txt=f"{mh_s:.0f}" if mh_known else "—"
     mh_col=("#059669" if mh_s>=60 else "#f59e0b" if mh_s>=40 else "#dc2626") if mh_known else "#64748b"
     gen=state.get("generated_at","")[:16]
-    def chg(v): c="#059669" if (v or 0)>0 else "#dc2626"; return f'<span style="color:{c};font-weight:600">{(v or 0):+.2f}%</span>'
+    def chg(v, inverse=False, why="No value yet"):
+        # UI fixes v2 (G1 / H9): a missing change is a grey dash with the reason, never a red 0.00%; a change of
+        # zero is grey; a rise / fall carries its arrow and sign; inverse metrics (VIX) rise in amber
+        from dashboard import fmt as F
+        if F.num(v) is None:
+            return f'<span style="color:#94a3b8" title="{_html.escape(why)}">—</span>'
+        t = F.tone(v)
+        c = "#94a3b8" if t == "flat" else ("#fbbf24" if t == "up" else "#34d399") if inverse else ("#34d399" if t == "up" else "#f87171")
+        a = "▲ " if t == "up" else "▼ " if t == "down" else ""
+        return f'<span style="color:{c};font-weight:600">{a}{F.fmt_pct(v)}</span>'
     names=load_company_names()
     def cname(sym):
         n=names.get((sym or "").upper())
-        return f'<div style="font-size:9.5px;color:#64748b;font-weight:400;white-space:normal">{n}</div>' if n else ""
+        return f'<div style="font-size:9.5px;color:#94a3b8;font-weight:400;white-space:normal">{n}</div>' if n else ""
     import html as _html
     from dashboard import score_glossary as G
     score_legend=G.legend_html("scoreLegend")
     def _srch(sym):
         return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
-    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') and r.get('signal')=='BUY' else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">{money(r.get('cmp'))}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'),signal=r.get('signal'))}</td></tr>""" for r in scores)
+    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank') if r.get('atip_rank') is not None else '—'}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') and r.get('signal')=='BUY' else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">{money(r.get('cmp'))}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1') or '—'}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'),signal=r.get('signal'))}</td></tr>""" for r in scores)
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
     port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>{money(p.get('avg_price'))}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">{money(p.get('cmp'))}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL',signal=sig_of.get(p.get('symbol')))}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
@@ -567,7 +580,7 @@ def build_html(state):
     # because Dhan's prev_close equals the last traded price until the bell.
     def _lvl(v):
         x = idx.get(v)
-        return (f'<span style="color:#64748b;font-size:11px;margin-right:6px">{x:,.0f}</span>'
+        return (f'<span style="color:#94a3b8;font-size:11px;margin-right:6px">{x:,.0f}</span>'
                 if isinstance(x, (int, float)) else '')
     idx_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span><span>{_lvl(v[:-4])}{chg(idx.get(v))}</span></div>' for k,v in [("Nifty50","nifty50_chg"),("BankNifty","banknifty_chg"),("Midcap150","midcap150_chg"),("SmallCap250","smallcap250_chg"),("IT","nifty_it_chg"),("Auto","nifty_auto_chg"),("FMCG","nifty_fmcg_chg"),("Metal","nifty_metal_chg"),("Realty","nifty_realty_chg"),("PSUBank","nifty_psubank_chg"),("Energy","nifty_energy_chg"),("Pharma","nifty_pharma_chg")])
     glb_rows="".join(f'<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:12px"><span style="color:#94a3b8">{k}</span>{chg(glb.get(v))}</div>' for k,v in [("S&P500","sp500_chg"),("Dow","dow_chg"),("Nasdaq","nasdaq_chg"),("Nikkei","nikkei_chg"),("Crude","crude_wti_chg"),("Gold","gold_chg"),("USD/INR","usd_inr_chg")])
@@ -579,7 +592,7 @@ def build_html(state):
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>{mid}'
                 f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">{money(r.get("cmp"))}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
                 f'<td data-v="{r.get("beta_1y") if r.get("beta_1y") is not None else ""}">{bval(r.get("beta_1y"))}</td>'
-                f'<td{sig_style}>{r.get("signal","—")}</td>'
+                f'<td{sig_style}>{r.get("signal") or "—"}</td>'
                 f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary,signal=r.get("signal"))}</td></tr>')
 
     def by_signal(r):
@@ -602,7 +615,7 @@ def build_html(state):
     fii_dii=state.get("fii_dii",[]) or []
     def cr(v):
         """₹Cr flow, green for net buying, red for net selling."""
-        if v is None: return '<span style="color:#64748b">—</span>'
+        if v is None: return '<span style="color:#94a3b8">—</span>'
         c="#059669" if v>0 else "#dc2626" if v<0 else "#94a3b8"
         return f'<span style="color:{c};font-weight:600">{v:+,.0f}</span>'
     fii_rows="".join(
@@ -624,7 +637,7 @@ def build_html(state):
     idx_time=str(idx.get("time") or "")
     idx_note=(f'<span style="color:#f59e0b">as of {idx_date} {idx_time}</span>'
               if idx_date and idx_date != str(state.get("trade_date") or "")
-              else f'<span style="color:#64748b">{idx_time}</span>')
+              else f'<span style="color:#94a3b8">{idx_time}</span>')
     # The Global panel carried no date at all, so a stale reading was
     # indistinguishable from a live one. global_markets had not been written
     # since 2026-08-03 — over a month — and the sidebar showed those figures
@@ -636,7 +649,7 @@ def build_html(state):
     glb_note=(f'<span style="color:{"#dc2626" if glb_stale and glb_stale>3 else "#f59e0b"}">'
               f'as of {glb_date}</span>'
               if glb_date and glb_date != str(state.get("trade_date") or "")
-              else f'<span style="color:#64748b">{glb_date}</span>')
+              else f'<span style="color:#94a3b8">{glb_date}</span>')
     sectors=get_sector_rotation(idx)
     def heat(v):
         """Background intensity scaled to ±2%, which covers a normal NSE day."""
@@ -721,7 +734,7 @@ def build_html(state):
                       f'border-radius:4px;cursor:pointer;padding:2px 8px;font-size:11px">Cancel</button>')
         created = str(r.get("created_at") or "")[:19].replace("T", " ")
         return (f'<tr data-sym="{r.get("symbol")}">'
-                f'<td style="font-size:11px;color:#64748b">{created}</td>'
+                f'<td style="font-size:11px;color:#94a3b8">{created}</td>'
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>'
                 f'<td style="color:{"#059669" if r.get("side")=="BUY" else "#dc2626"};'
                 f'font-weight:600">{r.get("side")}{role_badge}</td>'
@@ -731,12 +744,12 @@ def build_html(state):
                 f'border-radius:4px;font-weight:600;font-size:11px">{status}</span></td>'
                 f'<td>{mode}</td>'
                 f'<td>{exec_s}{err_html}</td>'
-                f'<td style="font-size:10px;color:#64748b">{oid or "—"}</td>'
+                f'<td style="font-size:10px;color:#94a3b8">{oid or "—"}</td>'
                 f'<td class="acts">{actions}</td></tr>')
 
     order_rows = "".join(_order_row(r) for r in ob)
     order_rows_or_empty = order_rows or (
-        '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px">'
+        '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:20px">'
         'No orders yet. Use the Buy/Sell buttons on any stock to create one.</td></tr>')
 
     sh = state.get("sighist") or {}
@@ -745,12 +758,12 @@ def build_html(state):
 
     def _pct(v, good=55.0):
         if v is None:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         c = "#059669" if v >= good else "#f59e0b" if v >= 35 else "#dc2626"
         return f'<span style="color:{c};font-weight:700">{v:.0f}%</span>'
 
     def _num(v, suffix="d"):
-        return f"{v}{suffix}" if v else '<span style="color:#64748b">n/a</span>'
+        return f"{v}{suffix}" if v else '<span style="color:#94a3b8">n/a</span>'
 
     def _signed(v):
         if v is None:
@@ -768,10 +781,10 @@ def build_html(state):
     def _cell_1y(sig, th):
         b = by_1y.get((sig, th))
         if not b or not b.get("watched"):
-            return ('<span style="color:#64748b" title="no signal from the last '
+            return ('<span style="color:#94a3b8" title="no signal from the last '
                     '12 months has been watched for a session yet">-</span>')
         return (f'{_pct(b["hit_rate"])}'
-                f'<span style="color:#64748b;font-size:10px"> ({b["hits"]}/{b["watched"]})</span>')
+                f'<span style="color:#94a3b8;font-size:10px"> ({b["hits"]}/{b["watched"]})</span>')
 
     succ_rows = ""
     for b in sh_rep.get("buckets", []):
@@ -786,15 +799,15 @@ def build_html(state):
             f'<td>{_num(b["slowest_sessions"])}</td>'
             f'<td>{_signed(b.get("avg_mfe"))}</td>'
             f'<td>{_signed(b.get("avg_mae"))}</td>'
-            f'<td style="color:#64748b">{b.get("not_yet_watched", 0)}</td>'
+            f'<td style="color:#94a3b8">{b.get("not_yet_watched", 0)}</td>'
             f'<td>{_cell_1y(b["signal"], b["threshold_pct"])}</td></tr>')
 
     def _oc(o):
         """One threshold cell: hit / miss / still open, with sessions taken."""
         if not o:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         if o.get("still_open"):
-            return '<span style="color:#64748b">open</span>'
+            return '<span style="color:#94a3b8">open</span>'
         if o.get("hit"):
             d = o.get("sessions_to_hit")
             gap = o.get("data_gap_sessions") or 0
@@ -822,7 +835,7 @@ def build_html(state):
         """
         hits = [o for o in outs if o.get("hit") and o.get("hit_date")]
         if not hits:
-            return '<span style="color:#64748b">-</span>'
+            return '<span style="color:#94a3b8">-</span>'
         first = min(hits, key=lambda o: str(o["hit_date"]))
         return (f'<span style="color:#059669">{str(first["hit_date"])[:10]}</span>'
                 f'<span style="color:#94a3b8;font-size:10px"> @{first["threshold_pct"]:g}%</span>')
@@ -844,11 +857,11 @@ def build_html(state):
             f'<td>{pill(r.get("cri"),inv=True)}</td>{cells}'
             f'<td>{_first_hit(outs)}</td>'
             f'<td>{_signed(mfe)}</td><td>{_signed(mae)}</td>'
-            f'<td style="font-size:10px;color:#64748b">{r.get("model_version") or "-"}</td></tr>')
+            f'<td style="font-size:10px;color:#94a3b8">{r.get("model_version") or "-"}</td></tr>')
 
     th_heads = "".join(f'<th style="text-align:center">{t:g}%</th>' for t in ths)
     hist_rows_or_empty = hist_rows or (
-        '<tr><td colspan="15" style="text-align:center;color:#64748b;padding:20px">'
+        '<tr><td colspan="15" style="text-align:center;color:#94a3b8;padding:20px">'
         'No signals logged yet. The post-market run appends them; backfill past '
         'dates with: python -m scores.signal_log --backfill</td></tr>')
     sh_total = sh_rep.get("total_signals", 0)
@@ -889,7 +902,7 @@ def build_html(state):
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
     health_panel = alerts_panel_html()
     health_bad = "Pipeline problems" in health_panel
-    tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
+    tod_sym=tod.get('symbol') or '—'; tod_sig=tod.get('signal') or '—'; tod_cmp=tod.get('cmp') or '—'
     # Levels only when the engine recommended a trade (BUY/SELL); a HOLD/WAIT
     # Trade of the Day says so instead of printing "₹None" or invented levels.
     if tod.get('sl') is not None:
@@ -1069,7 +1082,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
   <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_txt}</div><div style="font-size:11px;color:#64748b">{regime}</div></div>
   <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('nifty50'):,.2f}" if idx.get('nifty50') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">India VIX</div><div class="kpi-v" style="color:{'#dc2626' if (idx.get('india_vix') or 0)>20 else '#94a3b8'}">{idx.get('india_vix','—')}</div></div>
-  <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
+  <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg') if idx.get('gift_nifty') else None, why="No GIFT Nifty quote in the latest index read" + (f" ({idx.get('time')} IST)" if idx.get('time') else ""))}</div><div style="font-size:11px;color:#94a3b8">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">Sentiment</div><div class="kpi-v" style="color:{'#059669' if idx.get('overall_sentiment')=='BULLISH' else '#dc2626' if idx.get('overall_sentiment')=='BEARISH' else '#94a3b8'}">{idx.get('overall_sentiment') or '—'}</div></div>
   <details class="kpi-more"><summary>Global and more</summary><div class="kpi-more-body">
   <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
@@ -1086,7 +1099,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
       <div><div class="tod-l">CMP <span class="ax-feedmini" data-ax-feed title="The live price feed"><span class="ax-feedtext" hidden></span><span class="ax-feedshort"></span></span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">{money(tod.get('cmp'))}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
       {tod_plan}
       <div><div class="tod-l">ACS Confidence</div><div class="tod-v">{(tod.get('acs') or 0):.0f}/100</div></div>
-      <div style="grid-column:1/-1;font-size:11px;color:#94a3b8">✦ {tod.get('top_factor_1','—')} &nbsp; ✦ {tod.get('top_factor_2','—')}</div>
+      <div style="grid-column:1/-1;font-size:11px;color:#94a3b8">✦ {tod.get('top_factor_1') or '—'} &nbsp; ✦ {tod.get('top_factor_2') or '—'}</div>
       <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'),signal=tod_sig)}</div>
     </div>
   </div>
@@ -1106,7 +1119,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
         <div class="kpi-l">Portfolio Health</div>
         <div style="font-size:32px;font-weight:700;color:{phs_col}">{phs_score:.0f}</div>
         <div style="font-size:12px;color:#94a3b8">{phs.get("band","—")} · {phs.get("holdings",0)} holdings</div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">Portfolio beta {phs.get("portfolio_beta") or "—"} · regime {phs.get("regime","—")}</div>
         {f'<div style="font-size:11px;color:#f59e0b;margin-top:4px">⚠ holdings as of {phs.get("date")} — portfolio sync has not run since</div>' if phs.get("stale") else ''}
       </div>
       <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;min-width:270px">
@@ -1134,7 +1147,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
       <tbody>{succ_rows}</tbody></table>
     {sh_note}
     <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)
-      <span style="font-size:11px;color:#64748b;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
+      <span style="font-size:11px;color:#94a3b8;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input id="hsrch" placeholder="Filter by symbol..." aria-label="Filter the signal log by symbol" oninput="hft()">
       <select id="hsf" aria-label="Signal" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
@@ -1147,7 +1160,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
   <div id="orders" class="tc section">
     <div id="brokerBanner2" class="banner dry" style="margin-bottom:12px">Checking broker status…</div>
     <div class="st">Order book — every order and rule ATIP is tracking, in every state</div>
-    <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.5">
+    <div style="font-size:11.5px;color:#94a3b8;margin-bottom:10px;line-height:1.5">
       Two kinds of row here. <b style="color:#38bdf8">[ENTRY]/[TARGET]/[STOP]</b> rules are
       conditional watches: a rule with no order id has never been sent anywhere — it is still
       watching its trigger price, checked by this dashboard every 30 seconds, and Dhan has no
@@ -1458,7 +1471,7 @@ async function loadMiniRules(){{
   if(!res.ok)return;
   var rules=await res.json();
   var ul=document.getElementById('mRulesList'); ul.innerHTML='';
-  if(!rules.length){{ul.innerHTML='<li style="justify-content:center;color:#64748b">No active rules</li>';return;}}
+  if(!rules.length){{ul.innerHTML='<li style="justify-content:center;color:#94a3b8">No active rules</li>';return;}}
   rules.forEach(r=>{{
     var li=document.createElement('li');
     var role=r.role&&r.role!=='ENTRY'?' <b style="color:'+(r.role==='STOP'?'#dc2626':'#059669')+'">['+r.role+']</b>':'';
@@ -1553,9 +1566,10 @@ async function pollLiveQuotes(){{
       var prev=parseFloat(cell.dataset.prev);
       if(qd.prev_close!=null && qd.prev_close>0) prev=qd.prev_close;
       var pct = (!isNaN(prev) && prev>0) ? ((qd.ltp-prev)/prev*100) : null;
-      var col = pct===null ? '#e2e8f0' : (pct>=0 ? '#059669' : '#dc2626');
-      var sign = (pct!==null && pct>=0) ? '+' : '';
-      var arrow = pct===null ? '' : (pct>0 ? '▲ ' : (pct<0 ? '▼ ' : '• '));
+      var flat = pct!==null && Math.abs(pct)<0.005;   // UI fixes v2 (G1): unchanged is grey, never green
+      var col = pct===null ? '#e2e8f0' : flat ? '#94a3b8' : (pct>0 ? '#34d399' : '#f87171');
+      var sign = (pct!==null && pct>0) ? '+' : '';
+      var arrow = pct===null ? '' : flat ? '• ' : (pct>0 ? '▲ ' : '▼ ');
       cell.innerHTML = inrf(qd.ltp) + (pct!==null
         ? ' <span class="chg" style="font-size:12px;color:'+col+'">'+arrow+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
         : '');

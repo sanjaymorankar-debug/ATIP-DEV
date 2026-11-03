@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bottom-tab icon and label colour, as on the web tab bar: the brand token for the open tab, muted for the rest. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/ax_brand" android:state_checked="true" />
+    <item android:color="@color/ax_muted" />
+</selector>

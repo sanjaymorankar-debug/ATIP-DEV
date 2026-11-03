@@ -683,22 +683,19 @@ def test_the_dashboard_has_a_live_tab_and_the_phone_a_live_screen(client):
     assert "window.atipLoadFeeds" in client.get("/market").text
 
 
-def test_both_apps_have_a_live_tab():
-    # 31 Oct 2026 a tab of its own; 2 Nov moved under More for the redesign's five tabs; 3 Nov the owner asked for it
-    # back: Home, Trade, Live, Sessions, More in both apps (Reports is under More, and on the web shell's own bar)
+def test_both_apps_reach_the_live_page():
+    # 31 Oct 2026 a tab of its own; 2 Nov under More; 3 Nov 08:13 IST the owner asked for it back as a tab; 3 Nov 13:58 IST
+    # the UI fixes v2 brief set five tabs Home, Watchlist, Trade, Sessions, More (a bottom bar holds five), so Live is
+    # under More again: the same five tabs in both apps, and the Live page one tap away in More
     import re
     kt = (ROOT / "mobile/android/app/src/main/java/com/atip/mobile/MainActivity.kt").read_text()
-    assert re.findall(r'Tab\("([^"]+)", R\.string', kt) == ["/home", "/command", "/m?tab=live", "/sessions", "/more"]
-    assert '<string name="tab_live">Live</string>' in (ROOT / "mobile/android/app/src/main/res/values/strings.xml").read_text()
-    assert (ROOT / "mobile/android/app/src/main/res/drawable/ic_tab_live.xml").exists()
+    tabs = ["/home", "/watchlist", "/command", "/sessions", "/more"]
+    assert re.findall(r'Tab\("([^"]+)", R\.string', kt) == tabs
     swift = (ROOT / "mobile/ios/ATIP/ContentView.swift").read_text()
-    assert re.findall(r'screen\(\d, "([^"]+)"\)', swift) == ["/home", "/command", "/m?tab=live", "/sessions", "/more"]
+    assert re.findall(r'screen\(\d, "([^"]+)"\)', swift) == tabs
     from dashboard.shell import NAV
     links = [(label, href) for *_, kids in NAV for label, href, _ in kids]
     assert ("Live feeds", "/m?tab=live") in links and any(href == "/reports" for _, href in links)
-
-
-# ══ constraints ═════════════════════════════════════════════════════════════════════════════════════════════
 
 def test_no_feed_module_can_place_an_order():
     for f in ("data/dhan_ws.py", "data/stock_feed.py", "data/depth20.py", "data/derivatives_store.py", "data/ticks.py",

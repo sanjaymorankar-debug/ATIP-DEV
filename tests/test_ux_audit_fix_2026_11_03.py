@@ -222,8 +222,8 @@ def test_title_matches_breadcrumb_on_every_page(client):
         r = client.get(path)
         if r.status_code != 200 or "ax-crumbs" not in r.text:
             continue
-        crumbs = re.search(r'<span class="ax-crumbs">(.*?)</span>', r.text).group(1)
-        leaf = _html.unescape(re.sub(r"<[^>]+>", "", crumbs).split(" › ")[-1]).strip()
+        crumbs = re.search(r'<div class="ax-crumbs"[^>]*>(.*?)</div>', r.text).group(1)   # UI fixes v2 (H8) markup
+        leaf = _html.unescape(re.sub(r"<[^>]+>", "", crumbs)).split("›")[-1].strip()
         title = _html.unescape(re.search(r"<title>(.*?)</title>", r.text, re.S).group(1)).strip()
         if leaf and title != f"{leaf} · ATIP":
             bad.append((path, leaf, title))
@@ -384,7 +384,7 @@ def test_a_buy_pick_is_still_shown(client, monkeypatch):
     assert "No BUY signal for today" not in page and '<div class="tod-card" data-sym="ACME">' in page
     assert "ACME</b>⭐" in page
     home = client.get("/home").text
-    assert 'href="/?stock=ACME">ACME</a>' in home and "No BUY signal for today" not in home
+    assert 'href="/stock/ACME">ACME</a>' in home and "No BUY signal for today" not in home
 
 
 def test_telegram_says_no_buy_signal(temp_db, monkeypatch):

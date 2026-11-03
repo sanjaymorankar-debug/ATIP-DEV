@@ -615,7 +615,8 @@ def step_sentiment(ctx) -> dict:
 
 def step_analysis(ctx) -> dict:
     """4. Indexes: any session without scores is scored now (VPI, ZPI, MRI, RRI, CRI, MSI, ACS, Market Health
-    with the Asia input, technicals); the null-EMA gap is filled for short-history small/mid-caps."""
+    with the Asia input, technicals); the null-EMA gap is filled for short-history small/mid-caps; a scored
+    session with no technical signals (its 20:30 run skipped by the 21:00 stop or lost to a restart) gets them."""
     res = {}
     from pipeline.scheduler import run_postmarket_if_missing
     try:
@@ -630,6 +631,12 @@ def step_analysis(ctx) -> dict:
     except Exception as e:
         res["ema_gap_fill"] = "FAILED"
         log.warning(f"  EMA gap fill: {e}")
+    try:                                          # the 20:30 technical signals a late evening or a restart lost
+        from research.tech_signals import run_missing as tech_signals_missing
+        _sub(res, "technical_signals_catchup", tech_signals_missing)
+    except Exception as e:
+        res["technical_signals_catchup"] = "FAILED"
+        log.warning(f"  technical signals catch-up: {e}")
     return _rollup(res)
 
 

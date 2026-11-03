@@ -1,7 +1,19 @@
 <resources>
+    <!-- 2026-11-03 (UI fixes v2): the web tokens (values/tokens.xml light, values-night/tokens.xml dark), following
+         the phone's light / dark setting, as the pages do (prefers-color-scheme). MainActivity re-applies the
+         native colours when the setting switches, without reloading the page on screen. -->
     <style name="Theme.ATIP" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:statusBarColor">#0F172A</item>
-        <!-- light status-bar icons on the dark bar (the Material 3 light theme would draw dark ones) -->
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="colorPrimary">@color/ax_brand</item>
+        <item name="colorOnPrimary">@color/ax_brand_ink</item>
+        <item name="colorSurface">@color/ax_surface</item>
+        <item name="colorOnSurface">@color/ax_text</item>
+        <item name="colorOnBackground">@color/ax_text</item>
+        <item name="colorError">@color/ax_neg</item>
+        <item name="android:colorBackground">@color/ax_bg</item>
+        <item name="android:windowBackground">@color/ax_bg</item>
+        <item name="android:statusBarColor">@color/ax_surface</item>
+        <item name="android:navigationBarColor">@color/ax_surface</item>
+        <!-- dark status-bar icons on the light surface, light ones on the dark surface -->
+        <item name="android:windowLightStatusBar">@bool/ax_light_bars</item>
     </style>
 </resources>

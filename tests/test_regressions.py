@@ -246,10 +246,10 @@ def test_chg_span_shows_absolute_and_percentage():
     from dashboard.server import chg_span
     out = chg_span(205.22, 231.20)
     assert "-25.98" in out and "-11.24%" in out
-    assert "#dc2626" in out                       # red for a fall
+    assert "#f87171" in out                       # red for a fall (UI fixes v2: 4.5:1+ on the dark page; was #dc2626)
     up = chg_span(1231.30, 1156.50)
     assert "+74.80" in up and "+6.47%" in up
-    assert "#059669" in up                        # green for a rise
+    assert "#34d399" in up                        # green for a rise (was #059669)
 
 
 def test_chg_span_is_empty_without_a_previous_close():

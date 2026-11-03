@@ -54,6 +54,7 @@ _SVG = {
     "theme": '<path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a6.6 6.6 0 0 0 10 10z"/>',
     "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-3.8 4-6 8-6s7.2 2.2 8 6"/>',
     "close": '<path d="M6 6l12 12M18 6L6 18"/>',
+    "star": '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8 6.8 19.6l1-5.8-4.3-4.1 5.9-.8z"/>',
     "density": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M3 14.5h18"/>',
 }
 
@@ -86,6 +87,7 @@ NAV = [
         ("Options builder", "/options-builder", "Build and price option strategies")]),
     ("trade", "Trade", "trade", "/command", [
         ("Command Center", "/command", "Is it safe, what needs me, what is running"),
+        ("Watchlist", "/watchlist", "Your stocks: live price, change, ATIP score; B / S to trade"),
         ("Trade signals", "/command/signals", "Today's EOD signals with live prices"),
         ("Trade setup", "/command/setup", "Size a trade with its ₹ risk before sending"),
         ("Live monitor", "/command/monitor", "Open trades, stops and each session's cycle progress"),
@@ -97,6 +99,7 @@ NAV = [
     ("sessions", "Sessions", "sessions", "/sessions", [
         ("All sessions", "/sessions", "The ten sessions as mini-funds: gross vs actual P&L, cycles, floors")]),
     ("accounting", "Accounting", "accounting", "/accounting", [
+        ("P&L by period", "/accounting?tab=pnl", "Today, this month and since start, checked against the ledger"),
         ("General ledger", "/accounting?tab=ledger", "Every rupee every session touched, double-entry"),
         ("Session ledger", "/accounting?tab=session", "One session's cash, line by line"),
         ("Charges register", "/accounting?tab=charges", "Charges by type, session and month"),
@@ -131,9 +134,9 @@ NAV = [
         ("Workspace", "/app", "The enterprise workspace"),
         ("Mobile view", "/m", "The phone-sized summary")]),
 ]
-TABBAR = [("Home", "home", "/home", "home"), ("Trade", "trade", "/command", "trade"),
-          ("Sessions", "sessions", "/sessions", "sessions"), ("Reports", "reports", "/reports", "reports"),
-          ("More", "more", "/more", "more")]
+# UI fixes v2 (W1): the phone's tabs match the apps' -- Watchlist in, Reports under More
+TABBAR = [("Home", "home", "/home", "home"), ("Watchlist", "star", "/watchlist", "watchlist"), ("Trade", "trade", "/command", "trade"),
+          ("Sessions", "sessions", "/sessions", "sessions"), ("More", "more", "/more", "more")]
 SKIP_PREFIXES = ("/api/", "/static/", "/health", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/login",
                  "/zerodha/", "/docs", "/redoc", "/openapi.json")
 NATIVE_MARK = '<meta name="atip-shell" content="native">'
@@ -141,7 +144,7 @@ NATIVE_MARK = '<meta name="atip-shell" content="native">'
 
 def _version() -> str:
     h = hashlib.sha1()
-    for f in ("atip.css", "atip.js"):
+    for f in ("atip.css", "atip.js", "workspace.css", "workspace.js"):
         try:
             h.update((STATIC_DIR / "atip" / f).read_bytes())
         except OSError:
@@ -161,12 +164,20 @@ def section_of(path: str, query: str = "") -> tuple[str, str]:
             for kl, href, _ in kids:
                 if (exact and href == full) or (not exact and "?" not in href and href == path):
                     return key, kl
-    for prefix, key in (("/sessions/", "sessions"), ("/command", "trade"), ("/accounting", "accounting"),
+    for prefix, key in (("/sessions/", "sessions"), ("/command", "trade"), ("/accounting", "accounting"), ("/stock/", "research"),
                         ("/reports", "reports"), ("/wealth", "wealth"), ("/admin", "settings"), ("/more", "more"),
                         ("/trade", "trade"), ("/scores", "research")):
         if path.startswith(prefix):
             return key, ""
     return "", ""
+
+
+def _glossary() -> dict:
+    try:
+        from dashboard.labels import GLOSSARY
+        return GLOSSARY
+    except Exception:
+        return {}
 
 
 def nav_index() -> list:
@@ -208,7 +219,10 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
         rail.append(f'<div class="ax-sec{" on" if on else ""}"><a href="{_e(root + href)}"'
                     f'{" aria-current=true" if on else ""}><span class="ax-ico">{icon(ico)}</span>'
                     f'{_e(label)}</a>{f"<div class=ax-sub>{sub}</div>" if sub else ""}</div>')
-    crumbs = (f'<b>{_e(sec_label)}</b>' + (f" › {_e(leaf)}" if leaf and leaf != sec_label else "")) if sec_label else ""
+    # UI fixes v2 (H8): the section never truncates; only the page part may, and it hides on a narrow bar
+    crumbs = (f'<b class="ax-crumb-sec">{_e(sec_label)}</b>' +
+              (f'<span class="ax-crumb-page">\u00a0›\u00a0{_e(leaf)}</span>' if leaf and leaf != sec_label else "")) \
+        if sec_label else ""
     env = st.get("env") or "PAPER"
     status = st.get("status") or "RUNNING"
     sym = {"RUNNING": "●", "STOPPED": "⏸", "RESUMING": "↻"}.get(status, "●")
@@ -221,25 +235,41 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
             f'title="Live price feed"{"" if fd else " hidden"}><span class="ax-dot" aria-hidden="true"></span>'
             f'<span class="ax-feedtext">{_e(fd.get("text"))}</span><span class="ax-feedshort" aria-hidden="true">'
             f'{_e(fd.get("short"))}</span></span>')
+    # W5: the P&L strip on the Trade screens, its box drawn now (fixed height) so the page never shifts when it fills
+    trade_page = sec == "trade" or path.startswith(("/stock/", "/trading", "/execution-lab", "/baskets"))
+    pnl_strip = ('<div class="ax-pnlstrip" data-ax-pnlstrip role="status" aria-label="Today at a glance">'
+                 '<span><b>Today</b> <span data-k="today">…</span></span><span><b>Open positions</b> <span data-k="open">…</span></span>'
+                 '<span><b>Waiting for your tap</b> <span data-k="waiting">…</span></span>'
+                 '<span><b>Loss budget used</b> <span data-k="budget">…</span></span></div>') if trade_page else ""
     top = f"""<a class="ax-skip" href="#ax-main">Skip to content</a>
 <header class="ax-top" role="banner">
  <button class="ax-iconbtn ax-menu" type="button" aria-label="Open the menu" aria-expanded="false" aria-controls="ax-rail">{icon("menu")}</button>
- <span class="ax-crumbs">{crumbs}</span><span class="ax-spacer"></span>
+ <div class="ax-crumbs" role="navigation" aria-label="Breadcrumb">{crumbs}</div><span class="ax-spacer"></span>
+ <button class="ax-iconbtn ax-wl-toggle" type="button" data-ax-wl-toggle aria-controls="ax-wl" aria-expanded="false" aria-label="Show or hide the watchlist (W)" title="Watchlist (W)">{icon("star")}</button>
  <button class="ax-search" type="button" data-ax-search aria-label="Search pages, symbols and commands (Ctrl K)">{icon("search", 18)} <span class="ax-searchlabel">Search</span> <kbd>Ctrl K</kbd></button>
  <span class="ax-pill ax-env ax-env-top" data-ax-env data-env="{_e(env)}" role="status">{_e(env)}</span>
  <span class="ax-pill ax-run" data-ax-run data-status="{_e(status)}" role="status" aria-live="polite">{sym} <span class="ax-runtext">{_e(st.get("banner") or "ATIP running")}</span></span>
  {feed}
  {kill}
+ <span class="ax-topicons">
  <span class="ax-bellwrap ax-hide-sm"><button class="ax-iconbtn" type="button" data-ax-bell aria-haspopup="true" aria-expanded="false" aria-controls="ax-bellpop" aria-label="Alerts: the latest five">{icon("bell")}<span class="ax-count" data-ax-unread hidden></span></button>
  <div class="ax-pop" id="ax-bellpop" role="region" aria-label="Latest alerts" hidden><div class="ax-pophead">Latest alerts <span class="ax-muted ax-small">IST</span></div><ul class="ax-poplist" data-ax-alerts><li class="ax-muted">Loading…</li></ul><a class="ax-popfoot" href="{_e(root)}/ops">All alerts and job health →</a></div></span>
  <button class="ax-iconbtn ax-hide-sm" type="button" data-ax-density aria-pressed="false" aria-label="Compact rows (denser tables)">{icon("density")}</button>
  <button class="ax-iconbtn" type="button" data-ax-theme aria-label="Theme: switch between light, dark and your device's setting">{icon("theme")}</button>
  <a class="ax-iconbtn ax-hide-sm" href="{_e(root)}/account" aria-label="Your profile">{icon("user")}</a>
+ </span>
+ <span class="ax-overflow"><button class="ax-iconbtn" type="button" data-ax-overflow aria-haspopup="menu" aria-expanded="false" aria-controls="ax-ovmenu" aria-label="More: notifications, theme, profile">{icon("more")}<span class="ax-count" data-ax-unread2 hidden></span></button>
+ <span class="ax-ovmenu" id="ax-ovmenu" role="menu" hidden><a role="menuitem" href="{_e(root)}/account#notifications">{icon("bell", 16)} Notifications <span class="ax-small" data-ax-unread3></span></a>
+ <button role="menuitem" type="button" data-ax-theme>{icon("theme", 16)} Theme: light, dark or device</button><a role="menuitem" href="{_e(root)}/account">{icon("user", 16)} Your profile</a>
+ <a role="menuitem" href="{_e(root)}/watchlist">{icon("star", 16)} Watchlist</a></span></span>
 </header>
 <nav class="ax-rail" id="ax-rail" aria-label="Main"><a class="ax-brand" href="{_e(root)}/home"><span class="ax-logo">A</span>ATIP</a>{"".join(rail)}
  <div class="ax-railfoot">Press <span class="ax-kbd">?</span> for shortcuts · <span class="ax-kbd">Ctrl K</span> to search</div></nav>
-<div class="ax-scrim"></div>"""
-    tabs = "".join(f'<a href="{_e(root + h)}"{" aria-current=page" if k == sec else ""}><span class="ax-ico">'
+<div class="ax-scrim"></div>
+{pnl_strip}
+<aside class="ax-wl" id="ax-wl" aria-label="Watchlist" hidden><div class="ax-wl-inner" data-ax-wl-rail></div></aside>"""
+    tab_on = "watchlist" if path == "/watchlist" else sec
+    tabs = "".join(f'<a href="{_e(root + h)}"{" aria-current=page" if k == tab_on else ""}><span class="ax-ico" aria-hidden="true">'
                    f'{icon(i, 22)}</span>{_e(l)}</a>' for l, i, h, k in TABBAR)
     bottom = f"""<nav class="ax-tabbar" aria-label="Sections">{tabs}</nav>
 <dialog class="ax-dialog ax-palette" id="ax-palette" aria-label="Search ATIP"><input type="search" placeholder="Search a symbol, a page or a command…" aria-label="Search" aria-controls="ax-palette-list" autocomplete="off"><ul id="ax-palette-list" role="listbox"></ul></dialog>
@@ -257,17 +287,24 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
  <dt><span class="ax-kbd">Esc</span></dt><dd>Close a drawer or the menu</dd><dt><span class="ax-kbd">?</span></dt><dd>This list</dd></dl></div>
  <div class="ax-dfoot"><button class="ax-btn" type="button" data-ax-dclose>Close</button></div></dialog>
 <aside class="ax-drawer" id="ax-row-drawer" inert aria-labelledby="ax-row-h"><header><h2 id="ax-row-h">Details</h2><button class="ax-iconbtn" type="button" data-ax-close aria-label="Close">{icon("close")}</button></header><div class="ax-body"></div></aside>
+<aside class="ax-drawer ax-ticket" id="ax-ticket" inert aria-labelledby="ax-ticket-h"><header><h2 id="ax-ticket-h">Order</h2><button class="ax-iconbtn" type="button" data-ax-close aria-label="Close the order ticket (Esc)">{icon("close")}</button></header><div class="ax-body" data-ax-ticket-body></div></aside>
 <div id="ax-nav" hidden data-json="{_e(json.dumps(nav_index()))}"></div>
+<div id="ax-glossary" hidden data-json="{_e(json.dumps(_glossary()))}"></div>
 <div id="ax-state" hidden data-json="{_e(json.dumps(st, default=str))}"></div>
-<script src="{_e(root)}/static/atip/atip.js?v={VERSION}" defer></script>"""
+<script src="{_e(root)}/static/atip/atip.js?v={VERSION}" defer></script>
+<script src="{_e(root)}/static/atip/workspace.js?v={VERSION}" defer></script>"""
     return top, bottom
 
 
 def head_tags(root: str = "", app: bool = False) -> str:
     return (f'<meta name="atip-root" content="{_e(root)}"><link rel="stylesheet" href="{_e(root)}/static/atip/atip.css?v={VERSION}">'
+            f'<link rel="stylesheet" href="{_e(root)}/static/atip/workspace.css?v={VERSION}">'
             "<script>(function(){var d=document.documentElement;try{var q=new URLSearchParams(location.search).get('theme');"
             "var t=q||localStorage.getItem('atip-theme');if(t==='dark'||t==='light')d.setAttribute('data-theme',t);"
-            "if(localStorage.getItem('atip-density')==='compact')d.setAttribute('data-density','compact');}catch(e){}"
+            "if(localStorage.getItem('atip-density')==='compact')d.setAttribute('data-density','compact');"
+            # W1: the watchlist's room is made before the first paint, so the page never jumps when it opens
+            "var w=localStorage.getItem('atip-wl'),p=location.pathname;if(innerWidth>=768&&(w==='open'||(w!=='closed'&&innerWidth>=1440"
+            "&&/\\/(command|stock\\/|trading)/.test(p))))d.classList.add('ax-wl-open');}catch(e){}"
             + ("d.classList.add('ax-app');" if app else "") + "})();</script>")
 
 

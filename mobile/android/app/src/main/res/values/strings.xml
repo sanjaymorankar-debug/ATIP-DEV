@@ -1,7 +1,8 @@
 <resources>
     <string name="app_name">ATIP</string>
-    <!-- the five tabs, the same as iOS: the page shell's (2026-11-02) with Live in place of Reports (2026-11-03) -->
+    <!-- 2026-11-03: the five tabs, the same as iOS (Watchlist replaces Reports; Reports is under More on the web) -->
     <string name="tab_home">Home</string>
+    <string name="tab_watchlist">Watchlist</string>
     <string name="tab_trade">Trade</string>
     <string name="tab_live">Live</string>
     <string name="tab_sessions">Sessions</string>
