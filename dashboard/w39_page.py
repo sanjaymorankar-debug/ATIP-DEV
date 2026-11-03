@@ -353,7 +353,7 @@ function empty(){LAST=null;$('ost').textContent='';$('out').innerHTML=`<div clas
 <li><b>Pick the underlying.</b> Choose NIFTY, BANKNIFTY or a stock from the list: ATIP fills in its spot price, lot size and the expiries it has stored.</li>
 <li><b>Add legs.</b> Press a preset such as <i>Iron condor</i>, or <i>Add a leg</i> and set buy or sell, call or put, strike and lots.</li>
 <li><b>Read the result.</b> The payoff chart, max profit and loss, breakevens, net Greeks and who the strategy suits appear here and update as you edit. Nothing is ever ordered.</li></ol></div>`}
-function schedule(){clearTimeout(TM);if(!LEGS.length){SEQ++;empty();return}$('ost').textContent='Updating…';TM=setTimeout(analyse,300)}
+function schedule(){clearTimeout(TM);SEQ++;if(!LEGS.length){empty();return}$('ost').textContent='Updating…';TM=setTimeout(analyse,300)}
 async function analyse(){clearTimeout(TM);if(!LEGS.length){empty();return}const my=++SEQ;if(!LAST)busy('Working out the payoff…');
  try{const r=await post('/api/options/analyse',{...body(),legs:LEGS});if(my!==SEQ)return;merge(r);show(r)}catch(e){if(my===SEQ)fail(e)}}
 function atmStrike(){const s=Number(val('spot'));if(!s)return null;const st=STEP||(s>=10000?50:s>=1000?10:5);return Math.round(s/st)*st}

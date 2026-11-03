@@ -188,7 +188,7 @@ async function loadRisk(){
   const b=document.getElementById('pbook').value, m=document.getElementById('pmsg');m.textContent=' computing…';
   loadFrm(b);
   const ids=['phead','pvar','pconc','prc','pcorr','pperf'];
-  let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent='';ids.forEach(i=>fail(i,'the portfolio risk',e));return}
+  let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent='';ids.forEach(i=>fail(i,'the portfolio risk',e));fail('pemx','the emergency-exit preview',e);return}
   m.textContent=' as of '+A.as_of+(A.coverage?` · risk covers ${num(A.coverage.value_share*100,1)}% of the book (${A.coverage.sessions} sessions)`:'');
   const X=A.exposure||{}, V=A.var||{}, C=A.concentration||{}, RA=A.risk_attribution||{}, CO=A.correlation||{};
   const l95=((V.levels||[]).find(l=>l.confidence==0.95)||{}).historical||{};

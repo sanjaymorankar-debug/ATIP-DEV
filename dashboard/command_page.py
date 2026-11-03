@@ -36,7 +36,7 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px
 .pill.bad{background:var(--badbg);color:var(--bad);border-color:transparent;font-weight:600}
 button{font:inherit;cursor:pointer;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--text)}
 button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-button.primary{background:var(--btn);border-color:var(--btn);color:#fff;font-weight:600}
+button.primary{background:var(--btn);border-color:var(--btn);color:var(--ax-brand-ink,#fff);font-weight:600}
 button.kill{background:var(--kill);border-color:var(--kill);color:#fff;font-weight:700}
 button.halted{background:var(--badbg);border-color:var(--bad);color:var(--bad);font-weight:700}
 button:disabled{opacity:.5;cursor:not-allowed}
@@ -82,7 +82,7 @@ td{padding:8px 4px;border-top:1px solid var(--line)}.scroll{overflow-x:auto}
 @media (max-width:720px){nav{max-width:none;flex:1 1 100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:6px 8px}nav a{white-space:nowrap}nav .more{display:none}main{padding:14px}}
 </style></head><body>
 <header>
- <div class="brand"><div class="logo" aria-hidden="true">AT</div><div>ATIP <span class="muted" style="font-weight:400">Command Center</span></div></div>
+ <div class="brand"><div class="logo" aria-hidden="true">AT</div><div><span class="ax-dup">ATIP </span><span class="muted" style="font-weight:400">Command Center</span></div></div>
  <span id="pMarket" class="pill">Market …</span>
  <span id="pFeed" class="pill">Feed …</span>
  <span id="pSig" class="pill">Signals …</span>

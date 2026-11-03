@@ -26,13 +26,13 @@ def render_app():
 <h2>Paper book</h2><div id="bk"></div>
 <h2>E-mail</h2><div id="em"></div><button onclick="sendVerify()">Send verification link</button> <span id="emm" class="muted"></span>
 <h2>Notification preferences</h2><div id="np"></div>
-<div><select id="pc"><option>risk</option><option>execution</option><option>alert</option><option>report</option><option>billing</option><option>security</option></select>
+<div><select id="pc" aria-label="Notification category"><option>risk</option><option>execution</option><option>alert</option><option>report</option><option>billing</option><option>security</option></select>
 <label><input type="checkbox" id="ch_in_app" checked disabled> in-app</label><label><input type="checkbox" id="ch_email"> e-mail</label><label><input type="checkbox" id="ch_telegram"> Telegram</label>
-<select id="pm"><option>immediate</option><option>digest</option></select> quiet <input id="qs" placeholder="22:00" size="5">-<input id="qe" placeholder="07:00" size="5"><button onclick="savePref()">Save</button></div>
+<select id="pm" aria-label="Delivery: immediate or a digest"><option>immediate</option><option>digest</option></select> quiet <input id="qs" placeholder="22:00" size="5" aria-label="Quiet hours start">-<input id="qe" placeholder="07:00" size="5" aria-label="Quiet hours end"><button onclick="savePref()">Save</button></div>
 <h2>Recent deliveries</h2><div id="dl" class="scroll"></div>
 <h2>Devices &amp; sessions</h2><div id="ss"></div><button onclick="revokeOthers()">Sign out all other devices</button>
 <h2>Broker credentials (encrypted vault)</h2><div id="vt"></div>
-<div><select id="vb"></select><input id="vl" placeholder="label" size="10"><span id="vf"></span><button onclick="saveCred()">Store</button> <span class="muted">values are encrypted at rest and never shown again</span></div>
+<div><select id="vb" aria-label="Broker"></select><input id="vl" placeholder="label" size="10" aria-label="Credential label"><span id="vf"></span><button onclick="saveCred()">Store</button> <span class="muted">values are encrypted at rest and never shown again</span></div>
 <h2>Billing</h2><div id="bl"></div>
 <h2>Reports</h2><div id="rp"></div>
 <h2>Privacy</h2><div id="pv"></div><button onclick="priv('export')">Request my data (export)</button><button style="background:#7f1d1d" onclick="priv('delete')">Request account deletion</button>

@@ -127,6 +127,8 @@ def stock_history(conn, symbol: str, sessions: int = 400) -> dict:
                    (sym,))
     for s in scores:
         s["date"] = str(s["date"])[:10]
+    latest = _one(conn, "SELECT MAX(date) AS d FROM ai_scores") or {}
+    scored_date = str(latest.get("d") or "")[:10] or None
     sigs = _rows(conn, "SELECT id, signal_date, `signal`, entry_price, atip_score, zpi, cri, model_version "
                        "FROM signal_log WHERE symbol=? AND duplicate_of IS NULL ORDER BY signal_date DESC LIMIT 200",
                  (sym,))
@@ -160,8 +162,8 @@ def stock_history(conn, symbol: str, sessions: int = 400) -> dict:
         name = load_company_names().get(sym)
     except Exception:
         pass
-    return {"symbol": sym, "name": name, "stats": stats, "prices": px, "scores": scores, "signals": sigs,
-            "technicals": tech, "technical_ext": ext, "holding": holding, "paper_position": paper,
+    return {"symbol": sym, "name": name, "stats": stats, "prices": px, "scores": scores, "scored_date": scored_date,
+            "signals": sigs, "technicals": tech, "technical_ext": ext, "holding": holding, "paper_position": paper,
             "order_rules": rules, "orders": orders, "oms_orders": oms, "chart_marks": chart_marks(conn, sym, px)}
 
 
@@ -686,7 +688,9 @@ window.svInd=function(k){S.ind[k]=!S.ind[k];save('sv'+k,S.ind[k]);render()};
 window.svPat=function(){S.pat=!S.pat;save('svpat',S.pat);render()};
 window.svTab=function(id,el){document.querySelectorAll('#sv .pane').forEach(function(x){x.classList.remove('on')});document.querySelectorAll('#sv .tabs2 div').forEach(function(x){x.classList.remove('on')});document.getElementById('sv-'+id).classList.add('on');el.classList.add('on')};
 // Buy only on a BUY signal (3 Nov 2026): the latest stored EOD signal decides.
-window.svSig=function(d){var sc=(d&&d.scores)||[];return sc.length?String(sc[sc.length-1].signal||'').toUpperCase():''};
+window.svSig=function(d){var sc=(d&&d.scores)||[],l=sc.length?sc[sc.length-1]:null;
+  if(!l||(d.scored_date&&l.date!==d.scored_date))return '';   // not scored on the latest date: no current signal
+  return String(l.signal||'').toUpperCase()};
 window.svOrder=function(side){var d=S.data;if(typeof openOrderModal!=='function'){if(window.AX&&AX.toast)AX.toast('Order entry is not available on this page',true);return}
   var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;svClose();openOrderModal(d.symbol,(live&&live>0)?live:d.stats.last_close,side,svSig(d))};
 

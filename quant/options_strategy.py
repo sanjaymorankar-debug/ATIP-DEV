@@ -368,13 +368,19 @@ def suitability(legs: list, analysis: dict | None = None) -> dict:
                 "uncovered_up_lots": 0, "uncovered_down_lots": 0}
 
     def uncovered(exposed, covers):
-        legs_out = [x for x in norm if (x[0], x[1]) in exposed]
-        if not legs_out:
-            return 0
-        need = sum(x[2] for x in legs_out)
-        last = max(x[3] for x in legs_out)
-        have = sum(x[2] for x in norm if (x[0], x[1]) in covers and x[3] >= last)
-        return max(0, need - have)
+        # each exposed leg against the covers that outlive it, latest exposure first: a cover eligible for a later
+        # leg is eligible for every earlier one, so spending any eligible cover is as good as any other
+        outs = sorted((x for x in norm if (x[0], x[1]) in exposed), key=lambda x: x[3], reverse=True)
+        pool = sorted((x for x in norm if (x[0], x[1]) in covers), key=lambda x: x[3], reverse=True)
+        left = avail = j = 0
+        for _, _, lots, exp in outs:
+            while j < len(pool) and pool[j][3] >= exp:
+                avail += pool[j][2]
+                j += 1
+            use = min(avail, lots)
+            avail -= use
+            left += lots - use
+        return left
 
     up = uncovered({("CE", "SELL"), ("FUT", "SELL")}, {("CE", "BUY"), ("FUT", "BUY")})
     down = uncovered({("PE", "SELL"), ("FUT", "BUY")}, {("PE", "BUY"), ("FUT", "SELL")})

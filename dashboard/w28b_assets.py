@@ -22,7 +22,7 @@ const tbl=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr
 function init(){
   const box=document.getElementById('news'); if(!box||document.getElementById('w28bgrid')) return;
   const grid=document.createElement('div'); grid.className='w28grid'; grid.id='w28bgrid';
-  grid.innerHTML='<div class="w28card"><h4>News weight by stock <span class="w28m" id="w28bns"></span></h4><div class="w28m" style="margin-bottom:4px">50 = neutral; decayed by age, discounted for repeats, weighted by source and confidence (NS-05)</div><div id="w28bn" style="max-height:320px;overflow:auto"></div><details style="margin-top:6px"><summary class="w28m" style="cursor:pointer">Source weights</summary><div id="w28bsrc"></div></details></div>'+
+  grid.innerHTML='<div class="w28card"><h4>News weight by stock <span class="w28m" id="w28bns"></span></h4><div class="w28m" style="margin-bottom:4px">50 = neutral; decayed by age, discounted for repeats, weighted by source and confidence (NS-05)</div><div id="w28bn" style="max-height:320px;overflow:auto" tabindex="0" role="region" aria-label="News weight by stock"></div><details style="margin-top:6px"><summary class="w28m" style="cursor:pointer">Source weights</summary><div id="w28bsrc"></div></details></div>'+
     '<div class="w28card"><h4>Corporate announcements <span class="w28m">last 3 days (NS-06)</span></h4><div id="w28ba" style="max-height:360px;overflow:auto"></div></div>';
   const brief=document.getElementById('w28brief');
   if(brief&&brief.nextSibling) box.insertBefore(grid,brief.nextSibling); else box.prepend(grid);

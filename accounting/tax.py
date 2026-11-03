@@ -66,6 +66,7 @@ posts the difference.
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -100,7 +101,10 @@ def _income(v) -> float | None:
     """other_income: a non-negative number of rupees, or None when not given."""
     if v is None or (isinstance(v, str) and not v.strip()):
         return None
-    return float(str(v).replace(",", "").replace("₹", "").strip())
+    v = float(str(v).replace(",", "").replace("₹", "").strip())
+    if not math.isfinite(v):
+        raise ValueError("not a finite amount")
+    return v
 
 
 def settings(cfg: dict | None = None) -> dict:
@@ -109,7 +113,12 @@ def settings(cfg: dict | None = None) -> dict:
     out = dict(DEFAULTS)
     out.update({k: v for k, v in raw.items() if k in DEFAULTS})
     for k in NUMBERS:
-        out[k] = float(out[k])
+        try:
+            out[k] = float(out[k])
+        except (TypeError, ValueError):
+            out[k] = float(DEFAULTS[k])
+        if not math.isfinite(out[k]):
+            out[k] = float(DEFAULTS[k])
     out["regime"] = "old" if str(out["regime"]).strip().lower() == "old" else "new"
     try:
         out["other_income"] = _income(out["other_income"])
@@ -131,6 +140,8 @@ def validate(fields: dict) -> dict:
             try:
                 v = float(v)
             except (TypeError, ValueError):
+                v = math.nan
+            if not math.isfinite(v):
                 errors.append(f"{k.replace('_', ' ')} must be a number")
                 continue
             if v < 0 or (k.endswith("_pct") and v > 100):
@@ -241,16 +252,18 @@ def basic_exemption(regime: str = "new") -> float:
     return float(SLABS.get(regime, SLABS["new"])[0][0])
 
 
-def rate(h: str, cfg: dict | None = None) -> float:
+def rate(h: str, cfg: dict | None = None, income: float = 0.0) -> float:
     """The rate on a head: flat for capital gains; the slab for intraday and F&O, worked out from other_income when
-    it is given, otherwise slab_pct."""
+    it is given (the slab `income` of trading profit reaches on top of it, so a cycle's estimate errs high, never
+    at 0 % because other income alone sits in the nil slab), otherwise slab_pct."""
     cfg = cfg or settings()
     if h == "STCG":
         return cfg["stcg_pct"]
     if h == "LTCG":
         return cfg["ltcg_pct"]
     if cfg.get("other_income") is not None:
-        return marginal_rate(cfg["other_income"], cfg.get("regime", "new"))
+        top = max(0.0, float(income or 0))                     # the slab of the profit's last rupee, not the next
+        return marginal_rate(cfg["other_income"] + (top - 0.01 if top else 0.0), cfg.get("regime", "new"))
     return cfg["slab_pct"]
 
 
@@ -276,7 +289,7 @@ def cycle_tax(net_pnl: float, h: str = "STCG", stt: float = 0.0, cfg: dict | Non
     base = taxable(net_pnl, h, stt, cfg)
     if base <= 0:
         return 0.0
-    tax = base * rate(h, cfg) / 100
+    tax = base * rate(h, cfg, base) / 100
     if cfg["addons_enabled"]:
         tax += _addons(tax, h, cfg)
     return round(tax + 1e-9, 2)

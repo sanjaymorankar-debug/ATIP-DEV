@@ -37,7 +37,7 @@ async function logout(){await send('POST','/api/auth/logout');location='/login'}
 function pageError(e){const w=document.querySelector('.wrap')||document.body;w.insertAdjacentHTML('afterbegin',`<p class="note" role="alert" style="padding:8px 0">${esc(e.message)}${/disabled/.test(e.message)?'. ATIP runs in single-user mode, so accounts, API keys and administration are switched off.':''}</p>`)}
 </script>"""
 _TOP = """<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">{title}</span></div>
-<div><a href="/">Dashboard</a><a href="/account">Account</a><a href="/admin">Admin</a><a href="#" onclick="logout()">Sign out</a></div></div>"""
+<div><a class="ax-dup" href="/">Dashboard</a><a href="/account">Account</a><a href="/admin">Admin</a><a href="#" onclick="logout()">Sign out</a></div></div>"""
 
 
 def _page(title, body):
@@ -47,19 +47,33 @@ def _page(title, body):
 
 
 def render_login():
-    return (f"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
-            f"content='width=device-width,initial-scale=1'><title>ATIP Sign in</title>{_STYLE}</head><body>"
-            """<div class="box"><h2>Sign in to ATIP</h2><div id="st" class="muted"></div>
-<input id="u" placeholder="username" aria-label="Username" autocomplete="username" style="width:100%"><br>
-<input id="p" type="password" placeholder="password" aria-label="Password" autocomplete="current-password" style="width:100%"><br>
-<input id="t" placeholder="tenant (optional)" aria-label="Tenant (optional)" style="width:100%"><br>
-<input id="o" placeholder="MFA code (if enabled)" aria-label="MFA code (if enabled)" autocomplete="one-time-code" inputmode="numeric" style="width:100%"><br>
-<button onclick="go()">Sign in</button> <span id="msg" class="note"></span></div>"""
+    """The sign-in page on the shell's design system (tokens, light and dark) but without the shell itself: nobody
+    is signed in yet, so there is no rail, kill switch or search to show (3 Nov 2026)."""
+    from dashboard.shell import head_tags
+    field = ('<div class="ax-field"><label for="{id}">{label}</label>'
+             '<input class="ax-input" id="{id}"{attrs}></div>')
+    return ("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
+            "content='width=device-width,initial-scale=1'><title>Sign in · ATIP</title>" + head_tags() +
+            "<style>.ax-login,.ax-login *{box-sizing:border-box}.ax-login{max-width:380px;margin:12vh auto 24px;padding:0 16px}.ax-login .ax-input{width:100%}"
+            ".ax-login-brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;margin-bottom:14px}"
+            ".ax-login h1{font-size:20px;margin:0 0 4px}.ax-login form{margin-top:14px}"
+            ".ax-login .ax-btn{width:100%}.ax-login #msg{margin-top:10px;min-height:1em}</style>"
+            "</head><body class='ax-native'><main class='ax-login'>"
+            "<div class='ax-login-brand'><span class='ax-logo' aria-hidden='true'>A</span>ATIP</div>"
+            "<div class='ax-card'><h1>Sign in</h1><p id='st' class='ax-muted'></p><form id='lf' novalidate>"
+            + field.format(id="u", label="Username", attrs=' autocomplete="username" autocapitalize="none" required')
+            + field.format(id="p", label="Password", attrs=' type="password" autocomplete="current-password" required')
+            + field.format(id="t", label="Tenant <span class='ax-muted'>(optional)</span>", attrs="")
+            + field.format(id="o", label="MFA code <span class='ax-muted'>(if enabled)</span>",
+                           attrs=' autocomplete="one-time-code" inputmode="numeric"')
+            + "<button class='ax-btn primary' type='submit'>Sign in</button>"
+              "<p id='msg' class='ax-err' role='alert'></p></form></div></main>"
             + _JS + r"""<script>
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
 async function go(){const m=document.getElementById('msg');m.textContent='';
  try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null,otp:o.value||null});
   const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}catch(e){m.textContent=e.message}}
+document.getElementById('lf').addEventListener('submit',function(ev){ev.preventDefault();go()});
 </script></body></html>""")
 
 

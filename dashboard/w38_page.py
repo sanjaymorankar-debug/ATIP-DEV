@@ -22,10 +22,10 @@ _STYLE = """
 .tab.on{background:#2563eb;color:#fff}.pane{display:none}.pane.on{display:block}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
 h3{font-size:13px;color:var(--accent);margin-bottom:8px}.muted{color:var(--muted)}.ok{color:var(--good)}.bad{color:var(--bad)}.note{color:var(--warn)}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:5px 7px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}th{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{overflow-wrap:anywhere;padding:5px 7px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}th{color:var(--muted)}
 input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px}
 button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12.5px;margin:2px}
-.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600}
 .PASS{background:#064e3b;color:#a7f3d0}.WARN{background:#78350f;color:#fde68a}.FAIL{background:#7f1d1d;color:#fecaca}.NA{background:#334155;color:#cbd5e1}
 .scroll{max-height:460px;overflow:auto}
 """

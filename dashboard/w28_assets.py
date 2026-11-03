@@ -18,8 +18,8 @@ ASSETS = r"""
 <style>
 .w28card{background:var(--ax-surface,#1e293b);border:1px solid var(--ax-border,#334155);border-radius:10px;padding:12px 14px;margin:0 0 12px}
 .w28card h4{margin:0 0 6px;font-size:13px;color:var(--ax-brand,#38bdf8)}.w28m{color:var(--ax-muted,#94a3b8);font-size:12px}
-.w28tone{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;margin-left:6px;background:var(--ax-surface-3,#334155)}
-.w28tone.RISK_ON{background:#065f46}.w28tone.RISK_OFF{background:#7f1d1d}.w28tone.MIXED{background:#78350f}
+.w28tone{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;margin-left:6px;background:var(--ax-surface-3,#334155);color:var(--ax-text-2,#e2e8f0)}
+.w28tone.RISK_ON{background:var(--ax-pos-bg,#065f46);color:var(--ax-pos,#d1fae5)}.w28tone.RISK_OFF{background:var(--ax-neg-bg,#7f1d1d);color:var(--ax-neg,#fee2e2)}.w28tone.MIXED{background:var(--ax-warn-bg,#78350f);color:var(--ax-warn,#fef3c7)}
 .w28grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
 .w28grid table{width:100%}
 @media(max-width:600px){.w28grid{grid-template-columns:1fr}}
@@ -69,7 +69,7 @@ async function lists(){
     document.getElementById('w28spi').innerHTML=r.note?`<span class="w28m">${esc(r.note)}</span>`:tbl(['Symbol','SPI','FS / ATIP','Quarter','ROE','EPS YoY'],r.rows.map(x=>`<tr data-sym="${esc(x.symbol)}" style="cursor:pointer"><td><b>${esc(x.symbol)}</b></td><td>${num(x.spi)}</td><td>${num(x.fs??x.atip)}</td><td>${esc(x.quarter||'')}</td><td>${x.roe==null?'—':num(x.roe*100)+'%'}</td><td>${x.eps_growth_yoy==null?'—':num(x.eps_growth_yoy)+'%'}</td></tr>`))}).catch(e=>document.getElementById('w28spi').textContent=e.message);
   j('/api/lists/msi').then(r=>{const s=r.series||[];const v=s.filter(p=>p.msi!=null);let svg='';
     if(v.length>1){const ys=v.map(p=>p.msi),mn=Math.min(...ys),mx=Math.max(...ys),rg=mx-mn||1,w=380,h=90;
-      svg=`<svg viewBox="0 0 ${w} ${h}" width="100%"><path d="${v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-10)+5).toFixed(1)},${(h-8-(p.msi-mn)/rg*(h-16)).toFixed(1)}`).join('')}" fill="none" stroke="#38bdf8" stroke-width="1.6"/><text x="4" y="10" fill="#94a3b8" font-size="9">${num(mx)}</text><text x="4" y="${h-2}" fill="#94a3b8" font-size="9">${num(mn)}</text></svg>`}
+      svg=`<svg viewBox="0 0 ${w} ${h}" width="100%"><path d="${v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-10)+5).toFixed(1)},${(h-8-(p.msi-mn)/rg*(h-16)).toFixed(1)}`).join('')}" fill="none" stroke="#38bdf8" stroke-width="1.6"/><text x="4" y="10" fill="#94a3b8" font-size="12">${num(mx)}</text><text x="4" y="${h-2}" fill="#94a3b8" font-size="12">${num(mn)}</text></svg>`}
     document.getElementById('w28msi').innerHTML=`<div class="w28m">latest ${esc(r.session||'')}: <b style="color:#e2e8f0">${num(v.length?v[v.length-1].msi:null)}</b> · ${v.length} sessions</div>${svg}`+
      (r.components.length?tbl(['Component','Value','Weight'],r.components.map(c=>`<tr><td>${esc(c.component)}</td><td>${num(c.value)}</td><td>${num(c.weight,2)}</td></tr>`)):`<div class="w28m">${esc(r.note||'')}</div>`)}).catch(e=>document.getElementById('w28msi').textContent=e.message);
   j('/api/scans/intraday').then(r=>{document.getElementById('w28scs').textContent=r.session?`${r.session} · run ${String(r.run_at||'').slice(11,16)}`:'';

@@ -166,7 +166,9 @@ def post_all(conn) -> dict:
 
 def true_up_tax(conn) -> int:
     """Each current-pool cycle's provisional tax (and reserve) in the ledger brought to its stored estimate: the
-    difference is posted, dated the day the cycle closed so it stays in that FY. Returns lines posted."""
+    difference is posted, dated the day the cycle closed so it stays in that FY. Each correction is numbered
+    (…:TAX:1, …:TAX:2) rather than given a random id, so two syncs running at once post it once: the second one's
+    lines hit the UNIQUE(txn_id, line) key. Returns lines posted."""
     n = 0
     for s in map(_row, conn.execute("SELECT id, pool_started_at FROM trading_sessions "
                                     "WHERE start_capital IS NOT NULL AND start_capital > 0").fetchall()):
@@ -183,13 +185,17 @@ def true_up_tax(conn) -> int:
 
             common = {"session_id": sid, "symbol": c["symbol"], "rule_id": rid, "env": c.get("env") or C.VIRTUAL,
                       "source": "CYCLE", "source_id": rid}
-            tag = uuid.uuid4().hex[:8]
+
+            def nxt(kind):
+                return 1 + conn.execute("SELECT COUNT(DISTINCT txn_id) FROM ledger_entries WHERE txn_id LIKE ?",
+                                        (f"CYC:{sid}:{rid}:{kind}:%",)).fetchone()[0]
+
             tax = round(float(c.get("tax_est") or 0), 2)
             d = round(tax - posted(TAX_EXPENSE), 2)
             if abs(d) >= 0.005:
                 lines = [(TAX_EXPENSE, d, 0, None), (TAX_PAYABLE, 0, d, None)] if d > 0 else \
                     [(TAX_PAYABLE, -d, 0, None), (TAX_EXPENSE, 0, -d, None)]
-                n += _post(conn, f"CYC:{sid}:{rid}:TAX:{tag}", c["closed_at"], "TAX_PROVISION", lines,
+                n += _post(conn, f"CYC:{sid}:{rid}:TAX:{nxt('TAX')}", c["closed_at"], "TAX_PROVISION", lines,
                            memo=f"cycle {c['n']} tax re-estimated to ₹{tax:,.2f} (tax settings changed)", **common)
             reserve = tax if c.get("compound_basis") == C.AFTER_TAX_RESERVE else 0.0
             d = round(reserve - posted(f"Tax reserve:{sid}"), 2)
@@ -197,7 +203,7 @@ def true_up_tax(conn) -> int:
                 cash = f"Cash:{sid}"
                 lines = [(f"Tax reserve:{sid}", d, 0, None), (cash, 0, d, None)] if d > 0 else \
                     [(cash, -d, 0, None), (f"Tax reserve:{sid}", 0, -d, None)]
-                n += _post(conn, f"CYC:{sid}:{rid}:RSV:{tag}", c["closed_at"], "TAX_RESERVE", lines,
+                n += _post(conn, f"CYC:{sid}:{rid}:RSV:{nxt('RSV')}", c["closed_at"], "TAX_RESERVE", lines,
                            memo=f"cycle {c['n']} tax set aside brought to ₹{reserve:,.2f}", **common)
     conn.commit()
     return n
