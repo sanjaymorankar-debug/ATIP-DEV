@@ -2148,6 +2148,11 @@ if HAS_FASTAPI:
                 return {}
             out = _quotes_out(df)
             _live_quotes_cache.update(date=today, data=out, ts=datetime.now().strftime("%H:%M:%S"))
+            try:                          # the feed label counts this fetch as a live price (UX audit H1)
+                from dashboard.ux_kit import note_quotes_fetched
+                note_quotes_fetched()
+            except Exception:
+                pass
             return out
 
     # 2026-10-31 (DP-01 / MON-07): every Dhan feed's state for the Live tab and the phone's Live screen, served

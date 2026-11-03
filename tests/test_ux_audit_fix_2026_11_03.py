@@ -25,6 +25,8 @@ def client(temp_db, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     sh._cache.update(at=0.0, data=None)
     sh._feed_memo.update(at=0.0, data=None)
+    from dashboard import ux_kit
+    monkeypatch.setitem(ux_kit._last_fetch, "at", None)
     c = TestClient(srv.app)
     from dashboard import security
     c.token = security.token()
@@ -44,9 +46,11 @@ def _tick(at: datetime, sym="ACME"):
 
 @pytest.mark.parametrize("market_open,age_s,state", [(True, 30, "live"), (True, 300, "stale"), (False, 540 * 60, "closed"),
                                                      (True, None, "none"), (False, None, "none")])
-def test_feed_label_states(temp_db, market_open, age_s, state):
+def test_feed_label_states(temp_db, monkeypatch, market_open, age_s, state):
     from db.schema import get_connection, init_db
+    from dashboard import ux_kit
     from dashboard.ux_kit import feed_label
+    monkeypatch.setitem(ux_kit._last_fetch, "at", None)
     init_db()
     now = datetime(2026, 11, 3, 18, 0, 0)
     if age_s is not None:
@@ -392,3 +396,28 @@ def test_telegram_says_no_buy_signal(temp_db, monkeypatch):
     monkeypatch.setattr(T, "send_telegram", lambda msg, *a, **k: sent.append(msg) or True)
     assert T.send_tod_alert("2026-11-02") is True
     assert len(sent) == 1 and "No BUY signal for today" in sent[0] and "Stop Loss" not in sent[0]
+
+
+def test_feed_is_live_when_any_source_is_fresh(temp_db, monkeypatch):
+    """Quote snapshots land every 15 min; a ticking WebSocket or the dashboard's own 15 s fetch keeps the label live."""
+    from db.schema import get_connection, init_db
+    from dashboard import ux_kit
+    init_db()
+    monkeypatch.setitem(ux_kit._last_fetch, "at", None)
+    now = datetime(2026, 11, 3, 11, 27, 40)
+    _tick(now - timedelta(minutes=12))                                  # the last 15-min snapshot
+    c = get_connection()
+    assert ux_kit.feed_label(c, True, now=now)["state"] == "stale"
+    ux_kit.note_quotes_fetched(now - timedelta(seconds=10))            # the 15 s poll
+    f = ux_kit.feed_label(c, True, now=now)
+    assert f["state"] == "live" and f["text"] == "Live · last tick 10 s ago"
+    monkeypatch.setitem(ux_kit._last_fetch, "at", None)
+    c.execute("CREATE TABLE IF NOT EXISTS live_feed_status (feed TEXT PRIMARY KEY, mode TEXT, subscribed INTEGER, "
+              "ticks INTEGER, last_tick_at TEXT, last_flush_at TEXT, detail TEXT, updated_at TEXT)")
+    c.execute("INSERT OR REPLACE INTO live_feed_status (feed, mode, last_tick_at) VALUES ('indices', 'WS', ?)",
+              ((now - timedelta(seconds=3)).isoformat(sep=" "),))
+    c.execute("INSERT OR REPLACE INTO live_feed_status (feed, mode, last_tick_at) VALUES ('stocks', 'OFF', ?)",
+              ((now + timedelta(hours=1)).isoformat(sep=" "),))
+    c.commit()
+    assert ux_kit.feed_label(c, True, now=now)["text"] == "Live · last tick 3 s ago"
+    c.close()
