@@ -440,7 +440,7 @@ SHELL = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP __TITLE__</title>
 <style>__CSS____EXTRA__</style></head><body>
 <header>
- <div class="brand"><div class="logo" aria-hidden="true">AT</div><div>ATIP <span class="muted" style="font-weight:400">__TITLE__</span></div></div>
+ <div class="brand"><div class="logo" aria-hidden="true">AT</div><div><span class="ax-dup">ATIP </span><span class="muted" style="font-weight:400">__TITLE__</span></div></div>
  <span id="pEnv" class="pill">…</span>
  <button id="killBtn" class="halted" type="button" hidden>Halted · Resume…</button>
 </header>
@@ -505,8 +505,9 @@ function detail(sym){sel=sym;const r=D.rows.find(x=>x.symbol===sym);if(!r)return
  document.querySelectorAll('tr[data-sym]').forEach(t=>t.classList.toggle('sel',t.dataset.sym===sym));
  $('dT').textContent='Why '+r.symbol+' · '+r.signal;$('dStory').className='';$('dStory').textContent=r.story;
  $('dF').innerHTML=r.factors.filter(f=>f.value!=null).map(f=>`<span>${esc(f.label)}</span><div class="bar ${f.inverse?'inv':''}" role="img" aria-label="${esc(f.label)} ${Math.round(f.value)} of 100"><div style="width:${Math.max(0,Math.min(100,f.value))}%"></div></div><span class="num">${Math.round(f.value)}</span>`).join('');
- const side=r.signal==='SELL'?'SELL':'BUY';
- $('dAct').innerHTML=`<a href="/command/setup?symbol=${encodeURIComponent(r.symbol)}&side=${side}"><button type="button" class="primary">Set up a ${side} →</button></a>`}
+ const side=r.signal==='SELL'?'SELL':r.signal==='BUY'?'BUY':'';
+ $('dAct').innerHTML=side?`<a href="/command/setup?symbol=${encodeURIComponent(r.symbol)}&side=${side}"><button type="button" class="primary">Set up a ${side} →</button></a>`
+  :`<span class="muted" title="Buy appears only on a BUY signal">No buy · signal is ${esc(r.signal||'none')}</span>`}
 async function fillLive(){   // live_quotes holds the tracked symbols only; /api/live-quotes has every scored one
  let L={};try{L=await j('/api/live-quotes')}catch(e){return}
  for(const r of D.rows){const q=L[r.symbol];if(r.live_price!=null||!q||!q.ltp)continue;r.live_price=q.ltp;

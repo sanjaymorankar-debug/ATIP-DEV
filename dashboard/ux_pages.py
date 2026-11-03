@@ -529,7 +529,7 @@ AX.api('/api/v2/reports/generate',{{body:{{kind:'session_cycle_book',params:{{se
                  f'<span class="ax-muted">{e(event_text(x))}</span></span></li>' for x in b["events"])
     timeline = ('<div class="ax-grid-2" style="margin-top:14px"><div class="ax-card"><h2>Compounding: what each cycle started '
                 'with</h2>' + K.staircase(b["charts"]["staircase"], f"{sid}: each cycle's start amount and its floor") +
-                f'</div><div class="ax-card"><h2>Activity</h2><ol class="ax-timeline">{ev or "<li>No change yet.</li>"}</ol></div></div>')
+                f'</div><div class="ax-card"><h2>Activity</h2><ol class="ax-timeline" tabindex="0" aria-label="Activity, newest first">{ev or "<li>No change yet.</li>"}</ol></div></div>')
     body = (_closed_banner() + waiting + tl + (f'<div class="ax-grid" style="margin-top:14px">{opens}</div>' if opens else "") +
             '<div style="margin-top:14px"></div>' + charts + timeline + table + _worked_example() + gen_js)
     return page(title, body, path, root=root, app=app, mar=mar, actions=actions,
@@ -631,7 +631,7 @@ def accounting(conn, q: dict, root="", app=False) -> str:
         cyc = [{**c, "opened": str(c["opened_at"])[:10], "closed": str(c["closed_at"])[:10]} for c in tr["cycles"]]
         body = (f'<div class="ax-banner warn" role="note">{e(TX.DISCLAIMER)} Rates effective {e(st["rates"]["effective_from"])}: '
                 f'STCG {st["rates"]["stcg_pct"]:g}%, LTCG {st["rates"]["ltcg_pct"]:g}% above {K.inr(st["rates"]["ltcg_exemption"])}, '
-                f'intraday and F&amp;O {TX.rate("BUSINESS", st["rates"]):g}% ({e(st["regime_label"])}); STT '
+                f'intraday and F&amp;O {"from " if st["rates"]["other_income"] is not None else ""}{TX.rate("BUSINESS", st["rates"]):g}% ({e(st["regime_label"])}); STT '
                 f'{"deducted" if st["rates"]["stt_deductible"] else "not deducted"} from capital gains. '
                 '<a href="/settings#tax">Change rates</a></div>'
                 '<form class="ax-row" method="get"><input type="hidden" name="tab" value="tax">' +
@@ -908,8 +908,8 @@ def settings(conn, root="", app=False) -> str:
             num("cess_pct", "Cess %") + "</div>"
             f'<label class="ax-check"><input type="checkbox" name="addons_enabled"{" checked" if tx["addons_enabled"] else ""}><span>Add surcharge and cess to the estimates (the law always adds the 4% cess)</span></label>'
             f'<label class="ax-check"><input type="checkbox" name="stt_deductible"{" checked" if tx["stt_deductible"] else ""}><span>Deduct STT from capital gains too (the law does not: s.72(3), was s.48; intraday and F&amp;O always deduct it)</span></label>'
-            f'<p class="ax-small">Intraday and F&amp;O are taxed at {TX.rate("BUSINESS", tx):g}% '
-            f'{"(your slab on the next rupee above your other income)" if tx["other_income"] is not None else "(the slab % above)"}; '
+            f'<p class="ax-small">Intraday and F&amp;O are taxed at {"from " if tx["other_income"] is not None else ""}{TX.rate("BUSINESS", tx):g}% '
+            f'{"(your slab on the next rupee above your other income; each cycle is estimated at the slab its profit reaches)" if tx["other_income"] is not None else "(the slab % above)"}; '
             'delivery trades at the flat STCG / LTCG rates, whatever your slab.</p>'
             '<details><summary>Slabs, tax year 2026-27 (individual, resident, below 60)</summary>' + _slab_table() + '</details>'
             '<div class="ax-err" id="tx-err" role="alert"></div><button class="ax-btn primary" type="submit">Save tax rates</button></form></section>'
@@ -983,9 +983,9 @@ def ops(conn, root="", app=False) -> str:
             K.table("t-runs", [("job_name", "Job", "text"), ("start_time", "Started", "text"), ("status", "Status", "text"),
                                ("rows_processed", "Rows", "int"), ("duration_s", "Seconds", "int"), ("error_msg", "Error", "text")],
                     runs, name="job_runs", empty="No job has run yet.") +
-            """<script>(function(){function kv(o){return '<dl class="ax-kv">'+Object.keys(o).filter(function(k){return typeof o[k]!=='object'||o[k]===null;}).map(function(k){return '<dt>'+AX.esc(k.replace(/_/g,' '))+'</dt><dd>'+AX.esc(o[k])+'</dd>';}).join('')+'</dl>';}
+            """<script>document.addEventListener('DOMContentLoaded',function(){function kv(o){return '<dl class="ax-kv">'+Object.keys(o).filter(function(k){return typeof o[k]!=='object'||o[k]===null;}).map(function(k){return '<dt>'+AX.esc(k.replace(/_/g,' '))+'</dt><dd>'+AX.esc(o[k])+'</dd>';}).join('')+'</dl>';}
 Promise.all([fetch('/health').then(function(r){return r.json();}).catch(function(e){return {error:String(e)};}),fetch('/health/ready').then(function(r){return r.json();}).catch(function(e){return {error:String(e)};})])
 .then(function(a){document.getElementById('ops-h').innerHTML='<h3 class="ax-h3">/health</h3>'+kv(a[0])+'<h3 class="ax-h3">/health/ready</h3>'+kv(a[1]);});
-AX.api('/api/status').then(function(s){document.getElementById('ops-s').innerHTML=kv(s);}).catch(function(e){document.getElementById('ops-s').textContent=e.message;});})();</script>""")
+AX.api('/api/status').then(function(s){document.getElementById('ops-s').innerHTML=kv(s);}).catch(function(e){document.getElementById('ops-s').textContent=e.message;});});</script>""")      # after the deferred atip.js (AX)
     return page("Ops & health", body, "/ops", root=root, app=app,
                 job="Whether ATIP's processes, data and jobs are healthy. The JSON behind it stays at /health.")

@@ -178,7 +178,11 @@
   function killDialog() {
     var dlg = document.getElementById("ax-kill-dialog"); if (!dlg) return;
     var d = state || {};
-    if (d.halted) { location.href = BASE + "/command#kill"; return; }
+    if (d.halted) {
+      var res = document.getElementById("killBtn");                  // Command Center's Resume control
+      if (res && !res.hidden) { res.scrollIntoView({ block: "center" }); res.focus(); return; }
+      location.href = BASE + "/command#kill"; return;
+    }
     if (!AX.token()) { location.href = BASE + "/command#kill"; return; }
     var imp = dlg.querySelector("[data-ax-impact]");
     if (imp) imp.innerHTML = d.open_trades ? ("<b>" + d.open_trades + " open trade" + (d.open_trades > 1 ? "s" : "") + " worth " + AX.inr(d.open_value) + "</b> stay open with <b>no stop-loss or target sale</b> while trading is halted — ATIP places no order of any kind, exits included.") : "No session holds an open trade right now.";

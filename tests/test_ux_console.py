@@ -171,7 +171,8 @@ def test_pages_serve_with_token_nav_and_kill_switch(api, path, text):
     # button is a Resume control that is hidden until trading is halted.
     assert r.status_code == 200 and text in r.text and "data-ax-kill" in r.text
     assert 'id="killBtn" class="halted" type="button" hidden' in r.text and "Halt all trading</button>" not in r.text
-    assert h["X-ATIP-Token"] in r.text and "__" not in r.text.replace("__proto__", "")
+    assert h["X-ATIP-Token"] in r.text                    # no __PLACEHOLDER__ left (a random token may hold "__")
+    assert "__" not in r.text.replace("__proto__", "").replace(h["X-ATIP-Token"], "")
     assert 'aria-current="page"' in r.text
 
 

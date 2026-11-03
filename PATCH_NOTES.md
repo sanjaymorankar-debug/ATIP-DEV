@@ -390,3 +390,74 @@ The owner asked for the Live tab back on both phone apps. It is the 31 Oct page 
   - All Swift files pass `swiftc -parse`.
   - The Mac Catalyst type-check used on 2 Nov now fails with "redefinition of module 'SwiftBridging'" inside the Command Line Tools, and fails identically on the code from before this change, so it is the toolchain.
   - `/m?tab=live` and `/more` were checked in app mode at 375 px on the Test server: no sideways scroll, the shell's own navigation hidden, Reports listed under More, no server errors.
+
+# 3 Nov 2026: recheck of all code and every screen after the merge (master 897f9af)
+
+The owner asked for all the code to be rechecked and every screen verified against the new UI. Branch `claude/recheck-fixes-2026-11-03`.
+
+## How it was checked
+
+- **Code:** three independent reviews of `git diff 234274d..master`, covering:
+  - accounting and tax;
+  - the trading screens and the shell;
+  - every other page.
+  Each finding below was confirmed (run or rendered) before it was fixed.
+- **Screens:** every HTML route the dashboard serves (45 routes, 58 screens with their tabs) on two local servers: Test (fresh database) and Prod (a read-only snapshot of the live database). Each screen was checked at 1440 px light and dark, 390 px and 320 px, for:
+  - the shell's parts (PAPER badge, run state, kill switch, search, alerts, theme, profile, rail or phone tab bar);
+  - exactly one main menu and no "← Dashboard" link;
+  - theme-following colours;
+  - text of at least 12 px;
+  - no sideways scroll;
+  - JavaScript and server errors;
+  - `alert()` / `confirm()`;
+  - axe-core WCAG 2.2 AA.
+  The 14 ATIP Scores tabs were checked one by one in light and dark.
+- **Before the fixes:** every one of the 57 shell pages rendered inside the shell with all its parts (88 of 88 desktop and phone checks), with no broken old URL. The defects are below.
+
+## Fixed
+
+| Area | What was wrong | Fix |
+|---|---|---|
+| Trade of the Day (C3) | On a day with no BUY, the HOLD card (e.g. PETRONET, with a Sell button) still showed under "No BUY signal for today": the page's `.tod-card{display:grid}` beat `[hidden]` | `.tod-card[hidden]{display:none}` (`dashboard/server.py`) |
+| Buy only on BUY (C1) | Trade signals offered "Set up a BUY →" for every HOLD and WAIT row | BUY set-up only on a BUY signal, SELL on SELL, "No buy · signal is HOLD" otherwise (`command_more.py`) |
+| Buy only on BUY (C1) | The stock view's Buy read the stock's last stored score, however old (a stock scored BUY weeks ago and since dropped showed Buy) | The data carries `scored_date`; Buy only when the last score is from that date (`stock_view.py`) |
+| One feed label (H1) | 8 price columns said a fixed "●live" while the top bar said "Feed stale" | A small mark of the same feed label: "Live · 85 s", "Stale · 15 min", "Closed" (`server.py`, `atip.css`) |
+| Kill switch (C4) | "Halted" in the top bar did nothing while already on Command Center (a hash-only link) | It focuses the Resume button on the page (`atip.js`) |
+| `/ops` | "AX is not defined": the Operating status panel never loaded | The script waits for the deferred `atip.js` (`ux_pages.py`) |
+| Options builder | An analysis that came back after the legs were edited filled the old premium / IV into the changed legs | Every edit drops a result still on its way (`w39_page.py`) |
+| Options builder | Two defined-risk spreads in two expiries were labelled "Advanced: Undefined risk" | Each sold leg is matched with a bought leg that outlives it (`quant/options_strategy.suitability`) |
+| Loading states | `/trading`'s emergency-exit preview and `/market`'s history stayed "Loading" for ever when their data failed | They show the error (`execution_page.py`, `market_page.py`) |
+| Tax settings | `nan`, `inf`, `1e400` passed validation; the FY estimate became NaN and `/api/v2/tax/config` answered 500 | Refused as "must be a number"; a stored non-finite rate falls back to the default (`accounting/tax.py`) |
+| Tax on intraday / F&O | With other income below ₹4 L, every intraday or F&O cycle was estimated at 0 % (the slab of other income alone) | The slab the cycle's profit reaches on top of other income ("from 5 %" in Settings) |
+| Cycle re-estimate (my 3 Nov change) | Editing the cost model alone rewrote stored cycles' charges and net P&L, so the cycle book and the ledger's charge lines disagreed | A re-estimate only moves the tax and what follows from it (actual P&L, end amount, and start amounts under AFTER_TAX_RESERVE), from each stored cycle's own net and STT |
+| Ledger tax true-up | Two syncs at once could post the same correction twice (a random id per correction) | Corrections are numbered (`…:TAX:1`, `…:TAX:2`); the second sync's lines hit the UNIQUE key |
+| New UI: older pages | 14 older pages kept their own "📊 ATIP" brand, and the six Command Center pages their "AT ATIP" logo and a second PAPER pill, under the shell's | Hidden inside the shell; the page title stays, in the shell's text colour (`atip.css`, `command_page.py`, `command_more.py`, `global_asia.py`, `enterprise_page.py`) |
+| New UI: `/login` | Always dark, its own colours: the one page off the design system | Rebuilt on the tokens (light and dark, the saved theme), labelled fields, Enter signs in; still no shell, as nobody is signed in |
+| Theme | The News tab's impact panel kept its dark-theme colours in light mode (91 low-contrast texts); the Orders tab's broker banner stayed pale yellow in dark mode; the market-tone badge had blue text on dark green | Theme tokens (`global_asia.py`, `news_impact_view.py`, `server.py`, `w28_assets.py`) |
+| Sizes | Labels under 12 px in the new kit itself (Sessions tiles 11.5 px, chart axes 11 px, Compliance pills 11 px, Lists & scans chart 9 px) | 12 px |
+| Phone | `/compliance` scrolled sideways at 390 px (a long unbroken word in a table) | Table cells wrap |
+| Accessibility | Dark-mode primary buttons: white on light blue; 3 unlabelled selects on `/app`; two scroll boxes keyboard users could not reach; the two tax check boxes under the 24 px target size | Brand ink colour, labels, `tabindex` + names, spaced 20 px boxes. axe-core now finds no violation on any screen |
+| Test | `test_pages_serve_with_token_nav_and_kill_switch` failed whenever the random dashboard token held "__" | The token is removed before looking for a left-over `__PLACEHOLDER__` |
+
+Tests: `tests/test_recheck_fixes_2026_11_03.py` (new, 12) and 9 new cases in `tests/test_session_cycles.py`. The race case fails on the old ledger code and passes on the new.
+
+## Found, not changed (owner's call)
+
+- **Server-side Buy lock.** C1 is enforced in the screens only: `POST /api/orders` and a watched rule saved from Trade setup accept a BUY on any signal. Enforcing it on the server changes order behaviour, so it waits for the owner.
+- **Environment at fire time.** A rule saved while the order window said PAPER fires in whatever environment is set when it triggers (order rules store none), and the window's badge is read once per page load.
+- **Futures STT in backtests** is the 2026-27 rate (0.05 %) for every date. A backtest over 2024 – Mar 2026 charges more STT than was in force then (0.02 %).
+- **Older pools' cycles** are not re-estimated when the tax settings change (only the current pool's are), so an FY that spans a pool restart mixes rates.
+- **The enterprise pages** (`/account`, `/admin`, `/admin/console`, `/app`) are themed and inside the shell but keep their older plain layout. In single-user mode they only say enterprise features are off.
+- `/command/signals` is 5 px too wide at 320 px, below the brief's 360 px minimum.
+
+## Test results
+
+- **Full suite on the branch (12:50 IST):** 2,400 passed, 62 skipped, 9 failed. The 9 are known, and none is from this change:
+  - 6 `test_asia_markets` tests, date-dependent: their fixture bars end 26 Oct, and they fail the same way on master;
+  - 3 `test_w39_perf_budget` tests, blocked by the sandbox; outside it 14 of 14 pass.
+- **Market-hours race.** Earlier runs during market hours also hit the known race: a dashboard order-monitor thread started by one test fires triggers in a later test's database. The same file set failed or passed on master and on this branch depending on the minute it ran, and passed alone.
+- **Screens after the fixes, on a server running this branch over a fresh live-database snapshot:**
+  - 58 screens and 14 Scores tabs, light and dark;
+  - no JavaScript error, no axe-core violation, no text under 12 px;
+  - no sideways scroll at 390 px;
+  - every shell part shown on desktop and phone.

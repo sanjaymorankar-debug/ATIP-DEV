@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 
 NI_CSS = """<style>
 .ni-head{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin:4px 0 10px}
-.ni-pos{color:var(--ga-up,#6ee7b7);font-weight:700}.ni-neg{color:var(--ga-dn,#fca5a5);font-weight:700}
+.ni-pos{color:var(--ga-up,var(--ax-pos,#6ee7b7));font-weight:700}.ni-neg{color:var(--ga-dn,var(--ax-neg,#fca5a5));font-weight:700}
 .ni-neu{color:var(--ga-muted,var(--ax-muted,#94a3b8));font-weight:700}.ni-wrap{white-space:normal!important;min-width:240px}
 .ni-ul{margin:6px 0 0 18px;padding:0}.ni-ul li{margin:3px 0}
 </style>"""

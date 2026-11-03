@@ -111,7 +111,7 @@ async function deal(){const d=await j('/api/market/deal-signal');if(d.note){docu
   const rows=Object.entries(d.horizons||{}).map(([h,v])=>`<tr><td>${h}d</td><td>${v.BUY.n}</td><td>${pct(v.BUY.mean_abnormal_pct)}</td><td>${num(v.BUY.t_stat)}</td><td>${v.SELL.n}</td><td>${pct(v.SELL.mean_abnormal_pct)}</td><td>${num(v.SELL.t_stat)}</td><td>${num(v.pooled_ic,3)}</td></tr>`);
   document.getElementById('deal').innerHTML=`<div style="margin-bottom:6px">Verdict <b>${esc(d.verdict)}</b> · ${d.events} events · ${esc(d.period)} · computed ${esc(String(d.computed_at||'').slice(0,16))}</div><div class="muted" style="margin-bottom:6px">Abnormal = stock − NIFTY50 forward return after the deal session. Small, recent sample: descriptive only.</div>`+table(['Horizon','BUY n','BUY mean','BUY t','SELL n','SELL mean','SELL t','Pooled IC'],rows,{label:'Bulk and block deal study',empty:'No horizons computed yet. “Re-run study” computes them.'})}
 async function feed(){atipLoadFeeds('feed')}
-pre().catch(e=>{fail('pre','the pre-open view',e);fail('glob','the global markets',e)});fo().catch(e=>fail('fo','the derivatives',e));
+pre().catch(e=>{fail('pre','the pre-open view',e);fail('glob','the global markets',e);hist()});fo().catch(e=>fail('fo','the derivatives',e));
 deal().catch(e=>fail('deal','the deal study',e));feed().catch(()=>{});setInterval(()=>{if(!document.hidden)feed()},15000);
 </script></body></html>"""
 

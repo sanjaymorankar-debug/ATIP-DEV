@@ -341,6 +341,74 @@ def test_new_tax_settings_re_estimate_stored_cycles_and_the_ledger(paper, tmp_pa
     assert {i["session_id"]: i["status"] for i in cash["sessions"]} == {"S1": "MATCHED"}
 
 
+def test_a_cost_model_edit_never_rewrites_a_stored_cycle(paper, tmp_path):
+    from accounting import ledger as LG
+    _charges_on(tmp_path)
+    _pool("S1")
+    _entry("ACME", 100.0)
+    _tick(paper, ACME=100.0)
+    _tick(paper, ACME=103.0)
+    _do(C.sync)
+    before = _do(C.stored, "S1")[0]
+    cfg = tmp_path / "config.json"
+    c = json.loads(cfg.read_text())
+    c["paper_cost_model"] = "nse_intraday"                     # other charges than the cycle was written with
+    cfg.write_text(json.dumps(c))
+    assert _do(C.sync)["retaxed"] == 0
+    after = _do(C.stored, "S1")[0]
+    assert {k: after[k] for k in ("charges", "net_pnl", "ch_stt", "tax_est")} == \
+        {k: before[k] for k in ("charges", "net_pnl", "ch_stt", "tax_est")}
+    TX.save({"stcg_pct": 15})                                  # a tax change re-estimates from the stored figures
+    assert _do(C.sync)["retaxed"] == 1
+    after = _do(C.stored, "S1")[0]
+    assert after["charges"] == before["charges"] and after["net_pnl"] == before["net_pnl"]
+    assert after["tax_est"] == round((before["net_pnl"] + before["ch_stt"]) * 0.15 * 1.04, 2)
+    bal = {r["account"]: r["balance"] for r in _do(LG.trial_balance)["rows"]}
+    assert bal["Tax expense (est.)"] == after["tax_est"]
+
+
+def test_two_syncs_at_once_post_the_tax_correction_once(paper, tmp_path):
+    from accounting import ledger as LG
+    _charges_on(tmp_path)
+    _pool("S1")
+    _entry("ACME", 100.0)
+    _tick(paper, ACME=100.0)
+    _tick(paper, ACME=103.0)
+    _do(C.sync)
+    TX.save({"stcg_pct": 15})
+    seen, real = [], LG._post
+    LG._post = lambda conn, *a, **k: seen.append((a, k)) or 0  # what each sync would post, before either writes
+    try:
+        _do(C.sync)
+        _do(LG.true_up_tax)
+    finally:
+        LG._post = real
+    tax = [x for x in seen if ":TAX:" in x[0][0]]
+    assert len(tax) == 2 and tax[0] == tax[1] and tax[0][0][0].endswith(":TAX:1")   # both computed the same id
+    for a, k in tax:                                           # and both post it: the second is a no-op
+        _do(lambda c: (LG._post(c, *a, **k), c.commit()))
+    rows = _do(lambda c: c.execute("SELECT * FROM ledger_entries WHERE txn_id LIKE 'CYC:S1:%:TAX:%'").fetchall())
+    assert len(rows) == 2 and _do(LG.trial_balance)["balanced"]
+
+
+@pytest.mark.parametrize("field,value", [("stcg_pct", "nan"), ("slab_pct", "inf"), ("ltcg_exemption", "1e400"),
+                                         ("other_income", "1e400"), ("other_income", "nan")])
+def test_tax_settings_refuse_nan_and_infinity(field, value):
+    with pytest.raises(ValueError):
+        TX.validate({field: value})
+    TX.CONFIG_PATH.write_text(json.dumps({"tax": {"stcg_pct": float("nan")}}))
+    assert TX.settings()["stcg_pct"] == 20.0                   # a stored NaN falls back to the default
+
+
+def test_intraday_and_fno_cycles_are_taxed_at_the_slab_their_profit_reaches():
+    cfg = TX.settings({"tax": {"other_income": 0}})            # a full-time trader: other income in the nil slab
+    assert TX.rate("BUSINESS", cfg) == 0.0                     # the next rupee of other income alone
+    assert TX.cycle_tax(500000, "SPECULATIVE", cfg=cfg) == round(500000 * 0.05 * 1.04, 2)
+    assert TX.cycle_tax(2000000, "BUSINESS", cfg=cfg) == round(2000000 * 0.20 * 1.04, 2)
+    assert TX.cycle_tax(100000, "BUSINESS", cfg=TX.settings({"tax": {"other_income": 1500000}})) == \
+        round(100000 * 0.15 * 1.04, 2)
+
+
 def test_transfers_move_cash_but_never_out_of_an_open_trade(paper):
     from accounting import ledger as LG
     from orders import sessions

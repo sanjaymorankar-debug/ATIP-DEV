@@ -166,14 +166,14 @@ ASIA_JS = r"""<script>
 
 ASIA_CSS = """<style>
 .ga-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px}
-.ga-card{background:var(--ga-panel,#1e293b);border:1px solid var(--ga-line,#334155);border-radius:10px;padding:12px 14px}
+.ga-card{background:var(--ga-panel,var(--ax-surface,#1e293b));border:1px solid var(--ga-line,var(--ax-border-soft,#334155));border-radius:10px;padding:12px 14px}
 .ga-big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}.ga-small{font-size:12px;margin-top:3px}
-.ga-muted{color:var(--ga-muted,#94a3b8)}.ga-up{color:var(--ga-up,#6ee7b7);font-weight:600}.ga-dn{color:var(--ga-dn,#fca5a5);font-weight:600}
-.ga-warn{color:var(--ga-warn,#fde68a)}.ga-num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.ga-muted{color:var(--ga-muted,var(--ax-muted,#94a3b8))}.ga-up{color:var(--ga-up,var(--ax-pos,#6ee7b7));font-weight:600}.ga-dn{color:var(--ga-dn,var(--ax-neg,#fca5a5));font-weight:600}
+.ga-warn{color:var(--ga-warn,var(--ax-warn,#fde68a))}.ga-num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 .ga-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}.ga-t{width:100%;border-collapse:collapse;font-size:12.5px}
-.ga-t th,.ga-t td{padding:7px 8px;border-bottom:1px solid var(--ga-line,#334155);text-align:left;white-space:nowrap}.ga-t th{color:var(--ga-muted,#94a3b8);font-weight:600}
+.ga-t th,.ga-t td{padding:7px 8px;border-bottom:1px solid var(--ga-line,var(--ax-border-soft,#334155));text-align:left;white-space:nowrap}.ga-t th{color:var(--ga-muted,var(--ax-muted,#94a3b8));font-weight:600}
 .ga-t .r{text-align:right}.ga-h{font-size:14px;margin:16px 0 6px}
-.ga-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--ga-line,#334155)}
+.ga-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--ga-line,var(--ax-border-soft,#334155))}
 .ga-open{background:#064e3b;color:#d1fae5;border-color:#065f46}.ga-break,.ga-pre_open{background:#1e3a8a;color:#dbeafe;border-color:#1e40af}
 .ga-holiday,.ga-weekend{background:#3f3f46;color:#e4e4e7}
 </style>"""
@@ -210,7 +210,7 @@ header b{font-size:15px}nav{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
 .st span{font-size:12.5px;color:var(--muted);font-weight:400}.wrap{overflow-wrap:anywhere}
 .ga-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>__CSS__</head><body>
-<header><b>ATIP · Global &amp; Asia</b><nav aria-label="Main"><a href="/command">Command Center</a><a href="/">Signals &amp; scores</a><a href="/m">Mobile</a><a href="/api/asia/sources">Data sources</a><a href="/api/news-impact/accuracy">News impact record</a></nav></header>
+<header><b><span class="ax-dup">ATIP · </span>Global &amp; Asia</b><nav aria-label="Main"><a href="/command">Command Center</a><a href="/">Signals &amp; scores</a><a href="/m">Mobile</a><a href="/api/asia/sources">Data sources</a><a href="/api/news-impact/accuracy">News impact record</a></nav></header>
 __BANNER__
 <main class="wrap"><div class="st">📰&nbsp; News impact on the Indian market <span>— Indian + world news, estimated direction and size · informational, no orders</span></div>__NI__<div class="st" style="margin-top:16px">🌏 Global &amp; Asia markets</div><div id="gaBox" class="ga-muted">Loading…</div></main>
 __JS__
