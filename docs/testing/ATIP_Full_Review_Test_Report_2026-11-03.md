@@ -146,9 +146,8 @@ Owner: "once this is done deploy code on mac". The market was closed and ATIP wa
 | Fix, tests, merge | 00:11:10 | `e0f653e` → master `fac38d3`; UI test files 206 / 206 |
 | Restart | 00:11:17 | pid 36453; no error; Home 1,425 px in 1,440, Sessions 390 px in 390; screenshot `live_mac_home_dark_1440_after_deploy.jpg` |
 
-**Rollback:** `git checkout 29b488e -- .` is not needed for data. To undo the code, revert merges `fac38d3` and `0dbecdd`
-and restart. To undo the data repair, restore the 00:07:58 backup (`python -m ops restore …`); the repair touched only
-those 165 TDPOWERSYS rows.
+**Rollback:** to undo the code, `git revert -m 1 fac38d3 0dbecdd` and restart. To undo the data repair, stop ATIP and run
+`python -m ops restore atip-pre-release-20261104-000758.db`; the repair touched only those 165 TDPOWERSYS rows.
 
 **What the next session does on this code (Wed 4 Nov, 09:15 IST):** the ten PAPER sessions auto-pick at the open. On
 3 Nov's scores there is no BUY signal, so all ten rank-fill HOLD stocks (PVRINOX, BALRAMCHIN, LODHA, …), as the
