@@ -164,9 +164,10 @@ The index WebSocket was ticking (14 of 14) after both restarts; the stock, tick,
 - Test hygiene (pre-existing): the dashboard's order-monitor thread leaks between tests and, in market hours, writes session
   tables into later tests' databases (`test_w39_mcp` teardown, a paper-book OCO test). Fix suggestion: let tests switch the
   monitor off (an env flag read at startup) or stop starting the app's startup hooks in tests.
-- **Safari / WebKit not tested:** Playwright 1.62 expects WebKit build 2336, only build 2251 is cached; it launches but hangs
-  opening a page. Fix: a matching WebKit download (network), or turn on Safari's Develop › Allow Remote Automation and use
-  `safaridriver` (a setting only the owner should change). Edge is not installed (its Chromium engine is covered by Chrome).
+- **Safari / WebKit not tested:** Playwright's WebKit (build 2251, the right one for macOS 14 on Apple silicon, not
+  quarantined) launches but never opens a page, also when run from the owner's own Terminal (12:0x IST check). To test real
+  Safari instead: Safari › Settings › Advanced › "Show features for web developers"; Develop › "Allow Remote Automation";
+  then `safaridriver --enable` in Terminal (asks for the Mac password). Edge is not installed (Chrome covers its engine).
 - Clickable `<tr>`/`<div>` rows on Strategies, Backtests and Assistant are still mouse-only (no audit rule flagged them).
 - Some API status text still names a wave ("refuses every call in W4"); not in any heading.
 - `/api/tod` (data endpoint, contract-tested) still returns the engine's pick as stored, BUY or not; only the screens and messages follow the owner's rule.
