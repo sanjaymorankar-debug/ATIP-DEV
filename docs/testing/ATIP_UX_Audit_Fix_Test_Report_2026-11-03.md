@@ -34,7 +34,7 @@ Scripts: `.ux_build/auditfix-2026-11-03/ui/` (ux_check.js, price_moved.js, app_c
 | `nav[aria-label="Main"]` per page | exactly 1 on every shell page | exactly 1 | |
 | Price-moved dialog (mocked 409), 1440 and 390 | PASS | PASS | Cancel focused first and sends nothing; "Place at ₹102.10" re-confirms once |
 | App mode (`ATIPApp/…`, 375 px, light + dark, 10 pages) | 20/20 | 20/20 | rail/tab bar hidden, Kill switch present, feed text = native banner's |
-| Cross-browser (8 pages, light/dark, 1440/390/320, axe) | — | Firefox 157: 0 axe, 0 errors, no sideways scroll · Google Chrome: the same · WebKit/Safari: **not run** (see §8) | Firefox 157, WebKit 26.5 (Safari engine), Google Chrome |
+| Cross-browser (light/dark, 1440/390/320, axe) | Chrome: 20 pages clean | **Google Chrome 156, all 20 pages × light/dark × 1440/390/320 on Test and Prod (12:42–12:54 IST): 0 axe, 0 errors, no sideways scroll**; Firefox 157 on 8 key pages: the same; Safari replaced by Chrome at the owner's choice | Firefox 157, WebKit 26.5 (Safari engine), Google Chrome |
 
 ## 3. Accessibility before vs after (axe nodes, light + dark × 1440 + 390)
 
@@ -164,7 +164,8 @@ The index WebSocket was ticking (14 of 14) after both restarts; the stock, tick,
 - Test hygiene (pre-existing): the dashboard's order-monitor thread leaks between tests and, in market hours, writes session
   tables into later tests' databases (`test_w39_mcp` teardown, a paper-book OCO test). Fix suggestion: let tests switch the
   monitor off (an env flag read at startup) or stop starting the app's startup hooks in tests.
-- **Safari / WebKit not tested:** Playwright's WebKit (build 2251, the right one for macOS 14 on Apple silicon, not
+- **Safari / WebKit not tested, by the owner's choice:** at 12:40 IST the owner chose Google Chrome instead (run in full,
+  above). For the record, Playwright's WebKit (build 2251, the right one for macOS 14 on Apple silicon, not
   quarantined) launches but never opens a page, also when run from the owner's own Terminal (12:0x IST check). To test real
   Safari instead: Safari › Settings › Advanced › "Show features for web developers"; Develop › "Allow Remote Automation";
   then `safaridriver --enable` in Terminal (asks for the Mac password). Edge is not installed (Chrome covers its engine).
@@ -175,7 +176,7 @@ The index WebSocket was ticking (14 of 14) after both restarts; the stock, tick,
 ## 9. Screenshots
 
 - Before: `design/audit_fix_2026-11-03/before/before_<page>_<theme>_<width>.png` (80).
-- After, Prod: `design/audit_fix_2026-11-03/after_prod/prod_*.png` (80); Test: `after_test/test_*.png` (80).
+- After, Prod: `design/audit_fix_2026-11-03/after_prod/prod_*.png` (80); Test: `after_test/test_*.png` (80); Google Chrome on Prod: `chrome/chrome_prod_*.png` (80).
 - App mode 375 px: `design/audit_fix_2026-11-03/app/` (20). Price-moved dialog: `after_price_moved_dialog_1440.png`, `_390.png`.
 - Helper close-ups: `design/audit_fix_2026-11-03/after_<page>_<theme>_<width>.png` (33).
 - Raw results: `before/before_results.json`, `after_prod/prod_results.json`, `after_test/test_results.json`, `app/*_app_results.json`.
