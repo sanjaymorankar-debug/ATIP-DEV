@@ -840,7 +840,8 @@ HOLD_ATIP_FLOOR = 50      # below this (and not a sell), sit out as WAIT
 def determine_signal(scores,mh):
     vpi=scores.get("vpi",0) or 0; zpi=scores.get("zpi",0) or 0
     cri=scores.get("cri"); cri=100 if cri is None else cri; acs=scores.get("acs",0) or 0   # a CRI of 0 is the SAFEST, not missing
-    atip=scores.get("atip_score",0) or 0; mh_s=mh.get("mh_score",50) or 50
+    # NULL is unknown, never a real 0 (review 3 Nov 2026): a market health of 0 is the weakest market, not neutral 50
+    atip=scores.get("atip_score",0) or 0; mh_s=mh.get("mh_score"); mh_s=50 if mh_s is None else mh_s
     regime=mh.get("regime","NEUTRAL")
     if cri>SELL_CRI_DANGER: return "SELL" if atip<40 else "HOLD"
     if regime=="HIGH_RISK": return "WAIT"
@@ -850,11 +851,26 @@ def determine_signal(scores,mh):
         if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and acs>=b["acs"] and mh_s>=b["mh"]: return "BUY"
         b=BUY_LOOSE
         if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and mh_s>=b["mh"]: return "BUY"
-    if atip<SELL_ATIP_FLOOR or (cri>60 and scores.get("mri",50)<40): return "SELL"
+    mri=scores.get("mri"); mri=50 if mri is None else mri             # None < 40 raised TypeError
+    if atip<SELL_ATIP_FLOOR or (cri>60 and mri<40): return "SELL"
     return "HOLD" if atip>=HOLD_ATIP_FLOOR else "WAIT"
 
+def last_price_date(conn=None, upto=None):
+    """The newest session with EQ closes on or before upto (today): the default day to score. Review 3 Nov 2026:
+    date.today() on a weekend or holiday scored a day with no bars and stamped the rows with that date."""
+    own=conn is None; conn=conn or get_connection()
+    try:
+        r=conn.execute("SELECT MAX(date) AS d FROM prices_daily WHERE series='EQ' AND date<=? "
+                       "AND symbol NOT IN ('NIFTY50','INDIAVIX')",(str(upto or date.today()),)).fetchone()
+        d=r["d"] if r else None
+        return datetime.strptime(str(d)[:10],"%Y-%m-%d").date() if d else None
+    except Exception:
+        return None
+    finally:
+        if own: conn.close()
+
 def run_scoring_pipeline(trade_date=None):
-    if trade_date is None: trade_date=date.today()
+    if trade_date is None: trade_date=last_price_date() or date.today()
     log.info(f"🧠 AI Scoring pipeline {trade_date}")
     conn=get_connection(); result={"date":str(trade_date),"rows":0,"status":"SUCCESS"}
     try:
@@ -891,6 +907,13 @@ def run_scoring_pipeline(trade_date=None):
         tracked = set(get_tracked_symbols(conn))
         syms_rows=conn.execute("SELECT DISTINCT symbol FROM prices_daily WHERE date=?",(str(trade_date),)).fetchall()
         available={r["symbol"] for r in syms_rows}
+        if not available and not conn.execute("SELECT COUNT(*) AS n FROM technical_indicators WHERE date=?",
+                                               (str(trade_date),)).fetchone()["n"]:
+            # No bar and no indicator for the day (a weekend, a holiday, a run before the EOD data): nothing real to
+            # score. Every row would be news and liquidity only, stamped with a day NSE was shut.
+            log.warning(f"  ⏩ No prices or indicators for {trade_date}: not scored")
+            result.update(status="NO_DATA", rows=0)
+            return result
         symbols=sorted(tracked & available) if (tracked & available) else sorted(tracked)
         if not symbols:
             syms_rows=conn.execute("SELECT DISTINCT symbol FROM technical_indicators WHERE date=?",(str(trade_date),)).fetchall()
@@ -908,6 +931,15 @@ def run_scoring_pipeline(trade_date=None):
             result["formula"]=_record_formula(conn)          # W22 (SC-18)
         except Exception as e:
             log.warning(f"  formula registry: {e}")
+        # Review 3 Nov 2026 (pipeline M7): the loop below used to INSERT as it went, holding SQLite's write lock for the
+        # whole ~50 s run -- in a market-hours catch-up the order monitor's stops waited on it, then hit "database is
+        # locked". The rows are now computed first and written together at the end (one short write), and the market
+        # health / formula rows written above are committed before the loop starts.
+        conn.commit()
+        _SQL_SCORE="""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,`signal`,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,`signal`=excluded.`signal`,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3"""
+        pending=[]
         for sym in symbols:
             _CAPTURE={}
             try:
@@ -955,9 +987,7 @@ def run_scoring_pipeline(trade_date=None):
                 # purely so the dashboard can show each stock's actual beta.
                 beta_1y=compute_beta(sym,conn)
                 factors=[f for f in [f"VPI:{vpi:.0f}",f"ZPI:{zpi:.0f}",f"MRI:{mri:.0f}",f"CRI:{cri:.0f}"] if f]
-                conn.execute("""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,`signal`,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,`signal`=excluded.`signal`,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3""",
+                pending.append((sym,_CAPTURE and dict(_CAPTURE),
                     # Every column the run just recomputed is refreshed. The
                     # list used to stop at beta_1y, so a re-score left spi,
                     # confidence, the four component scores, the regime and the
@@ -967,17 +997,24 @@ def run_scoring_pipeline(trade_date=None):
                     # saying NEUTRAL/59.9 for that date while market_health --
                     # rewritten by the same run -- said BULL/60.01.
                     (sym,str(trade_date),vpi,spi,rri,mri,cri,msi,zpi,acs,ts,fs,ins,ns,atip_score,tod_score,signal,acs,beta_1y,mh.get("mh_score"),mh.get("regime"),
-                     factors[0] if len(factors)>0 else None,factors[1] if len(factors)>1 else None,factors[2] if len(factors)>2 else None))
+                     factors[0] if len(factors)>0 else None,factors[1] if len(factors)>1 else None,factors[2] if len(factors)>2 else None)))
                 all_scores_list.append({"symbol":sym,"atip_score":atip_score,"cri":cri,"acs":acs,"zpi":zpi,"tod_score":tod_score})
-                try:
-                    from scores.formulas import store_components
-                    store_components(conn,sym,trade_date,_CAPTURE)     # W22 (AF-03)
-                except Exception as e:
-                    log.debug(f"  {sym} components: {e}")
-                count+=1
             except Exception as e: log.warning(f"  {sym}: {e}")
             finally:
                 _CAPTURE=None
+        from scores.formulas import store_components
+        written=set()
+        for sym,cap,params in pending:
+            try:
+                conn.execute(_SQL_SCORE,params)
+                written.add(sym); count+=1
+            except Exception as e:
+                log.warning(f"  {sym}: {e}"); continue
+            try:
+                store_components(conn,sym,trade_date,cap)     # W22 (AF-03)
+            except Exception as e:
+                log.debug(f"  {sym} components: {e}")
+        all_scores_list=[r for r in all_scores_list if r["symbol"] in written]
         if all_scores_list:
             df_s=pd.DataFrame(all_scores_list).sort_values("atip_score",ascending=False)
             for i,(_,row) in enumerate(df_s.iterrows()):
@@ -1040,5 +1077,5 @@ if __name__ == "__main__":
     if args.backfill_mh:
         print(backfill_market_health())
     else:
-        td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else date.today()
+        td=datetime.strptime(args.date,"%Y-%m-%d").date() if args.date else None     # None: the last trading day
         run_scoring_pipeline(td)

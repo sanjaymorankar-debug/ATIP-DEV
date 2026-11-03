@@ -119,6 +119,59 @@
       d.showModal(); (no || yes).focus();
     });
   };
+  // Safety UX (3 Nov 2026 brief): every order action asks first, with the symbol, quantity, price, value and stop-loss
+  // in one place. rule = an order_rules row (or the ticket's own fields); o.action "send" (a pending rule's Confirm) or
+  // "save" (a new rule). LIVE is the destructive tone. Resolves true only on the explicit OK; Esc / Cancel is no.
+  AX.confirmOrder = function (rule, o) {
+    rule = rule || {}; o = o || {};
+    var env = (state && state.env) || (document.querySelector("[data-ax-env]") || {}).textContent || "PAPER";
+    env = String(env).trim().toUpperCase() || "PAPER";
+    var side = String(rule.side || "BUY").toUpperCase(), sym = String(rule.symbol || "").toUpperCase();
+    var px = Number(rule.trigger_hit_price || rule.limit_price || rule.resolved_trigger_price || rule.trigger_value || rule.price || 0) || null;
+    var qt = String(rule.quantity_type || "SHARES").toUpperCase();
+    var sh = qt === "SHARES" ? Number(rule.quantity_value || rule.qty || 0) || null : (Number(rule.est_qty || rule.resolved_quantity || rule.qty || 0) || null);
+    var qtyTxt = sh ? (qt === "SHARES" ? "" : "≈ ") + sh + " share" + (sh === 1 ? "" : "s") + (qt === "SESSION" ? " (all of the session's cash)" : "")
+      : qt === "SESSION" ? "all of the session's cash (sized when sent)"
+      : qt === "AMOUNT" ? AX.inr(rule.quantity_value) + " worth (sized when sent)" : qt === "RISK" ? rule.quantity_value + "% risk (sized when sent)" : String(rule.quantity_value || "—");
+    var value = Number(rule.est_value || 0) || (sh && px ? sh * px : qt === "AMOUNT" ? Number(rule.quantity_value) : null);
+    var stop = Number(rule.resolved_stoploss_price || rule.stop || 0) || null;
+    if (!stop && rule.bracket_stop_pct && px) stop = px * (1 + (side === "BUY" ? -1 : 1) * Number(rule.bracket_stop_pct) / 100);
+    var tgt = Number(rule.target || 0) || ((rule.bracket_target_pct && px) ? px * (1 + (side === "BUY" ? 1 : -1) * Number(rule.bracket_target_pct) / 100) : null);
+    var row = function (k, v) { return "<dt>" + AX.esc(k) + "</dt><dd class=\"ax-num\">" + v + "</dd>"; };
+    var html = '<p><span class="ax-st ' + (side === "BUY" ? "good" : "bad") + '">' + (side === "BUY" ? "▲ BUY" : "▼ SELL") + "</span> <b>" + AX.esc(sym) + "</b>" +
+      ' <span class="ax-pill ax-env" data-env="' + AX.esc(env) + '">' + AX.esc(env) + "</span></p>" +
+      '<dl class="ax-kv">' + row("Symbol", AX.esc(sym)) + row("Quantity", AX.esc(qtyTxt)) +
+      row(o.action === "save" ? "Trigger price" : "Price", px ? AX.inr(px) : "market price") +
+      row("Order value", value ? AX.inr(value) : "—") +
+      row("Stop-loss", stop ? AX.inr(stop) + (px ? " (" + AX.pct((stop - px) / px * 100) + ")" : "") : '<span class="ax-neg">none set</span>') +
+      (tgt ? row("Target", AX.inr(tgt) + (px ? " (" + AX.pct((tgt - px) / px * 100) + ")" : "")) : "") + "</dl>" +
+      '<p class="ax-small ax-muted">' + (env === "LIVE" ? "<b>LIVE: this sends a real order to Dhan with real money.</b>"
+        : env === "SANDBOX" ? "SANDBOX: Dhan's test host, no real money." : "PAPER: simulated at the live price; nothing reaches Dhan.") +
+      (o.action === "save" ? " This saves a rule; ATIP still asks you before the entry is sent." : "") + "</p>";
+    return AX.ask({ title: (o.action === "save" ? "Save this " + side.toLowerCase() + " rule?" : (side === "BUY" ? "Buy " : "Sell ") + sym + "?"),
+      html: html, tone: env === "LIVE" ? "danger" : "", cancel: "Not now",
+      ok: o.action === "save" ? "Save rule" : env === "LIVE" ? "Send LIVE order" : "Confirm & send" });
+  };
+  // Live data UX: a price cell that changed flashes once (green up / red down, with the arrow already in the text),
+  // and every [data-ax-updated] stamp says when the last quote arrived, to the second, in IST.
+  AX.flash = function (el, dir) {
+    if (!el || !dir) return;
+    el.classList.remove("ax-tick-up", "ax-tick-down"); void el.offsetWidth;
+    el.classList.add(dir > 0 ? "ax-tick-up" : "ax-tick-down");
+    setTimeout(function () { el.classList.remove("ax-tick-up", "ax-tick-down"); }, 1200);
+  };
+  AX.istNow = function (d) {
+    d = d || new Date(); var t = new Date(d.getTime() + (d.getTimezoneOffset() + 330) * 60000);
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return p(t.getHours()) + ":" + p(t.getMinutes()) + ":" + p(t.getSeconds());
+  };
+  AX.stamp = function (hms, stale) {
+    hms = hms || AX.istNow();
+    document.querySelectorAll("[data-ax-updated]").forEach(function (el) {
+      el.textContent = "Updated " + hms + " IST"; el.setAttribute("data-state", stale ? "stale" : "fresh");
+      el.title = stale ? "No new quote for a while: the price feed may have stopped" : "When the last live quote arrived";
+    });
+  };
   // A rule that triggered, then the price ran away before the tap (the 409 from /confirm).
   AX.priceMoved = function (r, rule) {
     r = r || {}; rule = rule || {};
@@ -141,14 +194,17 @@
   if (q.get("theme") === "dark" || q.get("theme") === "light") store("atip-theme", q.get("theme"));
   if (q.get("app") === "1") { try { sessionStorage.setItem("atip-app", "1"); } catch (e) {} }
   try { if (sessionStorage.getItem("atip-app") === "1") root.classList.add("ax-app"); } catch (e) {}
-  function applyTheme() { var t = store("atip-theme"); if (t === "dark" || t === "light") root.setAttribute("data-theme", t); else root.removeAttribute("data-theme"); }
+  // Dark by default (3 Nov 2026 brief: a trading screen, read pre-market and through the session); light and "follow my
+  // device" stay one click away. Nothing stored = dark; "auto" = the device's setting.
+  function themeOf() { var t = store("atip-theme"); return t === "light" || t === "auto" ? t : "dark"; }
+  function applyTheme() { var t = themeOf(); if (t === "dark" || t === "light") root.setAttribute("data-theme", t); else root.removeAttribute("data-theme"); }
   applyTheme();
   AX.cycleTheme = function () {
-    var t = store("atip-theme"), next = t === "dark" ? "light" : t === "light" ? "auto" : "dark";
+    var t = themeOf(), next = t === "dark" ? "light" : t === "light" ? "auto" : "dark";
     store("atip-theme", next); applyTheme(); themeLabel(); AX.toast("Theme: " + (next === "auto" ? "follows your device" : next));
   };
   function themeLabel() {
-    var t = store("atip-theme"), now = t === "dark" ? "dark" : t === "light" ? "light" : "your device's setting";
+    var t = themeOf(), now = t === "dark" ? "dark" : t === "light" ? "light" : "your device's setting";
     document.querySelectorAll("[data-ax-theme]").forEach(function (b) { b.title = "Theme: " + now + " (click to change)"; });
   }
   // density (remembered per browser, like the theme): compact rows for long tables
@@ -193,8 +249,9 @@
       el.hidden = false; el.setAttribute("data-state", d.feed.state || "");
       var t = el.querySelector(".ax-feedtext") || el; t.textContent = d.feed.text || "";
       var sh = el.querySelector(".ax-feedshort"); if (sh) sh.textContent = d.feed.short || d.feed.text || "";
-      if (el.classList.contains("ax-feed")) el.title = "Live price feed: " + (d.feed.text || "");
+      if (el.classList.contains("ax-feed")) el.title = "Live price feed: " + (d.feed.text || "") + (d.feed.updated ? " · updated " + d.feed.updated : "");
     });
+    if (d.feed && d.feed.updated) AX.stamp(String(d.feed.updated).replace(/ IST.*$/, ""), d.feed.state === "stale" || d.feed.state === "none");
     var ul = document.querySelector("[data-ax-alerts]");
     if (ul && d.alerts) ul.innerHTML = d.alerts.length ? d.alerts.map(function (a) {
       var tone = /critical|error/.test(a.severity) ? "bad" : a.severity === "warning" ? "warn" : "";

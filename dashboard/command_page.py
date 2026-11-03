@@ -264,7 +264,12 @@ $('hmGo').onclick=async()=>{try{const r=await post('/api/risk/halt',{reason:$('h
 $('pend').addEventListener('click',async e=>{
  const c=e.target.closest('[data-conf]'), r=e.target.closest('[data-rej]');
  try{
-  if(c){const res=await fetch('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm',{method:'POST',headers:{'X-ATIP-Token':TOKEN}});const t=await res.json();
+  if(c){const pr0=((S&&S.pending)||[]).find(x=>x.id===c.dataset.conf)||{id:c.dataset.conf};
+   // Safety UX (3 Nov 2026): symbol, quantity, price, value and stop-loss confirmed before the order is sent
+   if(!(window.AX&&AX.confirmOrder)){fail('Not sent: the confirmation dialog did not load. Reload the page.');return}
+   if(!(await AX.confirmOrder(pr0,{action:'send'})))return;
+   c.disabled=true;
+   const res=await fetch('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm',{method:'POST',headers:{'X-ATIP-Token':TOKEN}});const t=await res.json();
    if(res.status===409&&t.slippage){const pr=((S&&S.pending)||[]).find(x=>x.id===c.dataset.conf)||{};
     const go=(window.AX&&AX.priceMoved)?await AX.priceMoved(t,pr):false;
     if(go){await post('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm?force=true');say('Order placed at the market price')}else say('Not placed: the price moved past the limit')}

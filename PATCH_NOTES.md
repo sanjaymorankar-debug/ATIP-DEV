@@ -461,3 +461,35 @@ Tests: `tests/test_recheck_fixes_2026_11_03.py` (new, 12) and 9 new cases in `te
   - no JavaScript error, no axe-core violation, no text under 12 px;
   - no sideways scroll at 390 px;
   - every shell part shown on desktop and phone.
+
+---
+
+# 3 Nov 2026 night — full code review, scores re-audit, backtest, design system (prompt 10:54 PM IST)
+
+Branch `claude/full-review-2026-11-03` (from master `29b488e`). Reports: `docs/reports/2026-11-03-fullreview/`
+(CODE_REVIEW_REPORT, SCORE_AUDIT_REPORT, BACKTEST_VALIDATION_REPORT, CHANGES), `DESIGN.md`, and the test report
+`docs/testing/ATIP_Full_Review_Test_Report_2026-11-03.md`. Delta zip: `deliverables/2026-11-03/ATIP_full_review_delta_2026-11-03.zip`.
+
+**What changed for the owner**
+- **Orders**
+  - One trigger pass can no longer sell a position twice (a stop firing cancelled its target, and the stale target was sent too).
+  - A stop or target that fails is tried again instead of being dropped.
+  - While the kill switch is on, automatic exits wait and fire when it lifts.
+  - An expired confirmation can't be tapped through after hours.
+- **Every order send asks first.** One dialog shows the symbol, quantity, price, value, stop-loss and PAPER/LIVE: the Confirm buttons, the order ticket, baskets and SIP runs.
+- **Order ticket.** It refuses a Buy on a stock without a BUY signal. Sessions are not affected.
+- **Ten sessions.**
+  - Each card shows the stock's rank, why it was picked, the seven score badges, entry / target / stop, P&L and wins.
+  - The status line says how many sessions are held, queued or only planned.
+  - Home has the KPI strip: market health, Nifty 50, sessions filled, today's P&L, "Updated HH:MM:SS IST".
+- **Screens and apps.** The dashboard and the apps open dark; light is one click away. A changed price flashes once.
+- **Data.** TDPOWERSYS's history had 165 raw pre-split rows; the repair runs at deploy. An unknown 200-day average is no longer counted as "below".
+- **Alerts.** VIX / selloff / CRI / Trade-of-the-Day messages go out once a day. A missing market-health score no longer stops the post-market alerts.
+- **Calendar.** From December, ATIP warns when next year's NSE holidays are missing; 2027's are not listed yet.
+
+**Owner decisions offered (not changed):**
+- Flip VPI's ATR reading and re-set the BUY gate (evidence in the backtest report).
+- A server-side Buy lock.
+- Moving the evening jobs out of the 21:00 stop window.
+- Add NSE's 2027 holidays.
+- S1's target is 4 %; the others are 3 %.

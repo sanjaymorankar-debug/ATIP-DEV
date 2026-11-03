@@ -58,10 +58,26 @@ def _rationale(note: str | None, snap: dict | None) -> str:
     return ""
 
 
+def _ranks(conn) -> tuple[dict, int, str | None]:
+    """({symbol: rank}, how many were scored, the day): the latest scored day ranked the way auto-pick ranks,
+    ATIP highest first, then CRI lowest first among equals (CRI is lower-is-better)."""
+    try:
+        d = _row(conn.execute("SELECT MAX(date) AS d FROM ai_scores").fetchone())["d"]
+        if not d:
+            return {}, 0, None
+        rows = conn.execute("SELECT symbol FROM ai_scores WHERE date = ? AND atip_score IS NOT NULL "
+                            "ORDER BY atip_score DESC, (cri IS NULL), cri ASC, symbol", (d,)).fetchall()
+    except Exception:
+        return {}, 0, None
+    syms = [_row(r)["symbol"] for r in rows]
+    return {s: i + 1 for i, s in enumerate(syms)}, len(syms), str(d)[:10]
+
+
 def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
     from orders import autopick, sessions as S
     today = today or date.today()
     ls = S.list_sessions(conn)["sessions"]
+    ranks, n_ranked, rank_day = _ranks(conn)
     plan = {}
     if run_dry:
         try:
@@ -108,6 +124,9 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
                    or f"session is {s['status']}")
             row.update(symbol=None, status="WAITING", entry=None, target=None, stoploss=None, reason=why)
         row["score_snapshot"] = _snapshot(conn, row.get("symbol"), None)
+        # Task 1 (3 Nov 2026, 10:54 PM brief): the stock's rank on the latest scored day, in auto-pick's order
+        row["rank"] = ranks.get(row.get("symbol")) if row.get("symbol") else None
+        row["rank_of"] = n_ranked if row["rank"] else None
         row["rationale"] = _rationale(note, row["score_snapshot"]) if row.get("symbol") else row.get("reason", "")
         m = _NOTE.search(note or "")
         src = (m.group(4) if m and m.group(4) else ("BUY" if m and m.group(1) == "BUY" else "HOLD-CUT")) if m else None
@@ -116,6 +135,12 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
             sources[src] += 1
         rows.append(row)
     filled = sum(1 for r in rows if r.get("symbol"))
+    # "filled" counts a session with a stock assigned: held, queued, or the next pick a dry run plans. Say which, so
+    # ten planned picks overnight are never read as ten positions.
+    counts = {"holding": sum(1 for r in rows if r["status"] == "HOLDING"),
+              "queued": sum(1 for r in rows if r["status"] in ("QUEUED", "AWAITING CONFIRMATION")),
+              "planned": sum(1 for r in rows if str(r["status"]).startswith("NEXT PICK")),
+              "waiting": sum(1 for r in rows if r["status"] == "WAITING")}
     why = None
     if filled < TARGET:
         waits = [r for r in rows if not r.get("symbol")]
@@ -135,7 +160,11 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
         parts.append(f"{sources['RANK-FILL']} rank-filled (no BUY signal free)")
     msg = f"{filled} of {TARGET} sessions filled" + (f" ({', '.join(parts)})" if parts and filled else "") + (
         f" — {why}" if why else "")
-    return {"target": TARGET, "filled": filled, "message": msg, "complete": filled >= TARGET, "rows": rows,
+    held = [f"{counts['holding']} holding", f"{counts['queued']} queued"] + (
+        [f"{counts['planned']} to buy at the next pick"] if counts["planned"] else [])
+    detail = " · ".join(held)
+    return {"target": TARGET, "filled": filled, "message": msg, "detail": detail, "counts": counts,
+            "complete": filled >= TARGET, "rows": rows, "rank_day": rank_day, "ranked": n_ranked,
             "signal_day": (cands or {}).get("date"), "buy_signals": (cands or {}).get("n_signal"),
             "rank_fill_candidates": (cands or {}).get("n_fill"), "rank_fill": autopick.rank_fill_enabled(conn),
             "cri_direction": "lower is better (ranked ascending)"}

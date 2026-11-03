@@ -228,8 +228,16 @@ def preview(conn, symbol, side="BUY", qty=None, entry=None, target=None, stop=No
     if net_risk is not None and budget_left is not None:
         chk("Loss budget", net_risk <= budget_left,
             f"a stop-out costs Rs {net_risk:,.0f}; Rs {budget_left:,.0f} of today's budget is left")
-    sig = signals(conn, q=symbol, limit=5)
+    # Review 3 Nov 2026 (dashboard M5): LIKE %SYM% ordered by score could push the stock itself off a 5-row page
+    # ("LT" matches 19 symbols); a page big enough for every match keeps the exact row in view.
+    sig = signals(conn, q=symbol, limit=1000)
     srow = next((r for r in sig["rows"] if r["symbol"] == symbol), None)
+    if long_ and not session:
+        # Owner decision 3 Nov 2026: a Buy only on a BUY signal -- the order modal enforced it, the W2 ticket did not
+        # (dashboard H2). Pool sessions are left out: their auto-pick rank-fills by design (orders/autopick.py).
+        chk("Buy only on a BUY signal", bool(srow and srow.get("signal") == "BUY"),
+            (f"{symbol} is {srow.get('signal')} on {sig.get('date')}" if srow else f"no ATIP signal for {symbol} on {sig.get('date')}")
+            + ("" if srow and srow.get("signal") == "BUY" else ": ATIP buys only on a BUY signal"))
     if srow and srow.get("signal_price"):
         g = round((entry - srow["signal_price"]) / srow["signal_price"] * 100, 2) + 0.0     # never "-0.00%"
         chk("Entry near the signal price", abs(g) < GAP_WARN_PCT,

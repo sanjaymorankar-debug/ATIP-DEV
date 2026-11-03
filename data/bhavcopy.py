@@ -214,9 +214,14 @@ def store_fii_dii(conn, trade_date, session=None) -> int:
         return 0
     if not fii:
         return 0
-    conn.execute("""INSERT OR REPLACE INTO fii_dii_market
+    # Review 3 Nov 2026 (ingestion M3): an upsert of the six flow columns only. INSERT OR REPLACE deleted the row and
+    # with it the F&O PCR data/derivatives.py writes into the same date (every row from 23 Oct had pcr NULL).
+    conn.execute("""INSERT INTO fii_dii_market
         (date,fii_buy_cr,fii_sell_cr,fii_net_cr,dii_buy_cr,dii_sell_cr,dii_net_cr)
-        VALUES(?,?,?,?,?,?,?)""",
+        VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(date) DO UPDATE SET fii_buy_cr=excluded.fii_buy_cr, fii_sell_cr=excluded.fii_sell_cr,
+        fii_net_cr=excluded.fii_net_cr, dii_buy_cr=excluded.dii_buy_cr, dii_sell_cr=excluded.dii_sell_cr,
+        dii_net_cr=excluded.dii_net_cr""",
         (fii.get("date"),fii.get("fii_buy_cr",0),fii.get("fii_sell_cr",0),fii.get("fii_net_cr",0),
          fii.get("dii_buy_cr",0),fii.get("dii_sell_cr",0),fii.get("dii_net_cr",0)))
     # The 5-day averages include the day itself. They were taken from the five

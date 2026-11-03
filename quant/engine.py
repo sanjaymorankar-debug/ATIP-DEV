@@ -142,7 +142,7 @@ def compute(conn, as_of=None, factor_ids=None, universe="tracked_current", store
             log.warning(f"  factor {f}: normalization failed: {e}")
             summary[f] = {**summary[f], "status": "NORMALIZATION_ERROR", "error": str(e)}
             continue
-        pct = NZ.percentile(vals)
+        pct = NZ.percentile(norm)     # review 3 Nov 2026 (quant M9): of the normalised values -- raw made norm a no-op
         score = {s: (p if fd.direction > 0 else 100 - p) if p is not None else None for s, p in pct.items()}
         rk = NZ.rank(score)
         srank = {}

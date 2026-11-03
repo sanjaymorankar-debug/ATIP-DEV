@@ -160,6 +160,19 @@ def _estimate_order_value(symbol, quantity, order_type, price):
             return float(q.iloc[0]["ltp"]) * quantity
     except Exception as e:
         log.warning(f"  Could not fetch LTP for value estimate: {e}")
+    if not price:
+        # Review 3 Nov 2026 (orders M7): with no live quote a MARKET order used to be valued at Rs 0, so the funds check,
+        # max_order_value and the exposure limits all passed it. Fall back to the price the risk band uses (a fresh
+        # stored quote, else the last close); _place_order refuses a confirmed BUY that still has no value.
+        try:
+            from orders.risk import reference_price
+            c = get_connection()
+            try:
+                price = reference_price(c, symbol)[0]
+            finally:
+                c.close()
+        except Exception as e:
+            log.warning(f"  Could not read a reference price for {symbol}: {e}")
     return float(price or 0) * quantity
 
 
@@ -220,6 +233,14 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         return {"status": "FAILED", "error": msg}
 
     est_value = _estimate_order_value(symbol, quantity, order_type, price)
+    if transaction_type == "BUY" and confirm and not est_value and env == LIVE:
+        # Real money only: PAPER prices the fill from its own quote feed and refuses without one (orders/paper.py)
+        msg = f"no price for {symbol}: a BUY cannot be valued, so the funds and risk limits cannot be checked"
+        log.error(f"  X Order refused — {msg}")
+        _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,
+                   price, None, None, mode, "FAILED", error=msg)
+        conn.close()
+        return {"status": "FAILED", "error": msg}
     if transaction_type == "BUY":
         funds = check_funds(est_value)
     else:

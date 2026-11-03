@@ -12,6 +12,8 @@ import SwiftUI
 @main
 struct ATIPApp: App {
     var body: some Scene {
-        WindowGroup { ContentView() }
+        // 2026-11-03 (10:54 PM brief): dark by default, as the web pages now are (a trading screen); the native
+        // banner and tab bar take the dark web tokens so they match the page the web view shows.
+        WindowGroup { ContentView().preferredColorScheme(.dark) }
     }
 }

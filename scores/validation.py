@@ -163,7 +163,7 @@ def _nifty_ret20(db_path, index) -> pd.Series:
 
 def stored_scores(db_path) -> pd.DataFrame:
     c = sqlite3.connect(str(db_path))
-    df = pd.read_sql("SELECT symbol,date,vpi,mri,rri,cri,zpi,atip_score AS atip,acs,`signal` AS signal FROM ai_scores", c)
+    df = pd.read_sql("SELECT symbol,date,vpi,mri,rri,cri,zpi,atip_score AS atip,acs,`signal` AS `signal` FROM ai_scores", c)
     c.close()
     return df
 

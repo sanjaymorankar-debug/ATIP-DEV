@@ -238,7 +238,7 @@ def create_rule(payload: dict) -> dict:
         now = datetime.now().isoformat()
         rule_id = str(uuid.uuid4())
         side = payload["side"]
-        role = payload.get("role", ROLE_ENTRY)
+        role = payload.get("role", ROLE_ENTRY) or ROLE_ENTRY
         # Direction defaults to the historical side-implied behaviour so
         # existing callers are unchanged; bracket legs pass it explicitly.
         direction = payload.get("trigger_direction") or (DIR_BELOW if side == "BUY" else DIR_ABOVE)
@@ -685,6 +685,12 @@ def confirm_rule(rule_id: str, force: bool = False) -> dict:
     direction since it triggered, this refuses and reports both prices; pass
     force=True to override deliberately.
     """
+    # Review 3 Nov 2026 (orders M4): expiry used to be applied only inside check_triggers (market hours), so a
+    # confirmation from 15:20 could still be tapped at 20:00 and sent as a MARKET order. Expire first, then read.
+    try:
+        expire_stale_confirmations()
+    except Exception as e:
+        log.warning(f"  confirm: could not expire stale confirmations: {e}")
     rule = get_rule(rule_id)
     if not rule:
         return {"status": "FAILED", "error": "rule not found"}
@@ -772,6 +778,11 @@ def check_triggers() -> list[dict]:
     # Owner rule (27 Oct 2026): an entry goes out without the confirmation tap in PAPER only.
     from orders.environment import PAPER, broker_env
     paper_only_ok = broker_env() == PAPER
+    try:
+        from orders.risk import halted as _halted
+        halted_now = bool(_halted()[0])
+    except Exception:
+        halted_now = False
 
     # Ratchet trailing stops BEFORE testing triggers, on this same quote batch,
     # so a stop that should have moved up this tick isn't tested at its old,
@@ -793,6 +804,12 @@ def check_triggers() -> list[dict]:
             reason = _condition_met(rule, price)
             if not reason:
                 continue
+            # Review 3 Nov 2026 (orders H1): `active` was read once, before this loop. A STOP that fired earlier in
+            # this same pass cancels its TARGET (settle_oco_group), so act only on what the database says now.
+            cur = get_rule(rule["id"])
+            if not cur or cur.get("status") != ACTIVE:
+                continue
+            rule = cur
             # UXR-04: an entry linked to a paused / MANUAL / over-limit session waits (stays ACTIVE).
             # Exit legs are never held -- orders/sessions.py gate().
             try:
@@ -843,6 +860,11 @@ def check_triggers() -> list[dict]:
                             f"{quote_age:.0f}s old (limit {MAX_QUOTE_AGE_SECONDS}s)")
                 events.append({"type": "SKIPPED_STALE_QUOTE", "rule_id": rule["id"],
                                "symbol": rule["symbol"], "quote_age_s": round(quote_age)})
+            elif halted_now:
+                # The kill switch blocks every order, exits included (orders/broker.py). Leave the rule ACTIVE and do
+                # not attempt it every 30 s (each attempt wrote a BLOCKED_HALTED order_log row and, for an exit leg,
+                # used to fail it for good -- see execute_rule). It fires on the first pass after the halt lifts.
+                events.append({"type": "HELD_HALTED", "rule_id": rule["id"], "symbol": rule["symbol"]})
             else:
                 result = execute_rule(rule["id"], price)
                 events.append({"type": result["status"], "rule_id": rule["id"], **result})
@@ -923,6 +945,10 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
     rule = get_rule(rule_id)
     if not rule:
         return {"status": "FAILED", "error": "rule not found"}
+    if rule.get("status") not in (ACTIVE, PENDING_CONFIRMATION):
+        # Review 3 Nov 2026 (orders H1): never send for a rule that already EXECUTED or was CANCELLED (an OCO sibling
+        # cancelled by the leg that just filled) -- that was a second SELL of the whole position.
+        return {"status": "SKIPPED", "error": f"rule is {rule.get('status')}, not sent"}
 
     exec_price = price or rule.get("trigger_hit_price") or rule["resolved_trigger_price"]
     if rule["quantity_type"] == QTY_RISK:
@@ -962,6 +988,7 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
     else:
         quantity = _resolve_quantity(rule, exec_price)
 
+    retry = False
     placer = place_buy_order if rule["side"] == "BUY" else place_sell_order
     tag = _order_tag(rule)
     result = placer(
@@ -989,10 +1016,20 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
             # Dry run — leave rule state as-is for the caller to decide next steps.
             pass
         else:
-            conn.execute(
-                "UPDATE order_rules SET status=?, execution_error=?, updated_at=? WHERE id=?",
-                (FAILED, str(result.get("error") or result.get("message") or result), now, rule_id),
-            )
+            err = str(result.get("error") or result.get("message") or result.get("reason") or result)
+            # Review 3 Nov 2026 (orders H2): an exit leg that FAILED was never tried again (check_triggers reads ACTIVE
+            # rules only), so one refused attempt -- a halt, a missing quote, a risk check -- left the position with no
+            # stop. A STOP / TARGET stays ACTIVE and retries on the next pass, unless the shares are simply gone.
+            gone = any(w in err.lower() for w in ("holds 0", "no longer holds", "cannot sell", "no position"))
+            if (rule.get("role") or ROLE_ENTRY) != ROLE_ENTRY and not gone:
+                retry = True
+                conn.execute("UPDATE order_rules SET execution_error=?, updated_at=? WHERE id=?",
+                             (f"retrying: {err}", now, rule_id))
+            else:
+                conn.execute(
+                    "UPDATE order_rules SET status=?, execution_error=?, updated_at=? WHERE id=?",
+                    (FAILED, err, now, rule_id),
+                )
         conn.commit()
     finally:
         conn.close()
@@ -1021,7 +1058,13 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
         notify_order_event("EXECUTED", fresh, extra=f"{quantity} @ ~{exec_price}",
                            legs=result.get("bracket_legs"))
     elif result.get("status") not in ("DRY_RUN_OK",):
-        notify_order_event("FAILED", rule, extra=str(result.get("error") or result.get("message") or ""))
+        why = str(result.get("error") or result.get("message") or result.get("reason") or "")
+        if retry:
+            result["retrying"] = True
+            if not str(rule.get("execution_error") or "").startswith("retrying:"):     # say it once, not every 30 s
+                notify_order_event("FAILED", rule, extra=f"{why} -- the exit stays active and is tried again")
+        else:
+            notify_order_event("FAILED", rule, extra=why)
 
     return result
 
