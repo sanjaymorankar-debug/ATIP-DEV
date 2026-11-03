@@ -13,6 +13,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 IST = ZoneInfo("Asia/Kolkata")
+# The fixtures are the 2026-10-26 session (bars() ends there). The module's own clock (local_date) is pinned to that
+# evening so a bar's freshness is judged against the fixture day, not the day the suite happens to run: from
+# 2026-11-03 the real clock made every source "stale" (more than stale_after_days = 7 old) and six tests failed.
+FIXTURE_NOW = datetime(2026, 10, 26, 18, 0, tzinfo=IST)
 
 
 def local(tz, y, mo, d, h, mi=0):
@@ -42,6 +46,9 @@ def A(temp_db, tmp_path, monkeypatch):
     seed_weights()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(asia_markets, "RETRY_PAUSE", 0)
+    real_local_date = asia_markets.local_date
+    monkeypatch.setattr(asia_markets, "local_date",
+                        lambda exchange, now=None, cfg=None: real_local_date(exchange, now or FIXTURE_NOW, cfg))
     return asia_markets
 
 
