@@ -744,3 +744,5 @@ html.ax-ready body.ax-shelled:not(.ax-native) #ax-main { visibility: visible; an
 /* the stamp gives way first when the top bar is narrow (watchlist open, a laptop): the feed pill still says the tick time,
    and Home's "Data freshness" tile keeps the seconds */
 @container axtop (max-width: 1180px) { .ax-updated { display: none; } }
+/* a long status chip ("→ Next pick · after the stop window") wraps inside its card instead of widening the page */
+.ax-tcard { overflow-wrap: anywhere; } .ax-tcard .ax-st { white-space: normal; max-width: 100%; }

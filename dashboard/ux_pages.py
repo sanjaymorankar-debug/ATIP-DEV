@@ -644,8 +644,11 @@ def _board_cards(b: dict, compact: bool = False) -> str:
         src = f'<span class="ax-small ax-muted">{e(r["source"])}</span>' if r.get("source") and r.get("symbol") else ""
         pnl = K.money(r["pnl"], True) if r.get("pnl") is not None else "—"
         wins = f'{r.get("successful_trades") or 0}/{r.get("closed_trades") or 0}'
+        # the compact card keeps the chip to its first words ("→ Next pick"); the rest is the chip's tooltip
+        short = chip.split(" · ")[0] if compact else chip
         head = (f'<div class="ax-tc-h"><a class="ax-tc-id" href="/sessions/{e(r["session"])}">{e(r["session"])}'
-                f'{"" if compact else " " + e(r.get("name") or "")}</a>{K.status(chip, tone)}</div>')
+                f'{"" if compact else " " + e(r.get("name") or "")}</a>'
+                f'<span title="{e(chip)}">{K.status(short, tone)}</span></div>')
         if compact:
             cards.append(f'<li class="ax-tcard" data-status="{ds}">{head}<div class="ax-tc-sym">{sym}{rank}</div>'
                          f'<div class="ax-tc-foot"><span>P&amp;L <b>{pnl}</b></span><span title="winning closed trades / closed trades">'
