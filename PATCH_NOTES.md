@@ -307,3 +307,86 @@ There is nothing to run. Every new table and column is created on first use (`CR
 10. **Report delivery** goes to the inbox and channels of the default tenant's users through `notify()`. On an install with no enterprise users the report stays in the archive. Nothing is generated or sent on the view-only server.
 11. **"Test" and "Prod" servers are local instances,** as in the 26 and 31 Oct runs; no hosted test.bkesari.com or bkesari.com exists to deploy to. Test was a scratch folder with a seeded database and real paper trades through the order engine. Prod was a read-only SQLite backup of the live `atip.db`. The live Mac was not restarted or written to.
 12. **The phone apps were not built:** this Mac has no Android SDK, Gradle or Java, and no full Xcode or xcodegen. The Swift sources pass `swiftc -parse` and a Mac Catalyst type-check. The Kotlin was reviewed by hand.
+
+---
+
+# 3 Nov 2026: tax estimates brought into line with the law (tax year 2026-27)
+
+The owner asked for the tax rates and the STT setting to follow Indian law, checked on the web. This replaces assumption 3 of the 2 Nov entry. Everything is still an estimate, labelled "est.", for a CA to check.
+
+## What the law says (checked 3 Nov 2026)
+
+- **The Income-tax Act, 2025 replaced the 1961 Act from 1 April 2026.** Budget 2026 (Finance Act 2026) left the slabs and the capital-gains rates as they were for FY 2025-26. ATIP now shows the new section numbers with the old ones in brackets.
+- **Delivery trades held 12 months or less:** 20% (s.196, was s.111A). **Held longer:** 12.5% above ₹1.25 lakh a year (s.198, was s.112A). These are flat rates, whatever the owner's slab.
+- **STT is never deducted from a capital gain** (s.72(3), was the proviso to s.48). Brokerage, exchange, SEBI, stamp, GST and DP charges are deducted as costs of the transfer. Against intraday and F&O income, which is business income, STT is an ordinary expense.
+- **Intraday (speculative) and F&O (business) income** is taxed at the slabs.
+  - New regime, the default (s.202): ₹0–4 lakh nil, 4–8 lakh 5%, 8–12 lakh 10%, 12–16 lakh 15%, 16–20 lakh 20%, 20–24 lakh 25%, above 30%.
+  - Old regime: ₹0–2.5 lakh nil, 2.5–5 lakh 5%, 5–10 lakh 20%, above 30%.
+- **The 4% health and education cess always applies,** on tax plus surcharge. Surcharge starts above ₹50 lakh of income and is never more than 15% on the 20% and 12.5% gains.
+- **The s.156 rebate (was s.87A)** never covers those gains. A resident whose other income is below the nil slab uses the shortfall against them (s.196(2)).
+- **STT on futures went from 0.02% to 0.05% of the sale from 1 April 2026** (Finance Act 2026; NSE circular NSE/FATAX/73524 of 31 Mar 2026). Options had already been updated on 26 Oct. Delivery and intraday STT did not change.
+
+Sources: secondary summaries (TaxGuru, CAclubindia, eztax.in, ICICI Direct, Business Today, Upstox), plus the e-filing portal's surcharge and cess pages. The official incometaxindia.gov.in section pages refused automated reads, so the section numbers come from the Act's text as reproduced on eztax.in and TaxGuru.
+
+## What changed
+
+- `accounting/tax.py`:
+  - New defaults: `addons_enabled: true` (the cess) and `stt_deductible: false`. STT is added back on STCG and LTCG only; intraday and F&O always deduct it.
+  - New settings `regime` ("new" or "old") and `other_income`. With `other_income` given, intraday and F&O are taxed at the slab on the next rupee. The FY statement then uses the exact slab tax that trading adds, and sets the unused nil slab against STCG first, then LTCG. Without it, `slab_pct` (30%, the top slab) is used, so the estimate errs high.
+  - The surcharge is capped at 15 on capital gains.
+  - Head labels carry the new section numbers.
+- `accounting/cycles.py`: `sync()` re-estimates any stored cycle whose tax (or compounding basis) no longer matches the settings. Saving tax settings, editing config.json by hand or a change of defaults all do it, so `{"force": true}` is no longer needed for tax.
+- `accounting/ledger.py`: `true_up_tax()` posts the difference between a cycle's new estimate and what the ledger already provisioned (and the reserve under AFTER_TAX_RESERVE). It is dated the day the cycle closed. Posted lines are never edited.
+- `dashboard/ux_routes.py`: `POST /api/v2/tax/config` re-estimates and returns `retaxed`. `GET` also returns the slab tables.
+- `dashboard/ux_pages.py`:
+  - Settings › Tax gains the regime, other income and slab table, and clearer STT and cess options.
+  - Accounting › Tax states the regime, the F&O rate and the STT rule.
+- `enterprise/session_reports.py`: the FY tax statement lists the regime, the STT rule and any nil-slab use.
+- `backtest/costs.py`: the futures STT is 0.05% (`nse_futures`).
+- `config_template.json`: the new `tax` block and note.
+- Tests:
+  - `tests/test_session_cycles.py`: the brief's worked example keeps its own settings and still matches to the paisa. New tests cover the statutory figures, the slabs, the surcharge cap, the FY slab and nil-slab maths, and a re-estimate that keeps the books balanced and the cash reconciled.
+  - `tests/test_w40_futures_backtest.py`: the futures rate is hand-checked at 0.05%. The two long hand-computed runs keep the 2024 rate, because they test the engine's arithmetic.
+
+## The §4.6 worked example, both ways
+
+| | Brief's settings | The law (new defaults) |
+|---|---|---|
+| Net before tax | ₹677.73 | ₹677.73 |
+| Taxed amount | ₹677.73 | ₹728.48 (STT ₹50.75 added back) |
+| Tax est. | ₹135.55 | ₹151.52 (20% + 4% cess) |
+| Actual P&L | ₹542.18 | ₹526.21 |
+| Next cycle, AFTER_TAX_RESERVE | ₹25,542.18 | ₹25,526.21 |
+| Next cycle, CASH_AFTER_CHARGES | ₹25,677.73 | ₹25,677.73 |
+
+## Effect on the live Mac
+
+- Nothing changes until the next ATIP restart. After it, the first sync re-estimates the stored cycles.
+- On 3 Nov there is one stored cycle, a loss with no tax.
+- Every live session compounds on CASH_AFTER_CHARGES, so the estimate cannot change any order size. It would only matter for a session switched to AFTER_TAX_RESERVE.
+- `atip_data/config.json` has no `tax` block, so the new defaults apply. Any change made on Settings › Tax is written there.
+
+## Assumptions
+
+1. Resident individual, below 60, new regime unless chosen otherwise. Senior-citizen slabs, NRIs and HUFs are not modelled.
+2. The s.156 rebate is not counted. It can only lower slab tax on intraday or F&O income when total income is ₹12 lakh or less, so leaving it out errs high.
+3. Earlier years' carried-forward losses, marginal relief and advance-tax dates are still not modelled.
+4. Charges other than STT are deducted from capital gains in full, DP charges included, as costs of the transfer.
+
+## Phone apps: the Live tab is back (3 Nov 2026)
+
+The owner asked for the Live tab back on both phone apps. It is the 31 Oct page `/m?tab=live`: every Dhan live feed as OFF / IDLE / LIVE / REST / STALE, refreshed every 15 s.
+
+- **Tabs are now Home, Trade, Live, Sessions, More.** Live takes Reports' place, and Reports is one tap away under More. Android's bottom bar takes at most five items (a sixth throws at start-up), and a sixth tab on iPhone folds into the system's own "More". So adding a tab meant giving one up, and Reports is the least time-critical.
+- **A phone browser (not the app) is unchanged:** the page shell's own bottom bar is still Home, Trade, Sessions, Reports, More.
+- **Changed files:**
+  - `mobile/android/.../MainActivity.kt`, `res/values/strings.xml` (`tab_live` in place of `tab_reports`), `res/drawable/ic_tab_live.xml` (Material "sensors"; `ic_tab_reports.xml` removed);
+  - `mobile/ios/ATIP/ContentView.swift` (SF Symbol `dot.radiowaves.left.and.right`), `ATIPApp.swift`, `WebScreen.swift`;
+  - `mobile/README.md`;
+  - the More page's subtitle in `dashboard/ux_pages.py`.
+- **Version:** 2026.11.03 (Android `versionCode` 4, iOS `CFBundleVersion` 4).
+- **Test:** `tests/test_dhan_realtime_feeds.py::test_both_apps_have_a_live_tab` checks the exact tab order in both apps.
+- **Still not built** (no Android SDK or Xcode on this Mac).
+  - All Swift files pass `swiftc -parse`.
+  - The Mac Catalyst type-check used on 2 Nov now fails with "redefinition of module 'SwiftBridging'" inside the Command Line Tools, and fails identically on the code from before this change, so it is the toolchain.
+  - `/m?tab=live` and `/more` were checked in app mode at 375 px on the Test server: no sideways scroll, the shell's own navigation hidden, Reports listed under More, no server errors.

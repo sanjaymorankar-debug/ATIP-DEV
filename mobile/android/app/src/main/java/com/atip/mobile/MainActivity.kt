@@ -35,13 +35,15 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * ATIP for Android (2026-10-26; tabs and banner 2026-11-02): a native shell around ATIP's own mobile screens.
+ * ATIP for Android (2026-10-26; tabs and banner 2026-11-02; Live tab back 2026-11-03): a native shell around
+ * ATIP's own mobile screens.
  *
  *   Home      /home      Today: is ATIP safe, running, making money
  *   Trade     /command   Command Center (UXR-01): halt switch, risk budget, pending confirmations
+ *   Live      /m?tab=live  every Dhan live feed (OFF / IDLE / LIVE / REST / STALE), refreshed every 15 s; the
+ *                          owner asked for it back on 2026-11-03, in place of Reports (now under More)
  *   Sessions  /sessions  the 10 trading sessions S1-S10: gross P&L vs actual P&L after charges and estimated tax
- *   Reports   /reports   periodic reports and the archive
- *   More      /more      every other section: Markets, Research, Accounting, Strategy Lab, Wealth, Settings
+ *   More      /more      every other section: Reports, Markets, Research, Accounting, Strategy Lab, Wealth, Settings
  *
  * The web view adds "ATIPApp/<version>" to its user agent, so the page shell hides its own left rail / bottom
  * tab bar: the tabs here are native. Pull down to reload the page on screen, tap the open tab again to go back
@@ -59,8 +61,8 @@ class MainActivity : AppCompatActivity() {
     private class Tab(val path: String, val label: Int, val icon: Int)
     private val tabs = listOf(Tab("/home", R.string.tab_home, R.drawable.ic_tab_home),
                               Tab("/command", R.string.tab_trade, R.drawable.ic_tab_trade),
+                              Tab("/m?tab=live", R.string.tab_live, R.drawable.ic_tab_live),
                               Tab("/sessions", R.string.tab_sessions, R.drawable.ic_tab_sessions),
-                              Tab("/reports", R.string.tab_reports, R.drawable.ic_tab_reports),
                               Tab("/more", R.string.tab_more, R.drawable.ic_tab_more))
     private lateinit var web: WebView
     private lateinit var banner: LinearLayout
@@ -240,6 +242,11 @@ object StatusText {
         }
         if (js.optBoolean("halted", false))
             parts.add(1, "Kill switch ON" + (str(js, "halt_reason")?.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""))
+        // the live price feed in the web pages' own words (dashboard/ux_kit.feed_label, UX audit H1, 3 Nov 2026):
+        // "Market closed · last tick 15:29 IST" outside market hours, never "live"
+        js.optJSONObject("feed")?.let { f ->
+            str(f, "text")?.takeIf { it.isNotBlank() }?.let { parts.add(if (js.optBoolean("halted", false)) 2 else 1, it) }
+        }
         if (str(js, "role") == "VIEWER") parts.add("view only")
         if (js.has("last_updated"))
             parts.add("last updated " + (str(js, "last_updated")?.takeIf { it.isNotBlank() } ?: "—"))

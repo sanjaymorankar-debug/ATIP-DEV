@@ -4,25 +4,37 @@ watchlists, alert rules, trading profile) and /admin (users, tenants, roles,
 subscriptions, audit). Minimal; everything goes through /api/auth, /api/account
 and /api/admin, authorized by the middleware. The session is an HttpOnly cookie,
 so no token is stored in the page.
+
+UX audit (3 Nov 2026): the shared script (esc, j, send, table) loads in <head>, before the page's own script
+calls load() -- it used to come after the body, so /account, /admin and /admin/console threw "esc is not
+defined" (the real error, "j is not defined", was swallowed by the catch that called esc). Every input is
+labelled; tables scroll inside keyboard-reachable regions.
 """
 
 _STYLE = """<style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--bad:#dc2626;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--bad:#fca5a5;--warn:#fde68a}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1300px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1300px}
 h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg)}
-input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12px;margin:2px}
-button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;margin:2px}
-.muted{color:var(--muted)}.note{color:var(--warn)}.scroll{max-height:340px;overflow:auto}.box{background:var(--panel);padding:16px;border-radius:8px;max-width:360px;margin:60px auto}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg)}
+input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;margin:2px;max-width:100%}
+button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12.5px;margin:2px}
+label{color:var(--muted);font-size:12px}
+.muted{color:var(--muted)}.note{color:var(--warn)}.box{background:var(--panel);padding:16px;border-radius:8px;max-width:360px;margin:60px auto}
+.wrap>div,p{overflow-wrap:anywhere}
+.tw{overflow:auto;max-width:100%}.scroll .tw{max-height:340px}.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>"""
 _JS = r"""<script>
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function j(u,o){const r=await fetch(u,Object.assign({credentials:'same-origin'},o||{}));const t=await r.json().catch(()=>({}));if(!r.ok)throw new Error(t.error||r.status);return t}
 const send=(m,u,b)=>j(u,{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).join(', '));
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">${o.empty||'Nothing here yet.'}</td></tr>`}</tbody></table></div>`};
 async function logout(){await send('POST','/api/auth/logout');location='/login'}
+// a read that fails says so at the top of the page (single-user mode answers 503 "enterprise features are disabled")
+function pageError(e){const w=document.querySelector('.wrap')||document.body;w.insertAdjacentHTML('afterbegin',`<p class="note" role="alert" style="padding:8px 0">${esc(e.message)}${/disabled/.test(e.message)?'. ATIP runs in single-user mode, so accounts, API keys and administration are switched off.':''}</p>`)}
 </script>"""
 _TOP = """<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">{title}</span></div>
 <div><a href="/">Dashboard</a><a href="/account">Account</a><a href="/admin">Admin</a><a href="#" onclick="logout()">Sign out</a></div></div>"""
@@ -30,18 +42,18 @@ _TOP = """<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <sp
 
 def _page(title, body):
     return (f"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
-            f"content='width=device-width,initial-scale=1'><title>ATIP {title}</title>{_STYLE}</head><body>"
-            f"{_TOP.format(title=title)}<div class='wrap'>{body}</div>{_JS}</body></html>")
+            f"content='width=device-width,initial-scale=1'><title>ATIP {title}</title>{_STYLE}{_JS}</head><body>"
+            f"{_TOP.format(title=title)}<div class='wrap'>{body}</div></body></html>")
 
 
 def render_login():
     return (f"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
             f"content='width=device-width,initial-scale=1'><title>ATIP Sign in</title>{_STYLE}</head><body>"
             """<div class="box"><h2>Sign in to ATIP</h2><div id="st" class="muted"></div>
-<input id="u" placeholder="username" autocomplete="username" style="width:100%"><br>
-<input id="p" type="password" placeholder="password" autocomplete="current-password" style="width:100%"><br>
-<input id="t" placeholder="tenant (optional)" style="width:100%"><br>
-<input id="o" placeholder="MFA code (if enabled)" autocomplete="one-time-code" inputmode="numeric" style="width:100%"><br>
+<input id="u" placeholder="username" aria-label="Username" autocomplete="username" style="width:100%"><br>
+<input id="p" type="password" placeholder="password" aria-label="Password" autocomplete="current-password" style="width:100%"><br>
+<input id="t" placeholder="tenant (optional)" aria-label="Tenant (optional)" style="width:100%"><br>
+<input id="o" placeholder="MFA code (if enabled)" aria-label="MFA code (if enabled)" autocomplete="one-time-code" inputmode="numeric" style="width:100%"><br>
 <button onclick="go()">Sign in</button> <span id="msg" class="note"></span></div>"""
             + _JS + r"""<script>
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
@@ -54,12 +66,12 @@ async function go(){const m=document.getElementById('msg');m.textContent='';
 def render_account():
     return _page("Account", """
 <h2>Profile</h2><div id="me"></div>
-<h2>Change password</h2><input id="op" type="password" placeholder="current"><input id="np" type="password" placeholder="new (12+ chars, letter + digit)"><button onclick="pw()">Change</button> <span id="pm" class="note"></span>
-<h2>Notifications</h2><div id="nt" class="scroll"></div><button onclick="readAll()">Mark all read</button>
+<h2>Change password</h2><input id="op" type="password" placeholder="current" aria-label="Current password" autocomplete="current-password"><input id="np" type="password" placeholder="new (12+ chars, letter + digit)" aria-label="New password (12+ characters, a letter and a digit)" autocomplete="new-password"><button onclick="pw()">Change</button> <span id="pm" class="note" role="status"></span>
+<h2 id="notifications">Notifications</h2><div id="nt" class="scroll"></div><button onclick="readAll()">Mark all read</button>
 <h2>Trading profile (effective)</h2><div id="tp"></div>
-<h2>API keys</h2><div id="ak"></div><input id="kn" placeholder="name"><input id="ks" placeholder="scopes, comma-separated" size="50"><button onclick="newKey()">Create</button> <span id="km" class="note"></span>
-<h2>Watchlists</h2><div id="wl"></div><input id="wn" placeholder="name"><input id="wsy" placeholder="SYMBOLS, comma-separated" size="50"><button onclick="newWl()">Save</button>
-<h2>Alert rules</h2><div id="al"></div><input id="as" placeholder="SYMBOL"><input id="af" placeholder="feature e.g. rsi_14"><select id="ao"><option>&lt;</option><option>&lt;=</option><option>&gt;</option><option>&gt;=</option></select><input id="av" placeholder="value" size="8"><button onclick="newAl()">Add</button>
+<h2>API keys</h2><div id="ak"></div><input id="kn" placeholder="name" aria-label="API key name"><input id="ks" placeholder="scopes, comma-separated" aria-label="API key scopes, comma-separated" size="50"><button onclick="newKey()">Create</button> <span id="km" class="note" role="status"></span>
+<h2>Watchlists</h2><div id="wl"></div><input id="wn" placeholder="name" aria-label="Watchlist name"><input id="wsy" placeholder="SYMBOLS, comma-separated" aria-label="Watchlist symbols, comma-separated" size="50"><button onclick="newWl()">Save</button>
+<h2>Alert rules</h2><div id="al"></div><input id="as" placeholder="SYMBOL" aria-label="Alert symbol"><input id="af" placeholder="feature e.g. rsi_14" aria-label="Alert feature, e.g. rsi_14"><select id="ao" aria-label="Alert comparison"><option>&lt;</option><option>&lt;=</option><option>&gt;</option><option>&gt;=</option></select><input id="av" placeholder="value" aria-label="Alert value" size="8"><button onclick="newAl()">Add</button>
 """ + r"""<script>
 async function load(){
  const m=await j('/api/auth/me');const u=m.user||{};
@@ -77,14 +89,14 @@ async function rk(id){await j('/api/account/api-keys/'+id,{method:'DELETE'});loa
 async function newWl(){try{await send('POST','/api/account/watchlists',{name:wn.value,symbols:wsy.value.split(',')});load()}catch(e){alert(e.message)}}
 async function newAl(){try{await send('POST','/api/account/alerts',{symbol:as.value,feature:af.value,op:ao.value,value:Number(av.value)});load()}catch(e){alert(e.message)}}
 async function del(k,id){await j(`/api/account/${k}/${id}`,{method:'DELETE'});load()}
-load().catch(e=>document.body.insertAdjacentHTML('beforeend',`<p class="note" style="padding:16px">${esc(e.message)}</p>`));
+load().catch(pageError);
 </script>""")
 
 
 def render_admin():
     return _page("Admin", """
 <h2>Users</h2><div id="us" class="scroll"></div>
-<div><input id="nu" placeholder="username"><input id="npw" type="password" placeholder="initial password"><input id="nr" placeholder="roles e.g. TRADER,VIEWER"><input id="nt2" placeholder="tenant (default: yours)"><button onclick="addUser()">Create user</button> <span id="um" class="note"></span></div>
+<div><input id="nu" placeholder="username" aria-label="New user's username"><input id="npw" type="password" placeholder="initial password" aria-label="Initial password" autocomplete="new-password"><input id="nr" placeholder="roles e.g. TRADER,VIEWER" aria-label="Roles, e.g. TRADER,VIEWER"><input id="nt2" placeholder="tenant (default: yours)" aria-label="Tenant (default: yours)"><button onclick="addUser()">Create user</button> <span id="um" class="note" role="status"></span></div>
 <h2>Tenants</h2><div id="tn" class="scroll"></div>
 <h2>Roles &amp; permissions</h2><div id="rl" class="scroll"></div>
 <h2>Plans</h2><div id="pl"></div>
@@ -100,5 +112,5 @@ async function load(){
 async function addUser(){try{await send('POST','/api/admin/users',{username:nu.value,password:npw.value,roles:nr.value.split(',').map(s=>s.trim()).filter(Boolean),tenant_id:nt2.value||null});um.textContent='created (must change password at first sign-in)';load()}catch(e){um.textContent=e.message}}
 async function st(id,s){try{await send('PUT','/api/admin/users/'+id,{status:s});load()}catch(e){alert(e.message)}}
 async function rs(id){try{const r=await send('POST',`/api/admin/users/${id}/password-reset`);prompt('One-time reset token (30 min) — give it to the user:',r.reset_token)}catch(e){alert(e.message)}}
-load().catch(e=>document.body.insertAdjacentHTML('beforeend',`<p class="note" style="padding:16px">${esc(e.message)}</p>`));
+load().catch(pageError);
 </script>""")

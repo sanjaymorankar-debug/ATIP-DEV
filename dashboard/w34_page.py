@@ -5,6 +5,8 @@ Read from /api/execution/* and /api/backtests/event-driven; PAPER only.
 
 The latency chart is a single-series line (one hue, #3987e5 -- validated for this dark
 surface), 2px, crosshair tooltip; every charted value is also in the table beside it.
+
+UX audit (3 Nov 2026): tables in keyboard-reachable scroll regions, themed colours, 12px minimum labels.
 """
 
 import json
@@ -12,26 +14,30 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Execution Lab</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--series:#3987e5;--grid:#334155;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--series:#3987e5;--grid:#334155;--warn:#fde68a;--good:#6ee7b7;--bad:#fca5a5;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
 h2{font-size:13px;color:var(--accent);margin:18px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
-.muted{color:var(--muted)}.note{color:var(--warn)}.scroll{max-height:380px;overflow:auto}
-.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;background:#334155}
-.WORKING,.COMPLETED{background:#065f46}.PAUSED,.WAITING{background:#78350f}.CANCELLED,.EXPIRED{background:#7f1d1d}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
-.row{display:flex;gap:12px;flex-wrap:wrap}.row>.card{flex:1;min-width:300px}
-button,select,input{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11.5px;margin:1px}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap;position:sticky;top:0;z-index:1}
+.muted{color:var(--muted)}.note{color:var(--warn)}
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw{max-height:380px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--muted);padding:8px 2px;margin:2px 0}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;background:var(--panel2);color:var(--text)}
+.pill.WORKING,.pill.COMPLETED{background:var(--goodbg);color:var(--good)}.pill.PAUSED,.pill.WAITING{background:var(--warnbg);color:var(--warn)}.pill.CANCELLED,.pill.EXPIRED{background:var(--badbg);color:var(--bad)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;min-width:0;overflow-wrap:anywhere}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>.card{flex:1;min-width:min(300px,100%)}
+button,select,input{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12.5px;margin:1px;max-width:100%}
 select,input{background:var(--bg);color:var(--text);border:1px solid var(--line)}
-label{display:inline-block;margin:3px 8px 3px 0;color:var(--muted)}
+label{display:inline-block;margin:3px 8px 3px 0;color:var(--muted);font-size:12.5px}
 .chart{position:relative;width:100%;height:170px}.chart svg{width:100%;height:100%;display:block}
-.tip{position:absolute;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:11px;display:none;white-space:nowrap}.tip b{display:block}
-pre{white-space:pre-wrap;font-size:11px;color:var(--muted)}
+.tip{position:absolute;pointer-events:none;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:12px;display:none;white-space:nowrap}.tip b{display:block}
+pre{white-space:pre-wrap;font-size:12px;color:var(--muted)}
+@media(max-width:760px){.wrap{padding:12px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Execution lab (W34) — PAPER only</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Execution lab — PAPER only</span></div>
 <div><a href="/trading">Trading</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
 
@@ -68,7 +74,11 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const num=(v,d=2)=>v==null?'—':Number(v).toFixed(d);
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||t.detail||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const strip=x=>String(x).replace(/<[^>]*>/g,'');
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(strip).join(', '));
+  if(!rows.length)return `<p class="empty" role="status">${o.empty||'Nothing to show yet.'}</p>`;
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`};
 function lineChart(el,pts,{fmt=v=>num(v),label='value'}={}){
   el.innerHTML='';const tip=document.createElement('div');tip.className='tip';
   if(!pts.length){el.textContent='no data in this window';return}
@@ -77,8 +87,8 @@ function lineChart(el,pts,{fmt=v=>num(v),label='value'}={}){
   const X=i=>L+(pts.length===1?0:(W-L-R)*i/(pts.length-1)),Y=v=>T+(H-T-B)*(1-(v-y0)/(y1-y0));
   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   const add=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);svg.appendChild(e);return e};
-  for(let k=0;k<=3;k++){const v=y0+(y1-y0)*k/3,y=Y(v);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1});const t=add('text',{x:L-6,y:y+3,'text-anchor':'end',fill:'var(--muted)','font-size':10});t.textContent=fmt(v)}
-  [0,pts.length-1].forEach(i=>{const t=add('text',{x:X(i),y:H-6,'text-anchor':i?'end':'start',fill:'var(--muted)','font-size':10});t.textContent=pts[i].x});
+  for(let k=0;k<=3;k++){const v=y0+(y1-y0)*k/3,y=Y(v);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1});const t=add('text',{x:L-6,y:y+4,'text-anchor':'end',style:'fill:var(--muted)','font-size':12});t.textContent=fmt(v)}
+  [0,pts.length-1].forEach(i=>{const t=add('text',{x:X(i),y:H-5,'text-anchor':i?'end':'start',style:'fill:var(--muted)','font-size':12});t.textContent=pts[i].x});
   add('path',{d:pts.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(''),fill:'none',stroke:'var(--series)','stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'});
   const last=pts.length-1;add('circle',{cx:X(last),cy:Y(pts[last].y),r:4,fill:'var(--series)',stroke:'var(--panel)','stroke-width':2});
   const hair=add('line',{y1:T,y2:H-B,stroke:'var(--muted)','stroke-width':1,visibility:'hidden'}),dot=add('circle',{r:4,fill:'var(--series)',stroke:'var(--panel)','stroke-width':2,visibility:'hidden'});

@@ -14,7 +14,7 @@
   --ax-series-1: #2a78d6; --ax-series-2: #eb6834; --ax-grid: #E4E7EC;
   --ax-env-paper: #0E7490; --ax-env-sandbox: #6941C6; --ax-env-live: #B42318;
   --ax-run: #064E3B; --ax-run-ink: #D1FAE5; --ax-stop: #7C2D12; --ax-stop-ink: #FFEDD5; --ax-resume: #1E3A8A; --ax-resume-ink: #DBEAFE;
-  --ax-kill: #B42318;
+  --ax-kill: #B42318; --ax-auto: #9A3412; --ax-auto-bg: #FFEEDD;
   --ax-radius: 10px; --ax-radius-sm: 6px; --ax-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
   --ax-font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --ax-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -30,7 +30,7 @@
     --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114;
     --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
     --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
-    --ax-shadow: 0 1px 2px rgba(0,0,0,.4);
+    --ax-shadow: 0 1px 2px rgba(0,0,0,.4); --ax-auto: #FDBA74; --ax-auto-bg: #3A1F0A;
   }
 }
 :root[data-theme="dark"] {
@@ -42,7 +42,7 @@
   --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114;
   --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
   --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
-  --ax-shadow: 0 1px 2px rgba(0,0,0,.4);
+  --ax-shadow: 0 1px 2px rgba(0,0,0,.4); --ax-auto: #FDBA74; --ax-auto-bg: #3A1F0A;
 }
 
 /* ── the shell ─────────────────────────────────────────────────────────────────────────────── */
@@ -137,7 +137,7 @@ html.ax-app .ax-rail, html.ax-app .ax-tabbar, html.ax-app .ax-menu, html.ax-app 
 .ax-h3 { font-size: 14px; margin: 14px 0 6px; }
 .ax-muted { color: var(--ax-muted); }
 .ax-small { font-size: 12.5px; }
-.ax-num { font-family: var(--ax-mono); font-variant-numeric: tabular-nums; }
+.ax-num { font-variant-numeric: tabular-nums; }
 .ax-pos { color: var(--ax-pos); }
 .ax-neg { color: var(--ax-neg); }
 .ax-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
@@ -149,7 +149,7 @@ html.ax-app .ax-rail, html.ax-app .ax-tabbar, html.ax-app .ax-menu, html.ax-app 
 .ax-tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
 .ax-tile { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-radius: var(--ax-radius); padding: 10px 12px; min-width: 0; }
 .ax-tile .ax-lbl { font-size: 12px; color: var(--ax-muted); font-weight: 600; }
-.ax-tile .ax-val { font: 600 19px/1.3 var(--ax-mono); font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+.ax-tile .ax-val { font: 600 19px/1.3 var(--ax-font); font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
 .ax-tile .ax-sub2 { font-size: 12px; color: var(--ax-muted); margin-top: 2px; }
 .ax-tile.ax-key { border-color: var(--ax-brand); }
 .ax-five { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom: 16px; }
@@ -234,7 +234,7 @@ table.ax-table { width: 100%; border-collapse: separate; border-spacing: 0; font
 .ax-table th[aria-sort="ascending"]::after { content: " ▲"; font-size: 9px; }
 .ax-table th[aria-sort="descending"]::after { content: " ▼"; font-size: 9px; }
 .ax-table td { padding: 7px 10px; border-bottom: 1px solid var(--ax-border-soft); white-space: nowrap; }
-.ax-table td.n, .ax-table th.n { text-align: right; font-family: var(--ax-mono); font-variant-numeric: tabular-nums; }
+.ax-table td.n, .ax-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .ax-table tbody tr[data-drawer] { cursor: pointer; }
 .ax-table tbody tr:hover { background: var(--ax-surface-2); }
 .ax-table tr.ax-total td { font-weight: 700; background: var(--ax-surface-2); }
@@ -247,12 +247,13 @@ table.ax-table { width: 100%; border-collapse: separate; border-spacing: 0; font
 .ax-drawer { position: fixed; z-index: 980; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--ax-surface); color: var(--ax-text);
   border-left: 1px solid var(--ax-border); box-shadow: -8px 0 24px rgba(0,0,0,.18); transform: translateX(102%); transition: transform .18s ease;
   display: flex; flex-direction: column; font: 14px/1.5 var(--ax-font); }
-.ax-drawer.open { transform: none; }
+.ax-drawer:not(.open) { visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s; }
+.ax-drawer.open { transform: none; visibility: visible; }
 .ax-drawer header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--ax-border-soft); }
 .ax-drawer header h2 { margin: 0; font-size: 17px; flex: 1; }
 .ax-drawer .ax-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
 .ax-drawer footer { padding: 12px 16px; border-top: 1px solid var(--ax-border-soft); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-dialog.ax-dialog { border: 1px solid var(--ax-border); border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 24px)); background: var(--ax-surface);
+dialog.ax-dialog { margin: auto; border: 1px solid var(--ax-border); border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 24px)); background: var(--ax-surface);
   color: var(--ax-text); font: 14px/1.5 var(--ax-font); box-shadow: 0 20px 40px rgba(0,0,0,.3); }
 dialog.ax-dialog::backdrop { background: rgba(3,6,14,.55); }
 .ax-dialog .ax-dhead { padding: 16px 18px 6px; font-size: 17px; font-weight: 700; }
@@ -278,14 +279,14 @@ dialog.ax-dialog::backdrop { background: rgba(3,6,14,.55); }
 .ax-gva { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ax-gva > div { background: var(--ax-surface-2); border-radius: 8px; padding: 8px 10px; }
 .ax-gva .ax-lbl { font-size: 11.5px; color: var(--ax-muted); font-weight: 600; }
-.ax-gva .ax-val { font: 700 17px var(--ax-mono); }
+.ax-gva .ax-val { font: 700 17px var(--ax-font); font-variant-numeric: tabular-nums; }
 .ax-progress { height: 8px; border-radius: 4px; background: var(--ax-surface-3); position: relative; overflow: hidden; }
 .ax-progress > span { position: absolute; top: 0; bottom: 0; left: 0; background: var(--ax-series-1); border-radius: 4px; }
 .ax-progress-l { display: flex; justify-content: space-between; font-size: 11px; color: var(--ax-muted); margin-top: 2px; }
 .ax-proposed { font-size: 12px; font-weight: 700; color: var(--ax-info); background: var(--ax-info-bg); padding: 3px 8px; border-radius: 6px; }
 .ax-timeline { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; }
 .ax-timeline li { display: grid; grid-template-columns: 128px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ax-border-soft); font-size: 13px; }
-.ax-timeline time { color: var(--ax-muted); font-family: var(--ax-mono); font-size: 12px; }
+.ax-timeline time { color: var(--ax-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 
 /* charts (dataviz: thin marks, recessive grid, legend + direct labels, hover layer) */
 .ax-chart { position: relative; }
@@ -335,3 +336,228 @@ details.ax-help summary { cursor: pointer; font-weight: 600; }
   .ax-rail, .ax-top, .ax-tabbar, .ax-skip { display: none !important; }
   body.ax-shelled { padding: 0 !important; }
 }
+
+/* ── 3 Nov 2026 (UX audit L2, H1, L3, density) ─────────────────────────────────────────────── */
+.ax-svg { display: block; flex: none; }
+.ax-ico { width: 20px; display: inline-grid; place-items: center; }
+.ax-ih { display: flex; align-items: center; gap: 8px; }
+.ax-search .ax-svg { width: 18px; height: 18px; }
+/* an older page's own `nav { … }` rule must not reshape the rail or the phone bar */
+.ax-rail { max-width: none !important; display: block; flex: none; }
+.ax-tabbar { max-width: none !important; flex-direction: row; }
+.ax-legacy-nav[hidden], body.ax-shelled .legacy-only { display: none !important; }
+.ax-top .ax-iconbtn, .ax-top .ax-killbtn, .ax-top .ax-pill, .ax-top .ax-bellwrap { flex: none; }
+.ax-search { white-space: nowrap; flex: none; min-width: 0; }
+.ax-crumbs { flex: 0 1 auto; min-width: 64px; }
+.ax-feedshort { display: none; }
+@media (max-width: 1365px) { .ax-feed .ax-feedtext { display: none; } .ax-feed .ax-feedshort { display: inline; } }
+@media (max-width: 1150px) { .ax-search kbd { display: none; } }
+.ax-feed { background: var(--ax-surface-2); color: var(--ax-text-2); border-color: var(--ax-border); font-weight: 600; }
+.ax-feed .ax-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ax-muted); }
+.ax-feed[data-state="live"] .ax-dot { background: var(--ax-pos); }
+.ax-feed[data-state="stale"] { background: var(--ax-neg-bg); color: var(--ax-neg); border-color: transparent; }
+.ax-feed[data-state="stale"] .ax-dot { background: var(--ax-neg); }
+.ax-feed[data-state="none"] .ax-dot { background: var(--ax-warn); }
+.ax-bellwrap { position: relative; display: inline-flex; }
+@media (max-width: 767px) { .ax-bellwrap.ax-hide-sm { display: none; } }
+.ax-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 960; width: min(360px, calc(100vw - 24px)); background: var(--ax-surface);
+  color: var(--ax-text); border: 1px solid var(--ax-border); border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.22); font: 13.5px/1.45 var(--ax-font); }
+.ax-pophead { padding: 10px 14px 6px; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; }
+.ax-poplist { list-style: none; margin: 0; padding: 0 6px; max-height: 320px; overflow: auto; }
+.ax-poplist li { padding: 8px; border-top: 1px solid var(--ax-border-soft); }
+.ax-poplist time { display: block; font-size: 12px; color: var(--ax-muted); font-variant-numeric: tabular-nums; }
+.ax-popfoot { display: block; padding: 10px 14px; border-top: 1px solid var(--ax-border-soft); color: var(--ax-brand) !important; font-weight: 600; }
+:root[data-density="compact"] .ax-table td { padding: 4px 8px; }
+:root[data-density="compact"] .ax-table th { padding: 5px 8px; }
+:root[data-density="compact"] body.ax-legacy td { padding-top: 3px !important; padding-bottom: 3px !important; }
+.ax-iconbtn[aria-pressed="true"] { background: var(--ax-brand-soft); color: var(--ax-brand); }
+/* score legend (H5): bands in words as well as colour */
+details.ax-legendbox { background: var(--ax-surface); border: 1px solid var(--ax-border-soft); border-radius: var(--ax-radius); padding: 8px 12px; margin: 0 0 10px;
+  color: var(--ax-text); font: 13px/1.5 var(--ax-font); }
+details.ax-legendbox summary { cursor: pointer; font-weight: 600; color: var(--ax-brand); }
+details.ax-legendbox .ax-kv { grid-template-columns: 70px 1fr; font-size: 13px; }
+details.ax-legendbox .ax-kv dd { font-weight: 400; }
+details.ax-legendbox ul { margin: 6px 0 0 18px; padding: 0; }
+abbr[title] { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+.sp { display: inline-block; min-width: 30px; padding: 1px 7px; border-radius: 4px; font: 600 12.5px/1.5 var(--ax-font); text-align: center;
+  font-variant-numeric: tabular-nums; }
+.sp-strong { background: var(--ax-pos-bg); color: var(--ax-pos); }
+.sp-neutral { background: var(--ax-warn-bg); color: var(--ax-warn); }
+.sp-weak { background: var(--ax-neg-bg); color: var(--ax-neg); }
+
+/* ── legacy bridge (UX audit H3, 3 Nov 2026) ────────────────────────────────────────────────────
+   The older pages (Scores, Trading, Quant, Market, ML, Strategies, Backtests, …) were drawn dark-only with their own
+   :root variables. Inside the shell (body.ax-legacy, set by dashboard/shell.py) those same variable names point at the
+   shell's tokens, so every older page follows the light / dark theme without being rewritten. */
+body.ax-legacy {
+  --bg: var(--ax-bg); --panel: var(--ax-surface); --panel2: var(--ax-surface-2); --line: var(--ax-border);
+  --text: var(--ax-text); --muted: var(--ax-muted); --soft: var(--ax-text-2); --accent: var(--ax-brand);
+  --good: var(--ax-pos); --bad: var(--ax-neg); --warn: var(--ax-warn); --goodbg: var(--ax-pos-bg); --badbg: var(--ax-neg-bg);
+  --warnbg: var(--ax-warn-bg); --series: var(--ax-series-1); --grid: var(--ax-grid); --btn: var(--ax-brand); --kill: var(--ax-kill);
+  --auto: var(--ax-auto); --autobg: var(--ax-auto-bg);
+  --ga-panel: var(--ax-surface); --ga-line: var(--ax-border);
+  background: var(--ax-bg) !important; color: var(--ax-text); font-size: 13.5px;
+}
+body.ax-legacy #ax-main { min-width: 0; }
+body.ax-legacy table { font-variant-numeric: tabular-nums; }
+/* wide tables scroll inside themselves on a phone, never the page (M1) */
+body.ax-legacy .ax-scrollx { overflow-x: auto; max-width: 100%; }
+
+/* legacy bridge, inline colours: the older pages also colour text inline (style="color:#64748b"); inside the shell
+   those exact values point at the theme's tokens, so they meet 4.5:1 in light and dark (UX audit H3 / H6) */
+body.ax-legacy [style*="color:#64748b"],
+body.ax-legacy [style*="color: #64748b"],
+body.ax-legacy [style*="color:#64748B"],
+body.ax-legacy [style*="color: #64748B"],
+body.ax-legacy [style*="color:#94a3b8"],
+body.ax-legacy [style*="color: #94a3b8"],
+body.ax-legacy [style*="color:#94A3B8"],
+body.ax-legacy [style*="color: #94A3B8"],
+body.ax-legacy [style*="color:#475569"],
+body.ax-legacy [style*="color: #475569"],
+body.ax-legacy [style*="color:#9ca3af"],
+body.ax-legacy [style*="color: #9ca3af"],
+body.ax-legacy [style*="color:#9CA3AF"],
+body.ax-legacy [style*="color: #9CA3AF"],
+body.ax-legacy [style*="color:#6b7280"],
+body.ax-legacy [style*="color: #6b7280"],
+body.ax-legacy [style*="color:#6B7280"],
+body.ax-legacy [style*="color: #6B7280"] { color: var(--ax-muted) !important; }
+body.ax-legacy [style*="color:#e2e8f0"],
+body.ax-legacy [style*="color: #e2e8f0"],
+body.ax-legacy [style*="color:#E2E8F0"],
+body.ax-legacy [style*="color: #E2E8F0"],
+body.ax-legacy [style*="color:#cbd5e1"],
+body.ax-legacy [style*="color: #cbd5e1"],
+body.ax-legacy [style*="color:#CBD5E1"],
+body.ax-legacy [style*="color: #CBD5E1"],
+body.ax-legacy [style*="color:#f1f5f9"],
+body.ax-legacy [style*="color: #f1f5f9"],
+body.ax-legacy [style*="color:#F1F5F9"],
+body.ax-legacy [style*="color: #F1F5F9"],
+body.ax-legacy [style*="color:#e4e4e7"],
+body.ax-legacy [style*="color: #e4e4e7"],
+body.ax-legacy [style*="color:#E4E4E7"],
+body.ax-legacy [style*="color: #E4E4E7"] { color: var(--ax-text) !important; }
+body.ax-legacy [style*="color:#38bdf8"],
+body.ax-legacy [style*="color: #38bdf8"],
+body.ax-legacy [style*="color:#38BDF8"],
+body.ax-legacy [style*="color: #38BDF8"],
+body.ax-legacy [style*="color:#60a5fa"],
+body.ax-legacy [style*="color: #60a5fa"],
+body.ax-legacy [style*="color:#60A5FA"],
+body.ax-legacy [style*="color: #60A5FA"],
+body.ax-legacy [style*="color:#3b82f6"],
+body.ax-legacy [style*="color: #3b82f6"],
+body.ax-legacy [style*="color:#3B82F6"],
+body.ax-legacy [style*="color: #3B82F6"] { color: var(--ax-brand) !important; }
+body.ax-legacy [style*="color:#2563eb"],
+body.ax-legacy [style*="color: #2563eb"],
+body.ax-legacy [style*="color:#2563EB"],
+body.ax-legacy [style*="color: #2563EB"] { color: var(--ax-info) !important; }
+body.ax-legacy [style*="color:#059669"],
+body.ax-legacy [style*="color: #059669"],
+body.ax-legacy [style*="color:#10b981"],
+body.ax-legacy [style*="color: #10b981"],
+body.ax-legacy [style*="color:#10B981"],
+body.ax-legacy [style*="color: #10B981"],
+body.ax-legacy [style*="color:#34d399"],
+body.ax-legacy [style*="color: #34d399"],
+body.ax-legacy [style*="color:#34D399"],
+body.ax-legacy [style*="color: #34D399"],
+body.ax-legacy [style*="color:#6ee7b7"],
+body.ax-legacy [style*="color: #6ee7b7"],
+body.ax-legacy [style*="color:#6EE7B7"],
+body.ax-legacy [style*="color: #6EE7B7"],
+body.ax-legacy [style*="color:#047857"],
+body.ax-legacy [style*="color: #047857"],
+body.ax-legacy [style*="color:#a7f3d0"],
+body.ax-legacy [style*="color: #a7f3d0"],
+body.ax-legacy [style*="color:#A7F3D0"],
+body.ax-legacy [style*="color: #A7F3D0"] { color: var(--ax-pos) !important; }
+body.ax-legacy [style*="color:#dc2626"],
+body.ax-legacy [style*="color: #dc2626"],
+body.ax-legacy [style*="color:#DC2626"],
+body.ax-legacy [style*="color: #DC2626"],
+body.ax-legacy [style*="color:#ef4444"],
+body.ax-legacy [style*="color: #ef4444"],
+body.ax-legacy [style*="color:#EF4444"],
+body.ax-legacy [style*="color: #EF4444"],
+body.ax-legacy [style*="color:#f87171"],
+body.ax-legacy [style*="color: #f87171"],
+body.ax-legacy [style*="color:#F87171"],
+body.ax-legacy [style*="color: #F87171"],
+body.ax-legacy [style*="color:#fca5a5"],
+body.ax-legacy [style*="color: #fca5a5"],
+body.ax-legacy [style*="color:#FCA5A5"],
+body.ax-legacy [style*="color: #FCA5A5"],
+body.ax-legacy [style*="color:#b91c1c"],
+body.ax-legacy [style*="color: #b91c1c"],
+body.ax-legacy [style*="color:#B91C1C"],
+body.ax-legacy [style*="color: #B91C1C"] { color: var(--ax-neg) !important; }
+body.ax-legacy [style*="color:#f59e0b"],
+body.ax-legacy [style*="color: #f59e0b"],
+body.ax-legacy [style*="color:#F59E0B"],
+body.ax-legacy [style*="color: #F59E0B"],
+body.ax-legacy [style*="color:#fbbf24"],
+body.ax-legacy [style*="color: #fbbf24"],
+body.ax-legacy [style*="color:#FBBF24"],
+body.ax-legacy [style*="color: #FBBF24"],
+body.ax-legacy [style*="color:#fde68a"],
+body.ax-legacy [style*="color: #fde68a"],
+body.ax-legacy [style*="color:#FDE68A"],
+body.ax-legacy [style*="color: #FDE68A"],
+body.ax-legacy [style*="color:#d97706"],
+body.ax-legacy [style*="color: #d97706"],
+body.ax-legacy [style*="color:#D97706"],
+body.ax-legacy [style*="color: #D97706"] { color: var(--ax-warn) !important; }
+body.ax-legacy [style*="background:#1e293b"],
+body.ax-legacy [style*="background: #1e293b"],
+body.ax-legacy [style*="background:#1E293B"],
+body.ax-legacy [style*="background: #1E293B"] { background-color: var(--ax-surface) !important; }
+body.ax-legacy [style*="background:#0f172a"],
+body.ax-legacy [style*="background: #0f172a"],
+body.ax-legacy [style*="background:#0F172A"],
+body.ax-legacy [style*="background: #0F172A"],
+body.ax-legacy [style*="background:#64748b20"],
+body.ax-legacy [style*="background: #64748b20"],
+body.ax-legacy [style*="background:#64748B20"],
+body.ax-legacy [style*="background: #64748B20"],
+body.ax-legacy [style*="background:#94a3b820"],
+body.ax-legacy [style*="background: #94a3b820"],
+body.ax-legacy [style*="background:#94A3B820"],
+body.ax-legacy [style*="background: #94A3B820"] { background-color: var(--ax-surface-2) !important; }
+body.ax-legacy [style*="background:#334155"],
+body.ax-legacy [style*="background: #334155"] { background-color: var(--ax-surface-3) !important; }
+body.ax-legacy [style*="background:#05966920"],
+body.ax-legacy [style*="background: #05966920"],
+body.ax-legacy [style*="background:#0f2e24"],
+body.ax-legacy [style*="background: #0f2e24"],
+body.ax-legacy [style*="background:#0F2E24"],
+body.ax-legacy [style*="background: #0F2E24"] { background-color: var(--ax-pos-bg) !important; }
+body.ax-legacy [style*="background:#dc262620"],
+body.ax-legacy [style*="background: #dc262620"],
+body.ax-legacy [style*="background:#DC262620"],
+body.ax-legacy [style*="background: #DC262620"] { background-color: var(--ax-neg-bg) !important; }
+body.ax-legacy [style*="background:#f59e0b20"],
+body.ax-legacy [style*="background: #f59e0b20"],
+body.ax-legacy [style*="background:#F59E0B20"],
+body.ax-legacy [style*="background: #F59E0B20"] { background-color: var(--ax-warn-bg) !important; }
+body.ax-legacy [style*="background:#2563eb20"],
+body.ax-legacy [style*="background: #2563eb20"],
+body.ax-legacy [style*="background:#2563EB20"],
+body.ax-legacy [style*="background: #2563EB20"] { background-color: var(--ax-info-bg) !important; }
+body.ax-legacy [style*="border:#334155"],
+body.ax-legacy [style*="border: #334155"] { border-color: var(--ax-border) !important; }
+body.ax-legacy [style*="background:#059669"],
+body.ax-legacy [style*="background: #059669"],
+body.ax-legacy [style*="background:#10b981"],
+body.ax-legacy [style*="background: #10b981"],
+body.ax-legacy [style*="background:#10B981"],
+body.ax-legacy [style*="background: #10B981"] { background-color: #047857 !important; }
+body.ax-legacy [style*="font-size:9px"],
+body.ax-legacy [style*="font-size:9.5px"],
+body.ax-legacy [style*="font-size:10px"],
+body.ax-legacy [style*="font-size:10.5px"],
+body.ax-legacy [style*="font-size:11px"],
+body.ax-legacy [style*="font-size:11.5px"] { font-size: 12px !important; }

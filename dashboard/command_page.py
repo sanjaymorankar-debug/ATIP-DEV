@@ -87,7 +87,7 @@ td{padding:8px 4px;border-top:1px solid var(--line)}.scroll{overflow-x:auto}
  <span id="pFeed" class="pill">Feed …</span>
  <span id="pSig" class="pill">Signals …</span>
  <span id="pEnv" class="pill">…</span>
- <button id="killBtn" class="kill" type="button">Halt all trading</button>
+ <button id="killBtn" class="halted" type="button" hidden>Halted · Resume…</button>
 </header>
 __OPBANNER__
 <div id="haltBanner" class="banner bad" hidden></div>
@@ -119,20 +119,20 @@ __OPBANNER__
  </section>
 
  <div class="row2">
-  <section id="pendCard" class="card" aria-label="Waiting for you"><h2 id="pendH">Waiting for you</h2><div id="pend"></div></section>
+  <section id="pendCard" class="card" aria-label="Waiting for you"><h2 id="pendH">Waiting for you</h2><div id="pend" aria-busy="true"><div class="ax-skel" style="height:14px;margin:8px 0"></div><div class="ax-skel" style="height:14px;margin:8px 0"></div></div></section>
   <section class="card" aria-label="Top signals">
    <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h2>Top signals</h2><a href="/">All scores →</a></div>
    <div id="sigNote" class="sub" style="margin:0 0 6px"></div>
-   <div class="scroll"><table><thead><tr><th>Stock</th><th>Signal</th><th>ATIP</th><th>Signal ₹</th><th>Live ₹</th><th>Gap</th></tr></thead><tbody id="sigs"></tbody></table></div>
+   <div class="scroll"><table><thead><tr><th>Stock</th><th>Signal</th><th>ATIP</th><th>Signal ₹</th><th>Live ₹</th><th>Gap</th></tr></thead><tbody id="sigs" aria-busy="true"><tr><td colspan="6"><div class="ax-skel" style="height:14px;margin:8px 0"></div><div class="ax-skel" style="height:14px;margin:8px 0"></div><div class="ax-skel" style="height:14px;margin:8px 0"></div></td></tr></tbody></table></div>
   </section>
  </div>
 
  <section class="card" aria-label="Sessions">
   <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h2>Sessions</h2><span id="sesSum" class="muted" style="font-size:13px"></span></div>
-  <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. <b>Halt all trading</b> stops everything.</div>
+  <div class="banner info" style="border-radius:8px;margin-bottom:10px">The trigger engine holds a session's entry rules while it is paused, off or MANUAL, or past its trade, loss or capital limit; exit legs always fire. The <b>Kill switch</b> in the top bar stops everything, exits included.</div>
   <div class="item" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px">
    <div class="grow"><b>When an AUTO session's rule triggers</b> <span class="pill warn" style="padding:1px 8px">PAPER only</span><div id="asNote" class="sub" style="margin:2px 0 0"></div></div>
-   <div class="seg" role="radiogroup" aria-label="AUTO send" id="asSeg" style="grid-template-columns:repeat(2,minmax(150px,1fr));margin:0">
+   <div class="seg" role="radiogroup" aria-label="AUTO send" id="asSeg" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin:0">
     <button type="button" role="radio" data-as="OFF" aria-checked="true"><b>Ask me first</b><span class="sub" style="margin:0">You confirm every order</span></button>
     <button type="button" role="radio" data-as="ON" class="AUTO" aria-checked="false"><b>Send without asking</b><span class="sub" style="margin:0">Within the session's limits</span></button>
    </div>
@@ -143,7 +143,7 @@ __OPBANNER__
    <label><input type="checkbox" id="asAck"> I understand orders can go out without asking me.</label>
    <div class="actions"><button type="button" id="asCancel">Keep asking me</button><button type="button" id="asGo" class="primary" disabled>Send without asking</button></div>
   </div>
-  <div id="tiles" class="tiles"></div>
+  <div id="tiles" class="tiles" aria-busy="true"><div class="ax-skel" style="height:14px;margin:8px 0"></div><div class="ax-skel" style="height:14px;margin:8px 0"></div></div>
   <div id="sesPanel" class="panel" aria-live="polite">
    <h2 id="spName"></h2><div id="spMeta" class="sub" style="margin:0 0 6px"></div>
    <div class="lbl" style="margin-top:8px">How orders go out</div>
@@ -159,7 +159,7 @@ __OPBANNER__
   </div>
  </section>
 
- <section class="card" aria-label="Recent order activity"><h2>Recent order activity</h2><div id="recent"></div></section>
+ <section class="card" aria-label="Recent order activity"><h2>Recent order activity</h2><div id="recent" aria-busy="true"><div class="ax-skel" style="height:14px;margin:8px 0"></div><div class="ax-skel" style="height:14px;margin:8px 0"></div></div></section>
  <p class="disc">Personal use only. Model outputs, not advice. Signals are computed at the close; live prices are shown for context.</p>
 </main></div>
 
@@ -182,20 +182,24 @@ const signed=v=>v==null?'—':(v>0?'▲ +':v<0?'▼ −':'')+inr(Math.abs(v));
 async function j(u,o){const r=await fetch(u,o);let t={};try{t=await r.json()}catch(e){}if(!r.ok)throw new Error(t.error||t.detail||('HTTP '+r.status));return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 const say=m=>{$('live').textContent=m};
+// questions and refusals use the shell's dialog and toast (UX audit H7); without the shell nothing is placed
+const fail=m=>{say(m);if(window.AX&&AX.toast)AX.toast(m,true)};
+const ask=o=>(window.AX&&AX.ask)?AX.ask(o):Promise.resolve(false);
 let S=null, sel=null, lastFocus=null;
 
 function render(d){
  S=d; const r=d.risk||{}, f=d.feed||{}, b=d.broker||{};
  // header pills
  $('pMarket').className='pill '+(d.market_open?'ok':''); $('pMarket').textContent=d.market_open?'Market open':'Market closed';
- $('pFeed').className='pill '+(f.stale?'warn':''); $('pFeed').textContent=f.age_seconds==null?'Live feed: no ticks':('Live feed · '+(f.age_seconds<120?f.age_seconds+' s':Math.round(f.age_seconds/60)+' min')+' ago');
+ // one feed label on every page (dashboard/ux_kit.feed_label, UX audit H1): never "live" outside market hours
+ $('pFeed').className='pill '+({live:'ok',stale:'bad',none:d.market_open?'warn':''}[f.state]||''); $('pFeed').textContent=f.text||'Feed: unknown'; $('pFeed').dataset.state=f.state||'';
  $('pSig').textContent=d.signals&&d.signals.date?('Signals: EOD '+d.signals.date):'Signals: none yet';
  $('pEnv').className='pill '+(b.is_live?'bad':'warn'); $('pEnv').textContent=b.is_live?'LIVE · real money':(b.broker_env||'PAPER');
  // halt
  const kb=$('killBtn');
- if(r.halted){kb.className='halted';kb.textContent='Halted · Resume…';$('haltBanner').hidden=false;$('haltBanner').textContent='Trading halted — '+(r.halt_reason||'')+'. Nothing is sent until you resume. Previews and dry runs still work.';}
- else{kb.className='kill';kb.textContent='Halt all trading';$('haltBanner').hidden=true;}
- $('feedBanner').hidden=!f.stale; if(f.stale)$('feedBanner').textContent='Live prices are '+(f.age_seconds==null?'missing':f.age_seconds+' seconds old')+' while the market is open. Treat triggers and the prices below as unreliable until the feed recovers.';
+ if(r.halted){kb.hidden=false;kb.className='halted';kb.textContent='Halted · Resume…';$('haltBanner').hidden=false;$('haltBanner').textContent='Trading halted — '+(r.halt_reason||'')+'. Nothing is sent until you resume. Previews and dry runs still work.';}
+ else{kb.hidden=true;$('haltBanner').hidden=true;}
+ $('feedBanner').hidden=!f.stale; if(f.stale)$('feedBanner').textContent=f.text+'. Live prices are '+(f.age_seconds==null?'missing':'more than '+Math.round((f.cutoff_seconds||120)/60)+' min old')+' while the market is open. Treat triggers and the prices below as unreliable until the feed recovers.';
  // risk budget
  const cap=(r.limits||{}).max_daily_loss_value, lost=r.day_pnl!=null?Math.max(0,-r.day_pnl):null;
  $('lossV').innerHTML=cap?(inr(lost)+' <span class="muted" style="font-size:13px">of '+inr(cap)+'</span>'):(lost==null?'—':inr(lost));
@@ -210,20 +214,20 @@ function render(d){
  $('headline').textContent=(r.halted?'Trading is halted. ':'')+ses.running+' of '+ses.sessions.length+' sessions running · '+pend.length+' order'+(pend.length===1?'':'s')+' waiting for you'+(f.stale?' · live feed is stale':'');
  // pending
  $('pendCard').className='card'+(pend.length?' attn':''); $('pendH').textContent='Waiting for you · '+pend.length;
- $('pend').innerHTML=pend.length?pend.map(p=>`<div class="item"><div class="grow"><b>${esc(p.side)} ${esc(p.quantity_value)} ${esc(p.symbol)}</b> <span class="num">@ ${inr(p.trigger_hit_price||p.resolved_trigger_price,2)}</span><div class="sub" style="margin:2px 0 0">${esc(p.role||'ENTRY')} rule · stop ${inr(p.resolved_stoploss_price,2)} · expires ${esc(String(p.confirmation_expires_at||'').slice(11,16))}</div></div><button type="button" data-rej="${esc(p.id)}">Reject</button><button type="button" class="primary" data-conf="${esc(p.id)}">Confirm &amp; send</button></div>`).join(''):'<div class="muted">Nothing needs you right now.</div>';
+ $('pend').innerHTML=pend.length?pend.map(p=>`<div class="item"><div class="grow"><b>${esc(p.side)} ${esc(p.quantity_value)} ${esc(p.symbol)}</b> <span class="num">@ ${inr(p.trigger_hit_price||p.resolved_trigger_price,2)}</span><div class="sub" style="margin:2px 0 0">${esc(p.role||'ENTRY')} rule · stop ${inr(p.resolved_stoploss_price,2)} · expires ${esc(String(p.confirmation_expires_at||'').slice(11,16))}</div></div><button type="button" data-rej="${esc(p.id)}">Reject</button><button type="button" class="primary" data-conf="${esc(p.id)}">Confirm &amp; send</button></div>`).join(''):'<div class="muted">Nothing needs you right now. A rule that triggers and needs your Confirm appears here.</div>';$('pend').removeAttribute('aria-busy');
  // signals
  const sg=d.signals||{rows:[]}; $('sigNote').textContent=sg.date?('Computed at the close of '+sg.date+'. The live price moves; the signal does not.'):'No scores yet — run the post-market pipeline.';
  $('sigs').innerHTML=(sg.rows||[]).map(s=>{const g=s.gap_pct;const gs=g==null?'—':(g>0?'▲ +':g<0?'▼ ':'')+g+'%';const big=g!=null&&Math.abs(g)>=3;
-  return `<tr><td><b>${esc(s.symbol)}</b></td><td><span class="sig ${esc(s.signal)}">${esc(s.signal)}</span></td><td class="num">${s.atip_score==null?'—':Math.round(s.atip_score)}</td><td class="num muted">${inr(s.signal_price,2)}</td><td class="num">${inr(s.live_price,2)}</td><td class="num" style="${big?'color:#FBBF24;font-weight:600':''}" title="${big?'Price has moved 3% or more since the signal':''}">${gs}</td></tr>`}).join('')||'<tr><td colspan="6" class="muted">No BUY/SELL signals.</td></tr>';
+  return `<tr><td><b>${esc(s.symbol)}</b></td><td><span class="sig ${esc(s.signal)}">${esc(s.signal)}</span></td><td class="num">${s.atip_score==null?'—':Math.round(s.atip_score)}</td><td class="num muted">${inr(s.signal_price,2)}</td><td class="num">${inr(s.live_price,2)}</td><td class="num" style="${big?'color:#FBBF24;font-weight:600':''}" title="${big?'Price has moved 3% or more since the signal':''}">${gs}</td></tr>`}).join('')||('<tr><td colspan="6" class="muted">'+(sg.date?'No BUY or SELL signal in the scores of '+esc(sg.date)+'. New signals come with the post-market scores at 16:45 IST.':'No scores yet. They arrive with the post-market run at 16:45 IST.')+'</td></tr>');$('sigs').removeAttribute('aria-busy');
  // sessions
  $('sesSum').textContent=ses.running+' running · '+ses.auto+' on AUTO · '+(ses.auto_bypass?'AUTO sends without asking':'AUTO asks first');
  document.querySelectorAll('#asSeg [data-as]').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.as==='ON')===!!ses.auto_bypass)));
  $('asNote').textContent=ses.auto_bypass?'Orders go out without asking for '+ses.sessions.filter(t=>t.mode==='AUTO'&&t.status==='RUNNING').length+' running AUTO session(s). Every change is logged.':'Every AUTO rule still waits for your Confirm. Sessions in CONFIRM always ask.';
  if(b.is_live)$('asNote').textContent='LIVE: real money, so every order asks you. Sending without asking works in PAPER only.';
- $('tiles').innerHTML=ses.sessions.map(t=>`<button type="button" class="tile" data-sid="${esc(t.id)}" aria-pressed="${sel===t.id}"><span style="display:flex;justify-content:space-between;width:100%"><b>${esc(t.id)} ${esc(t.name)}</b><span class="mode ${esc(t.mode)}">${esc(t.mode)}</span></span><span class="sub" style="margin:0">${esc(t.status)}${t.stats.awaiting?' · '+t.stats.awaiting+' waiting':''}</span><span class="sub num" style="margin:0">${t.stats.today} today · ${t.stats.watching} watching · ${t.stats.executed} done</span>${t.pool?`<span class="sub num" style="margin:0">Pool ${inr(t.pool.equity)} (${signed(t.pool.pnl)}) · ${inr(t.pool.cash)} free</span>`:''}</button>`).join('');
+ $('tiles').removeAttribute('aria-busy'); $('tiles').innerHTML=(ses.sessions.length?'':'<div class="muted">No sessions yet. Set one up on Sessions.</div>')+ses.sessions.map(t=>`<button type="button" class="tile" data-sid="${esc(t.id)}" aria-pressed="${sel===t.id}"><span style="display:flex;justify-content:space-between;width:100%"><b>${esc(t.id)} ${esc(t.name)}</b><span class="mode ${esc(t.mode)}">${esc(t.mode)}</span></span><span class="sub" style="margin:0">${esc(t.status)}${t.stats.awaiting?' · '+t.stats.awaiting+' waiting':''}</span><span class="sub num" style="margin:0">${t.stats.today} today · ${t.stats.watching} watching · ${t.stats.executed} done</span>${t.pool?`<span class="sub num" style="margin:0">Pool ${inr(t.pool.equity)} (${signed(t.pool.pnl)}) · ${inr(t.pool.cash)} free</span>`:''}</button>`).join('');
  if(sel)openSession(sel,false);
  // recent
- const rc=d.recent||[]; $('recent').innerHTML=rc.length?rc.map(o=>`<div class="item"><span class="num muted" style="width:52px">${esc(String(o.updated_at||'').slice(11,16))}</span><span class="grow">${esc(o.role||'')} ${esc(o.side)} ${esc(o.quantity_value)} <b>${esc(o.symbol)}</b> · trigger ${inr(o.resolved_trigger_price,2)}${o.execution_price?' · filled '+inr(o.execution_price,2):''}${o.execution_error?' · <span class="down">'+esc(o.execution_error)+'</span>':''}</span><span class="num muted" style="font-size:12px">${esc(o.status)}${o.dhan_order_id?' · '+esc(o.dhan_order_id):''}</span></div>`).join(''):'<div class="muted">No order rules yet.</div>';
+ const rc=d.recent||[]; $('recent').innerHTML=rc.length?rc.map(o=>`<div class="item"><span class="num muted" style="width:52px">${esc(String(o.updated_at||'').slice(11,16))}</span><span class="grow">${esc(o.role||'')} ${esc(o.side)} ${esc(o.quantity_value)} <b>${esc(o.symbol)}</b> · trigger ${inr(o.resolved_trigger_price,2)}${o.execution_price?' · filled '+inr(o.execution_price,2):''}${o.execution_error?' · <span class="down">'+esc(o.execution_error)+'</span>':''}</span><span class="num muted" style="font-size:12px">${esc(o.status)}${o.dhan_order_id?' · '+esc(o.dhan_order_id):''}</span></div>`).join(''):'<div class="muted">No order rules yet. Buy or Sell on a BUY signal (ATIP Scores) or save one on Trade setup.</div>';$('recent').removeAttribute('aria-busy');
 }
 
 function openSession(sid,focus=true){
@@ -238,29 +242,35 @@ function openSession(sid,focus=true){
  if(focus)$('spName').focus?.();
 }
 
-async function load(){try{render(await j('/api/command/summary'))}catch(e){$('headline').textContent='Could not load: '+e.message}}
+async function load(){try{render(await j('/api/command/summary'))}catch(e){$('headline').textContent='Could not load: '+e.message;
+ // error state: say it in each panel still loading, and that it retries by itself
+ const er='<span class="down">Could not load: '+esc(e.message)+'.</span> <span class="muted">Retrying every 15 s.</span>';
+ if($('sigs').getAttribute('aria-busy'))$('sigs').innerHTML='<tr><td colspan="6">'+er+'</td></tr>';
+ ['pend','tiles','recent'].forEach(id=>{const el=$(id);if(el&&(el.getAttribute('aria-busy')||!el.innerHTML.trim()))el.innerHTML='<div>'+er+'</div>'});}}
 
 // kill switch
 $('killBtn').onclick=async()=>{
  if(S&&S.risk&&S.risk.halted){
-  if(!confirm('Lift the halt? Orders can be sent again. Sessions stay paused until you resume each one.'))return;
-  try{await post('/api/risk/resume',{confirm:'RESUME'});say('Trading resumed');}catch(e){alert(e.message)} load(); return;}
- lastFocus=document.activeElement; $('haltModal').classList.add('open'); $('haltModal').setAttribute('aria-hidden','false'); $('hmGo').focus();
+  if(!(await ask({title:'Lift the halt?',text:'Orders can be sent again. Sessions stay paused until you resume each one.',ok:'Lift the halt',cancel:'Keep halted'})))return;
+  try{await post('/api/risk/resume',{confirm:'RESUME'});say('Trading resumed');}catch(e){fail(e.message)} load(); return;}
+ // Not halted: this button is hidden (3 Nov 2026) -- halting is the top-bar Kill switch only.
 };
 function closeModal(){$('haltModal').classList.remove('open');$('haltModal').setAttribute('aria-hidden','true');(lastFocus||$('killBtn')).focus()}
 $('hmCancel').onclick=closeModal;
 $('haltModal').addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
-$('hmGo').onclick=async()=>{try{const r=await post('/api/risk/halt',{reason:$('hmReason').value});say('Trading halted. '+r.sessions_paused+' sessions paused.');}catch(e){alert(e.message)} closeModal(); load();};
+$('hmGo').onclick=async()=>{try{const r=await post('/api/risk/halt',{reason:$('hmReason').value});say('Trading halted. '+r.sessions_paused+' sessions paused.');}catch(e){fail(e.message)} closeModal(); load();};
 
 // pending confirm / reject (existing guarded routes; confirm re-validates the price)
 $('pend').addEventListener('click',async e=>{
  const c=e.target.closest('[data-conf]'), r=e.target.closest('[data-rej]');
  try{
   if(c){const res=await fetch('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm',{method:'POST',headers:{'X-ATIP-Token':TOKEN}});const t=await res.json();
-   if(res.status===409&&t.slippage){if(confirm(t.error+'\n\nPlace anyway at the current price?')){await post('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm?force=true')}}
-   else if(!res.ok)throw new Error(t.error||res.status); say('Order confirmed');}
+   if(res.status===409&&t.slippage){const pr=((S&&S.pending)||[]).find(x=>x.id===c.dataset.conf)||{};
+    const go=(window.AX&&AX.priceMoved)?await AX.priceMoved(t,pr):false;
+    if(go){await post('/api/orders/'+encodeURIComponent(c.dataset.conf)+'/confirm?force=true');say('Order placed at the market price')}else say('Not placed: the price moved past the limit')}
+   else{if(!res.ok)throw new Error(t.error||res.status); say('Order confirmed');}}
   if(r){await post('/api/orders/'+encodeURIComponent(r.dataset.rej)+'/reject');say('Order rejected');}
- }catch(err){alert(err.message)} load();
+ }catch(err){fail(err.message)} load();
 });
 
 // sessions
@@ -278,13 +288,13 @@ $('abGo').onclick=async()=>{try{await post('/api/sessions/'+sel+'/mode',{mode:'A
 $('asSeg').addEventListener('click',async e=>{const b=e.target.closest('[data-as]');if(!b)return;const on=b.dataset.as==='ON';
  if(on===!!S.sessions.auto_bypass)return;
  if(on){$('asAck').checked=false;$('asGo').disabled=true;$('asBox').classList.add('open');$('asAck').focus();return}
- try{await post('/api/command/auto-send',{on:false});say('AUTO sessions will ask before sending')}catch(err){alert(err.message)} load()});
+ try{await post('/api/command/auto-send',{on:false});say('AUTO sessions will ask before sending')}catch(err){fail(err.message)} load()});
 $('asAck').onchange=()=>{$('asGo').disabled=!$('asAck').checked};
 $('asCancel').onclick=()=>$('asBox').classList.remove('open');
-$('asGo').onclick=async()=>{try{await post('/api/command/auto-send',{on:true,ack:true});say('AUTO sessions now send without asking');$('asBox').classList.remove('open')}catch(err){alert(err.message)} load()};
+$('asGo').onclick=async()=>{try{await post('/api/command/auto-send',{on:true,ack:true});say('AUTO sessions now send without asking');$('asBox').classList.remove('open')}catch(err){fail(err.message)} load()};
 $('spPause').onclick=async()=>{try{await post('/api/sessions/'+sel+'/status',{status:$('spPause').dataset.to,reason:'from Command Center'});$('spMsg').textContent=sel+' marked '+$('spPause').dataset.to.toLowerCase()+'.'}catch(err){$('spMsg').textContent=err.message} load();};
 
-load(); setInterval(load,15000);
+load().then?.(()=>{if(location.hash==='#kill'&&!$('killBtn').hidden)$('killBtn').focus()}); setInterval(load,15000);
 </script></body></html>"""
 
 

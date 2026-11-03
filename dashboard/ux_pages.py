@@ -107,17 +107,19 @@ def home(conn, root="", app=False) -> str:
     problems = []
     if st.get("halted"):
         problems.append(f"kill switch ON ({e(st.get('halt_reason') or 'no reason given')})")
-    if d["feed"].get("stale"):
-        problems.append("live prices are stale")
+    fd = d["feed"]
+    if fd.get("stale"):
+        problems.append(e(fd.get("text") or "live prices are stale"))
     tok = d.get("dhan_token") or {}
     if tok.get("message") and tok.get("severity") in ("error", "bad", "critical", "warn"):
         problems.append("Dhan token needs attention")
     env = st.get("env", "PAPER")
     if env == "LIVE":
         problems.append("LIVE: real money")
+    feed_html = f'<span data-ax-feed data-state="{e(fd.get("state"))}">{e(fd.get("text"))}</span>'
     safe = _answer("Is ATIP safe?", "Yes" if not problems else ("Halted" if st.get("halted") else "Check"),
-                   (f"{env} · feed {'live' if not d['feed'].get('stale') else 'stale'} · kill switch off"
-                    if not problems else "; ".join(problems)),
+                   (f"{env} · {feed_html} · kill switch off" if not problems else
+                    "; ".join([p for p in problems if p != e(fd.get("text"))] + [feed_html])),
                    "good" if not problems else "bad" if st.get("halted") or env == "LIVE" else "warn",
                    "✓" if not problems else "!")
     # 2. running?
@@ -134,7 +136,8 @@ def home(conn, root="", app=False) -> str:
     money = _answer("Making money today?", K.money(t["actual_pnl"], True) + ' <span class="ax-small ax-muted">actual</span>',
                     f"today: gross {K.money(t['gross_pnl'], True)} − charges {K.money(t['charges'])} − tax est. "
                     f"{K.money(t['tax_est'])} · {t['cycles']} cycle(s) closed · open {K.money(tot['unrealised'], True)}",
-                    "good" if t["actual_pnl"] > 0 else "bad" if t["actual_pnl"] < 0 else "", "₹")
+                    "good" if t["actual_pnl"] > 0 else "bad" if t["actual_pnl"] < 0 else "",
+                    "▲" if t["actual_pnl"] > 0 else "▼" if t["actual_pnl"] < 0 else "•")
     banners = _closed_banner()
     if d["scores_date"]:
         try:
@@ -152,11 +155,14 @@ def home(conn, root="", app=False) -> str:
         ("As of", e(f'{idx.get("date") or mk.get("date") or "—"} {idx.get("time") or ""} IST'))]) +
         '<a href="/market">Markets →</a></div>')
     tod = d["tod"]
+    # owner decision 3 Nov 2026: a Trade of the Day only on a BUY signal
+    no_tod = (f'<div class="ax-empty">No BUY signal for today{" (" + e(tod["pred_date"]) + ")" if tod else ""}. '
+              'ATIP names a Trade of the Day only from a BUY signal.</div>')
     w_tod = ('<div class="ax-card" data-widget="tod"><h2>Trade of the Day</h2>' + (K.kv([
         ("Stock", f'<a href="/?stock={e(tod["symbol"])}">{e(tod["symbol"])}</a> {K.status(tod.get("signal") or "", "good" if tod.get("signal") == "BUY" else "")}'),
         ("ATIP score", e(f'{float(tod["atip_score"]):.0f}' if tod.get("atip_score") is not None else "—")),
         ("Entry · stop · target", f'{K.money(tod.get("entry_price"))} · {K.money(tod.get("stop_loss"))} · {K.money(tod.get("target_1"))}'),
-        ("Date", e(tod["pred_date"]))]) if tod else '<div class="ax-empty">No Trade of the Day yet.</div>') + "</div>")
+        ("Date", e(tod["pred_date"]))]) if tod and tod.get("signal") == "BUY" else no_tod) + "</div>")
     srows = []
     for s in ov["sessions"]:
         ti = s["tiles"]
@@ -611,7 +617,11 @@ def accounting(conn, q: dict, root="", app=False) -> str:
                                     ("rate_pct", "Rate", "rate"), ("tax", "Tax (est.)", "money")], st["heads"], tools=False)
         kvs = [(f'Set-off: {x["from"]} loss against {x["against"]}', f'{K.money(x["amount"])} <span class="ax-muted">{e(x["rule"])}</span>')
                for x in st["set_offs"]]
-        kvs += [("LTCG exemption used", K.money(st["ltcg_exemption_used"])), ("Tax before surcharge and cess", K.money(st["tax_before_addons"])),
+        kvs += [("LTCG exemption used", K.money(st["ltcg_exemption_used"]))]
+        if st["other_income"] is not None:
+            kvs += [("Other income (from Settings)", K.money(st["other_income"])),
+                    ("Unused nil slab set against STCG / LTCG", K.money(st["basic_exemption_used"]))]
+        kvs += [("Tax before surcharge and cess", K.money(st["tax_before_addons"])),
                 (f'Surcharge {st["rates"]["surcharge_pct"]:g}% · cess {st["rates"]["cess_pct"]:g}%',
                  f'{K.money(st["surcharge"])} · {K.money(st["cess"])} ({"in" if st["addons_applied"] else "not in"} the liability)'),
                 ("Estimated liability", f'<b>{K.money(st["liability"])}</b>'),
@@ -621,7 +631,9 @@ def accounting(conn, q: dict, root="", app=False) -> str:
         cyc = [{**c, "opened": str(c["opened_at"])[:10], "closed": str(c["closed_at"])[:10]} for c in tr["cycles"]]
         body = (f'<div class="ax-banner warn" role="note">{e(TX.DISCLAIMER)} Rates effective {e(st["rates"]["effective_from"])}: '
                 f'STCG {st["rates"]["stcg_pct"]:g}%, LTCG {st["rates"]["ltcg_pct"]:g}% above {K.inr(st["rates"]["ltcg_exemption"])}, '
-                f'slab {st["rates"]["slab_pct"]:g}%. <a href="/settings#tax">Change rates</a></div>'
+                f'intraday and F&amp;O {TX.rate("BUSINESS", st["rates"]):g}% ({e(st["regime_label"])}); STT '
+                f'{"deducted" if st["rates"]["stt_deductible"] else "not deducted"} from capital gains. '
+                '<a href="/settings#tax">Change rates</a></div>'
                 '<form class="ax-row" method="get"><input type="hidden" name="tab" value="tax">' +
                 _select("fy", "Financial year (Apr–Mar)", [(f, f) for f in tr["fys"]], fy, False) +
                 '<div class="ax-field" style="justify-content:flex-end"><button class="ax-btn" type="submit">Show</button></div></form>' +
@@ -866,8 +878,9 @@ def settings(conn, root="", app=False) -> str:
     except Exception:
         t = {}
     tx = TX.settings()
+    shown = lambda v: "" if v is None else (int(v) if float(v).is_integer() else v)
     num = lambda k, lab, help_="": (f'<div class="ax-field"><label for="tx-{k}">{e(lab)}</label><input class="ax-input" id="tx-{k}" name="{k}" '
-                                    f'value="{e(tx[k])}" inputmode="decimal">{f"<div class=ax-help>{e(help_)}</div>" if help_ else ""}</div>')
+                                    f'value="{e(shown(tx[k]))}" inputmode="decimal">{f"<div class=ax-help>{e(help_)}</div>" if help_ else ""}</div>')
     body = ('<div class="ax-grid-2">'
             '<section class="ax-card" id="credentials"><h2>Credentials and brokers</h2>' + K.kv([
                 ("Broker environment", f'<span class="ax-pill ax-env" data-env="{e(st["env"])}">{e(st["env"])}</span>'),
@@ -881,13 +894,24 @@ def settings(conn, root="", app=False) -> str:
             '<p class="ax-small ax-muted">Limits are set in atip_data/config.json ("risk"). The kill switch and resume are on '
             '<a href="/command">Command Center</a>.</p></section>'
             '<section class="ax-card" id="tax"><h2>Tax rates (estimates)</h2>'
-            f'<div class="ax-banner warn">{e(TX.DISCLAIMER)} Verify these before relying on them.</div><form id="txf">' +
+            f'<div class="ax-banner warn">{e(TX.DISCLAIMER)} Defaults follow the Income-tax Act, 2025 and Budget 2026 '
+            '(checked 3 Nov 2026).</div><form id="txf">' +
             f'<div class="ax-field"><label for="tx-eff">Effective from</label><input class="ax-input" id="tx-eff" name="effective_from" type="date" value="{e(tx["effective_from"])}"></div>'
-            '<div class="ax-row">' + num("stcg_pct", "STCG % (≤ 12 months)") + num("ltcg_pct", "LTCG % (> 12 months)") + "</div>"
-            '<div class="ax-row">' + num("ltcg_exemption", "LTCG exemption (₹ a year)") + num("slab_pct", "Your slab % (intraday, F&O)") + "</div>"
-            '<div class="ax-row">' + num("surcharge_pct", "Surcharge %") + num("cess_pct", "Cess %") + "</div>"
-            f'<label class="ax-check"><input type="checkbox" name="addons_enabled"{" checked" if tx["addons_enabled"] else ""}><span>Include surcharge and cess in the estimates</span></label>'
-            f'<label class="ax-check"><input type="checkbox" name="stt_deductible"{" checked" if tx["stt_deductible"] else ""}><span>Tax net P&amp;L after STT too (off: STT is not deducted, as s.48 says)</span></label>'
+            '<div class="ax-row">' + _select("regime", "Tax regime", [(k, v) for k, v in TX.REGIME_LABEL.items()], tx["regime"], False)
+            .replace('id="q-regime"', 'id="tx-regime"').replace('for="q-regime"', 'for="tx-regime"') +
+            num("other_income", "Your other taxable income this year (₹, optional)",
+                "Salary, interest and the like, after deductions. Blank: intraday and F&O use the slab % below.") + "</div>"
+            '<div class="ax-row">' + num("stcg_pct", "STCG % (≤ 12 months, s.196)") + num("ltcg_pct", "LTCG % (> 12 months, s.198)") + "</div>"
+            '<div class="ax-row">' + num("ltcg_exemption", "LTCG exemption (₹ a year)") +
+            num("slab_pct", "Slab % for intraday, F&O (when other income is blank)") + "</div>"
+            '<div class="ax-row">' + num("surcharge_pct", "Surcharge %", "0 below ₹50 lakh of total income; capped at 15 on capital gains") +
+            num("cess_pct", "Cess %") + "</div>"
+            f'<label class="ax-check"><input type="checkbox" name="addons_enabled"{" checked" if tx["addons_enabled"] else ""}><span>Add surcharge and cess to the estimates (the law always adds the 4% cess)</span></label>'
+            f'<label class="ax-check"><input type="checkbox" name="stt_deductible"{" checked" if tx["stt_deductible"] else ""}><span>Deduct STT from capital gains too (the law does not: s.72(3), was s.48; intraday and F&amp;O always deduct it)</span></label>'
+            f'<p class="ax-small">Intraday and F&amp;O are taxed at {TX.rate("BUSINESS", tx):g}% '
+            f'{"(your slab on the next rupee above your other income)" if tx["other_income"] is not None else "(the slab % above)"}; '
+            'delivery trades at the flat STCG / LTCG rates, whatever your slab.</p>'
+            '<details><summary>Slabs, tax year 2026-27 (individual, resident, below 60)</summary>' + _slab_table() + '</details>'
             '<div class="ax-err" id="tx-err" role="alert"></div><button class="ax-btn primary" type="submit">Save tax rates</button></form></section>'
             '<section class="ax-card" id="notifications"><h2>Notifications</h2><p>Report schedules send a note to your inbox and '
             'channels (in-app, Telegram if you opted in). Choose per schedule on <a href="/reports?tab=schedules">Reports › Schedules</a>; '
@@ -899,10 +923,25 @@ def settings(conn, root="", app=False) -> str:
             "".join(f'<a class="ax-card" href="{h}"><b>{e(l)}</b><span class="ax-small ax-muted">{e(j)}</span></a>'
                     for l, h, j in next(k for k in NAV if k[0] == "settings")[4][2:]) + "</div></section></div>" +
             """<script>(function(){var f=document.getElementById('txf');f.addEventListener('submit',function(ev){ev.preventDefault();var b={};
-['effective_from','stcg_pct','ltcg_pct','ltcg_exemption','slab_pct','surcharge_pct','cess_pct'].forEach(function(n){b[n]=f[n].value;});b.addons_enabled=f.addons_enabled.checked;b.stt_deductible=f.stt_deductible.checked;
-AX.api('/api/v2/tax/config',{body:b}).then(function(){AX.toast('Tax rates saved. New cycles use them; recompute old ones on Accounting.');}).catch(function(e){document.getElementById('tx-err').textContent=e.message;});});})();</script>""")
+['effective_from','regime','other_income','stcg_pct','ltcg_pct','ltcg_exemption','slab_pct','surcharge_pct','cess_pct'].forEach(function(n){b[n]=f[n].value;});b.addons_enabled=f.addons_enabled.checked;b.stt_deductible=f.stt_deductible.checked;
+AX.api('/api/v2/tax/config',{body:b}).then(function(r){AX.toast('Tax rates saved'+(r&&r.retaxed?'; '+r.retaxed+' closed cycles re-estimated.':'.'));setTimeout(function(){location.reload();},900);}).catch(function(e){document.getElementById('tx-err').textContent=e.message;});});})();</script>""")
     return page("Settings", body, "/settings", root=root, app=app,
                 job="Credentials, risk limits, tax rates, notifications and display, grouped in one place.")
+
+
+def _slab_table() -> str:
+    from accounting import tax as TX
+    rows = []
+    for regime, slabs in TX.SLABS.items():
+        lower = 0
+        for upper, pct in slabs:
+            band = f"above {K.inr(lower)[:-3]}" if upper is None else f"{K.inr(lower)[:-3]} – {K.inr(upper)[:-3]}"
+            rows.append(f'<tr><td>{e(TX.REGIME_LABEL[regime])}</td><td>{band}</td><td class="n">{pct:g}%</td></tr>')
+            lower = upper or lower
+    return ('<div class="ax-tablewrap"><table class="ax-table"><thead><tr><th scope="col">Regime</th><th scope="col">Income</th>'
+            '<th scope="col" class="n">Rate</th></tr></thead><tbody>' + "".join(rows) + "</tbody></table></div>"
+            '<p class="ax-small ax-muted">Surcharge 10% above ₹50 lakh, 15% above ₹1 crore, 25% above ₹2 crore (never above '
+            '15% on capital gains); 4% cess on tax plus surcharge. The s.156 rebate (was s.87A) is not counted.</p>')
 
 
 def hub(key: str, root="", app=False) -> str:
@@ -926,12 +965,13 @@ def hub(key: str, root="", app=False) -> str:
 
 
 def more(root="", app=False) -> str:
-    secs = "".join(f'<section class="ax-card"><h2>{ico} {e(label)}</h2>' + "".join(
+    from dashboard.shell import icon
+    secs = "".join(f'<section class="ax-card"><h2 class="ax-ih">{icon(ico)} {e(label)}</h2>' + "".join(
         f'<div style="padding:6px 0;border-bottom:1px solid var(--ax-border-soft)"><a href="{e(h)}">{e(l)}</a>'
         f'<div class="ax-small ax-muted">{e(j)}</div></div>' for l, h, j in kids) + "</section>"
                    for key, label, ico, _, kids in NAV if key not in ("home",))
     return page("More", f'<div class="ax-grid">{secs}</div>', "/more", root=root, app=app,
-                job="Every part of ATIP. The phone's tabs cover Home, Trade, Sessions and Reports; everything else is here.")
+                job="Every part of ATIP, section by section, Reports and Live feeds included.")
 
 
 def ops(conn, root="", app=False) -> str:

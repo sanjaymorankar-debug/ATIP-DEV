@@ -2,6 +2,9 @@
 The /brokers page (W37): consolidated holdings across brokers (BR-07, ENT-06 credentials), broker file / API
 import into the wealth ledger (PF-12), the paper options book with an order ticket (ENT-15), and the asset-class
 catalogue. Reads and writes only through /api/brokers, /api/portfolio/imports, /api/execution/options|assets.
+
+UX audit (3 Nov 2026): the section tabs are buttons, every control is labelled, tables scroll inside
+keyboard-reachable regions, colours follow the page variables (re-pointed to the shell theme).
 """
 
 import json
@@ -9,34 +12,35 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Brokers</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#34d399;--bad:#f87171;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1300px}
-.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}.tab{padding:6px 12px;border-radius:6px;background:var(--panel);cursor:pointer;color:var(--muted)}
-.tab.on{background:#2563eb;color:#fff}.pane{display:none}.pane.on{display:block}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1300px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}.tabs .tab{padding:6px 12px;border-radius:6px;background:var(--panel);cursor:pointer;color:var(--muted);border:1px solid var(--line);font-size:13px;margin:0}
+.tabs .tab.on{background:#2563eb;color:#fff;border-color:#2563eb}.pane{display:none}.pane.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;min-width:0;overflow-wrap:anywhere}
 h3{font-size:13px;color:var(--accent);margin-bottom:8px}.muted{color:var(--muted)}.note{color:var(--warn)}.ok{color:var(--good)}.bad{color:var(--bad)}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:5px 7px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}th{color:var(--muted)}
-input,select,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;font-size:12.5px}th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted)}
+input,select,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px;max-width:100%}
 button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12.5px;margin:2px}
-label{color:var(--muted);font-size:12px;margin-right:8px}.scroll{max-height:420px;overflow:auto}
+label{color:var(--muted);font-size:12px;margin-right:8px;display:inline-block}
+.tw{overflow:auto;max-width:100%}.scroll .tw{max-height:420px}.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Brokers, imports &amp; multi-asset (W37)</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Brokers, imports &amp; multi-asset</span></div>
 <div><a href="/account">Account (credentials)</a><a href="/wealth">Wealth</a><a href="/trading">Trading</a><a href="/">← Dashboard</a></div></div>
-<div class="wrap"><div class="tabs" id="tabs"></div>
+<div class="wrap"><div class="tabs" id="tabs" role="tablist" aria-label="Broker sections"></div>
 
-<div class="pane" id="p-acc"><div class="card"><h3>Holdings across brokers</h3><div class="muted">Read-only: credentials come from your encrypted vault (Account page) or ATIP's existing Dhan / Zerodha setup. Nothing here can place an order.</div><div id="cons" style="margin-top:8px"></div></div>
+<div class="pane" role="tabpanel" id="p-acc"><div class="card"><h3>Holdings across brokers</h3><div class="muted">Read-only: credentials come from your encrypted vault (Account page) or ATIP's existing Dhan / Zerodha setup. Nothing here can place an order.</div><div id="cons" style="margin-top:8px"></div></div>
 <div class="card"><h3>Supported brokers</h3><div id="brk"></div></div></div>
 
-<div class="pane" id="p-imp"><div class="card"><h3>Import a broker file</h3>
+<div class="pane" role="tabpanel" id="p-imp"><div class="card"><h3>Import a broker file</h3>
 <div class="muted">Tradebook / order history / holdings CSV from Zerodha Console, Upstox, Groww, ICICI Direct, Angel One or any CSV with recognisable columns. Preview first; importing the same file twice adds nothing.</div>
-<div style="margin:8px 0"><input type="file" id="file" accept=".csv,.txt"> <label>broker <input id="ib" size="10" placeholder="auto"></label><label>holdings as of <input id="iasof" size="10" placeholder="YYYY-MM-DD"></label>
+<div style="margin:8px 0"><input type="file" id="file" accept=".csv,.txt" aria-label="Broker CSV file"> <label>broker <input id="ib" size="10" placeholder="auto"></label><label>holdings as of <input id="iasof" size="10" placeholder="YYYY-MM-DD"></label>
 <button onclick="imp('preview')">Preview</button><button onclick="imp('commit')">Import</button></div><div id="impout"></div></div>
-<div class="card"><h3>Import from a connected broker</h3><select id="apib"><option>zerodha</option><option>upstox</option><option>angel</option></select> <button onclick="apiImp()">Import today's trades</button> <span class="muted">Dhan is already synced daily (broker_sync).</span><div id="apiout"></div></div>
+<div class="card"><h3>Import from a connected broker</h3><select id="apib" aria-label="Connected broker"><option>zerodha</option><option>upstox</option><option>angel</option></select> <button onclick="apiImp()">Import today's trades</button> <span class="muted">Dhan is already synced daily (broker_sync).</span><div id="apiout" role="status"></div></div>
 <div class="card"><h3>Import history</h3><div id="runs"></div></div></div>
 
-<div class="pane" id="p-opt"><div class="card"><h3>Paper options book</h3><div id="ob"></div></div>
+<div class="pane" role="tabpanel" id="p-opt"><div class="card"><h3>Paper options book</h3><div id="ob"></div></div>
 <div class="card"><h3>Order ticket (paper)</h3><div>
 <label>underlying <input id="ou" size="10" value="NIFTY"></label><label>expiry <input id="oe" size="10" placeholder="YYYY-MM-DD"></label>
 <label>strike <input id="ok" size="8"></label><label>type <select id="ot"><option>CE</option><option>PE</option></select></label>
@@ -44,7 +48,7 @@ label{color:var(--muted);font-size:12px;margin-right:8px}.scroll{max-height:420p
 <button onclick="opt('check')">Check</button><button onclick="opt('order')">Place paper order</button></div><div id="oout" style="margin-top:8px"></div>
 <div class="muted" style="margin-top:6px">Long premium only (SELL closes what you hold). Whole lots, premium caps, no new positions on expiry day. Turn on with options.enabled in config.json.</div></div></div>
 
-<div class="pane" id="p-ast"><div class="card"><h3>Asset classes</h3><div id="ast"></div></div></div>
+<div class="pane" role="tabpanel" id="p-ast"><div class="card"><h3>Asset classes</h3><div id="ast"></div></div></div>
 </div>
 <script>
 const TOKEN=__TOKEN__;
@@ -52,11 +56,13 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const num=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||t.detail||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(x=>String(x).replace(/<[^>]*>/g,'')).join(', '));
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">${o.empty||'Nothing here yet.'}</td></tr>`}</tbody></table></div>`};
 const TABS=[['acc','Accounts'],['imp','Import'],['opt','Options (paper)'],['ast','Asset classes']];const loaded={};
-function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.id===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
+function show(id){document.querySelectorAll('.tab').forEach(t=>{t.classList.toggle('on',t.dataset.id===id);t.setAttribute('aria-selected',t.dataset.id===id?'true':'false')});document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
   if(!loaded[id]){loaded[id]=1;({acc,imp:runs,opt:book,ast})[id]()}}
-document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
+document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<button type="button" class="tab" role="tab" aria-selected="false" aria-controls="p-${id}" data-id="${id}" onclick="show('${id}')">${l}</button>`).join('');
 
 async function acc(){j('/api/brokers').then(B=>document.getElementById('brk').innerHTML=table(['Broker','Credential fields','Live orders'],B.map(b=>`<tr><td><b>${esc(b.broker)}</b></td><td class="muted">${esc(b.credential_fields.join(', '))}</td><td class="muted">${esc(b.live_orders)}</td></tr>`)));
   const el=document.getElementById('cons');el.innerHTML='<span class="muted">reading brokers…</span>';

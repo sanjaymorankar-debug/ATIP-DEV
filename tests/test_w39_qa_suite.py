@@ -910,7 +910,7 @@ def test_risk_dashboard_renders_with_its_portfolio_risk_section(api):
     for el in ('id="prisk"', 'id="pbook"', 'id="phead"', 'id="pvar"', 'id="pconc"', 'id="prc"', 'id="pcorr"',
                'id="pperf"', 'id="pemx"', 'id="lim"'):
         assert el in html, f"{el} missing from /trading"
-    assert "Portfolio risk (W25)" in html and security.token() in html
+    assert ">Portfolio risk</h2>" in html and security.token() in html     # no wave code in headings (UX audit M3, 3 Nov 2026)
     page = render("TOKEN-X")
     assert "TOKEN-X" in page and "<script" in page and "/api/risk/portfolio?book=" in page
 

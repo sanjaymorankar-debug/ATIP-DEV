@@ -132,7 +132,8 @@ def mobile_summary(conn) -> dict:
                         "ORDER BY atip_score DESC LIMIT 5", str(d)) if d else [],
            "sells": many("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND `signal`='SELL' "
                          "ORDER BY cri DESC LIMIT 5", str(d)) if d else [],
-           "tod": one("SELECT symbol, acs FROM ai_scores WHERE date=? AND is_tod=1 LIMIT 1", str(d)) if d else None,
+           # a Trade of the Day only on a BUY signal (owner decision 3 Nov 2026)
+           "tod": one("SELECT symbol, acs FROM ai_scores WHERE date=? AND is_tod=1 AND `signal`='BUY' LIMIT 1", str(d)) if d else None,
            "pnl": many("SELECT date, env, equity, day_pnl, drawdown_pct FROM pnl_daily ORDER BY date DESC, env LIMIT 2"),
            "alerts": many("SELECT created_at, category, severity, title FROM alert_log ORDER BY id DESC LIMIT 6")}
     try:
@@ -150,6 +151,11 @@ def mobile_summary(conn) -> dict:
             md = {}
         feed["market_data"] = {"status": md.get("status"), "detail": md.get("detail")}
     out["data_feed"] = feed
+    try:                                    # 2026-11-03 (UX audit H1): the one feed label every page shows
+        from dashboard.ux_kit import feed_label
+        out["price_feed"] = feed_label(conn)
+    except Exception:
+        out["price_feed"] = None
     try:                                    # 2026-10-31 (MON-07): every Dhan feed, OFF included (the Live screen)
         from ops.data_health import feeds
         out["live_feeds"] = [{"feed": f["feed"], "label": f["label"], "state": f["state"], "problem": f["problem"]}
@@ -203,12 +209,12 @@ async function load(){let d,cached=false;
    `<div class="grid"><div class="card"><div class="muted">Market health</div><div class="big">${n(m.mh_score,0)}</div><div>${esc(m.regime||'—')}</div></div>
     <div class="card"><div class="muted">Nifty 50</div><div class="big">${n(ix.nifty50,0)}</div><div>${sg(ix.nifty50_chg)} · VIX ${n(ix.india_vix,1)}</div></div></div>
     <div class="card"><div class="row"><span>Global</span><span>${n(g.global_score,0)} ${esc(g.global_sentiment||'')} · S&amp;P ${sg(g.sp500_chg)}</span></div>
-    <div class="row"><span>GIFT Nifty</span><span>${sg(ix.gift_nifty_chg)}</span></div>${d.tod?`<div class="row"><span>🎯 Trade of the day</span><b>${esc(d.tod.symbol)}</b></div>`:''}</div>
+    <div class="row"><span>GIFT Nifty</span><span>${sg(ix.gift_nifty_chg)}</span></div><div class="row"><span>🎯 Trade of the day</span>${d.tod?`<b>${esc(d.tod.symbol)}</b>`:'<span class="muted">No BUY signal for today</span>'}</div></div>
     <div class="card"><h3>🟢 Buy candidates</h3>${list(d.buys,b=>`<div class="row"><b>${esc(b.symbol)}</b><span>ATIP ${n(b.atip_score,0)} · CRI ${n(b.cri,0)}</span></div>`)}</div>
     <div class="card"><h3>🔴 Exit / avoid</h3>${list(d.sells,s=>`<div class="row"><b>${esc(s.symbol)}</b><span>CRI ${n(s.cri,0)}</span></div>`)}</div>
     <div class="card"><h3>Portfolio</h3>${list(d.pnl,p=>`<div class="row"><span>${esc(p.env)} ${esc(String(p.date).slice(0,10))}</span><span>₹${n(p.equity,0)} · day ${p.day_pnl>=0?'<span class=ok>':'<span class=bad>'}₹${n(p.day_pnl,0)}</span></span></div>`)}</div>
     <div class="card"><h3>🩺 Pipeline</h3>${d.pipeline_problems.length?list(d.pipeline_problems,p=>`<div class="row bad"><span>${esc(p.kind)}</span><span>${esc(p.label)}</span></div>`):'<div class="ok">all monitored jobs ran</div>'}</div>
-    <div class="card"><h3>🛰 Data feeds</h3><div class="row"><span>Dhan market data</span><span class="${md.status==='OK'?'ok':'bad'}">${esc(md.status||'—')}</span></div>
+    <div class="card"><h3>🛰 Data feeds</h3>${d.price_feed?`<div class="row"><span>Live prices</span><span class="${d.price_feed.state==='live'?'ok':d.price_feed.state==='stale'?'bad':''}" data-ax-feed data-state="${esc(d.price_feed.state)}">${esc(d.price_feed.text)}</span></div>`:''}<div class="row"><span>Dhan market data</span><span class="${md.status==='OK'?'ok':'bad'}">${esc(md.status||'—')}</span></div>
     ${md.detail&&md.status!=='OK'?`<div class="muted">${esc(md.detail)}</div>`:''}
     <div class="row"><span>Broker health</span><span>${esc(f.overall||'—')} <span class="muted">${esc(String(f.checked_at||'').slice(5,16))}</span></span></div>
     <div class="row"><span>News fetched</span><span>${esc(nw.last_fetch?String(nw.last_fetch).slice(5,16):'never')} · ${nw.n?(nw.ai?`AI ${nw.ai}/${nw.n}`:'keyword only'):'—'}</span></div>

@@ -416,8 +416,14 @@ def _tax_sections(conn, fy: str, sids) -> list:
                         f"(effective {st['rates']['effective_from']}). {TX.DISCLAIMER}")]
     kv = [(f"Set-off: {s['from']} loss against {s['against']}", f"{inr(s['amount'])} — {s['rule']}")
           for s in st["set_offs"]]
-    kv += [("LTCG exemption used (once a year, all sessions)", inr(st["ltcg_exemption_used"])),
-           ("Tax before surcharge and cess", inr(st["tax_before_addons"])),
+    kv += [("Regime", st["regime_label"]),
+           ("STT on capital gains", "deducted (Settings → Tax)" if st["rates"]["stt_deductible"]
+            else "not deducted (s.72(3), was s.48)"),
+           ("LTCG exemption used (once a year, all sessions)", inr(st["ltcg_exemption_used"]))]
+    if st["other_income"] is not None:
+        kv += [("Other income (from Settings → Tax)", inr(st["other_income"])),
+               ("Unused nil slab set against STCG / LTCG", inr(st["basic_exemption_used"]))]
+    kv += [("Tax before surcharge and cess", inr(st["tax_before_addons"])),
            (f"Surcharge ({st['rates']['surcharge_pct']:g}%)", inr(st["surcharge"])),
            (f"Health & education cess ({st['rates']['cess_pct']:g}%)", inr(st["cess"])),
            ("Surcharge and cess in the liability", "yes" if st["addons_applied"] else "no (turn on in Settings → Tax)"),

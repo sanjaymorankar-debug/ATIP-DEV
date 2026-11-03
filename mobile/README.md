@@ -1,26 +1,29 @@
-# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02
+# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02, Live tab back 2026-11-03
 
 ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only PWA). These are thin native
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.02** (Android `versionCode` 3 / `versionName` 2026.11.02; iOS `CFBundleShortVersionString`
-2026.11.02 / `CFBundleVersion` 3). The native tabs follow the new page shell:
+**Version 2026.11.03.1** (Android `versionCode` 5 / `versionName` 2026.11.03.1; iOS `CFBundleShortVersionString`
+2026.11.03.1 / `CFBundleVersion` 5). The native tabs follow the page shell's five, with **Live in place of Reports**
+(the owner asked for the Live tab back on 2026-11-03; Reports is one tap away under More). Five is the most
+Android's bottom bar takes, and a sixth tab on iPhone would fold into the system's own "More":
 
 | Tab | Page | What it shows | Android icon | iOS SF Symbol |
 |---|---|---|---|---|
 | Home | `/home` | Today: is ATIP safe, running, making money | `home` | `house` |
 | Trade | `/command` | Command Center (UXR-01): halt switch, risk budget, pending confirmations | `show_chart` | `chart.line.uptrend.xyaxis` |
+| Live | `/m?tab=live` | Every Dhan live feed — index and stock WebSocket, tick capture, 1-minute bars, 20-level depth, option chain — as OFF / IDLE / LIVE / REST / STALE with the last data time; refreshes every 15 s. Each feed is off until switched on | `sensors` | `dot.radiowaves.left.and.right` |
 | Sessions | `/sessions` | The 10 trading sessions S1–S10; each card shows gross P&L vs actual P&L after charges and estimated tax | `dashboard` | `square.grid.2x2` |
-| Reports | `/reports` | Periodic reports and the archive | `description` | `doc.text` |
-| More | `/more` | Every other section: Markets, Research, Accounting, Strategy Lab, Wealth, Settings | `more_horiz` | `ellipsis.circle` |
+| More | `/more` | Every other section: Reports, Markets, Research, Accounting, Strategy Lab, Wealth, Settings | `more_horiz` | `ellipsis.circle` |
 
-They replace the 2026-10-26 / 2026-10-31 tabs Today (`/m`), Live (`/m?tab=live`), Command (`/command`) and
-Global & Asia (`/global-asia`). Those URLs still work on the server.
+They replace the 2026-10-26 / 2026-10-31 tabs Today (`/m`), Command (`/command`) and Global & Asia
+(`/global-asia`); Live is the 31 Oct tab, back. Those URLs still work on the server. A phone browser (not the
+app) gets the page shell's own bottom bar, which keeps Reports: Home, Trade, Sessions, Reports, More.
 Android icons are Material Icons vector drawables in `app/src/main/res/drawable/ic_tab_*.xml`.
 
 **The page shell hides its own navigation in the apps.** Both web views append `ATIPApp/<version>` (today
-`ATIPApp/2026.11.02`) to the platform's default user agent; the shell hides its left rail / bottom tab bar
+`ATIPApp/2026.11.03.1`) to the platform's default user agent; the shell hides its left rail / bottom tab bar
 for that user agent (or `?app=1`), because the apps have native tabs.
 
 **Moving around.** Pull down on any tab (Sessions included) to reload the page on screen. Tap the open tab

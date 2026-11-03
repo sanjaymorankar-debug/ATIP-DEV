@@ -31,11 +31,45 @@ log = logging.getLogger("atip.shell")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Inline SVG icons (UX audit L2, 3 Nov 2026): 24 px grid, currentColor, aria-hidden -- the label beside each one
+# stays text. They replace the text glyphs (◐ ⌂ ⇅ …) that rendered as half or tiny characters.
+_SVG = {
+    "home": '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    "markets": '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+    "research": '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    "trade": '<path d="M7 20V4"/><path d="M3 8l4-4 4 4"/><path d="M17 4v16"/><path d="M13 16l4 4 4-4"/>',
+    "sessions": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+                '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "accounting": '<path d="M6 4h12"/><path d="M6 9h12"/><path d="M9 4c3.5 0 6 1.8 6 5s-2.5 5-6 5H7l8 7"/>',
+    "reports": '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/>'
+               '<path d="M8 13h8M8 17h5"/>',
+    "lab": '<path d="M9 3h6"/><path d="M10 3v6l-5.4 9.7A1.5 1.5 0 0 0 5.9 21h12.2a1.5 1.5 0 0 0 1.3-2.3L14 9V3"/><path d="M7.5 15h9"/>',
+    "wealth": '<path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+    "settings": '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/>'
+                '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+    "more": '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+    "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    "search": '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    "bell": '<path d="M6 9a6 6 0 1 1 12 0c0 6 3 8 3 8H3s3-2 3-8"/><path d="M10 21a2.2 2.2 0 0 0 4 0"/>',
+    "theme": '<path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a6.6 6.6 0 0 0 10 10z"/>',
+    "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-3.8 4-6 8-6s7.2 2.2 8 6"/>',
+    "close": '<path d="M6 6l12 12M18 6L6 18"/>',
+    "density": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M3 14.5h18"/>',
+}
+
+
+def icon(name: str, size: int = 20) -> str:
+    """One inline SVG icon; decorative (the control carries its own text or aria-label)."""
+    return (f'<svg class="ax-svg" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            f'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+            f'{_SVG.get(name, "")}</svg>')
+
+
 # (key, label, icon, landing href, [(label, href, one-line job)])
 NAV = [
-    ("home", "Home", "⌂", "/home", [
+    ("home", "Home", "home", "/home", [
         ("Today", "/home", "Is ATIP safe, running and making money today?")]),
-    ("markets", "Markets", "◔", "/markets", [
+    ("markets", "Markets", "markets", "/markets", [
         ("Markets overview", "/markets", "Every market screen in one place"),
         ("Market & FII/DII", "/market", "Index levels, breadth, FII / DII flows"),
         ("Market pulse", "/market-pulse", "Sector heat, movers and breadth right now"),
@@ -43,14 +77,14 @@ NAV = [
         ("News & impact", "/?tab=news", "Headlines scored for their impact on your stocks"),
         ("Live feeds", "/m?tab=live", "Dhan real-time feed health"),
         ("Data platform", "/data-platform", "Data sources, freshness and quality")]),
-    ("research", "Research", "⌕", "/", [
+    ("research", "Research", "research", "/", [
         ("ATIP Scores", "/", "Every stock's ATIP score with VPI, ZPI, RRI, MRI and CRI tabs"),
         ("Research", "/research", "One stock in depth"),
         ("Screener", "/screener", "Filter the universe by score, factor and price"),
         ("Signals", "/signals", "Signal explorer: today's and past signals"),
         ("Signal history", "/?tab=hist", "How past signals played out"),
         ("Options builder", "/options-builder", "Build and price option strategies")]),
-    ("trade", "Trade", "⇅", "/command", [
+    ("trade", "Trade", "trade", "/command", [
         ("Command Center", "/command", "Is it safe, what needs me, what is running"),
         ("Trade signals", "/command/signals", "Today's EOD signals with live prices"),
         ("Trade setup", "/command/setup", "Size a trade with its ₹ risk before sending"),
@@ -60,9 +94,9 @@ NAV = [
         ("Orders & execution", "/trading", "Order book, fills and execution quality"),
         ("Baskets & SIP", "/baskets", "Baskets and stock SIPs (paper)"),
         ("Execution lab", "/execution-lab", "Slippage, TCA and order-type experiments")]),
-    ("sessions", "Sessions", "▦", "/sessions", [
+    ("sessions", "Sessions", "sessions", "/sessions", [
         ("All sessions", "/sessions", "The ten sessions as mini-funds: gross vs actual P&L, cycles, floors")]),
-    ("accounting", "Accounting", "₹", "/accounting", [
+    ("accounting", "Accounting", "accounting", "/accounting", [
         ("General ledger", "/accounting?tab=ledger", "Every rupee every session touched, double-entry"),
         ("Session ledger", "/accounting?tab=session", "One session's cash, line by line"),
         ("Charges register", "/accounting?tab=charges", "Charges by type, session and month"),
@@ -70,21 +104,21 @@ NAV = [
         ("Funds", "/accounting?tab=funds", "Virtual (paper) and actual (broker) money, apart"),
         ("Reconciliation", "/accounting?tab=recon", "ATIP's charges and cash against the broker's"),
         ("Transfers", "/accounting?tab=transfers", "Move money between sessions")]),
-    ("reports", "Reports", "▤", "/reports", [
+    ("reports", "Reports", "reports", "/reports", [
         ("Generate", "/reports", "Make any report now in HTML, CSV, Excel or PDF"),
         ("Schedules", "/reports?tab=schedules", "When each report runs, in IST"),
         ("Archive", "/reports?tab=archive", "Every report generated, to download again"),
         ("Custom report", "/reports?tab=custom", "Pick sections, sessions and dates")]),
-    ("lab", "Strategy Lab", "⚗", "/lab", [
+    ("lab", "Strategy Lab", "lab", "/lab", [
         ("Run → compare → promote", "/lab", "Backtest, compare, then promote a strategy"),
         ("Strategies", "/strategies", "Your strategies and their status"),
         ("Strategy builder", "/strategy-builder", "Build a rule-based strategy"),
         ("Backtests", "/backtests", "Run and compare backtests"),
         ("Quant", "/quant", "Factor research and experiments"),
         ("ML", "/ml", "Models, versions and their metrics")]),
-    ("wealth", "Wealth", "◈", "/wealth", [
+    ("wealth", "Wealth", "wealth", "/wealth", [
         ("Wealth", "/wealth", "Goals, allocation, rebalancing and the advisor")]),
-    ("settings", "Settings & Admin", "⚙", "/settings", [
+    ("settings", "Settings & Admin", "settings", "/settings", [
         ("Settings", "/settings", "Credentials, risk limits, tax rates and notifications"),
         ("Account", "/account", "Profile, sign-in and notifications"),
         ("Brokers", "/brokers", "Dhan and other broker connections"),
@@ -97,8 +131,9 @@ NAV = [
         ("Workspace", "/app", "The enterprise workspace"),
         ("Mobile view", "/m", "The phone-sized summary")]),
 ]
-TABBAR = [("Home", "⌂", "/home", "home"), ("Trade", "⇅", "/command", "trade"), ("Sessions", "▦", "/sessions", "sessions"),
-          ("Reports", "▤", "/reports", "reports"), ("More", "⋯", "/more", "more")]
+TABBAR = [("Home", "home", "/home", "home"), ("Trade", "trade", "/command", "trade"),
+          ("Sessions", "sessions", "/sessions", "sessions"), ("Reports", "reports", "/reports", "reports"),
+          ("More", "more", "/more", "more")]
 SKIP_PREFIXES = ("/api/", "/static/", "/health", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/login",
                  "/zerodha/", "/docs", "/redoc", "/openapi.json")
 NATIVE_MARK = '<meta name="atip-shell" content="native">'
@@ -147,20 +182,33 @@ def _e(s) -> str:
     return html.escape(str(s if s is not None else ""), quote=True)
 
 
-def chrome(path: str, query: str, st: dict, root: str = "") -> tuple[str, str]:
-    """(markup after <body>, markup before </body>) of the shell for one page."""
+def leaf_of(path: str, query: str = "", title: str = "") -> tuple[str, str, str]:
+    """(section key, section label, leaf): the breadcrumb, and the page name its <title> carries (UX audit L1).
+    A page that renders itself (title given) is its own leaf unless a query picks one of its tabs; an older page is
+    the rail item it sits under."""
     sec, page_label = section_of(path, query)
+    sec_label = next((l for k, l, *_ in NAV if k == sec), "More" if sec == "more" else "")
+    if title:
+        exact = query and any(h == path + "?" + query for *_, kids in NAV for _, h, _ in kids)
+        leaf = page_label if exact and page_label else title
+    else:
+        leaf = page_label or sec_label
+    return sec, sec_label, leaf
+
+
+def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> tuple[str, str]:
+    """(markup after <body>, markup before </body>) of the shell for one page."""
+    sec, sec_label, leaf = leaf_of(path, query, title)
+    page_label = section_of(path, query)[1]
     rail = []
     for key, label, ico, href, kids in NAV:
         on = key == sec
         sub = "".join(f'<a href="{_e(root + h)}"{" aria-current=page" if on and kl == page_label else ""}>{_e(kl)}</a>'
                       for kl, h, _ in kids) if len(kids) > 1 else ""
         rail.append(f'<div class="ax-sec{" on" if on else ""}"><a href="{_e(root + href)}"'
-                    f'{" aria-current=true" if on else ""}><span class="ax-ico" aria-hidden="true">{ico}</span>'
+                    f'{" aria-current=true" if on else ""}><span class="ax-ico">{icon(ico)}</span>'
                     f'{_e(label)}</a>{f"<div class=ax-sub>{sub}</div>" if sub else ""}</div>')
-    sec_label = next((l for k, l, *_ in NAV if k == sec), "More" if sec == "more" else "")
-    crumbs = (f'<b>{_e(sec_label)}</b>' + (f" › {_e(page_label)}" if page_label and page_label != sec_label else "")) \
-        if sec_label else ""
+    crumbs = (f'<b>{_e(sec_label)}</b>' + (f" › {_e(leaf)}" if leaf and leaf != sec_label else "")) if sec_label else ""
     env = st.get("env") or "PAPER"
     status = st.get("status") or "RUNNING"
     sym = {"RUNNING": "●", "STOPPED": "⏸", "RESUMING": "↻"}.get(status, "●")
@@ -168,24 +216,32 @@ def chrome(path: str, query: str, st: dict, root: str = "") -> tuple[str, str]:
     kill = ('<button class="ax-killbtn" data-ax-kill type="button" disabled>View only</button>' if viewer else
             f'<button class="ax-killbtn" data-ax-kill type="button" data-halted="{1 if st.get("halted") else 0}" '
             f'aria-haspopup="dialog">{"Halted" if st.get("halted") else "Kill switch"}</button>')
+    fd = st.get("feed") or {}
+    feed = (f'<span class="ax-pill ax-feed ax-hide-sm" data-ax-feed data-state="{_e(fd.get("state"))}" role="status" '
+            f'title="Live price feed"{"" if fd else " hidden"}><span class="ax-dot" aria-hidden="true"></span>'
+            f'<span class="ax-feedtext">{_e(fd.get("text"))}</span><span class="ax-feedshort" aria-hidden="true">'
+            f'{_e(fd.get("short"))}</span></span>')
     top = f"""<a class="ax-skip" href="#ax-main">Skip to content</a>
 <header class="ax-top" role="banner">
- <button class="ax-iconbtn ax-menu" type="button" aria-label="Open the menu" aria-expanded="false" aria-controls="ax-rail">☰</button>
+ <button class="ax-iconbtn ax-menu" type="button" aria-label="Open the menu" aria-expanded="false" aria-controls="ax-rail">{icon("menu")}</button>
  <span class="ax-crumbs">{crumbs}</span><span class="ax-spacer"></span>
- <button class="ax-search" type="button" data-ax-search aria-label="Search pages, symbols and commands (Ctrl K)">⌕ <span class="ax-searchlabel">Search symbols, pages, commands</span> <kbd>Ctrl K</kbd></button>
+ <button class="ax-search" type="button" data-ax-search aria-label="Search pages, symbols and commands (Ctrl K)">{icon("search", 18)} <span class="ax-searchlabel">Search</span> <kbd>Ctrl K</kbd></button>
  <span class="ax-pill ax-env ax-env-top" data-ax-env data-env="{_e(env)}" role="status">{_e(env)}</span>
  <span class="ax-pill ax-run" data-ax-run data-status="{_e(status)}" role="status" aria-live="polite">{sym} <span class="ax-runtext">{_e(st.get("banner") or "ATIP running")}</span></span>
+ {feed}
  {kill}
- <a class="ax-iconbtn ax-hide-sm" href="{_e(root)}/account#notifications" aria-label="Notifications">🔔<span class="ax-count" data-ax-unread hidden></span></a>
- <button class="ax-iconbtn" type="button" data-ax-theme aria-label="Switch between light, dark and your device's theme">◐</button>
- <a class="ax-iconbtn ax-hide-sm" href="{_e(root)}/account" aria-label="Your profile">◯</a>
+ <span class="ax-bellwrap ax-hide-sm"><button class="ax-iconbtn" type="button" data-ax-bell aria-haspopup="true" aria-expanded="false" aria-controls="ax-bellpop" aria-label="Alerts: the latest five">{icon("bell")}<span class="ax-count" data-ax-unread hidden></span></button>
+ <div class="ax-pop" id="ax-bellpop" role="region" aria-label="Latest alerts" hidden><div class="ax-pophead">Latest alerts <span class="ax-muted ax-small">IST</span></div><ul class="ax-poplist" data-ax-alerts><li class="ax-muted">Loading…</li></ul><a class="ax-popfoot" href="{_e(root)}/ops">All alerts and job health →</a></div></span>
+ <button class="ax-iconbtn ax-hide-sm" type="button" data-ax-density aria-pressed="false" aria-label="Compact rows (denser tables)">{icon("density")}</button>
+ <button class="ax-iconbtn" type="button" data-ax-theme aria-label="Theme: switch between light, dark and your device's setting">{icon("theme")}</button>
+ <a class="ax-iconbtn ax-hide-sm" href="{_e(root)}/account" aria-label="Your profile">{icon("user")}</a>
 </header>
-<nav class="ax-rail" id="ax-rail" aria-label="ATIP sections"><a class="ax-brand" href="{_e(root)}/home"><span class="ax-logo">A</span>ATIP</a>{"".join(rail)}
+<nav class="ax-rail" id="ax-rail" aria-label="Main"><a class="ax-brand" href="{_e(root)}/home"><span class="ax-logo">A</span>ATIP</a>{"".join(rail)}
  <div class="ax-railfoot">Press <span class="ax-kbd">?</span> for shortcuts · <span class="ax-kbd">Ctrl K</span> to search</div></nav>
 <div class="ax-scrim"></div>"""
-    tabs = "".join(f'<a href="{_e(root + h)}"{" aria-current=page" if k == sec else ""}><span class="ax-ico" aria-hidden="true">'
-                   f'{i}</span>{_e(l)}</a>' for l, i, h, k in TABBAR)
-    bottom = f"""<nav class="ax-tabbar" aria-label="ATIP">{tabs}</nav>
+    tabs = "".join(f'<a href="{_e(root + h)}"{" aria-current=page" if k == sec else ""}><span class="ax-ico">'
+                   f'{icon(i, 22)}</span>{_e(l)}</a>' for l, i, h, k in TABBAR)
+    bottom = f"""<nav class="ax-tabbar" aria-label="Sections">{tabs}</nav>
 <dialog class="ax-dialog ax-palette" id="ax-palette" aria-label="Search ATIP"><input type="search" placeholder="Search a symbol, a page or a command…" aria-label="Search" aria-controls="ax-palette-list" autocomplete="off"><ul id="ax-palette-list" role="listbox"></ul></dialog>
 <dialog class="ax-dialog ax-danger" id="ax-kill-dialog" aria-labelledby="ax-kill-h"><form method="dialog">
  <div class="ax-dhead" id="ax-kill-h">Stop all trading now?</div>
@@ -200,7 +256,7 @@ def chrome(path: str, query: str, st: dict, root: str = "") -> tuple[str, str]:
  <dt><span class="ax-kbd">g</span> then <span class="ax-kbd">c</span> · <span class="ax-kbd">m</span> · <span class="ax-kbd">l</span> · <span class="ax-kbd">w</span> · <span class="ax-kbd">e</span></dt><dd>ATIP Scores · Markets · Strategy Lab · Wealth · Settings</dd>
  <dt><span class="ax-kbd">Esc</span></dt><dd>Close a drawer or the menu</dd><dt><span class="ax-kbd">?</span></dt><dd>This list</dd></dl></div>
  <div class="ax-dfoot"><button class="ax-btn" type="button" data-ax-dclose>Close</button></div></dialog>
-<aside class="ax-drawer" id="ax-row-drawer" aria-hidden="true" aria-labelledby="ax-row-h"><header><h2 id="ax-row-h">Details</h2><button class="ax-iconbtn" type="button" data-ax-close aria-label="Close">✕</button></header><div class="ax-body"></div></aside>
+<aside class="ax-drawer" id="ax-row-drawer" inert aria-labelledby="ax-row-h"><header><h2 id="ax-row-h">Details</h2><button class="ax-iconbtn" type="button" data-ax-close aria-label="Close">{icon("close")}</button></header><div class="ax-body"></div></aside>
 <div id="ax-nav" hidden data-json="{_e(json.dumps(nav_index()))}"></div>
 <div id="ax-state" hidden data-json="{_e(json.dumps(st, default=str))}"></div>
 <script src="{_e(root)}/static/atip/atip.js?v={VERSION}" defer></script>"""
@@ -210,7 +266,8 @@ def chrome(path: str, query: str, st: dict, root: str = "") -> tuple[str, str]:
 def head_tags(root: str = "", app: bool = False) -> str:
     return (f'<meta name="atip-root" content="{_e(root)}"><link rel="stylesheet" href="{_e(root)}/static/atip/atip.css?v={VERSION}">'
             "<script>(function(){var d=document.documentElement;try{var q=new URLSearchParams(location.search).get('theme');"
-            "var t=q||localStorage.getItem('atip-theme');if(t==='dark'||t==='light')d.setAttribute('data-theme',t);}catch(e){}"
+            "var t=q||localStorage.getItem('atip-theme');if(t==='dark'||t==='light')d.setAttribute('data-theme',t);"
+            "if(localStorage.getItem('atip-density')==='compact')d.setAttribute('data-density','compact');}catch(e){}"
             + ("d.classList.add('ax-app');" if app else "") + "})();</script>")
 
 
@@ -233,6 +290,7 @@ def light_state() -> dict:
         out["env"] = broker_env()
     except Exception:
         pass
+    out["feed"] = _feed_cached()
     out["halted"] = _flag_halt()
     if out["halted"]:
         try:
@@ -241,6 +299,28 @@ def light_state() -> dict:
         except Exception:
             pass
     return out
+
+
+_feed_memo = {"at": 0.0, "data": None}
+
+
+def _feed_cached() -> dict | None:
+    """dashboard/ux_kit.feed_label for the top bar (UX audit H1), read at most every 10 s across page loads."""
+    if _feed_memo["data"] is not None and time.monotonic() - _feed_memo["at"] < 10:
+        return _feed_memo["data"]
+    try:
+        from db.schema import get_connection
+        from dashboard.ux_kit import feed_label
+        conn = get_connection()
+        try:
+            d = feed_label(conn)
+        finally:
+            conn.close()
+    except Exception as e:
+        log.debug(f"  shell feed: {e}")
+        d = None
+    _feed_memo.update(at=time.monotonic(), data=d)
+    return d
 
 
 def _flag_halt() -> bool:
@@ -276,6 +356,11 @@ def state(conn) -> dict:
         out["unread"] = int(r[0] or 0)
     except Exception:
         out["unread"] = 0
+    try:                                   # the bell's preview (UX audit L3): the latest five, times in IST
+        out["alerts"] = [{"at": str(a[0])[:16], "severity": a[1], "title": re.sub(r"<[^>]+>", "", str(a[2] or ""))[:120]}
+                         for a in conn.execute("SELECT created_at, severity, title FROM alert_log ORDER BY id DESC LIMIT 5")]
+    except Exception:
+        out["alerts"] = []
     _cache.update(at=time.monotonic(), data=out)
     return out
 
@@ -283,6 +368,11 @@ def state(conn) -> dict:
 # -- the middleware ------------------------------------------------------------------------------
 
 _BODY = re.compile(rb"<body([^>]*)>", re.I)
+# Inside the shell the rail is the only navigation (UX audit H2): an older page's own "Main" nav is kept for the bare
+# ?shell=0 page but hidden here, and its "← Dashboard" link goes (the rail and the breadcrumb replace both).
+_LEGACY_NAV = re.compile(rb'<nav aria-label="Main">', re.I)
+_BACK = re.compile('<a href="/">(?:←|&larr;) Dashboard</a>'.encode())
+_TITLE = re.compile(rb"<title>.*?</title>", re.I | re.S)
 
 
 def _is_app(headers: dict, query: str) -> bool:
@@ -300,10 +390,15 @@ def wrap(body: bytes, path: str, query: str, root: str = "", app: bool = False, 
     top, bottom = chrome(path, query, st, root)
     attrs = m.group(1)
     if re.search(rb'class\s*=\s*"', attrs, re.I):
-        attrs = re.sub(rb'class\s*=\s*"', b'class="ax-shelled ', attrs, count=1, flags=re.I)
+        attrs = re.sub(rb'class\s*=\s*"', b'class="ax-shelled ax-legacy ', attrs, count=1, flags=re.I)
     else:
-        attrs += b' class="ax-shelled"'
-    out = body[:m.start()] + b"<body" + attrs + b">" + top.encode() + b'<div id="ax-main">' + body[m.end():]
+        attrs += b' class="ax-shelled ax-legacy"'
+    rest = _LEGACY_NAV.sub(b'<nav class="ax-legacy-nav" aria-label="Page links" hidden>', body[m.end():])
+    rest = _BACK.sub(b"", rest)
+    out = body[:m.start()] + b"<body" + attrs + b">" + top.encode() + b'<div id="ax-main">' + rest
+    _, _, leaf = leaf_of(path, query)
+    if leaf:
+        out = _TITLE.sub(b"<title>" + html.escape(leaf + " · ATIP").encode() + b"</title>", out, count=1)
     i = out.lower().rfind(b"</body>")
     tail = b"</div>" + bottom.encode()
     out = out[:i] + tail + out[i:] if i >= 0 else out + tail
@@ -374,7 +469,8 @@ def page(title: str, body: str, path: str, query: str = "", job: str = "", actio
     """A new page in the shell. `mar`: the module's Manage / Accounting / Reports links [(label, href, current)]."""
     from dashboard.security import page_token
     st = light_state()
-    top, bottom = chrome(path, query, st, root)
+    top, bottom = chrome(path, query, st, root, title=title)
+    leaf = leaf_of(path, query, title)[2] or title
     try:
         from dashboard.global_asia import status_banner_html
         banner = status_banner_html()
@@ -387,7 +483,7 @@ def page(title: str, body: str, path: str, query: str = "", job: str = "", actio
     return f"""<!DOCTYPE html><html lang="en-IN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 {NATIVE_MARK}<meta name="atip-token" content="{_e(page_token())}">
-<title>{_e(title)} · ATIP</title>{head_tags(root, app)}{extra_head}</head>
+<title>{_e(leaf)} · ATIP</title>{head_tags(root, app)}{extra_head}</head>
 <body class="ax-native ax-shelled">{top}{banner}
 <main id="ax-main" class="ax-page" tabindex="-1">
 <div class="ax-head"><div><h1>{_e(title)}</h1>{f'<p class="ax-job">{_e(job)}</p>' if job else ""}</div>

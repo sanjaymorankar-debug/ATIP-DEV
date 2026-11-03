@@ -2,6 +2,9 @@
 The /strategy-builder page (W36: SE-10): build a rule strategy from dropdowns, preview today's matches,
 save it as a DRAFT. Everything goes through /api/strategy-builder/*; the definition it produces is the
 same W3 JSON a coded library strategy uses, validated the same way.
+
+UX audit (3 Nov 2026): every control (each condition row's feature / operator / type / value too) has an
+accessible name; colours follow the page variables, which the shell re-points to its light / dark tokens.
 """
 
 import json
@@ -9,19 +12,21 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Strategy Builder</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#34d399;--bad:#f87171;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1200px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1200px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:12px}
 h3{font-size:13px;color:var(--accent);margin-bottom:8px}.muted{color:var(--muted)}.note{color:var(--warn)}
 input,select,textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px}
 button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12.5px;margin:2px}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
-.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:8px}
+input,select{max-width:100%}
 label{color:var(--muted);font-size:12px;display:block}label input,label select{width:100%;margin-top:2px}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:4px 6px;border-bottom:1px solid #33415555;text-align:left}th{color:var(--muted)}
-pre{white-space:pre-wrap;font-size:11.5px;color:var(--muted);max-height:360px;overflow:auto;background:var(--bg);padding:8px;border-radius:6px}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;font-size:12.5px}th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}th{color:var(--muted)}
+.tw{overflow:auto;max-width:100%;max-height:420px}.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;color:var(--muted);max-height:360px;overflow:auto;background:var(--bg);padding:8px;border-radius:6px}
 .ok{color:var(--good)}.bad{color:var(--bad)}
 @media(max-width:600px){.row>*{flex:1 1 100%}}
 </style></head><body>
@@ -31,11 +36,11 @@ pre{white-space:pre-wrap;font-size:11.5px;color:var(--muted);max-height:360px;ov
 <div class="card"><h3>1. Name</h3><div class="grid"><label>Name<input id="name" placeholder="e.g. Oversold quality bounce"></label>
 <label style="grid-column:span 2">Description<input id="desc" placeholder="what it is meant to catch"></label></div></div>
 
-<div class="card"><h3>2. Enter when</h3><div class="row"><select id="emode" onchange="kvis()"><option value="all">ALL of these hold</option><option value="any">ANY of these holds</option><option value="min">AT LEAST k of these hold</option></select>
-<span id="kbox" style="display:none">k = <input id="ek" type="number" min="1" value="2" style="width:60px"></span></div>
+<div class="card"><h3>2. Enter when</h3><div class="row"><select id="emode" aria-label="Entry rule" onchange="kvis()"><option value="all">ALL of these hold</option><option value="any">ANY of these holds</option><option value="min">AT LEAST k of these hold</option></select>
+<span id="kbox" style="display:none"><label for="ek">k =</label> <input id="ek" type="number" min="1" value="2" style="width:60px"></span></div>
 <div id="entry"></div><button class="ghost" onclick="addCond('entry')">+ condition</button></div>
 
-<div class="card"><h3>3. Exit when</h3><div class="row"><select id="xmode"><option value="any">ANY of these holds</option><option value="all">ALL of these hold</option></select></div>
+<div class="card"><h3>3. Exit when</h3><div class="row"><select id="xmode" aria-label="Exit rule"><option value="any">ANY of these holds</option><option value="all">ALL of these hold</option></select></div>
 <div id="exit"></div><button class="ghost" onclick="addCond('exit')">+ condition</button>
 <div class="muted" style="margin-top:6px">Stops, targets and the holding limit below also close positions.</div></div>
 
@@ -52,7 +57,7 @@ pre{white-space:pre-wrap;font-size:11.5px;color:var(--muted);max-height:360px;ov
 <label>Only these symbols (optional)<input id="symbols" placeholder="TCS, INFY"></label></div></div>
 
 <div class="card"><button onclick="act('compile')">Check</button><button onclick="act('preview')">Preview today's matches</button><button onclick="act('save')">Save as DRAFT</button>
-<span id="msg" class="muted" style="margin-left:8px"></span><div id="out" style="margin-top:8px"></div></div>
+<span id="msg" class="muted" style="margin-left:8px" role="status"></span><div id="out" style="margin-top:8px"></div></div>
 </div>
 <datalist id="feats"></datalist>
 <script>
@@ -64,11 +69,13 @@ async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)t
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 function kvis(){document.getElementById('kbox').style.display=document.getElementById('emode').value==='min'?'':'none'}
 function addCond(where,c){c=c||{};const d=document.createElement('div');d.className='row cond';
-  d.innerHTML=`<input class="f" list="feats" placeholder="feature e.g. rsi_14" value="${esc(c.feature||'')}" style="width:170px">
-  <select class="op">${OPS.map(o=>`<option ${o===(c.op||'>')?'selected':''}>${o}</option>`).join('')}</select>
-  <select class="vt"><option value="number" ${c.value_type==='number'||!c.value_type?'selected':''}>number</option><option value="feature" ${c.value_type==='feature'?'selected':''}>feature</option><option value="list" ${c.value_type==='list'?'selected':''}>list</option></select>
-  <input class="v" placeholder="value (between: 40, 70)" value="${esc(c.value??'')}" style="width:170px">
-  <button class="ghost" onclick="this.parentNode.remove()">✕</button>`;
+  // UX audit M6: every control in a condition row names itself (Entry condition 2: operator ...)
+  const W=where==='entry'?'Entry':'Exit',n=document.getElementById(where).children.length+1,L=x=>esc(`${W} condition ${n}: ${x}`);
+  d.innerHTML=`<input class="f" list="feats" placeholder="feature e.g. rsi_14" aria-label="${L('feature')}" value="${esc(c.feature||'')}" style="width:170px">
+  <select class="op" aria-label="${L('operator')}">${OPS.map(o=>`<option ${o===(c.op||'>')?'selected':''}>${esc(o)}</option>`).join('')}</select>
+  <select class="vt" aria-label="${L('compare with')}"><option value="number" ${c.value_type==='number'||!c.value_type?'selected':''}>number</option><option value="feature" ${c.value_type==='feature'?'selected':''}>feature</option><option value="list" ${c.value_type==='list'?'selected':''}>list</option></select>
+  <input class="v" placeholder="value (between: 40, 70)" aria-label="${L('value')}" value="${esc(c.value??'')}" style="width:170px">
+  <button class="ghost" aria-label="Remove ${L('').replace(/: $/,'')}" onclick="this.parentNode.remove()">✕</button>`;
   document.getElementById(where).appendChild(d)}
 function conds(where){return [...document.querySelectorAll('#'+where+' .cond')].map(r=>({feature:r.querySelector('.f').value.trim(),op:r.querySelector('.op').value,value_type:r.querySelector('.vt').value,value:r.querySelector('.v').value.trim()}))}
 const g=id=>document.getElementById(id).value.trim();
@@ -81,7 +88,7 @@ async function act(kind){const m=document.getElementById('msg'),o=document.getEl
   try{const r=await post('/api/strategy-builder/'+kind,{spec:spec()});
     if(kind==='compile'){m.className='ok';m.textContent=`✔ valid: ${r.strategy_id} (${r.parameters.length} tunable parameters)`;o.innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>'}
     else if(kind==='preview'){m.className='ok';m.textContent=`${r.match_count} of ${r.evaluated} stocks qualify on ${r.as_of}`;
-      o.innerHTML=`<div class="muted">${esc(r.note)}</div><table><thead><tr><th>Symbol</th><th>Conditions met</th><th>Rank value</th></tr></thead><tbody>${r.matches.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.conditions_met}/${x.conditions}</td><td>${esc(x.rank_value)}</td></tr>`).join('')||'<tr><td colspan=3 class="muted">no matches</td></tr>'}</tbody></table>`+
+      o.innerHTML=`<div class="muted">${esc(r.note)}</div><div class="tw" tabindex="0" role="region" aria-label="Today's matches"><table><thead><tr><th scope="col">Symbol</th><th scope="col">Conditions met</th><th scope="col">Rank value</th></tr></thead><tbody>${r.matches.map(x=>`<tr><td><b>${esc(x.symbol)}</b></td><td>${x.conditions_met}/${x.conditions}</td><td>${esc(x.rank_value)}</td></tr>`).join('')||'<tr><td colspan=3 class="muted">No stock meets every entry condition today. Loosen a condition, or check the one-condition-short list.</td></tr>'}</tbody></table></div>`+
       (r.one_condition_short.length?`<div class="muted" style="margin-top:6px">One condition short: ${r.one_condition_short.map(x=>esc(x.symbol)).join(', ')}</div>`:'')}
     else{m.className='ok';m.innerHTML=`✔ saved as DRAFT: <a style="color:var(--accent)" href="/strategies">${esc(r.strategy_id||'')}</a> — backtest it from Strategies before moving it on.`}
   }catch(e){m.className='bad';m.textContent='✖ '+e.message}}

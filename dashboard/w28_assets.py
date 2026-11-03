@@ -16,9 +16,9 @@ the W26 stock panel.
 
 ASSETS = r"""
 <style>
-.w28card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;margin:0 0 12px}
-.w28card h4{margin:0 0 6px;font-size:13px;color:#38bdf8}.w28m{color:#94a3b8;font-size:11px}
-.w28tone{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;margin-left:6px;background:#334155}
+.w28card{background:var(--ax-surface,#1e293b);border:1px solid var(--ax-border,#334155);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.w28card h4{margin:0 0 6px;font-size:13px;color:var(--ax-brand,#38bdf8)}.w28m{color:var(--ax-muted,#94a3b8);font-size:12px}
+.w28tone{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;margin-left:6px;background:var(--ax-surface-3,#334155)}
 .w28tone.RISK_ON{background:#065f46}.w28tone.RISK_OFF{background:#7f1d1d}.w28tone.MIXED{background:#78350f}
 .w28grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
 .w28grid table{width:100%}

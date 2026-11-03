@@ -135,6 +135,13 @@ def _events(res):
     return [e["event"] for e in res["events"]]
 
 
+def _stt_2024(monkeypatch):
+    """The hand-computed runs below were worked out at the futures STT of 2024-10-01 (0.02% of the sale); they test
+    the engine's arithmetic, so they keep that rate. The rate in force is checked in test_fo_cost_segment_hand_computed."""
+    from backtest import costs
+    monkeypatch.setitem(costs.FUTURES_PRESETS, "nse_futures", costs.FuturesCostModel(stt_sell_pct=0.02))
+
+
 def _fo_charges(side, value, lots=2):
     from backtest.costs import futures_cost_model
     return futures_cost_model().total(side, value, lots)
@@ -145,14 +152,14 @@ def _fo_charges(side, value, lots=2):
 def test_fo_cost_segment_hand_computed():
     from backtest.costs import FuturesCostModel, futures_cost_model
     m = futures_cost_model()
-    # SELL 2 lots, notional 100,000: brokerage min(0.03% = 30, 20) = 20; STT 0.02% = 20;
-    # exchange 0.00173% = 1.73; SEBI 0.0001% = 0.10; GST 18% x 21.83 = 3.9294; total 45.7594
-    assert m.charges("SELL", 100_000, 2) == {"brokerage": 20.0, "stt": 20.0, "exchange": 1.73, "sebi": 0.1,
-                                             "stamp": 0.0, "gst": 3.9294, "total": 45.7594}
+    # SELL 2 lots, notional 100,000: brokerage min(0.03% = 30, 20) = 20; STT 0.05% = 50 (Finance Act 2026);
+    # exchange 0.00173% = 1.73; SEBI 0.0001% = 0.10; GST 18% x 21.83 = 3.9294; total 75.7594
+    assert m.charges("SELL", 100_000, 2) == {"brokerage": 20.0, "stt": 50.0, "exchange": 1.73, "sebi": 0.1,
+                                             "stamp": 0.0, "gst": 3.9294, "total": 75.7594}
     # BUY: no STT, stamp 0.002% = 2.00 -> 27.7594
     assert m.charges("BUY", 100_000, 2)["total"] == 27.7594
-    # 10 lakh notional: STT 200, exchange 17.30, SEBI 1.00, GST 18% x 38.30 = 6.894
-    assert m.total("SELL", 1_000_000) == 245.194 and m.total("BUY", 1_000_000) == 65.194
+    # 10 lakh notional: STT 500, exchange 17.30, SEBI 1.00, GST 18% x 38.30 = 6.894
+    assert m.total("SELL", 1_000_000) == 545.194 and m.total("BUY", 1_000_000) == 65.194
     # a small order pays 0.03% (below the Rs 20 cap); per-lot brokerage (the paper book's model) on top
     assert m.charges("BUY", 10_000)["brokerage"] == 3.0
     per_lot = futures_cost_model("nse_futures", {"brokerage_pct": 0, "brokerage_max": None,
@@ -169,6 +176,7 @@ def test_fo_cost_segment_hand_computed():
 # ── a pair trade, hand-computed: long cash leg + short futures leg, MTM, margin, a roll ──
 
 def test_pair_trade_with_a_roll_hand_computed(db, monkeypatch):
+    _stt_2024(monkeypatch)
     _seed()
     _script(monkeypatch, {0: [_sig("SHT", "SHORT", value=120_000.0, reason="pair short"),
                               _sig("LNG", "BUY", reason="pair long")],
@@ -460,6 +468,7 @@ def test_round_trips_from_rows_fold_rolled_legs_on_the_first_basis():
 
 
 def test_stored_runs_keep_futures_columns_and_fold_for_monte_carlo(db, monkeypatch):
+    _stt_2024(monkeypatch)
     from backtest import service, store
     from backtest.engine import round_trips_from_rows
     from db.schema import get_connection

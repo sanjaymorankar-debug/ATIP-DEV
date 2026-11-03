@@ -18,6 +18,11 @@ every 60 s and says "ATIP stopped — resumes 06:00 IST" with the last-updated t
 red, a Dhan token that is missing, expired, refused or running out today (ops/dhan_token.py), with how to
 fix it (owner, 30 Oct 2026). The Asia
 signals are informational only -- nothing on this page or behind these routes places an order.
+
+UX audit (3 Nov 2026): the page's colours follow the shell theme (--ga-* come from the shell's --ax-* tokens,
+data-theme beats the device setting), both market tables are keyboard-reachable scroll regions, and the news
+panel's title is drawn here in themed colours (12px minimum) instead of news_impact_view's dark-only grey.
+Banner element ids (atipOpBanner, atipTokenBanner, atipRoleBanner) and both helpers' signatures are unchanged.
 """
 
 # No `from __future__ import annotations` (FastAPI must see the real Request class).
@@ -142,14 +147,14 @@ ASIA_JS = r"""<script>
    '<div class="ga-card"><div class="ga-muted">Pakistan geopolitical / risk-event flag (news)</div><div class="ga-big '+(s.pk_risk_level==='HIGH'?'ga-dn':s.pk_risk_level==='ELEVATED'?'ga-warn':'')+'">'+esc(s.pk_risk_level||'—')+'</div>'+
    '<div class="ga-muted">'+n(pk.count,0)+' risk headline(s) in '+n(pk.lookback_hours,0)+' h'+(pk.rule_classified?' · '+pk.rule_classified+' by keyword rules':'')+'</div>'+
    ((pk.headlines||[]).slice(0,3).map(function(x){return '<div class="ga-small">• '+esc(x.headline)+'</div>'}).join(''))+'</div></div>';
-  h+='<div class="ga-scroll"><table class="ga-t"><thead><tr><th>Market</th><th>Index</th><th class="r">Last</th><th class="r">Change</th><th>Signal</th><th>Session (IST)</th><th>Data</th></tr></thead><tbody>'+
+  h+='<div class="ga-scroll" tabindex="0" role="region" aria-label="Asia markets"><table class="ga-t"><thead><tr><th>Market</th><th>Index</th><th class="r">Last</th><th class="r">Change</th><th>Signal</th><th>Session (IST)</th><th>Data</th></tr></thead><tbody>'+
    (d.markets||[]).map(function(m){return '<tr><td>'+esc(m.market)+'</td><td><b>'+esc(m.name)+'</b></td><td class="r ga-num">'+n(m.last)+'</td><td class="r ga-num">'+chg(m.chg_pct)+'</td>'+
     '<td><span class="'+(SIG[m.signal]||'ga-muted')+'">'+esc(m.signal||'—')+'</span>'+(m.confidence!=null?' <span class="ga-muted">'+n(m.confidence,0)+'%</span>':'')+'</td>'+
     '<td><span class="ga-pill ga-'+esc(String(m.session_status||'').toLowerCase())+'">'+esc(SES[m.session_status]||m.session_status||'—')+'</span> <span class="ga-muted">'+esc((m.session_ist||[]).map(function(p){return p.join('–')}).join(', '))+'</span></td>'+
     '<td class="ga-muted">'+esc(m.date||'no data')+(m.fallback?' · <span class="ga-warn">fallback '+esc(m.source)+'</span>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
   var g=d.global||{};
   h+='<h3 class="ga-h">Global markets <span class="ga-muted">'+esc(g.date||'')+' '+esc(g.run||'')+' · global score '+n(g.score,0)+' '+esc(g.sentiment||'')+'</span></h3>'+
-   '<div class="ga-scroll"><table class="ga-t"><thead><tr><th>Series</th><th class="r">Last</th><th class="r">Change</th></tr></thead><tbody>'+
+   '<div class="ga-scroll" tabindex="0" role="region" aria-label="Global markets"><table class="ga-t"><thead><tr><th>Series</th><th class="r">Last</th><th class="r">Change</th></tr></thead><tbody>'+
    (g.rows||[]).map(function(r){return '<tr><td>'+esc(r.name)+'</td><td class="r ga-num">'+n(r.last)+'</td><td class="r ga-num">'+chg(r.chg_pct)+'</td></tr>'}).join('')+
    '</tbody></table></div><p class="ga-muted ga-small">Signals for these markets are informational only — ATIP places no orders on them. Updated '+esc(d.now_ist||'')+' IST.</p>';
   box.innerHTML=h;}
@@ -162,13 +167,13 @@ ASIA_JS = r"""<script>
 ASIA_CSS = """<style>
 .ga-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px}
 .ga-card{background:var(--ga-panel,#1e293b);border:1px solid var(--ga-line,#334155);border-radius:10px;padding:12px 14px}
-.ga-big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}.ga-small{font-size:11.5px;margin-top:3px}
+.ga-big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}.ga-small{font-size:12px;margin-top:3px}
 .ga-muted{color:var(--ga-muted,#94a3b8)}.ga-up{color:var(--ga-up,#6ee7b7);font-weight:600}.ga-dn{color:var(--ga-dn,#fca5a5);font-weight:600}
 .ga-warn{color:var(--ga-warn,#fde68a)}.ga-num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
-.ga-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.ga-t{width:100%;border-collapse:collapse;font-size:12.5px}
+.ga-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}.ga-t{width:100%;border-collapse:collapse;font-size:12.5px}
 .ga-t th,.ga-t td{padding:7px 8px;border-bottom:1px solid var(--ga-line,#334155);text-align:left;white-space:nowrap}.ga-t th{color:var(--ga-muted,#94a3b8);font-weight:600}
 .ga-t .r{text-align:right}.ga-h{font-size:14px;margin:16px 0 6px}
-.ga-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;border:1px solid var(--ga-line,#334155)}
+.ga-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--ga-line,#334155)}
 .ga-open{background:#064e3b;color:#d1fae5;border-color:#065f46}.ga-break,.ga-pre_open{background:#1e3a8a;color:#dbeafe;border-color:#1e40af}
 .ga-holiday,.ga-weekend{background:#3f3f46;color:#e4e4e7}
 </style>"""
@@ -180,8 +185,8 @@ def asia_tab_html() -> str:
     from dashboard.news_impact_view import NI_CSS, NI_JS, panel_html
     return (ASIA_CSS + NI_CSS + NI_JS + '<div id="asia" class="tc section">' + panel_html("niAsiaBox") +
             '<div class="st" style="margin-top:14px">🌏 Global &amp; Asia '
-            '<span style="font-size:11px;color:#64748b;font-weight:400">— Japan, South Korea, Taiwan, Pakistan · '
-            'informational signals, no orders · <a href="/global-asia" style="color:#38bdf8">full page</a></span></div>'
+            '<span style="font-size:12px;color:var(--muted,#94a3b8);font-weight:400">— Japan, South Korea, Taiwan, Pakistan · '
+            'informational signals, no orders · <a href="/global-asia" style="color:var(--accent,#38bdf8)">full page</a></span></div>'
             '<div id="gaBox" class="ga-muted">Loading…</div></div>' + ASIA_JS +
             "<script>setInterval(function(){var t=document.getElementById('asia');"
             "if(t&&t.classList.contains('active')){atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')}"
@@ -193,25 +198,35 @@ PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>ATIP Global &amp; Asia</title>
 <style>
 :root{--bg:#0B1220;--panel:#111A2C;--line:#22304A;--text:#E6EBF5;--muted:#9AA8C1;--accent:#38BDF8;
- --ga-panel:#111A2C;--ga-line:#22304A;--ga-muted:#9AA8C1;--ga-up:#6EE7B7;--ga-dn:#FCA5A5;--ga-warn:#FDE68A}
+ --ga-panel:var(--ax-surface,#111A2C);--ga-line:var(--ax-border-soft,#22304A);--ga-muted:var(--ax-muted,#9AA8C1);--ga-up:var(--ax-pos,#6EE7B7);--ga-dn:var(--ax-neg,#FCA5A5);--ga-warn:var(--ax-warn,#FDE68A)}
 @media (prefers-color-scheme: light){:root{--bg:#F5F7FB;--panel:#FFFFFF;--line:#D5DDEA;--text:#0F172A;--muted:#4B5873;--accent:#0369A1;
- --ga-panel:#FFFFFF;--ga-line:#D5DDEA;--ga-muted:#4B5873;--ga-up:#047857;--ga-dn:#B91C1C;--ga-warn:#854D0E}}
+ --ga-panel:var(--ax-surface,#FFFFFF);--ga-line:var(--ax-border-soft,#D5DDEA);--ga-muted:var(--ax-muted,#4B5873);--ga-up:var(--ax-pos,#047857);--ga-dn:var(--ax-neg,#B91C1C);--ga-warn:var(--ax-warn,#854D0E)}}
+/* the shell's theme (data-theme on <html>, ?theme=) wins over the device setting when it is set */
+:root[data-theme="dark"]{--bg:#0B1220;--panel:#111A2C;--line:#22304A;--text:#E6EBF5;--muted:#9AA8C1;--accent:#38BDF8}
+:root[data-theme="light"]{--bg:#F5F7FB;--panel:#FFFFFF;--line:#D5DDEA;--text:#0F172A;--muted:#4B5873;--accent:#0369A1}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--accent);text-decoration:none}header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
 header b{font-size:15px}nav{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}.wrap{max-width:1200px;margin:0 auto;padding:14px 16px 40px}.st{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:8px}
+.st span{font-size:12.5px;color:var(--muted);font-weight:400}.wrap{overflow-wrap:anywhere}
+.ga-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>__CSS__</head><body>
 <header><b>ATIP · Global &amp; Asia</b><nav aria-label="Main"><a href="/command">Command Center</a><a href="/">Signals &amp; scores</a><a href="/m">Mobile</a><a href="/api/asia/sources">Data sources</a><a href="/api/news-impact/accuracy">News impact record</a></nav></header>
 __BANNER__
-<main class="wrap">__NI__<div class="st" style="margin-top:16px">🌏 Global &amp; Asia markets</div><div id="gaBox" class="ga-muted">Loading…</div></main>
+<main class="wrap"><div class="st">📰&nbsp; News impact on the Indian market <span>— Indian + world news, estimated direction and size · informational, no orders</span></div>__NI__<div class="st" style="margin-top:16px">🌏 Global &amp; Asia markets</div><div id="gaBox" class="ga-muted">Loading…</div></main>
 __JS__
-<script>function gaAll(){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox')}gaAll();setInterval(gaAll,300000);</script>
+<script>function gaAll(){atipLoadAsia('gaBox');atipLoadNewsImpact('niBox')}gaAll();setInterval(gaAll,300000);
+// UX audit M6: the news panel's tables (dashboard/news_impact_view.py) scroll too; make every scroll box on this page
+// a named, keyboard-reachable region whenever a loader redraws it
+(function(){function reg(){document.querySelectorAll('.ga-scroll:not([tabindex])').forEach(function(el){el.tabIndex=0;el.setAttribute('role','region');
+ if(!el.getAttribute('aria-label'))el.setAttribute('aria-label',el.closest('#niBox')?'News impact table':'Market table')})}
+ var m=document.querySelector('main');if(m&&window.MutationObserver)new MutationObserver(reg).observe(m,{childList:true,subtree:true});reg()})();</script>
 </body></html>"""
 
 
 def render_page() -> str:
     from dashboard.news_impact_view import NI_CSS, NI_JS, panel_html
     return (PAGE.replace("__CSS__", ASIA_CSS + NI_CSS).replace("__BANNER__", status_banner_html())
-            .replace("__NI__", panel_html("niBox")).replace("__JS__", ASIA_JS + NI_JS))
+            .replace("__NI__", panel_html("niBox", title=False)).replace("__JS__", ASIA_JS + NI_JS))
 
 
 def register(app, guard, Req, get_connection, json_safe):

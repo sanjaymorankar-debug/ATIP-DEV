@@ -6,6 +6,9 @@ history, decisions, position intents, health; W40: an option overlay's option
 positions and a dry run of today's legs and risk check), lifecycle transitions,
 "generate decisions" and "submit backtest".
 Everything is read from /api/strategies*; nothing here computes a result.
+
+UX audit (3 Nov 2026): every table in a keyboard-reachable scroll region, labelled controls, empty states
+that say what to do, colours from the page variables (re-pointed to the shell's light / dark tokens).
 """
 
 import json
@@ -13,32 +16,36 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Strategies</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#059669;--bad:#dc2626;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
-.top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1300px}
+.top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1300px}
 h2{font-size:13px;color:var(--accent);margin:14px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap}
+thead th{position:sticky;top:0;z-index:1}
 tbody tr.click{cursor:pointer}.muted{color:var(--muted)}.pos{color:var(--good)}.neg{color:var(--bad)}
-.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;background:#334155}
-.HEALTHY{background:#065f46}.WARNING{background:#78350f}.ERROR{background:#7f1d1d}.STALE{background:#6b21a8}.DISABLED{background:#334155}
-button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;margin:2px}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;background:var(--panel2);color:var(--text)}
+.pill.HEALTHY{background:var(--goodbg);color:var(--good)}.pill.WARNING{background:var(--warnbg);color:var(--warn)}.pill.ERROR{background:var(--badbg);color:var(--bad)}.pill.STALE{background:var(--ax-info-bg,#1e3a8a);color:var(--ax-info,#dbeafe)}.pill.DISABLED{background:var(--panel2);color:var(--muted)}
+button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12.5px;margin:2px}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:12px}
-pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;border-radius:6px;max-height:380px;overflow:auto}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}.note{color:var(--warn);font-size:11.5px}
-.scroll{max-height:340px;overflow:auto}
-@media (max-width:700px){.row{flex-direction:column;align-items:stretch}}
+input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:12.5px;max-width:100%}
+label{color:var(--muted);font-size:12px;font-weight:400}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:var(--panel);padding:8px;border-radius:6px;max-height:380px;overflow:auto}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}.note{color:var(--warn);font-size:12.5px}
+p{overflow-wrap:anywhere}
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw,.tw.scroll{max-height:340px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:700px){.row{flex-direction:column;align-items:stretch}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Strategies</span></div>
 <div><a href="/strategy-builder">+ Build a strategy</a><a href="/api/strategies/combined">Combined (JSON)</a><a href="/backtests">Backtests</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<p class="muted">Strategies produce decisions and position intents, not orders: every intent here is <b>NOT_AUTHORIZED</b> (the risk and execution path is W4).</p>
+<p class="muted">Strategies produce decisions and position intents, not orders: every intent here is <b>NOT_AUTHORIZED</b> (the risk and execution path is on Trading).</p>
 <h2>Strategies</h2>
-<div class="scroll"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Latest signals (score)</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
-<h2>Performance <span class="muted">(W28 DB-16: W4 fills per strategy, average cost; decisions last <select id="pdays" onchange="loadPerf()"><option>7</option><option selected>30</option><option>90</option></select> days)</span></h2>
-<div class="scroll"><table><thead><tr><th>Strategy</th><th>Status</th><th>Health</th><th>Backtest (current version)</th><th>Decisions</th><th>PAPER book</th><th>LIVE book</th><th>Derivatives (paper)</th></tr></thead><tbody id="perf"></tbody></table></div>
+<div class="tw scroll" tabindex="0" role="region" aria-label="Strategies"><table><thead><tr><th>Strategy</th><th>Kind</th><th>Version</th><th>Status</th><th>Last backtest</th><th>Return</th><th>Sharpe</th><th>Max DD</th><th>Latest signals (score)</th><th>Health</th></tr></thead><tbody id="list"></tbody></table></div>
+<h2>Performance <span class="muted">(fills per strategy, average cost; <label for="pdays">decisions in the last</label> <select id="pdays" onchange="loadPerf()"><option>7</option><option selected>30</option><option>90</option></select> days)</span></h2>
+<div class="tw scroll" tabindex="0" role="region" aria-label="Strategy performance"><table><thead><tr><th>Strategy</th><th>Status</th><th>Health</th><th>Backtest (current version)</th><th>Decisions</th><th>PAPER book</th><th>LIVE book</th><th>Derivatives (paper)</th></tr></thead><tbody id="perf"></tbody></table></div>
 <h2>Regime mapping <span class="muted">(Market Health regime → strategies in play; edit via PUT /api/strategies/regime-mapping/{regime})</span></h2>
 <div id="regimes"></div>
 <div id="detail"></div>
@@ -46,7 +53,9 @@ pre{white-space:pre-wrap;font-size:11px;background:var(--panel);padding:8px;bord
 <script>
 const TOKEN=__TOKEN__;
 const pct=v=>v==null?'—':(v*100).toFixed(2)+'%', num=(v,d=2)=>v==null?'—':Number(v).toFixed(d);
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// UX audit: wide tables scroll inside their own keyboard-reachable region, never the page
+const tw=(label,html,cls)=>`<div class="tw${cls?' '+cls:''}" tabindex="0" role="region" aria-label="${esc(label)}">${html}</div>`;
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
 async function load(){
@@ -61,22 +70,22 @@ function sig(r){if(!r)return '<span class="muted">no run</span>';if(r.status==='
   return `<span class="muted">${r.as_of}</span> ${esc(c)}`+(r.top||[]).map(t=>`<br>${t.decision} ${esc(t.symbol)} <span class="muted">(${num(t.score,1)})</span>`).join('')}
 async function loadRegimes(){
   const r=await j('/api/strategies/regime-mapping'), m=r.mapping;
-  document.getElementById('regimes').innerHTML=`<table><thead><tr><th>Regime</th><th>Strategies (priority · weight)</th></tr></thead><tbody>${Object.keys(m).map(k=>`<tr><td>${k}</td><td>${m[k].no_trade?'<b class="neg">NO_TRADE</b>':(m[k].strategies.map(x=>`${esc(x.strategy_id)} <span class="muted">(${x.priority} · ${x.weight}${x.enabled?'':' · disabled'})</span>`).join(', ')||'<span class="muted">—</span>')}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('regimes').innerHTML=tw('Regime mapping',`<table><thead><tr><th>Regime</th><th>Strategies (priority · weight)</th></tr></thead><tbody>${Object.keys(m).map(k=>`<tr><td>${k}</td><td>${m[k].no_trade?'<b class="neg">NO_TRADE</b>':(m[k].strategies.map(x=>`${esc(x.strategy_id)} <span class="muted">(${x.priority} · ${x.weight}${x.enabled?'':' · disabled'})</span>`).join(', ')||'<span class="muted">—</span>')}</td></tr>`).join('')}</tbody></table>`);
 }
 async function show(id){
   const s=await j('/api/strategies/'+id), d=s.definition||{}, P=await j(`/api/strategies/${id}/parameters`);
   let h=`<h2>${esc(s.strategy_id)} — ${esc(s.name)} · v${s.current_version} · ${s.status}</h2><p>${esc(s.description)}</p>`;
   h+=`<div class="row"><span class="muted">Lifecycle:</span>${s.allowed_transitions.map(t=>`<button class="ghost" onclick="move('${id}','${t}')">→ ${t}</button>`).join('')||'<span class="muted">terminal</span>'}</div>`;
   h+=`<div class="row"><button onclick="decide('${id}')">Generate decisions (PAPER book)</button><button class="ghost" onclick="health('${id}')">Recompute health</button>
-      <span class="muted">Backtest v${s.current_version}:</span><input type="date" id="bs"><input type="date" id="be"><input type="number" id="bc" placeholder="capital ₹" step="1000"><button onclick="bt('${id}')">Submit backtest</button><span id="msg" class="note"></span></div>`;
-  h+=`<h2>Parameters</h2><table><thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Min</th><th>Max</th><th>Allowed</th><th>Description</th></tr></thead><tbody>${P.parameters.map(p=>`<tr><td>${p.name}</td><td>${p.type}</td><td>${esc(JSON.stringify(p.default))}</td><td>${p.min??''}</td><td>${p.max??''}</td><td>${p.allowed?esc(p.allowed.join(', ')):''}</td><td>${esc(p.description)}</td></tr>`).join('')||'<tr><td colspan=7 class="muted">none</td></tr>'}</tbody></table>`;
+      <span class="muted">Backtest v${s.current_version}:</span><input type="date" id="bs" aria-label="Backtest start date"><input type="date" id="be" aria-label="Backtest end date"><input type="number" id="bc" placeholder="capital ₹" aria-label="Backtest capital, ₹" step="1000"><button onclick="bt('${id}')">Submit backtest</button><span id="msg" class="note" role="status"></span></div>`;
+  h+=`<h2>Parameters</h2>`+tw('Parameters',`<table><thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Min</th><th>Max</th><th>Allowed</th><th>Description</th></tr></thead><tbody>${P.parameters.map(p=>`<tr><td>${p.name}</td><td>${p.type}</td><td>${esc(JSON.stringify(p.default))}</td><td>${p.min??''}</td><td>${p.max??''}</td><td>${p.allowed?esc(p.allowed.join(', ')):''}</td><td>${esc(p.description)}</td></tr>`).join('')||'<tr><td colspan=7 class="muted">This strategy has no tunable parameters.</td></tr>'}</tbody></table>`);
   h+=`<h2>Definition v${s.current_version} <span class="muted">inputs: ${(d.inputs||[]).join(', ')} · features: ${(d.features_used||[]).join(', ')}</span></h2><pre>${esc(JSON.stringify(d,null,1))}</pre>`;
   h+=`<h2>Health</h2><div id="health">${s.health?healthHtml(s.health):'<span class="muted">not computed yet</span>'}</div>`;
   h+=`<h2>Decisions</h2><div id="dec" class="scroll"></div><h2>Position intents <span class="muted">(NOT_AUTHORIZED — not orders)</span></h2><div id="intents" class="scroll"></div>`;
-  h+=`<h2>Backtests</h2><table><thead><tr><th>Run</th><th>Version</th><th>Kind</th><th>Period</th><th>Window</th><th>Status</th><th>Return</th><th>Sharpe</th><th>Max DD</th></tr></thead><tbody>${s.backtests.map(b=>{const m=b.metrics_json?JSON.parse(b.metrics_json):{};return `<tr><td><a style="color:var(--accent)" href="/backtests">${b.run_id}</a></td><td>${b.strategy_version}</td><td>${b.kind}</td><td>${b.period_label||''}</td><td>${b.start_date} → ${b.end_date}</td><td>${b.status}</td><td>${pct(m.total_return)}</td><td>${num(m.sharpe)}</td><td class="neg">${pct(m.max_drawdown)}</td></tr>`}).join('')||'<tr><td colspan=9 class="muted">none</td></tr>'}</tbody></table>`;
-  h+=`<h2>Versions</h2><table><thead><tr><th>Version</th><th>Hash</th><th>Created</th><th>Notes</th></tr></thead><tbody>${s.versions.map(v=>`<tr><td>${v.version}</td><td class="muted">${v.definition_hash.slice(0,16)}…</td><td>${v.created_at}</td><td>${esc(v.notes)}</td></tr>`).join('')}</tbody></table>`;
-  h+=`<h2>Lifecycle history</h2><table><thead><tr><th>When</th><th>Version</th><th>From</th><th>To</th><th>Reason</th><th>Evidence</th><th>By</th></tr></thead><tbody>${s.lifecycle.map(e=>`<tr><td>${e.at}</td><td>${e.version||''}</td><td>${e.from_state||''}</td><td>${e.to_state}</td><td>${esc(e.message)}</td><td class="muted">${esc(JSON.stringify(e.details))}</td><td>${esc(e.actor)}</td></tr>`).join('')}</tbody></table>`;
-  if(s.kind==='option_overlay')h+=`<h2>Option positions <span class="muted">(W40 paper options book: multi-leg, marked daily at the chain mid)</span></h2><div id="optpos" class="scroll"></div>
+  h+=`<h2>Backtests</h2>`+tw('Backtests of this strategy',`<table><thead><tr><th>Run</th><th>Version</th><th>Kind</th><th>Period</th><th>Window</th><th>Status</th><th>Return</th><th>Sharpe</th><th>Max DD</th></tr></thead><tbody>${s.backtests.map(b=>{const m=b.metrics_json?JSON.parse(b.metrics_json):{};return `<tr><td><a style="color:var(--accent)" href="/backtests">${b.run_id}</a></td><td>${b.strategy_version}</td><td>${b.kind}</td><td>${b.period_label||''}</td><td>${b.start_date} → ${b.end_date}</td><td>${b.status}</td><td>${pct(m.total_return)}</td><td>${num(m.sharpe)}</td><td class="neg">${pct(m.max_drawdown)}</td></tr>`}).join('')||'<tr><td colspan=9 class="muted">No backtests yet. Pick dates above and press Submit backtest.</td></tr>'}</tbody></table>`);
+  h+=`<h2>Versions</h2>`+tw('Versions',`<table><thead><tr><th>Version</th><th>Hash</th><th>Created</th><th>Notes</th></tr></thead><tbody>${s.versions.map(v=>`<tr><td>${v.version}</td><td class="muted">${v.definition_hash.slice(0,16)}…</td><td>${v.created_at}</td><td>${esc(v.notes)}</td></tr>`).join('')}</tbody></table>`);
+  h+=`<h2>Lifecycle history</h2>`+tw('Lifecycle history',`<table><thead><tr><th>When</th><th>Version</th><th>From</th><th>To</th><th>Reason</th><th>Evidence</th><th>By</th></tr></thead><tbody>${s.lifecycle.map(e=>`<tr><td>${e.at}</td><td>${e.version||''}</td><td>${e.from_state||''}</td><td>${e.to_state}</td><td>${esc(e.message)}</td><td class="muted">${esc(JSON.stringify(e.details))}</td><td>${esc(e.actor)}</td></tr>`).join('')}</tbody></table>`);
+  if(s.kind==='option_overlay')h+=`<h2>Option positions <span class="muted">(paper options book: multi-leg, marked daily at the chain mid)</span></h2><div id="optpos" class="scroll"></div>
    <div class="row"><button onclick="optDry('${id}')">Dry run today: legs + risk check</button><span class="muted">nothing is stored or placed</span></div><div id="optdry"></div>`;
   document.getElementById('detail').innerHTML=h; loadDecisions(id); if(s.kind==='option_overlay')loadOptions(id);
 }
@@ -89,8 +98,8 @@ function healthHtml(x){const m=x.metrics;let h=`<span class="pill ${x.status}">$
   return h+((x.issues||[]).map(i=>`<div class="note">${i.level}: ${esc(i.message)}</div>`).join(''))}
 async function loadDecisions(id){
   const r=await j(`/api/strategies/${id}/decisions?limit=200`);
-  document.getElementById('dec').innerHTML=`<table><thead><tr><th>Date</th><th>Symbol</th><th>Decision</th><th>Target %</th><th>Confidence</th><th>Score</th><th>Regime</th><th>Stop</th><th>Target</th><th>Reasons</th></tr></thead><tbody>${r.decisions.map(x=>`<tr><td>${x.as_of}</td><td>${x.symbol}</td><td><b>${x.decision}</b> <span class="muted">${x.action}</span>${x.blocked_reason?'<br><span class="note">'+esc(x.blocked_reason)+'</span>':''}</td><td>${x.target_position_pct??''}</td><td>${num(x.confidence)}</td><td>${num(x.score,1)}</td><td>${x.regime||''}</td><td>${x.stop_price??''}</td><td>${x.target_price??''}</td><td class="muted" style="max-width:420px">${esc((x.reasons||[]).join('; '))}</td></tr>`).join('')||'<tr><td colspan=10 class="muted">no decisions yet</td></tr>'}</tbody></table>`;
-  document.getElementById('intents').innerHTML=`<table><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th>Action</th><th>Target %</th><th>Qty (indicative)</th><th>Confidence</th><th>Authorization</th><th>Reason</th></tr></thead><tbody>${r.intents.map(x=>`<tr><td>${x.as_of}</td><td>${x.symbol}</td><td>${x.side}</td><td>${x.action}</td><td>${x.target_position_pct??''}</td><td>${x.quantity??'—'}</td><td>${num(x.confidence)}</td><td class="note">${x.authorization_status}</td><td class="muted" style="max-width:420px">${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan=9 class="muted">no intents</td></tr>'}</tbody></table>`;
+  document.getElementById('dec').innerHTML=tw('Decisions',`<table><thead><tr><th>Date</th><th>Symbol</th><th>Decision</th><th>Target %</th><th>Confidence</th><th>Score</th><th>Regime</th><th>Stop</th><th>Target</th><th>Reasons</th></tr></thead><tbody>${r.decisions.map(x=>`<tr><td>${x.as_of}</td><td>${x.symbol}</td><td><b>${x.decision}</b> <span class="muted">${x.action}</span>${x.blocked_reason?'<br><span class="note">'+esc(x.blocked_reason)+'</span>':''}</td><td>${x.target_position_pct??''}</td><td>${num(x.confidence)}</td><td>${num(x.score,1)}</td><td>${x.regime||''}</td><td>${x.stop_price??''}</td><td>${x.target_price??''}</td><td class="muted" style="max-width:420px">${esc((x.reasons||[]).join('; '))}</td></tr>`).join('')||'<tr><td colspan=10 class="muted">No decisions yet. Press “Generate decisions” above, or wait for the post-market run (16:45 IST).</td></tr>'}</tbody></table>`);
+  document.getElementById('intents').innerHTML=tw('Position intents',`<table><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th>Action</th><th>Target %</th><th>Qty (indicative)</th><th>Confidence</th><th>Authorization</th><th>Reason</th></tr></thead><tbody>${r.intents.map(x=>`<tr><td>${x.as_of}</td><td>${x.symbol}</td><td>${x.side}</td><td>${x.action}</td><td>${x.target_position_pct??''}</td><td>${x.quantity??'—'}</td><td>${num(x.confidence)}</td><td class="note">${x.authorization_status}</td><td class="muted" style="max-width:420px">${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan=9 class="muted">No position intents: the decisions above did not ask to open or close anything.</td></tr>'}</tbody></table>`);
 }
 async function move(id,to){const reason=prompt(`Reason for ${to}?`)||'';try{await post(`/api/strategies/${id}/lifecycle`,{to_state:to,reason});load();show(id)}catch(e){alert(e.message)}}
 async function decide(id){try{const r=await post(`/api/strategies/${id}/decisions`,{book:'PAPER'});alert('Decisions for '+r.as_of+': '+JSON.stringify(r.counts));loadDecisions(id)}catch(e){alert(e.message)}}
@@ -102,11 +111,11 @@ function deriv(b){const f=b.FUTURES,o=b.OPTIONS;if(!f&&!o)return '<span class="m
   return (f?'<span class="muted">futures</span> '+book(f):'')+(f&&o?'<br>':'')+(o?'<span class="muted">options</span> '+book(o):'')}
 const legTxt=L=>(L||[]).map(l=>`${l.side} ${num(l.strike,0)} ${l.option_type}${l.entry_price!=null?' @ '+num(l.entry_price):(l.mid!=null?' ~'+num(l.mid):'')}${l.exit_price!=null?' → '+num(l.exit_price):''}`).join('<br>');
 async function loadOptions(id){try{const r=await j(`/api/strategies/${id}/options`);
-  document.getElementById('optpos').innerHTML=`<table><thead><tr><th>Position</th><th>Status</th><th>Template</th><th>Expiry</th><th>Lots</th><th>Legs</th><th>Net premium</th><th>Max loss (risk)</th><th>Margin</th><th>Unrealised</th><th>Realised</th><th>Last mark</th><th>Exit</th></tr></thead><tbody>${r.positions.map(p=>`<tr><td class="muted">${esc(p.position_id)}<br>${esc(p.symbol)}</td><td>${p.status}</td><td>${esc(p.template)}</td><td>${p.expiry}</td><td>${p.lots} × ${p.lot_size}</td><td>${legTxt(p.legs)}</td><td>${num(p.net_premium,0)}</td><td>${num(p.risk_amount,0)}</td><td>${num(p.margin_blocked,0)}</td><td>${num(p.unrealized,0)}</td><td>${num(p.realized_pnl,0)}</td><td>${p.last_mark_date||'—'}${(p.marks||[])[0]&&p.marks[0].exit_signal?'<br><span class="note">'+esc(p.marks[0].exit_signal)+'</span>':''}</td><td>${esc(p.exit_reason||'')}</td></tr>`).join('')||'<tr><td colspan=13 class="muted">no option positions</td></tr>'}</tbody></table>`}
+  document.getElementById('optpos').innerHTML=tw('Option positions',`<table><thead><tr><th>Position</th><th>Status</th><th>Template</th><th>Expiry</th><th>Lots</th><th>Legs</th><th>Net premium</th><th>Max loss (risk)</th><th>Margin</th><th>Unrealised</th><th>Realised</th><th>Last mark</th><th>Exit</th></tr></thead><tbody>${r.positions.map(p=>`<tr><td class="muted">${esc(p.position_id)}<br>${esc(p.symbol)}</td><td>${p.status}</td><td>${esc(p.template)}</td><td>${p.expiry}</td><td>${p.lots} × ${p.lot_size}</td><td>${legTxt(p.legs)}</td><td>${num(p.net_premium,0)}</td><td>${num(p.risk_amount,0)}</td><td>${num(p.margin_blocked,0)}</td><td>${num(p.unrealized,0)}</td><td>${num(p.realized_pnl,0)}</td><td>${p.last_mark_date||'—'}${(p.marks||[])[0]&&p.marks[0].exit_signal?'<br><span class="note">'+esc(p.marks[0].exit_signal)+'</span>':''}</td><td>${esc(p.exit_reason||'')}</td></tr>`).join('')||'<tr><td colspan=13 class="muted">No option positions yet for this strategy.</td></tr>'}</tbody></table>`)}
   catch(e){document.getElementById('optpos').innerHTML=`<span class="neg">${esc(e.message)}</span>`}}
 async function optDry(id){const el=document.getElementById('optdry');el.textContent='…';try{const r=await j(`/api/strategies/${id}/options/dry-run`);
   el.innerHTML=`<p class="muted">${esc(r.note)} (as of ${r.as_of}, strategy ${r.status})</p>`+(r.decisions.map(d=>{const rk=d.risk||{},oc=d.option_checks;
-   const ck=c=>`<table><thead><tr><th>Check</th><th>Status</th><th>Message</th></tr></thead><tbody>${(c.checks||[]).map(x=>`<tr><td>${x.check}</td><td>${x.status}</td><td class="muted">${esc(x.message)}</td></tr>`).join('')}</tbody></table>`;
+   const ck=c=>tw('Risk checks',`<table><thead><tr><th>Check</th><th>Status</th><th>Message</th></tr></thead><tbody>${(c.checks||[]).map(x=>`<tr><td>${x.check}</td><td>${x.status}</td><td class="muted">${esc(x.message)}</td></tr>`).join('')}</tbody></table>`);
    return `<h2>${esc(d.symbol)} — ${d.action}${d.template?' · '+esc(d.template)+' '+(d.expiry||''):''}</h2><p>${esc((d.reasons||[]).join('; '))}</p>${d.legs?'<p>'+legTxt(d.legs)+'</p>':''}`
     +(d.risk?`<p><b>Risk: ${rk.status}</b> ${rk.approved_lots??0} lot(s) ${esc(rk.reason||'')}</p>`+ck(rk):'')+(oc?`<p><b>Option checks alone: ${oc.status}</b> ${oc.approved_lots??0} lot(s) ${esc(oc.reason||'')}</p>`+ck(oc):'')}).join('')||'<p class="muted">no option decisions today</p>')}
   catch(e){el.innerHTML=`<span class="neg">${esc(e.message)}</span>`}}

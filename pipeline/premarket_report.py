@@ -75,7 +75,9 @@ def build(conn, now: datetime | None = None) -> dict:
     cols = "symbol, atip_score, vpi, zpi, mri, rri, cri, acs"
     buys = _many(conn, f"SELECT {cols} FROM ai_scores WHERE date=? AND `signal`='BUY' ORDER BY atip_score DESC LIMIT 5", sd) if sd else []
     sells = _many(conn, f"SELECT {cols} FROM ai_scores WHERE date=? AND `signal`='SELL' ORDER BY cri DESC LIMIT 5", sd) if sd else []
-    tod = _one(conn, "SELECT symbol, acs, atip_score FROM ai_scores WHERE date=? AND is_tod=1 LIMIT 1", sd) if sd else None
+    # a Trade of the Day only on a BUY signal (owner decision 3 Nov 2026); None = "no BUY signal for today"
+    tod = _one(conn, "SELECT symbol, acs, atip_score FROM ai_scores WHERE date=? AND is_tod=1 AND `signal`='BUY' LIMIT 1",
+               sd) if sd else None
     try:
         from data import asia_markets
         asia = asia_markets.snapshot(conn, now)

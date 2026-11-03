@@ -64,6 +64,7 @@ GET /api/brokers/open-orders -> portfolio:read; other GETs -> dashboard:read.
     GET  /api/brokers/open-orders                    your pending orders at Dhan (read-only) + ATIP's resting ones
     GET  /options-builder                            the strategy builder page
     GET  /api/options/templates
+    GET  /api/options/symbols                        underlyings with a stored option chain or F&O bhavcopy
     GET  /api/options/chain/{symbol}                 spot, lot size, expiries and strikes ATIP has stored
     POST /api/options/build                          {template, symbol, expiry, spot?, width_steps?, lot_size?, target_date?}
     POST /api/options/analyse                        {symbol?, spot, legs, lot_size?, target_date?}
@@ -585,6 +586,24 @@ def register(app, guard, Req, get_connection, json_safe):
         from quant.options_strategy import templates
         return JSONResponse(templates())
 
+    @app.get("/api/options/symbols")
+    async def api_options_symbols():
+        """Underlyings with a stored option chain or F&O bhavcopy (read-only): what the builder's symbol list offers."""
+        def f(conn):
+            seen = {}
+            for table, col, src in (("option_chain_snapshot", "ts", "option chain"),
+                                    ("fo_contract_daily", "date", "F&O bhavcopy")):
+                try:
+                    for s, last in conn.execute(f"SELECT symbol, MAX({col}) FROM {table} GROUP BY symbol"):
+                        if s and s not in seen:
+                            seen[s] = {"symbol": s, "source": src, "as_of": str(last or "")[:16]}
+                except Exception:
+                    continue
+            from quant.options_strategy import INDEX_STEPS
+            first = [s for s in INDEX_STEPS if s in seen]                  # the indices first, then A-Z
+            return {"symbols": [seen[s] for s in first] + [seen[s] for s in sorted(seen) if s not in INDEX_STEPS]}
+        return await run(f)
+
     @app.get("/api/options/chain/{symbol}")
     async def api_options_chain(symbol: str):
         def f(conn):
@@ -618,6 +637,8 @@ def register(app, guard, Req, get_connection, json_safe):
         lot = int(b.get("lot_size") or q["lot_size"] or 1)
         out = analyse(legs, float(spot), lot_size=lot, target_date=b.get("target_date"))
         out["symbol"] = sym
+        from quant.options_strategy import suitability
+        out["suitability"] = suitability(out["legs"], out)          # Beginner / Intermediate / Advanced, and why
         return out
 
     @app.post("/api/options/build", dependencies=guard)

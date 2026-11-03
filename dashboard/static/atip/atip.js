@@ -18,6 +18,11 @@
     return (neg ? "−" : (sign && v > 0.004 ? "+" : "")) + "₹" + w + "." + s[1];
   };
   AX.pct = function (v) { if (v === null || v === undefined || isNaN(v)) return "—"; v = Number(v); return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + "%"; };
+  // "2026-11-02 23:37" (stored in IST) -> "2 Nov 23:37"
+  AX.istShort = function (t) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/.exec(String(t || "")); if (!m) return String(t || "");
+    return (+m[3]) + " " + "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")[+m[2] - 1] + " " + m[4];
+  };
   AX.esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
 
   // ── token and API ─────────────────────────────────────────────────────────────────────────
@@ -56,6 +61,47 @@
     document.body.appendChild(t); setTimeout(function () { t.remove(); }, bad ? 7000 : 3500);
   };
 
+  // ── questions and refusals in order flows (UX audit H7): the shell's dialog, never alert() / confirm() ──
+  // AX.ask({title, html, ok, cancel, tone}) -> Promise<boolean>. Esc or Cancel answers no; the safe answer
+  // has the focus first, so Enter alone never places an order.
+  AX.ask = function (o) {
+    o = o || {};
+    return new Promise(function (done) {
+      var d = document.getElementById("ax-ask");
+      if (!d) { d = document.createElement("dialog"); d.id = "ax-ask"; d.className = "ax-dialog"; d.setAttribute("aria-labelledby", "ax-ask-h"); document.body.appendChild(d); }
+      d.classList.toggle("ax-danger", o.tone === "danger");
+      d.innerHTML = '<div class="ax-dhead" id="ax-ask-h"></div><div class="ax-dbody"></div><div class="ax-dfoot">' +
+        (o.cancel === false ? "" : '<button class="ax-btn" type="button" data-a="0"></button>') +
+        '<button class="ax-btn ' + (o.tone === "danger" ? "danger" : "primary") + '" type="button" data-a="1"></button></div>';
+      d.querySelector(".ax-dhead").textContent = o.title || "Are you sure?";
+      d.querySelector(".ax-dbody").innerHTML = o.html || AX.esc(o.text || "");
+      var no = d.querySelector('[data-a="0"]'), yes = d.querySelector('[data-a="1"]');
+      if (no) no.textContent = o.cancel || "Cancel";
+      yes.textContent = o.ok || "OK";
+      var answered = false;
+      function finish(v) { if (answered) return; answered = true; try { d.close(); } catch (e) {} done(v); }
+      yes.onclick = function () { finish(true); };
+      if (no) no.onclick = function () { finish(false); };
+      d.onclose = function () { finish(false); };
+      d.showModal(); (no || yes).focus();
+    });
+  };
+  // A rule that triggered, then the price ran away before the tap (the 409 from /confirm).
+  AX.priceMoved = function (r, rule) {
+    r = r || {}; rule = rule || {};
+    var t = Number(r.trigger_price), c = Number(r.current_price), mv = c - t, pc = t ? mv / t * 100 : NaN;
+    var row = function (k, v) { return "<dt>" + AX.esc(k) + "</dt><dd class=\"ax-num\">" + v + "</dd>"; };
+    return AX.ask({
+      title: "The price moved since the trigger", tone: "danger",
+      html: (rule.symbol ? "<p><b>" + AX.esc((rule.side || "") + " " + rule.symbol) + "</b></p>" : "") +
+        '<dl class="ax-kv">' + row("Trigger price", AX.inr(t)) + row("Price now", AX.inr(c)) +
+        row("Move", (mv >= 0 ? "▲ " : "▼ ") + AX.inr(mv, true) + " (" + AX.pct(pc) + ")") +
+        (r.drift_pct != null ? row("Against you", AX.pct(r.drift_pct)) : "") + "</dl>" +
+        '<p class="ax-small ax-muted">ATIP stopped this order because the move is past its slippage limit. It is a market order: it fills at the price when you place it, close to ' + AX.inr(c) + ".</p>",
+      ok: "Place at " + AX.inr(c), cancel: "Cancel"
+    });
+  };
+
   // ── theme ─────────────────────────────────────────────────────────────────────────────────
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
   var q = new URLSearchParams(location.search);
@@ -66,8 +112,19 @@
   applyTheme();
   AX.cycleTheme = function () {
     var t = store("atip-theme"), next = t === "dark" ? "light" : t === "light" ? "auto" : "dark";
-    store("atip-theme", next); applyTheme(); AX.toast("Theme: " + (next === "auto" ? "follows your device" : next));
+    store("atip-theme", next); applyTheme(); themeLabel(); AX.toast("Theme: " + (next === "auto" ? "follows your device" : next));
   };
+  function themeLabel() {
+    var t = store("atip-theme"), now = t === "dark" ? "dark" : t === "light" ? "light" : "your device's setting";
+    document.querySelectorAll("[data-ax-theme]").forEach(function (b) { b.title = "Theme: " + now + " (click to change)"; });
+  }
+  // density (remembered per browser, like the theme): compact rows for long tables
+  function applyDensity() {
+    var c = store("atip-density") === "compact";
+    if (c) root.setAttribute("data-density", "compact"); else root.removeAttribute("data-density");
+    document.querySelectorAll("[data-ax-density]").forEach(function (b) { b.setAttribute("aria-pressed", c ? "true" : "false"); b.title = c ? "Compact rows: on" : "Compact rows: off"; });
+  }
+  AX.toggleDensity = function () { store("atip-density", store("atip-density") === "compact" ? "comfortable" : "compact"); applyDensity(); AX.toast(store("atip-density") === "compact" ? "Compact rows" : "Comfortable rows"); };
 
   // ── rail on small screens ─────────────────────────────────────────────────────────────────
   function rail(open) {
@@ -93,6 +150,26 @@
     }
     var n = document.querySelector("[data-ax-unread]");
     if (n) { n.hidden = !d.unread; n.textContent = d.unread > 99 ? "99+" : String(d.unread || ""); }
+    var b = document.querySelector("[data-ax-bell]");
+    if (b) b.setAttribute("aria-label", "Alerts: " + (d.unread ? d.unread + " warning(s) in the last day" : "none in the last day") + ". Show the latest five");
+    // the one feed label (dashboard/ux_kit.feed_label): the top bar, Today and any page that marks a [data-ax-feed]
+    if (d.feed) document.querySelectorAll("[data-ax-feed]").forEach(function (el) {
+      el.hidden = false; el.setAttribute("data-state", d.feed.state || "");
+      var t = el.querySelector(".ax-feedtext") || el; t.textContent = d.feed.text || "";
+      var sh = el.querySelector(".ax-feedshort"); if (sh) sh.textContent = d.feed.short || d.feed.text || "";
+      if (el.classList.contains("ax-feed")) el.title = "Live price feed: " + (d.feed.text || "");
+    });
+    var ul = document.querySelector("[data-ax-alerts]");
+    if (ul && d.alerts) ul.innerHTML = d.alerts.length ? d.alerts.map(function (a) {
+      var tone = /critical|error/.test(a.severity) ? "bad" : a.severity === "warning" ? "warn" : "";
+      return '<li><time>' + AX.esc(AX.istShort(a.at)) + ' IST</time><span class="ax-st ' + tone + '">' + AX.esc(a.severity || "info") + "</span> " + AX.esc(a.title) + "</li>";
+    }).join("") : '<li class="ax-muted">No alerts yet.</li>';
+  }
+  function bell(open) {
+    var p = document.getElementById("ax-bellpop"), b = document.querySelector("[data-ax-bell]"); if (!p || !b) return;
+    if (open === undefined) open = p.hidden;
+    p.hidden = !open; b.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { poll(); var a = p.querySelector("a"); if (a) setTimeout(function () { a.focus(); }, 30); }
   }
   function poll() { AX.api("/api/v2/shell/state").then(paint).catch(function () {}); }
   AX.state = function () { return state; };
@@ -179,7 +256,7 @@
   document.addEventListener("keydown", function (e) {
     var tag = (e.target && e.target.tagName) || "", typing = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
     if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
-    if (e.key === "Escape") { rail(false); document.querySelectorAll(".ax-drawer.open").forEach(function (d) { AX.closeDrawer(d); }); return; }
+    if (e.key === "Escape") { rail(false); bell(false); document.querySelectorAll(".ax-drawer.open").forEach(function (d) { AX.closeDrawer(d); }); return; }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); openPalette(); return; }
     if (e.key === "?") { help(); return; }
@@ -191,12 +268,12 @@
   var lastFocus = null;
   AX.openDrawer = function (el) {
     if (typeof el === "string") el = document.getElementById(el);
-    if (!el) return; lastFocus = document.activeElement; el.classList.add("open"); el.setAttribute("aria-hidden", "false");
+    if (!el) return; lastFocus = document.activeElement; el.removeAttribute("inert"); el.classList.add("open");
     var f = el.querySelector("input,select,textarea,button:not([data-ax-close])"); if (f) setTimeout(function () { f.focus(); }, 60);
   };
   AX.closeDrawer = function (el) {
     if (typeof el === "string") el = document.getElementById(el);
-    if (!el) return; el.classList.remove("open"); el.setAttribute("aria-hidden", "true"); if (lastFocus && lastFocus.focus) lastFocus.focus();
+    if (!el) return; el.classList.remove("open"); el.setAttribute("inert", ""); if (lastFocus && lastFocus.focus) lastFocus.focus();
   };
   document.addEventListener("click", function (e) {
     var c = e.target.closest && e.target.closest("[data-ax-close]"); if (c) { AX.closeDrawer(c.closest(".ax-drawer")); }
@@ -372,6 +449,13 @@
     var s = document.querySelector(".ax-scrim"); if (s) s.addEventListener("click", function () { rail(false); });
     document.querySelectorAll("[data-ax-search]").forEach(function (b) { b.addEventListener("click", openPalette); });
     document.querySelectorAll("[data-ax-theme]").forEach(function (b) { b.addEventListener("click", AX.cycleTheme); });
+    document.querySelectorAll("[data-ax-density]").forEach(function (b) { b.addEventListener("click", AX.toggleDensity); });
+    themeLabel(); applyDensity();
+    var bb = document.querySelector("[data-ax-bell]");
+    if (bb) {
+      bb.addEventListener("click", function (e) { e.stopPropagation(); bell(); });
+      document.addEventListener("click", function (e) { var p = document.getElementById("ax-bellpop"); if (p && !p.hidden && !p.contains(e.target)) bell(false); });
+    }
     var k = document.querySelector("[data-ax-kill]"); if (k) k.addEventListener("click", killDialog);
     var kf = document.querySelector("#ax-kill-dialog form"); if (kf) kf.addEventListener("submit", doHalt);
     document.querySelectorAll("dialog [data-ax-dclose]").forEach(function (b) { b.addEventListener("click", function () { b.closest("dialog").close(); }); });

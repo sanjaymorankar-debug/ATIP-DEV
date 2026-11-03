@@ -68,7 +68,7 @@ def pct_change(last, prev):
     return round((last - prev) / prev * 100, 2)
 
 
-def chg_span(last, prev, size=10):
+def chg_span(last, prev, size=12):
     """
     CMP change rendered the way a quote screen renders it: absolute move and
     percentage, coloured, both against the previous close.
@@ -79,7 +79,8 @@ def chg_span(last, prev, size=10):
     diff = float(last) - float(prev)
     col = "#059669" if p >= 0 else "#dc2626"
     sign = "+" if p >= 0 else ""
-    return (f'<span style="font-size:{size}px;color:{col}"> {sign}{diff:.2f} '
+    arrow = "▲" if p > 0 else "▼" if p < 0 else "•"
+    return (f'<span class="chg" style="font-size:{size}px;color:{col}"> {arrow} {sign}{diff:.2f} '
             f'({sign}{p:.2f}%)</span>')
 
 
@@ -218,8 +219,17 @@ def get_tod(td):
              "t.atr_14 FROM ai_scores s LEFT JOIN prices_daily p ON s.symbol=p.symbol AND p.date=? "
              "LEFT JOIN technical_indicators t ON s.symbol=t.symbol AND t.date=? "
              "WHERE s.date=? AND s.is_tod=1 LIMIT 1",str(td),str(td),str(td),str(td))
-        if d.get("cmp") and d.get("atr_14"):
-            d["sl"]=round(d["cmp"]-1.5*d["atr_14"],2); d["t1"]=round(d["cmp"]+2.0*d["atr_14"],2); d["t2"]=round(d["cmp"]+3.5*d["atr_14"],2)
+        # One trade plan, one formula (3 Nov 2026). This used to compute its own
+        # levels (stop = close - 1.5xATR, targets = close + 2x / 3.5xATR) for ANY
+        # signal, while /home read the stored plan from scores/predictions.py
+        # (ATR stop clamped to 2-6 %, targets +3 % / +6 %, and NO levels for
+        # HOLD/WAIT). The same Trade of the Day showed a stop and targets here and
+        # "—" on Today, and this page invented a plan for a stock the engine said
+        # to HOLD. Both pages now use compute_trade_plan(), so a HOLD shows no plan.
+        if d:
+            from scores.predictions import compute_trade_plan
+            plan=compute_trade_plan(d.get("signal") or "", d.get("cmp") or 0, d.get("atr_14"))
+            d["sl"]=plan["stop_loss"]; d["t1"]=plan["target_1"]; d["t2"]=plan["target_2"]
         return d
     finally: conn.close()
 
@@ -438,11 +448,20 @@ def generate_state(td=None):
     return state
 
 def pill(val,inv=False):
+    """A 0-100 score in its band (dashboard/score_glossary: 70+ strong, 45-69 neutral, below 45 weak; CRI the other
+    way round). The band is in the tooltip and the accessible name, so colour is never the only cue."""
     if val is None: return "—"
-    v=float(val)
-    if inv: v=100-v
-    col="#059669" if v>=70 else "#f59e0b" if v>=45 else "#dc2626"
-    return f'<span style="background:{col}20;color:{col};padding:2px 7px;border-radius:4px;font-weight:600;font-size:11px">{float(val):.0f}</span>'
+    from dashboard.score_glossary import band
+    b=band("CRI" if inv else "",val)
+    return f'<span class="sp sp-{b}" title="{b}">{float(val):.0f}</span>'
+
+def money(v):
+    """₹ with Indian grouping, always 2 decimals (UX audit M4): dashboard/ux_kit.inr, as every page uses."""
+    from dashboard.ux_kit import inr
+    try:
+        return inr(v) if v not in (None, "") and float(v) != 0 else "—"
+    except (TypeError, ValueError):
+        return "—"
 
 def bval(v):
     """Render a beta figure: >1 (more volatile than Nifty) in amber, <1 in slate, missing as a dash."""
@@ -451,7 +470,7 @@ def bval(v):
     col="#f59e0b" if v>1 else "#94a3b8"
     return f'<span style="color:{col};font-weight:600">{v:.2f}</span>'
 
-def order_btns(sym,cmp,primary="BUY"):
+def order_btns(sym,cmp,primary="BUY",signal=None):
     """
     Buy + Sell buttons for any table row or card.
 
@@ -465,13 +484,21 @@ def order_btns(sym,cmp,primary="BUY"):
     be 0 here (no prices_daily row joined for this date) — openOrderModal()
     handles that by falling back to the live-quote cell and then forcing an
     absolute-price target, since a % move off a 0 reference is meaningless.
+
+    BUY ONLY ON A BUY SIGNAL (3 Nov 2026). `signal` is the stock's current EOD
+    signal. Buy is rendered only when it is BUY; on HOLD / WAIT / SELL / unknown
+    the slot reads "No buy" with the reason in its tooltip, and the order modal
+    is opened with that signal so its Buy side is locked too. Sell stays
+    available everywhere (you may want to exit a holding whatever the signal).
     """
     if not sym: return "—"
     c=cmp or 0
+    sig=(signal or "").upper()
     b_cls="obuy" if primary=="BUY" else "obuy ghost"
     s_cls="osell" if primary=="SELL" else "osell ghost"
-    return (f'<button class="{b_cls}" onclick="openOrderModal(\'{sym}\',{c},\'BUY\')">Buy</button>'
-            f'<button class="{s_cls}" onclick="openOrderModal(\'{sym}\',{c},\'SELL\')">Sell</button>')
+    buy=(f'<button class="{b_cls}" onclick="openOrderModal(\'{sym}\',{c},\'BUY\',\'{sig}\')">Buy</button>' if sig=="BUY" else
+         f'<span class="nobuy" title="Buy appears only on a BUY signal. Signal now: {sig or "none"}">No buy</span>')
+    return (buy + f'<button class="{s_cls}" onclick="openOrderModal(\'{sym}\',{c},\'SELL\',\'{sig}\')">Sell</button>')
 
 def _check_js(html):
     """
@@ -482,7 +509,7 @@ def _check_js(html):
     SyntaxError that prevents showTab/srt/ft from ever being defined — every
     tab silently stops working while the page still renders and the server
     still returns 200. That happened: a backslash-n written in the Python
-    f-string became a REAL newline in the emitted JS and split two alert()
+    f-string became a REAL newline in the emitted JS and split two message
     strings across lines.
 
     Cheap heuristic, run on every render: inside the script, ignore // comments
@@ -513,6 +540,7 @@ def build_html(state):
     from dashboard.w28b_assets import ASSETS as _w28b_assets       # W28b news weights, announcements
     mh=state.get("mh",{}); tod=state.get("tod",{}); idx=state.get("indexes",{}); glb=state.get("global",{})
     scores=state.get("scores",[]); news=state.get("news",[]); port=state.get("portfolio",[]); top25=state.get("top25",{})
+    sig_of={r.get("symbol"):r.get("signal") for r in scores}  # holdings carry no signal of their own
     # A session whose inputs covered under half the MH weight has no score
     # (scores/engine.py MH_MIN_COVERAGE): show a dash, not a red 0.
     mh_known=mh.get("mh_score") is not None
@@ -526,11 +554,13 @@ def build_html(state):
         n=names.get((sym or "").upper())
         return f'<div style="font-size:9.5px;color:#64748b;font-weight:400;white-space:normal">{n}</div>' if n else ""
     import html as _html
+    from dashboard import score_glossary as G
+    score_legend=G.legend_html("scoreLegend")
     def _srch(sym):
         return _html.escape(f"{sym} {names.get((sym or '').upper(), '')}".lower(), quote=True)
-    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">₹{r.get('cmp') or '—'}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'))}</td></tr>""" for r in scores)
+    score_rows="".join(f"""<tr data-sym="{r.get('symbol')}" data-signal="{r.get('signal') or ''}" data-search="{_srch(r.get('symbol'))}"><td>{r.get('atip_rank','')}</td><td><b>{r.get('symbol')}</b>{'⭐' if r.get('is_tod') and r.get('signal')=='BUY' else ''}{cname(r.get('symbol'))}</td><td>{pill(r.get('atip_score'))}</td><td>{pill(r.get('vpi'))}</td><td>{pill(r.get('mri'))}</td><td>{pill(r.get('rri'))}</td><td>{pill(r.get('zpi'))}</td><td>{pill(r.get('cri'),inv=True)}</td><td>{pill(r.get('acs'))}</td><td class="cmpcell" data-prev="{r.get('prev_close') or ''}" data-cmp="{r.get('cmp') or ''}">{money(r.get('cmp'))}{chg_span(r.get('cmp'), r.get('prev_close'))}</td><td data-v="{r.get('beta_1y') if r.get('beta_1y') is not None else ''}">{bval(r.get('beta_1y'))}</td><td style="color:{'#059669' if r.get('signal')=='BUY' else '#dc2626' if r.get('signal')=='SELL' else '#2563eb'};font-weight:600">{r.get('signal','—')}</td><td style="font-size:10px;color:#64748b">{r.get('top_factor_1','')}</td><td class="acts">{order_btns(r.get('symbol'),r.get('cmp'),primary=('SELL' if r.get('signal')=='SELL' else 'BUY'),signal=r.get('signal'))}</td></tr>""" for r in scores)
     news_rows="".join(f"""<tr><td style="font-size:12px;max-width:300px">{n.get('headline','')}</td><td style="font-size:11px">{n.get('source','')}</td><td style="color:{'#dc2626' if n.get('importance')=='HIGH' else '#f59e0b'};font-size:11px;font-weight:600">{n.get('importance','')}</td><td style="color:{'#059669' if (n.get('sentiment') or 0)>0.1 else '#dc2626' if (n.get('sentiment') or 0)<-0.1 else '#64748b'};font-weight:600">{(n.get('sentiment') or 0):+.2f}</td></tr>""" for n in news[:15])
-    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>₹{p.get('avg_price') or '—'}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">₹{p.get('cmp') or '—'}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL')}</td></tr>""" for p in port)
+    port_rows="".join(f"""<tr data-sym="{p.get('symbol')}"><td><b>{p.get('symbol')}</b>{cname(p.get('symbol'))}</td><td>{p.get('qty')}</td><td>{money(p.get('avg_price'))}</td><td class="cmpcell" data-prev="{p.get('prev_close') or ''}" data-cmp="{p.get('cmp') or ''}">{money(p.get('cmp'))}{chg_span(p.get('cmp'), p.get('prev_close'))}</td><td style="color:{'#059669' if (p.get('pnl_pct') or 0)>=0 else '#dc2626'};font-weight:600">{(p.get('pnl_pct') or 0):+.1f}%</td><td>{pill(p.get('atip_score'))}</td><td>{pill(p.get('cri'),inv=True)}</td><td style="font-size:11px">{p.get('signal','—')}</td><td class="acts">{order_btns(p.get('symbol'),p.get('cmp'),primary='SELL',signal=sig_of.get(p.get('symbol')))}</td></tr>""" for p in port)
     # Show the LEVEL beside the change. A column of "+0.00%" tells you nothing
     # about where the market closed, which is the first thing you look for
     # outside market hours -- and pre-open every change legitimately reads 0.00%
@@ -547,10 +577,10 @@ def build_html(state):
     def t25_row(r,mid,primary="BUY",sig_style=""):
         return (f'<tr data-sym="{r.get("symbol")}">'
                 f'<td><b>{r.get("symbol")}</b>{cname(r.get("symbol"))}</td>{mid}'
-                f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">₹{r.get("cmp") or "—"}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
+                f'<td class="cmpcell" data-prev="{r.get("prev_close") or ""}" data-cmp="{r.get("cmp") or ""}">{money(r.get("cmp"))}{chg_span(r.get("cmp"), r.get("prev_close"))}</td>'
                 f'<td data-v="{r.get("beta_1y") if r.get("beta_1y") is not None else ""}">{bval(r.get("beta_1y"))}</td>'
                 f'<td{sig_style}>{r.get("signal","—")}</td>'
-                f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary)}</td></tr>')
+                f'<td class="acts">{order_btns(r.get("symbol"),r.get("cmp"),primary=primary,signal=r.get("signal"))}</td></tr>')
 
     def by_signal(r):
         return "SELL" if r.get("signal")=="SELL" else "BUY"
@@ -613,11 +643,13 @@ def build_html(state):
         cap=min(abs(v)/2.0,1.0)
         base="5,150,105" if v>=0 else "220,38,38"
         return f"rgba({base},{0.15+0.55*cap:.2f})"
+    sector_line=(f"strongest {sectors[0][0]} {sectors[0][1]:+.2f}% · weakest {sectors[-1][0]} {sectors[-1][1]:+.2f}%"
+                 if sectors else "no sector data for this date")
     sector_tiles="".join(
         f'<div style="background:{heat(v)};border:1px solid #33415577;border-radius:6px;'
         f'padding:7px 9px;min-width:96px;text-align:center">'
-        f'<div style="font-size:11px;color:#e2e8f0">{lbl}</div>'
-        f'<div style="font-size:14px;font-weight:700;color:#fff">{v:+.2f}%</div></div>'
+        f'<div class="sec-l">{lbl}</div>'
+        f'<div class="sec-v">{"▲" if v > 0 else "▼" if v < 0 else "•"} {v:+.2f}%</div></div>'
         for lbl,v in sectors) or '<div style="color:#64748b;font-size:12px">No sector data for this date.</div>'
     # ── Signal history + momentum success rates ──────────────────────────────
     ob = state.get("orders_book") or []
@@ -652,7 +684,7 @@ def build_html(state):
             role_badge = (' <b style="color:#94a3b8">[DIRECT]</b>')
             ot = r.get("order_type") or "MARKET"
             lp = r.get("limit_price")
-            trig_s = f'LIMIT @ ₹{lp:,.2f}' if (ot == "LIMIT" and lp) else ot
+            trig_s = f'LIMIT @ {money(lp)}' if (ot == "LIMIT" and lp) else ot
             trig = None
         else:
             role = r.get("role") or "ENTRY"
@@ -660,17 +692,17 @@ def build_html(state):
                          f'[{role}]</b>') if role != "ENTRY" else ""
             dirsym = "≤" if r.get("trigger_direction") == "BELOW" else "≥"
             trig = r.get("resolved_trigger_price")
-            trig_s = f'{dirsym} ₹{trig:,.2f}' if trig is not None else "—"
+            trig_s = f'{dirsym} {money(trig)}' if trig is not None else "—"
         qty = r.get("quantity_value")
         qt_ = r.get("quantity_type")
         qty_s = (f'{qty:g} sh' if qt_ == "SHARES" else f'{qty:g}% risk' if qt_ == "RISK"
-                 else f'₹{qty:,.0f}') if qty is not None else "—"
+                 else money(qty)) if qty is not None else "—"
         exec_price = r.get("execution_price")
         # order_log only records the ESTIMATED price at order time, not the
         # actual average fill -- that lives in paper_order for PAPER mode, and
         # would need a Dhan order-status lookup for LIVE (not built here).
         # Left as "placed" rather than a fabricated fill price.
-        exec_s = (f'₹{exec_price:,.2f} × {r.get("execution_quantity") or "?"}'
+        exec_s = (f'{money(exec_price)} × {r.get("execution_quantity") or "?"}'
                   if exec_price else ("placed" if (is_direct and status == "PLACED") else "—"))
         err = r.get("execution_error")
         err_html = (f'<div style="color:#dc2626;font-size:10px;max-width:180px;'
@@ -807,7 +839,7 @@ def build_html(state):
             f'<tr data-sym="{r.get("symbol")}" data-signal="{r.get("signal") or ""}"><td>{r.get("signal_date")}</td>'
             f'<td><b>{r.get("symbol")}</b>{"*" if r.get("is_tod") else ""}</td>'
             f'<td style="color:{sig_c};font-weight:600">{r.get("signal")}</td>'
-            f'<td>Rs{r.get("entry_price") or "-"}</td>'
+            f'<td>{money(r.get("entry_price"))}</td>'
             f'<td>{pill(r.get("atip_score"))}</td><td>{pill(r.get("zpi"))}</td>'
             f'<td>{pill(r.get("cri"),inv=True)}</td>{cells}'
             f'<td>{_first_hit(outs)}</td>'
@@ -856,11 +888,31 @@ def build_html(state):
         stale_banner = (f'<div style="background:#065f46;color:#d1fae5;padding:5px 18px;font-size:11.5px">'
                         f'✓ Scores current for the last completed session ({shown_d})</div>')
     health_panel = alerts_panel_html()
+    health_bad = "Pipeline problems" in health_panel
     tod_sym=tod.get('symbol','—'); tod_sig=tod.get('signal','—'); tod_cmp=tod.get('cmp','—')
+    # Levels only when the engine recommended a trade (BUY/SELL); a HOLD/WAIT
+    # Trade of the Day says so instead of printing "₹None" or invented levels.
+    if tod.get('sl') is not None:
+        tod_plan=(f'<div><div class="tod-l">Stop Loss</div><div class="tod-v" style="color:#dc2626">{money(tod["sl"])}</div></div>'
+                  f'<div><div class="tod-l">Target 1</div><div class="tod-v" style="color:#059669">{money(tod["t1"])}</div></div>'
+                  f'<div><div class="tod-l">Target 2</div><div class="tod-v" style="color:#059669">{money(tod["t2"])}</div></div>')
+    else:
+        tod_plan=(f'<div style="grid-column:span 3"><div class="tod-l">Trade plan</div>'
+                  f'<div class="tod-v" style="color:#94a3b8;font-size:14px">No trade plan — signal is {tod_sig}. '
+                  f'Stop and targets appear only on a BUY or SELL signal.</div></div>')
     # Served with the page so the dashboard keeps working; see dashboard/security.py.
     from dashboard.security import page_token as _dash_token
     token_js = json.dumps(_dash_token())
     tod_cname=names.get((tod.get('symbol') or "").upper(),"")
+    # Owner decision 3 Nov 2026: a Trade of the Day only on a BUY signal. On a day with no BUY pick the card says so
+    # (and how the day's scores split) instead of showing a HOLD / WAIT stock.
+    tod_buy=(tod_sig=='BUY')
+    _n={k:sum(1 for r in scores if (r.get('signal') or '')==k) for k in ('BUY','HOLD','WAIT','SELL')}
+    tod_none=('<div class="tod-card tod-none" role="status"><div class="tod-sym">No BUY signal for today</div>'
+              '<div style="grid-column:1/-1" class="tod-v">ATIP names a Trade of the Day only from a BUY signal. '
+              f'Scores of {state.get("trade_date") or "—"}: {_n["BUY"]} BUY · {_n["HOLD"]} HOLD · {_n["WAIT"]} WAIT · {_n["SELL"]} SELL. '
+              + (f'{_n["BUY"]} stock{"s have" if _n["BUY"]!=1 else " has"} a BUY signal: pick BUY in the signal filter below.'
+                 if _n["BUY"] else 'New signals come with the post-market scores at 16:45 IST.') + '</div></div>')
     # Task 2/3: the operating-status banner and the Global & Asia tab (dashboard/global_asia.py)
     from dashboard.global_asia import status_banner_html as _op_banner, asia_tab_html as _asia_tab
     op_banner=_op_banner(); asia_tab=_asia_tab()
@@ -868,74 +920,185 @@ def build_html(state):
     live_tab=_live_tab()
     from dashboard.news_impact_view import panel_html as _ni_panel                     # NI-05
     ni_news_panel=_ni_panel("niNewsBox")
-    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Dashboard</title>
-<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}}.topbar{{background:#1e293b;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}}.logo{{font-size:17px;font-weight:700;color:#38bdf8}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:#1e293b;border-bottom:1px solid #334155}}.kpi{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:#38bdf8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #334155}}.tod-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:11px;color:#94a3b8}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#1e293b;color:#94a3b8}}.tab.active{{background:#2563eb;color:#fff;border-color:#2563eb}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:8px;overflow:hidden;font-size:11.5px}}th{{background:#0f172a;color:#94a3b8;padding:7px 7px;text-align:left;border-bottom:1px solid #334155;font-size:11px;cursor:pointer;white-space:nowrap}}th:hover{{color:#e2e8f0}}td{{padding:6px 7px;border-bottom:1px solid #1e293b22;white-space:nowrap}}tr:hover td{{background:#0f172a}}.disc{{font-size:10px;color:#475569;margin-top:16px;padding-top:10px;border-top:1px solid #334155;line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px}}.rf{{background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
-.ob{{background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer}}.ob:hover{{background:#38bdf8;color:#0f172a}}
-.acts{{white-space:nowrap}}.acts button{{padding:3px 11px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;margin-right:4px}}
-.obuy{{background:#059669;border:1px solid #059669;color:#fff}}.obuy:hover{{background:#047857}}
+    # Where an order from the modal would go (3 Nov 2026): the modal used to say
+    # nothing about PAPER vs LIVE. Unreadable config resolves to PAPER, matching
+    # orders.environment's own rule, and the label says so.
+    try:
+        from orders.environment import broker_env as _benv, LIVE as _LIVE, describe as _bdesc
+        env_now=_benv(); env_live=(env_now==_LIVE); env_line=_bdesc()
+    except Exception:
+        env_now, env_live = "PAPER", False
+        env_line="PAPER — simulated fills at live prices, no order reaches Dhan"
+    env_cls="live" if env_live else "paper"
+    # The order ticket's charges estimate (UX audit M5): backtest/costs.py's delivery and intraday models
+    try:
+        from backtest.costs import cost_model as _cm
+        costs_attr=_html.escape(json.dumps({"CNC":_cm("nse_delivery").as_dict(),"INTRADAY":_cm("nse_intraday").as_dict()}),quote=True)
+    except Exception:
+        costs_attr="{}"
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Scores · ATIP</title>
+<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:system-ui,sans-serif;background:var(--ax-bg,#0f172a);color:var(--ax-text,#e2e8f0);font-size:13.5px}}.topbar{{background:var(--ax-surface,#1e293b);padding:10px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ax-border,#334155)}}.logo{{font-size:17px;font-weight:700;color:var(--ax-brand,#38bdf8)}}.kpi-row{{display:flex;gap:8px;padding:10px 18px;flex-wrap:wrap;background:var(--ax-surface,#1e293b);border-bottom:1px solid var(--ax-border,#334155)}}.kpi{{background:var(--ax-surface-2,#0f172a);border:1px solid var(--ax-border,#334155);border-radius:8px;padding:8px 14px;min-width:100px}}.kpi-l{{font-size:12px;color:var(--ax-muted,#64748b);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}}.kpi-v{{font-size:20px;font-weight:700}}.body{{display:flex}}.sidebar{{width:200px;background:var(--ax-surface,#1e293b);border-right:1px solid var(--ax-border,#334155);padding:12px;overflow-y:auto;min-height:100vh}}.sidebar h3{{font-size:12px;color:var(--ax-muted,#64748b);text-transform:uppercase;margin-bottom:6px;margin-top:14px}}.sidebar h3:first-child{{margin-top:0}}.main{{flex:1;padding:14px;overflow-x:auto}}.section{{margin-bottom:20px}}.st{{font-size:13px;font-weight:600;color:var(--ax-brand,#38bdf8);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--ax-border,#334155)}}.tod-card{{background:var(--ax-surface,#1e293b);border:1px solid var(--ax-border,#334155);border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}.tod-sym{{font-size:24px;font-weight:700;grid-column:1/-1}}.tod-l{{font-size:12px;color:var(--ax-muted,#94a3b8)}}.tod-v{{font-size:13px;font-weight:600}}.tabs{{display:flex;gap:4px;margin-bottom:10px}}.tab{{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--ax-border,#334155);background:var(--ax-surface,#1e293b);color:var(--ax-muted,#94a3b8)}}.tab.active{{background:var(--ax-brand,#2563eb);color:var(--ax-brand-ink,#fff);border-color:var(--ax-brand,#2563eb)}}.tc{{display:none}}.tc.active{{display:block}}table{{width:100%;border-collapse:collapse;background:var(--ax-surface,#1e293b);border-radius:8px;overflow:hidden;font-size:12.5px}}th{{background:var(--ax-surface-2,#0f172a);color:var(--ax-muted,#94a3b8);padding:7px 7px;text-align:left;border-bottom:1px solid var(--ax-border,#334155);font-size:12px;cursor:pointer;white-space:nowrap}}th:hover{{color:var(--ax-text,#e2e8f0)}}td{{padding:6px 7px;border-bottom:1px solid var(--ax-border-soft,#1e293b22);white-space:nowrap}}tr:hover td{{background:var(--ax-surface-2,#0f172a)}}.disc{{font-size:12px;color:var(--ax-muted,#475569);margin-top:16px;padding-top:10px;border-top:1px solid var(--ax-border,#334155);line-height:1.6}}input,select{{padding:5px 10px;border-radius:6px;border:1px solid var(--ax-border,#334155);background:var(--ax-surface-2,#0f172a);color:var(--ax-text,#e2e8f0);font-size:12px}}.rf{{background:var(--ax-brand,#2563eb);color:var(--ax-brand-ink,#fff);border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}}
+.ob{{background:var(--ax-surface,#1e293b);border:1px solid var(--ax-brand,#38bdf8);color:var(--ax-brand,#38bdf8);padding:3px 10px;border-radius:5px;font-size:12px;cursor:pointer}}.ob:hover{{background:var(--ax-brand,#38bdf8);color:var(--ax-brand-ink,#0f172a)}}
+.acts{{white-space:nowrap}}.acts button{{padding:3px 11px;border-radius:5px;font-size:12px;cursor:pointer;font-weight:600;margin-right:4px}}
+.obuy{{background:#047857;border:1px solid #059669;color:#fff}}.obuy:hover{{background:#047857}}
 .osell{{background:#dc2626;border:1px solid #dc2626;color:#fff}}.osell:hover{{background:#b91c1c}}
-.acts button.ghost{{background:transparent}}.obuy.ghost{{color:#059669}}.osell.ghost{{color:#dc2626}}
-.acts button.ghost:hover{{color:#fff}}.obuy.ghost:hover{{background:#059669}}.osell.ghost:hover{{background:#dc2626}}
+.acts button.ghost{{background:transparent}}.obuy.ghost{{color:var(--ax-pos,#059669)}}.osell.ghost{{color:var(--ax-neg,#dc2626)}}
+.acts button.ghost:hover{{color:#fff}}.obuy.ghost:hover{{background:#047857}}.osell.ghost:hover{{background:#dc2626}}
+.acts .nobuy{{display:inline-block;min-width:44px;padding:3px 6px;margin-right:4px;font-size:12px;color:var(--ax-muted,#94a3b8);border:1px dashed var(--ax-border,#475569);border-radius:5px;text-align:center;cursor:help}}
+.modal .envbadge{{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;vertical-align:middle}}
+.modal .envbadge.paper{{background:#0e7490;color:#fff}}.modal .envbadge.live{{background:#dc2626;color:#fff}}
+.modal .envline{{margin:6px 0 10px;padding:7px 10px;border-radius:6px;font-size:12px}}.modal .envline.paper{{background:var(--ax-info-bg,#083344);color:var(--ax-info,#a5f3fc)}}.modal .envline.live{{background:var(--ax-neg-bg,#450a0a);color:var(--ax-neg,#fecaca);border:1px solid #dc2626}}
+.modal .nobuynote{{display:none;margin:-4px 0 8px;font-size:12px;color:var(--ax-warn,#fbbf24)}}.modal .nobuynote.show{{display:block}}
+#mSide button:disabled{{opacity:.35;cursor:not-allowed}}
 .tod-card .acts button{{padding:6px 20px;font-size:12.5px;margin-top:4px}}
-.cmpwarn{{color:#f59e0b;font-size:11px;margin-bottom:8px;display:none}}.cmpwarn.show{{display:block}}
-.brk{{background:#0f172a;border:1px solid #334155;border-radius:7px;padding:10px;margin:10px 0}}
+.cmpwarn{{color:var(--ax-warn,#f59e0b);font-size:12px;margin-bottom:8px;display:none}}.cmpwarn.show{{display:block}}
+.brk{{background:var(--ax-surface-2,#0f172a);border:1px solid var(--ax-border,#334155);border-radius:7px;padding:10px;margin:10px 0}}
 .brk .mrow{{margin-bottom:6px}}.brk input[type=number]{{max-width:80px;flex:0 0 auto}}
-.u{{font-size:11px;color:#64748b}}
-.modal-bg{{display:none;position:fixed;inset:0;background:#00000090;z-index:100;align-items:center;justify-content:center}}.modal-bg.open{{display:flex}}
-.modal{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:18px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto}}
-.modal h3{{font-size:15px;margin-bottom:4px}}.modal .sub{{font-size:11px;color:#64748b;margin-bottom:12px}}
-.mrow{{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap}}.mrow label{{width:64px;font-size:12px;color:#94a3b8;flex-shrink:0}}
+.u{{font-size:12px;color:var(--ax-muted,#64748b)}}
+.modal-bg{{display:none;position:fixed;inset:0;background:#00000090;z-index:990;align-items:center;justify-content:center}}.modal-bg.open{{display:flex}}
+.modal{{background:var(--ax-surface,#1e293b);border:1px solid var(--ax-border,#334155);border-radius:10px;padding:18px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto}}
+.modal h3{{font-size:15px;margin-bottom:4px}}.modal .sub{{font-size:12px;color:var(--ax-muted,#64748b);margin-bottom:12px}}
+.mrow{{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap}}.mrow label{{width:64px;font-size:12px;color:var(--ax-muted,#94a3b8);flex-shrink:0}}
 .mrow input,.mrow select{{flex:1;min-width:90px}}
-.seg{{display:inline-flex;border:1px solid #334155;border-radius:6px;overflow:hidden}}.seg button{{border:none;background:#0f172a;color:#94a3b8;padding:5px 16px;font-size:12px;cursor:pointer}}.seg button.on[data-v="BUY"]{{background:#059669;color:#fff}}.seg button.on[data-v="SELL"]{{background:#dc2626;color:#fff}}
-.preview{{background:#0f172a;border:1px dashed #334155;border-radius:6px;padding:9px;font-size:12px;color:#cbd5e1;margin:10px 0;line-height:1.5}}
-.mactions{{display:flex;gap:8px;margin-top:6px}}.mactions button{{flex:1;padding:8px;border:none;border-radius:6px;font-size:12.5px;cursor:pointer}}.msave{{background:#2563eb;color:#fff}}.mcancel{{background:#334155;color:#e2e8f0}}
-.banner{{font-size:11.5px;padding:5px 12px}}.banner.dry{{background:#fef9c3;color:#78350f}}.banner.live{{background:#fecaca;color:#7f1d1d;font-weight:700}}
-.pend{{background:#1e293b;border:1px solid #dc2626;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:none}}.pend.show{{display:block}}
-.pend-item{{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px;border-top:1px solid #33415555}}.pend-item:first-of-type{{border-top:none}}
-.pend-item button{{border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;margin-left:5px}}.pconf{{background:#059669;color:#fff}}.prej{{background:#dc2626;color:#fff}}
-.rules-mini{{margin-top:12px;font-size:11.5px}}.rules-mini li{{display:flex;justify-content:space-between;background:#0f172a;border-radius:5px;padding:5px 8px;margin-bottom:4px;list-style:none}}
+.seg{{display:inline-flex;border:1px solid var(--ax-border,#334155);border-radius:6px;overflow:hidden}}.seg button{{border:none;background:var(--ax-surface-2,#0f172a);color:var(--ax-muted,#94a3b8);padding:5px 16px;font-size:12px;cursor:pointer}}.seg button.on[data-v="BUY"]{{background:#047857;color:#fff}}.seg button.on[data-v="SELL"]{{background:#dc2626;color:#fff}}
+.preview{{background:var(--ax-surface-2,#0f172a);border:1px dashed var(--ax-border,#334155);border-radius:6px;padding:9px;font-size:12px;color:var(--ax-text-2,#cbd5e1);margin:10px 0;line-height:1.5}}
+.mactions{{display:flex;gap:8px;margin-top:6px}}.mactions button{{flex:1;padding:8px;border:none;border-radius:6px;font-size:12.5px;cursor:pointer}}.msave{{background:var(--ax-brand,#2563eb);color:var(--ax-brand-ink,#fff)}}.mcancel{{background:var(--ax-surface-3,#334155);color:var(--ax-text,#e2e8f0)}}
+.banner{{font-size:12px;padding:5px 12px}}.banner.dry{{background:#fef9c3;color:#78350f}}.banner.live{{background:#fecaca;color:#7f1d1d;font-weight:700}}
+.pend{{background:var(--ax-surface,#1e293b);border:1px solid #dc2626;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:none}}.pend.show{{display:block}}
+.pend-item{{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px;border-top:1px solid var(--ax-border-soft,#33415555)}}.pend-item:first-of-type{{border-top:none}}
+.pend-item button{{border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;margin-left:5px}}.pconf{{background:#047857;color:#fff}}.prej{{background:#dc2626;color:#fff}}
+.rules-mini{{margin-top:12px;font-size:12px}}.rules-mini li{{display:flex;justify-content:space-between;background:var(--ax-surface-2,#0f172a);border-radius:5px;padding:5px 8px;margin-bottom:4px;list-style:none}}
 .hide{{display:none!important}}
+
+/* 3 Nov 2026 (UX audit H4, H5, M1, M5): status strip, five KPIs, grouped tabs, legend, phone layout, order ticket */
+.nowrap{{white-space:nowrap}}
+.sstrip{{margin:10px 18px 0;border:1px solid var(--ax-border,#334155);border-radius:10px;background:var(--ax-surface,#1e293b);overflow:hidden}}
+.ss-head{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 12px;font-size:12.5px;color:var(--ax-muted,#94a3b8)}}
+.ss-meta{{margin-right:auto}}
+.ss-more{{background:none;border:1px solid var(--ax-border,#334155);color:var(--ax-brand,#38bdf8);border-radius:6px;padding:3px 10px;font-size:12.5px;cursor:pointer}}
+.ss-items > .ss-item[data-hide="1"]{{display:none}}
+body.ax-shelled .ss-item #atipOpBanner{{display:none!important}}
+.ss-items .banner, .ss-items details, .ss-items > .ss-item > div{{font-size:12.5px!important}}
+.kpi-row{{align-items:stretch}}
+.kpi-more{{flex:1 1 100%}}
+.kpi-more > summary{{cursor:pointer;font-size:12.5px;color:var(--ax-brand,#38bdf8);font-weight:600;padding:4px 0}}
+.kpi-more-body{{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}}
+.kpi-more .sidebar{{width:auto;min-height:0;flex:1 1 240px;border:1px solid var(--ax-border,#334155);border-radius:8px}}
+details.sector > summary{{cursor:pointer;list-style:revert}}
+details.sector .ss-sum{{font-weight:400;color:var(--ax-text,#e2e8f0);font-size:13px}}
+.sec-l{{font-size:12px;color:var(--ax-text,#e2e8f0)}}.sec-v{{font-size:14px;font-weight:700;color:var(--ax-text,#fff)}}
+.tgroups{{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}}
+.tgroups button{{border:1px solid var(--ax-border,#334155);background:var(--ax-surface,#1e293b);color:var(--ax-text,#e2e8f0);border-radius:999px;padding:5px 14px;font-size:13px;font-weight:600;cursor:pointer}}
+.tgroups button[aria-pressed="true"]{{background:var(--ax-text,#e2e8f0);color:var(--ax-surface,#0f172a);border-color:var(--ax-text,#e2e8f0)}}
+.tabs{{flex-wrap:wrap}}.tab[data-hide="1"]{{display:none}}
+.tabs:not([data-ready]) > .tab:nth-child(n+3){{display:none}}
+.tab:focus-visible,.tgroups button:focus-visible,.tc:focus-visible{{outline:3px solid var(--ax-focus,#93c5fd);outline-offset:2px}}
+.tc{{overflow-x:auto;max-width:100%}}
+.sp{{display:inline-block;min-width:30px;padding:1px 7px;border-radius:4px;font-weight:600;font-size:12.5px;text-align:center}}
+.sp-strong{{background:var(--ax-pos-bg,#05966920);color:var(--ax-pos,#059669)}}.sp-neutral{{background:var(--ax-warn-bg,#f59e0b20);color:var(--ax-warn,#f59e0b)}}.sp-weak{{background:var(--ax-neg-bg,#dc262620);color:var(--ax-neg,#dc2626)}}
+.mlab{{width:64px;font-size:13px;color:var(--ax-muted,#94a3b8);flex-shrink:0}}
+.modal{{width:min(480px,94vw)}}
+.chk{{display:inline-flex!important;align-items:center;gap:6px;width:auto!important;color:var(--ax-text,#e2e8f0)!important;white-space:nowrap}}
+.chk input{{flex:none;min-width:0;width:16px;height:16px}}
+.sw{{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center;margin:10px 0}}
+.sw label{{font-size:13px;font-weight:600;color:var(--ax-text,#e2e8f0)}}
+.sw .swhelp{{grid-column:2;font-size:12px;color:var(--ax-muted,#94a3b8);line-height:1.45}}
+.sw input[role=switch]{{appearance:none;-webkit-appearance:none;width:40px;height:22px;border-radius:11px;background:var(--ax-surface-3,#334155);border:1px solid var(--ax-border,#475569);position:relative;cursor:pointer;margin:0;padding:0;flex:none;min-width:0}}
+.sw input[role=switch]::before{{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--ax-surface,#fff);box-shadow:0 1px 2px rgba(0,0,0,.4);transition:left .15s}}
+.sw input[role=switch]:checked{{background:var(--ax-brand,#2563eb);border-color:var(--ax-brand,#2563eb)}}
+.sw input[role=switch]:checked::before{{left:20px}}
+.sw input[role=switch]:focus-visible{{outline:3px solid var(--ax-focus,#93c5fd);outline-offset:2px}}
+.mwarn{{background:var(--ax-warn-bg,#2a2410);color:var(--ax-warn,#fde68a);border-radius:6px;padding:7px 10px;font-size:12.5px;margin:-4px 0 8px}}
+.merr{{background:var(--ax-neg-bg,#3b1114);color:var(--ax-neg,#fca5a5);border-radius:6px;padding:7px 10px;font-size:12.5px;margin:6px 0}}
+.mnote{{font-size:12px;color:var(--ax-muted,#94a3b8);line-height:1.5;margin:4px 0 6px}}
+.mnote button{{background:none;border:1px solid var(--ax-brand,#38bdf8);color:var(--ax-brand,#38bdf8);border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer;margin-left:4px}}
+.mrisk{{background:var(--ax-surface-2,#0f172a);border:1px solid var(--ax-border,#334155);border-radius:6px;padding:9px;margin:0 0 10px;font-size:12.5px;line-height:1.55}}
+.mrisk dl{{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}}.mrisk dt{{color:var(--ax-muted,#94a3b8)}}.mrisk dd{{margin:0;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}}
+.rmeter{{height:8px;border-radius:4px;background:var(--ax-surface-3,#334155);overflow:hidden;margin:6px 0 2px}}.rmeter span{{display:block;height:100%;border-radius:4px}}
+.rm-ok{{background:var(--ax-pos,#059669)}}.rm-warn{{background:var(--ax-warn,#f59e0b)}}.rm-bad{{background:var(--ax-neg,#dc2626)}}
+.mrow input,.mrow select{{min-width:0}}
+td,th{{font-variant-numeric:tabular-nums}}
+@media (max-width:767px){{
+ .sstrip{{margin:8px 10px 0}}.kpi-row{{padding:8px 10px}}.kpi{{flex:1 1 140px;min-width:0}}
+ .main{{padding:10px;min-width:0}}.body{{display:block}}
+ #st th:first-child,#st td:first-child{{display:none}}
+ .tc table td:first-child,.tc table th:first-child,#st td:nth-child(2),#st th:nth-child(2){{position:sticky;left:0;z-index:1;background:var(--ax-surface,#1e293b)}}
+ .tfilter{{flex-wrap:wrap}}.tfilter input{{flex:1 1 100%}}
+ .tod-card{{grid-template-columns:1fr}}
+ .mrow label,.mlab{{width:100%}}
+}}
 </style></head>
 <body>
-<div class="topbar"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><span id="clk" style="font-size:11px;color:#94a3b8"></span><span style="font-size:11px;color:#64748b">Data as of: {gen}</span><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a><button class="rf" onclick="location.reload()">↻ Refresh</button></div></div>
-{op_banner}
-{stale_banner}
-{health_panel}
-<div id="brokerBanner" class="banner dry">Checking broker status…</div>
+<div class="topbar legacy-only"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a></div></div>
+<div id="sstrip" class="sstrip" role="region" aria-label="Status">
+ <div class="ss-head"><span class="ss-meta">Data as of {gen} IST · <span id="clk" class="nowrap">Refresh in 5:00</span></span>
+  <button type="button" class="rf" onclick="location.reload()">↻ Refresh now</button>
+  <button type="button" class="ss-more" id="ssMore" aria-expanded="false" aria-controls="ssItems" hidden></button></div>
+ <div class="ss-items" id="ssItems">
+ <div class="ss-item" data-sev="op">{op_banner}</div>
+ <div class="ss-item" data-sev="{3 if stale_n>=3 else 2 if stale_n>=1 else 0}">{stale_banner}</div>
+ <div class="ss-item" data-sev="{3 if health_bad else 0}">{health_panel}</div>
+ <div class="ss-item" data-sev="0" id="brokerItem"><div id="brokerBanner" class="banner dry">Checking broker status…</div></div>
+ </div>
+</div>
+<script>
+// ── one status strip (UX audit H4): the most severe item shows, the rest behind "+N more" ──
+var ssOpen=false;
+function ssSev(it){{
+  var sv=it.getAttribute('data-sev');
+  if(sv!=='op') return [true,parseInt(sv,10)||0];
+  var tb=document.getElementById('atipTokenBanner'), ob=document.getElementById('atipOpBanner'), rb=document.getElementById('atipRoleBanner');
+  var on=function(x){{return x&&getComputedStyle(x).display!=='none'&&(x.textContent||'').trim();}};
+  if(on(tb)) return [true,3];
+  if(on(ob)) return [true,/⏸|STOPPED|stopped/.test(ob.textContent)?2:0];
+  return [!!on(rb),1];
+}}
+function ssLayout(){{
+  var box=document.getElementById('ssItems'), btn=document.getElementById('ssMore'); if(!box||!btn) return;
+  var its=[].slice.call(box.children).map(function(it,i){{var v=ssSev(it);return {{el:it,show:v[0],sev:v[1],i:i}};}});
+  its.sort(function(a,b){{return (b.sev-a.sev)||(a.i-b.i);}});
+  its.forEach(function(x){{box.appendChild(x.el);}});
+  var vis=its.filter(function(x){{return x.show;}}), n=0;
+  its.forEach(function(x){{var h=!x.show||(!ssOpen&&x!==vis[0]); x.el.setAttribute('data-hide',h?'1':'0'); if(x.show&&x!==vis[0]) n++;}});
+  btn.hidden=!n; btn.textContent=ssOpen?'Show less':('+'+n+' more'); btn.setAttribute('aria-expanded',ssOpen?'true':'false');
+}}
+ssLayout(); document.getElementById('ssMore').addEventListener('click',function(){{ssOpen=!ssOpen;ssLayout();}});
+</script>
 <div id="pendBox" class="pend" style="margin:10px 18px 0"><b style="color:#dc2626">⚠️ Awaiting confirmation</b><div id="pendList"></div></div>
-<div class="kpi-row">
+<div class="kpi-row" role="region" aria-label="Market at a glance">
   <div class="kpi"><div class="kpi-l">Market Health</div><div class="kpi-v" style="color:{mh_col}">{mh_txt}</div><div style="font-size:11px;color:#64748b">{regime}</div></div>
   <div class="kpi"><div class="kpi-l">Nifty 50</div><div class="kpi-v">{chg(idx.get('nifty50_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('nifty50'):,.2f}" if idx.get('nifty50') else '—')}</div></div>
-  <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">India VIX</div><div class="kpi-v" style="color:{'#dc2626' if (idx.get('india_vix') or 0)>20 else '#94a3b8'}">{idx.get('india_vix','—')}</div></div>
   <div class="kpi"><div class="kpi-l">GIFT Nifty</div><div class="kpi-v">{chg(idx.get('gift_nifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('gift_nifty'):,.0f}" if idx.get('gift_nifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">Sentiment</div><div class="kpi-v" style="color:{'#059669' if idx.get('overall_sentiment')=='BULLISH' else '#dc2626' if idx.get('overall_sentiment')=='BEARISH' else '#94a3b8'}">{idx.get('overall_sentiment') or '—'}</div></div>
+  <details class="kpi-more"><summary>Global and more</summary><div class="kpi-more-body">
+  <div class="kpi"><div class="kpi-l">Bank Nifty</div><div class="kpi-v">{chg(idx.get('banknifty_chg'))}</div><div style="font-size:11px;color:#64748b">{(f"{idx.get('banknifty'):,.2f}" if idx.get('banknifty') else '—')}</div></div>
   <div class="kpi"><div class="kpi-l">S&P 500</div><div class="kpi-v">{chg(glb.get('sp500_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">Gold</div><div class="kpi-v">{chg(glb.get('gold_chg'))}</div></div>
   <div class="kpi"><div class="kpi-l">USD/INR</div><div class="kpi-v">{chg(glb.get('usd_inr_chg'))}</div></div>
+  <div class="sidebar"><h3>NSE Indexes &nbsp;{idx_note}</h3>{idx_rows}</div><div class="sidebar"><h3>Global &nbsp;{glb_note}</h3>{glb_rows}</div></div></details>
 </div>
 <div class="body">
-<div class="sidebar"><h3>NSE Indexes &nbsp;{idx_note}</h3>{idx_rows}<h3>Global &nbsp;{glb_note}</h3>{glb_rows}</div>
 <div class="main">
   <div class="section"><div class="st">🎯 Trade of the Day</div>
-    <div class="tod-card" data-sym="{tod_sym}">
+    {tod_none if not tod_buy else ''}<div class="tod-card" data-sym="{tod_sym}"{'' if tod_buy else ' hidden'}>
       <div class="tod-sym">{tod_sym} <span style="font-size:13px;color:#059669">{tod_sig}</span>{f'<div style="font-size:12px;color:#94a3b8;font-weight:400">{tod_cname}</div>' if tod_cname else ''}</div>
-      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">₹{tod_cmp}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
-      <div><div class="tod-l">Stop Loss</div><div class="tod-v" style="color:#dc2626">₹{tod.get('sl','—')}</div></div>
-      <div><div class="tod-l">Target 1</div><div class="tod-v" style="color:#059669">₹{tod.get('t1','—')}</div></div>
-      <div><div class="tod-l">Target 2</div><div class="tod-v" style="color:#059669">₹{tod.get('t2','—')}</div></div>
+      <div><div class="tod-l">CMP <span style="color:#38bdf8">●live</span></div><div class="tod-v cmpcell" data-prev="{tod.get('prev_close') or ''}" data-cmp="{tod.get('cmp') or ''}">{money(tod.get('cmp'))}{chg_span(tod.get('cmp'), tod.get('prev_close'), size=12)}</div></div>
+      {tod_plan}
       <div><div class="tod-l">ACS Confidence</div><div class="tod-v">{(tod.get('acs') or 0):.0f}/100</div></div>
       <div style="grid-column:1/-1;font-size:11px;color:#94a3b8">✦ {tod.get('top_factor_1','—')} &nbsp; ✦ {tod.get('top_factor_2','—')}</div>
-      <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'))}</div>
+      <div style="grid-column:1/-1" class="acts">{order_btns(tod.get('symbol'),tod.get('cmp'),primary=('SELL' if tod_sig=='SELL' else 'BUY'),signal=tod_sig)}</div>
     </div>
   </div>
-  <div class="section"><div class="st">🔄 Sector Rotation <span style="font-size:11px;color:#64748b;font-weight:400">— strongest first &nbsp;{idx_note}</span></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">{sector_tiles}</div>
-  </div>
-  <div class="tabs"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
+  <details class="section sector"><summary class="st">🔄 Sector Rotation <span class="ss-sum">{sector_line}</span> <span class="u">{idx_note} · show all</span></summary>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">{sector_tiles}</div>
+  </details>
+  <div class="tgroups" role="group" aria-label="Views"><button type="button" data-g="scores" aria-pressed="true">Scores</button><button type="button" data-g="lists" aria-pressed="false">Lists</button><button type="button" data-g="flows" aria-pressed="false">Flows &amp; News</button><button type="button" data-g="activity" aria-pressed="false">Activity</button></div>
+  <div class="tabs" role="tablist" aria-label="Tables"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
-    <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" oninput="ft()"><select id="sf" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history</span></div>
-    <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>ATIP</th><th>VPI</th><th>MRI</th><th>RRI</th><th>ZPI</th><th>CRI↓</th><th>ACS</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows}</tbody></table>
+    {score_legend}
+    <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" aria-label="Search symbol or company" oninput="ft()"><select id="sf" aria-label="Signal" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" aria-label="Rows to show" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history · hover a column name for its meaning</span></div>
+    <table id="st"><thead><tr><th>#</th><th>Symbol</th><th>{G.abbr("ATIP")}</th><th>{G.abbr("VPI")}</th><th>{G.abbr("MRI")}</th><th>{G.abbr("RRI")}</th><th>{G.abbr("ZPI")}</th><th>{G.abbr("CRI", "CRI↓")}</th><th>{G.abbr("ACS")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Factor</th><th>Action</th></tr></thead><tbody>{score_rows or '<tr><td colspan="14" style="text-align:center;color:#64748b;padding:20px">No scores yet. The post-market run computes them at 16:45 IST on trading days.</td></tr>'}</tbody></table>
   </div>
   <div id="port" class="tc section">
     {f'''<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap">
@@ -951,11 +1114,11 @@ def build_html(state):
       </div>
     </div>''' if phs_score is not None else ''}
     <table><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>P&L%</th><th>ATIP</th><th>CRI↓</th><th>Signal</th><th>Action</th></tr></thead><tbody>{port_rows if port_rows else '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:20px">No portfolio data. Configure Dhan (or Zerodha Kite) API and run a portfolio sync.</td></tr>'}</tbody></table></div>
-  <div id="vpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ATIP</th><th>VPI</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('vpi','')}</tbody></table></div>
-  <div id="zpi" class="tc section"><table><thead><tr><th>Symbol</th><th>ZPI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('zpi','')}</tbody></table></div>
-  <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>RRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>
-  <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>MRI</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
-  <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>CRI 🔴</th><th>ATIP</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>Beta</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','')}</tbody></table></div>
+  <div id="vpi" class="tc section"><table><thead><tr><th>Symbol</th><th>{G.abbr("ATIP")}</th><th>{G.abbr("VPI")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('vpi','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No VPI list for this date yet. It comes with the post-market scores.</td></tr>'}</tbody></table></div>
+  <div id="zpi" class="tc section"><table><thead><tr><th>Symbol</th><th>{G.abbr("ZPI")}</th><th>{G.abbr("ATIP")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('zpi','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No buy-zone list for this date yet. It comes with the post-market scores.</td></tr>'}</tbody></table></div>
+  <div id="rri" class="tc section"><table><thead><tr><th>Symbol</th><th>{G.abbr("RRI")}</th><th>{G.abbr("ATIP")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('rri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No RRI data for this date.</td></tr>'}</tbody></table></div>
+  <div id="mri" class="tc section"><table><thead><tr><th>Symbol</th><th>{G.abbr("MRI")}</th><th>{G.abbr("ATIP")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('mri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No MRI data for this date.</td></tr>'}</tbody></table></div>
+  <div id="cri" class="tc section"><table><thead><tr><th>Symbol</th><th>{G.abbr("CRI", "CRI 🔴")}</th><th>{G.abbr("ATIP")}</th><th>CMP <span style="color:#38bdf8">●live</span></th><th>{G.abbr("BETA", "Beta")}</th><th>Signal</th><th>Action</th></tr></thead><tbody>{top25_rows.get('cri','') or '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px">No crash-risk list for this date yet. It comes with the post-market scores.</td></tr>'}</tbody></table></div>
   <div id="fiidii" class="tc section"><table><thead><tr><th>Date</th><th>FII net ₹Cr</th><th>DII net ₹Cr</th><th>FII 5-day avg</th><th>DII 5-day avg</th></tr></thead><tbody>{fii_rows if fii_rows else '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px">No FII/DII data yet — it is fetched by the post-market Bhavcopy job.</td></tr>'}</tbody></table></div>
   <div id="news" class="tc section">{ni_news_panel}<div class="st" style="margin-top:14px">Headlines</div><table><thead><tr><th style="width:320px">Headline</th><th>Source</th><th>Importance</th><th>Sentiment</th></tr></thead><tbody>{news_rows}</tbody></table></div>
   <div id="hist" class="tc section">
@@ -973,8 +1136,8 @@ def build_html(state):
     <div class="st" style="margin-top:16px">Signal log &mdash; {sh_total} signals, {sh_span} (append-only)
       <span style="font-size:11px;color:#64748b;font-weight:400">&nbsp; "Last 1 year" counts signals issued since {sh_since_1y}</span></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
-      <input id="hsrch" placeholder="Filter by symbol..." oninput="hft()">
-      <select id="hsf" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
+      <input id="hsrch" placeholder="Filter by symbol..." aria-label="Filter the signal log by symbol" oninput="hft()">
+      <select id="hsf" aria-label="Signal" onchange="hft()"><option value="">All signals</option><option>BUY</option><option>SELL</option></select>
       <span id="hcnt" style="font-size:11px;color:#64748b;align-self:center"></span>
     </div>
     <table id="ht"><thead><tr><th title="Date the signal was issued">Issued</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>ATIP</th><th>ZPI</th><th>CRI</th>
@@ -1003,32 +1166,38 @@ def build_html(state):
   <p class="disc">⚠️ ATIP is for personal informational use only. Not financial advice. All AI scores are model outputs — verify independently. Not SEBI registered. Consult a registered advisor before investing.</p>
 </div></div>
 
-<div class="modal-bg" id="modalBg"><div class="modal">
-  <h3>Order Rule — <span id="mSym"></span></h3>
+<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle" id="mBox" data-costs="{costs_attr}">
+  <h3 id="mTitle">Order Rule — <span id="mSym"></span><span class="envbadge {env_cls}" id="mEnv">{env_now}</span></h3>
   <div class="sub" id="mCmp"></div>
+  <div class="envline {env_cls}" id="mEnvLine" role="status">{env_line}</div>
+  <div class="nobuynote" id="mNoBuy">Buy is locked: this stock's signal is <b id="mSig"></b>. Buy is available only on a BUY signal.</div>
   <div class="cmpwarn" id="mCmpWarn">⚠ No reference price available for this stock — enter an absolute target price (% move needs a reference).</div>
-  <div class="mrow"><label>Side</label><div class="seg" id="mSide"><button type="button" class="on" data-v="BUY" onclick="setSide('BUY')">Buy</button><button type="button" data-v="SELL" onclick="setSide('SELL')">Sell</button></div></div>
-  <div class="mrow"><label>Target</label><select id="mTT" onchange="mPrev()"><option value="PRICE">At price ₹</option><option value="PERCENT">% move</option></select><input type="number" step="0.01" id="mTV" placeholder="e.g. 2500" oninput="mPrev()"></div>
-  <div class="mrow"><label>Qty</label><select id="mQT" onchange="mPrev()"><option value="SHARES">Shares</option><option value="AMOUNT">₹ Amount</option><option value="RISK">% capital at risk (BUY + stoploss)</option></select><input type="number" step="0.01" id="mQV" placeholder="e.g. 10" oninput="mPrev()"></div>
-  <div class="mrow"><label>Product</label><select id="mProd"><option value="CNC">Delivery</option><option value="INTRADAY">Intraday</option></select><select id="mOT" onchange="mPrev()"><option value="MARKET">Market</option><option value="LIMIT">Limit</option></select><input type="number" step="0.01" id="mLimit" class="hide" placeholder="Limit ₹"></div>
+  <div class="mrow"><span class="mlab" id="mSideL">Side</span><div class="seg" id="mSide" role="group" aria-labelledby="mSideL"><button type="button" class="on" data-v="BUY" onclick="setSide('BUY')">Buy</button><button type="button" data-v="SELL" onclick="setSide('SELL')">Sell</button></div></div>
+  <div class="mrow"><label for="mTV">Target</label><select id="mTT" aria-label="Target type" onchange="mPrev()"><option value="PRICE">At price ₹</option><option value="PERCENT">% move</option></select><input type="number" step="0.01" id="mTV" placeholder="e.g. 2500" oninput="mPrev()"></div>
+  <div class="mrow"><label for="mQV">Qty</label><select id="mQT" aria-label="Quantity type" onchange="mPrev()"><option value="SHARES">Shares</option><option value="AMOUNT">₹ Amount</option><option value="RISK">% capital at risk (BUY + stoploss)</option></select><input type="number" step="0.01" id="mQV" placeholder="e.g. 10" oninput="mPrev()"></div>
+  <div class="mrow"><label for="mProd">Product</label><select id="mProd" onchange="mPrev()"><option value="CNC">Delivery</option><option value="INTRADAY">Intraday</option></select><select id="mOT" aria-label="Order type" onchange="mPrev()"><option value="MARKET">Market</option><option value="LIMIT">Limit</option></select><input type="number" step="0.01" id="mLimit" class="hide" aria-label="Limit price, ₹" placeholder="Limit ₹" oninput="mPrev()"></div>
   <div class="brk">
-    <div style="font-size:11.5px;color:#38bdf8;font-weight:600;margin-bottom:7px">🎯 Bracket — auto-exit after this order fills</div>
-    <div class="mrow"><label><input type="checkbox" id="mBrk" checked onchange="mPrev()"> Enable</label>
-      <span style="font-size:11px;color:#64748b">exits are measured from the actual fill price</span></div>
-    <div class="mrow"><label>Target 1</label><input type="number" step="0.1" id="mBT1" value="3" oninput="mPrev()"><span class="u">% profit — exits</span><input type="number" step="5" id="mBSplit" value="50" oninput="mPrev()" style="max-width:60px"><span class="u">% of qty</span></div>
-    <div class="mrow"><label>Target 2</label><input type="number" step="0.1" id="mBT2" value="6" oninput="mPrev()"><span class="u">% — exits the remainder (blank = single target)</span></div>
-    <div class="mrow"><label>Stoploss</label><input type="number" step="0.1" id="mBSL" value="2" oninput="mPrev()"><span class="u">% loss</span></div>
-    <div class="mrow"><label><input type="checkbox" id="mTrail" checked onchange="mPrev()"> Trail it</label>
-      <input type="number" step="0.1" id="mTrailV" value="2" oninput="mPrev()"><span class="u">% below the high</span>
-      <input type="number" step="0.5" id="mTrailJ" value="0" oninput="mPrev()" style="max-width:60px"><span class="u">₹ step (0 = smooth)</span></div>
-    <div style="font-size:10.5px;color:#f59e0b;line-height:1.5">⚠ Trailing is computed by THIS dashboard, not by Dhan — it freezes if the dashboard stops. Run <code>python -m orders.rules --probe-broker</code> to see if your Dhan SDK can hold the stop broker-side instead.</div>
-    <div class="mrow"><label style="width:auto"><input type="checkbox" id="mBAuto" checked onchange="mPrev()"> Exit legs fire without asking me</label></div>
-    <div style="font-size:10.5px;color:#94a3b8;line-height:1.5">A stop that waits for a tap protects nothing while you're away, so this is on by default. It still refuses to act on a quote older than 3 minutes.</div>
+    <div style="font-size:12.5px;color:#38bdf8;font-weight:600;margin-bottom:7px">🎯 Bracket — auto-exit after this order fills</div>
+    <div class="mrow"><label class="chk"><input type="checkbox" id="mBrk" checked onchange="mPrev()"> Use a bracket</label>
+      <span class="u">exits are measured from the actual fill price</span></div>
+    <div class="mrow"><label for="mBT1">Target 1</label><input type="number" step="0.1" id="mBT1" value="3" oninput="mPrev()"><span class="u">% profit, exits</span><input type="number" step="5" id="mBSplit" value="50" aria-label="Share of the quantity Target 1 exits, %" oninput="mPrev()" style="max-width:60px"><span class="u">% of qty</span></div>
+    <div class="mrow"><label for="mBT2">Target 2</label><input type="number" step="0.1" id="mBT2" value="6" oninput="mPrev()"><span class="u">% — exits the rest (blank = one target)</span></div>
+    <div class="mrow"><label for="mBSL">Stoploss</label><input type="number" step="0.1" id="mBSL" value="2" oninput="mPrev()"><span class="u">% loss</span></div>
+    <div class="mrow"><label class="chk"><input type="checkbox" id="mTrail" checked onchange="mPrev()"> Trail the stop</label>
+      <input type="number" step="0.1" id="mTrailV" value="2" aria-label="Trail distance, % below the high" oninput="mPrev()"><span class="u">% below the high</span>
+      <input type="number" step="0.5" id="mTrailJ" value="0" aria-label="Trail step, ₹ (0 = smooth)" oninput="mPrev()" style="max-width:60px"><span class="u">₹ step (0 = smooth)</span></div>
+    <div class="mnote">Trailing is worked out by this dashboard, not by Dhan, so it pauses whenever the dashboard is stopped. <button type="button" onclick="checkBroker()">Check broker</button> to see whether your Dhan connection can hold the stop on Dhan's side instead.<div id="mBrkCap" role="status"></div></div>
+    <div class="sw"><input type="checkbox" role="switch" id="mBAuto" checked onchange="mPrev()"><label for="mBAuto">Exit legs fire without asking me</label>
+      <div class="swhelp">On by default: a stop that waits for your tap protects nothing while you are away. It still refuses to act on a quote older than 3 minutes.</div></div>
   </div>
-  <div class="mrow"><label style="width:auto"><input type="checkbox" id="mConfirm" checked> Require confirmation before the ENTRY order is placed</label></div>
+  <div class="sw"><input type="checkbox" role="switch" id="mConfirm" checked onchange="mPrev()"><label for="mConfirm">Require confirmation before the ENTRY order</label>
+    <div class="swhelp">On: when the trigger is hit, ATIP asks you before it places the entry.</div></div>
+  <div class="mwarn" id="mConfWarn" role="alert" hidden>⚠ Entry confirmation is off: when the trigger is hit, ATIP places this entry at once, without asking you.</div>
   <div class="preview" id="mPreviewTxt">—</div>
-  <div class="rules-mini"><b style="font-size:11px;color:#64748b">Active rules for this stock</b><ul id="mRulesList"></ul></div>
-  <div class="mactions"><button class="msave" onclick="saveOrderRule()">Save Rule</button><button class="mcancel" onclick="closeOrderModal()">Close</button></div>
+  <div class="mrisk" id="mRisk" aria-live="polite"></div>
+  <div class="merr" id="mErr" role="alert" hidden></div>
+  <div class="rules-mini"><b style="font-size:12px;color:#64748b">Active rules for this stock</b><ul id="mRulesList"></ul></div>
+  <div class="mactions"><button class="msave" onclick="saveOrderRule()">Save rule · {env_now}</button><button class="mcancel" onclick="closeOrderModal()">Close</button></div>
 </div></div>
 <script>
 // Every route that changes anything needs this token (dashboard/security.py).
@@ -1102,16 +1271,19 @@ function ft(){{}} function hft(){{}}
 // ── Live clock + auto page refresh (topbar, right side) ────────────────
 var AUTO_REFRESH_SECONDS=300, _secsLeft=AUTO_REFRESH_SECONDS;
 function tickClock(){{
-  var now=new Date();
-  document.getElementById('clk').textContent='🕒 '+now.toLocaleTimeString()+'  ·  refresh in '+_secsLeft+'s';
+  // nothing you are typing into is thrown away: no reload while the order ticket or a dialog is open
+  var mb=document.getElementById('modalBg');
+  if((mb&&mb.classList.contains('open'))||document.querySelector('dialog[open]')) _secsLeft=Math.max(_secsLeft,30);
+  var el=document.getElementById('clk'), t=Math.max(0,_secsLeft);
+  if(el) el.textContent='Refresh in '+Math.floor(t/60)+':'+(t%60<10?'0':'')+(t%60);
   _secsLeft--;
   if(_secsLeft<0) location.reload();
 }}
 setInterval(tickClock,1000); tickClock();
 
 // ── Order rule modal ─────────────────────────────────────────────────
-var mSymbol='', mCmpVal=0, mSideVal='BUY';
-function setSide(v){{mSideVal=v;document.querySelectorAll('#mSide button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));mPrev();}}
+var mSymbol='', mCmpVal=0, mSideVal='BUY', mSig=null;
+function setSide(v){{if(v==='BUY'&&mSig!==null&&mSig!=='BUY')return;mSideVal=v;document.querySelectorAll('#mSide button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));mPrev();}}
 function liveCmpFor(sym){{
   // The live-quote poller rewrites .cmpcell every 15s, so it's a fresher
   // reference price than the EOD close baked into the page at render time —
@@ -1126,10 +1298,17 @@ function liveCmpFor(sym){{
   var v=parseFloat((el.textContent||'').replace(/[^0-9.]/g,''));
   return (!isNaN(v)&&v>0)?v:0;
 }}
-function openOrderModal(sym,cmp,side){{
+function openOrderModal(sym,cmp,side,signal){{
   mSymbol=sym;
   mCmpVal=(cmp&&cmp>0)?cmp:liveCmpFor(sym);
-  mSideVal=side||'BUY';
+  // Buy only on a BUY signal: a known non-BUY signal locks the Buy side.
+  // An unknown signal (undefined, e.g. from a page that doesn't pass one) leaves it open.
+  mSig=(signal===undefined||signal===null)?null:String(signal).toUpperCase();
+  var buyLocked=(mSig!==null&&mSig!=='BUY');
+  mSideVal=(buyLocked?'SELL':(side||'BUY'));
+  var bb=document.querySelector('#mSide button[data-v="BUY"]'); if(bb){{bb.disabled=buyLocked;bb.title=buyLocked?'Buy is available only on a BUY signal':'';}}
+  document.getElementById('mNoBuy').classList.toggle('show',buyLocked);
+  document.getElementById('mSig').textContent=mSig||'';
   document.getElementById('mSym').textContent=sym;
   document.getElementById('mCmp').textContent=mCmpVal>0?('CMP ₹'+mCmpVal):'CMP unavailable';
   // Without a reference price a PERCENT trigger resolves against 0, so lock
@@ -1180,15 +1359,73 @@ function mPrev(){{
     brkTxt=parts.length?('then auto-exit: '+parts.join(' · ')+(b.auto?' [fires automatically]':' [asks first]')):'bracket on but no levels set';
   }}
   document.getElementById('mPreviewTxt').textContent=entryTxt+' — '+confTxt+'.  '+brkTxt+'.';
+  document.getElementById('mConfWarn').hidden=document.getElementById('mConfirm').checked;
+  document.getElementById('mLimit').classList.toggle('hide',document.getElementById('mOT').value!=='LIMIT');
+  mRiskBox(tp);
+}}
+// ── one money format (UX audit M4): Indian grouping and 2 decimals, as dashboard/ux_kit.inr ──
+function inrf(v){{if(v===null||v===undefined||v===''||isNaN(v))return '—';var n=Number(v),neg=n<-0.004,p=Math.abs(n).toFixed(2).split('.'),w=p[0];if(w.length>3){{w=w.slice(0,-3).replace(/\\B(?=(\\d{{2}})+(?!\\d))/g,',')+','+w.slice(-3);}}return (neg?'−':'')+'₹'+w+'.'+p[1];}}
+// ── money at risk and charges (UX audit M5): backtest/costs.py's models, sent with the page ──
+var MC=null;
+function mCosts(){{if(MC===null){{try{{MC=JSON.parse(document.getElementById('mBox').dataset.costs||'{{}}');}}catch(e){{MC={{}};}}}}return MC;}}
+function mCharge(side,value,prod){{
+  var m=mCosts()[prod]||null; if(!m||!(value>0)) return null;
+  if(m.name==='flat') return value*m.flat_pct/100;
+  var br=Math.max(value*m.brokerage_pct/100,m.brokerage_min||0); if(m.brokerage_max!=null) br=Math.min(br,m.brokerage_max);
+  var stt=value*(side==='BUY'?m.stt_buy_pct:m.stt_sell_pct)/100, ex=value*m.exchange_txn_pct/100, sebi=value*m.sebi_fee_pct/100;
+  var stamp=side==='BUY'?value*m.stamp_buy_pct/100:0, gst=(br+ex+sebi)*m.gst_pct/100, dp=side==='SELL'?(m.dp_charge_per_sell||0):0;
+  return br+stt+ex+sebi+stamp+gst+dp;
+}}
+function mRiskBox(tp){{
+  var box=document.getElementById('mRisk'); if(!box) return;
+  var ot=document.getElementById('mOT').value, lim=parseFloat(document.getElementById('mLimit').value);
+  var e=(ot==='LIMIT'&&!isNaN(lim))?lim:tp, prod=document.getElementById('mProd').value;
+  var qt=document.getElementById('mQT').value, qv=parseFloat(document.getElementById('mQV').value);
+  var env=(document.getElementById('mEnv')||{{}}).textContent||'PAPER', buy=mSideVal==='BUY';
+  if(!(e>0)||isNaN(qv)||qv<=0){{box.innerHTML='<span class="u">Type a target and a quantity to see the money at risk and the charges.</span> Goes to <b>'+env+'</b>.';return;}}
+  if(qt==='RISK'){{box.innerHTML='<dl><dt>Money at risk</dt><dd>'+qv+'% of capital</dd><dt>Shares</dt><dd>sized when it fills, from the stoploss</dd><dt>Goes to</dt><dd>'+env+'</dd></dl>';return;}}
+  var q=qt==='SHARES'?Math.floor(qv):Math.floor(qv/e);
+  if(q<1){{box.innerHTML='<span class="u">'+(qt==='SHARES'?'Enter at least 1 share.':inrf(qv)+' buys less than one share at '+inrf(e)+'.')+'</span>';return;}}
+  var val=q*e, b=brkVals(), stop=(b&&b.sl)?(buy?e*(1-b.sl/100):e*(1+b.sl/100)):null;
+  // a buy pays its own charges and the sale's; a sell (an exit) pays only its own
+  var c1=mCharge(mSideVal,val,prod), c2=buy?mCharge('SELL',stop?q*stop:val,prod):0, ch=(c1||0)+(c2||0);
+  var risk=stop!==null?q*Math.abs(e-stop)+ch:val, pc=val>0?risk/val*100:0;
+  var tone=stop===null?'bad':(pc<=2.5?'ok':(pc<=5?'warn':'bad')), word={{ok:'small',warn:'medium',bad:'large'}}[tone];
+  box.innerHTML='<dl><dt>Order value</dt><dd>'+q+' × '+inrf(e)+' = '+inrf(val)+'</dd>'+
+    '<dt>'+(buy?'Money at risk':'Exit value')+'</dt><dd>'+(buy?(stop!==null?inrf(risk)+' if the stop at '+inrf(stop)+' is hit':'all '+inrf(val)+': no stoploss set'):inrf(val))+'</dd>'+
+    '<dt>Estimated charges</dt><dd>'+(c1===null?'—':inrf(ch)+' ('+(buy?'buy '+inrf(c1)+' + sell '+inrf(c2):'this sale')+', '+(prod==='INTRADAY'?'intraday':'delivery')+')')+'</dd>'+
+    '<dt>Goes to</dt><dd>'+env+'</dd></dl>'+
+    (buy?'<div class="rmeter" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="'+Math.min(10,pc).toFixed(1)+'" aria-label="Risk meter: '+pc.toFixed(1)+' per cent of the order, '+word+'"><span class="rm-'+tone+'" style="width:'+Math.min(100,pc*10).toFixed(0)+'%"></span></div><span class="u">Risk meter: '+pc.toFixed(1)+'% of the order value, '+word+' (stop loss and charges)</span>':'');
+}}
+function mErr(m){{var el=document.getElementById('mErr'); if(!el) return; el.hidden=!m; el.textContent=m||''; if(m&&window.AX&&AX.toast) AX.toast(m,true);}}
+// "Check broker" (UX audit M5): what the installed Dhan SDK offers, in words, from /api/orders/broker-capability
+async function checkBroker(){{
+  var el=document.getElementById('mBrkCap'); el.textContent='Checking…';
+  try{{
+    var r=await fetch('/api/orders/broker-capability'); var c=await r.json();
+    if(!r.ok) throw new Error(c.error||r.statusText);
+    el.textContent=!c.sdk_version?'The Dhan SDK is not installed here, so the trailing stop stays on this dashboard.':
+      ((c.supports_gtt||c.supports_super_order)?('Your Dhan SDK ('+c.sdk_version+') has a broker-side order type (GTT or super order) that could hold the stop. ATIP still trails it here today.'):
+      ('Your Dhan SDK ('+c.sdk_version+') has no broker-side stop for delivery trades, so the trailing stop stays on this dashboard.'));
+  }}catch(e){{el.textContent='Could not check the broker: '+e.message;}}
+}}
+// The shell's dialog and toast (UX audit H7); on the bare page (?shell=0) nothing is placed without it
+function uiSay(m,bad){{if(window.AX&&AX.toast){{AX.toast(m,bad);}}else{{var b=document.getElementById('brokerBanner'); if(b) b.textContent=m;}}}}
+function uiPriceMoved(e,rule){{
+  if(window.AX&&AX.priceMoved) return AX.priceMoved(e,rule);
+  uiSay('The price moved past the slippage limit. Open this page with the menu to place it anyway.',true);
+  return Promise.resolve(false);
 }}
 async function saveOrderRule(){{
+  if(mSideVal==='BUY'&&mSig!==null&&mSig!=='BUY'){{mErr('Buy is available only on a BUY signal (signal now: '+mSig+').');return;}}
   var tt=document.getElementById('mTT').value;
   // Validate before POSTing — an empty target or qty used to be sent as
   // null/NaN, which the API rejected with a bare 400 and no visible reason.
-  if(mResolvedTrigger()===null){{alert('Enter a target '+(tt==='PRICE'?'price':'% move')+' first.');return;}}
+  if(mResolvedTrigger()===null){{mErr('Enter a target '+(tt==='PRICE'?'price':'% move')+' first.');document.getElementById('mTV').focus();return;}}
   var qv=parseFloat(document.getElementById('mQV').value);
-  if(isNaN(qv)||qv<=0){{alert('Enter a quantity (shares or ₹ amount) greater than 0.');return;}}
-  if(document.getElementById('mOT').value==='LIMIT'&&isNaN(parseFloat(document.getElementById('mLimit').value))){{alert('Limit orders need a limit price.');return;}}
+  if(isNaN(qv)||qv<=0){{mErr('Enter a quantity (shares or ₹ amount) greater than 0.');document.getElementById('mQV').focus();return;}}
+  if(document.getElementById('mOT').value==='LIMIT'&&isNaN(parseFloat(document.getElementById('mLimit').value))){{mErr('Limit orders need a limit price.');document.getElementById('mLimit').focus();return;}}
+  mErr('');
   var payload={{
     symbol:mSymbol, side:mSideVal, trigger_type:tt,
     trigger_value: tt==='PRICE'?parseFloat(document.getElementById('mTV').value):null,
@@ -1210,7 +1447,8 @@ async function saveOrderRule(){{
     }}
   }}
   var res=await afetch('/api/orders',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
-  if(!res.ok){{var e=await res.json().catch(()=>({{}}));alert('Failed: '+(e.error||res.statusText));return;}}
+  if(!res.ok){{var e=await res.json().catch(()=>({{}}));mErr('Not saved: '+(e.error||res.statusText));return;}}
+  uiSay('Rule saved for '+mSymbol+' ('+((document.getElementById('mEnv')||{{}}).textContent||'PAPER')+').');
   document.getElementById('mPreviewTxt').textContent='✓ Rule saved — it will be monitored while the dashboard is running, and flagged here for your confirmation when the target is hit.';
   document.getElementById('mTV').value=''; document.getElementById('mQV').value='';
   loadMiniRules();
@@ -1240,9 +1478,10 @@ async function pollPending(){{
     var box=document.getElementById('pendBox'), list=document.getElementById('pendList');
     if(!rules.length){{box.classList.remove('show');return;}}
     box.classList.add('show'); list.innerHTML='';
+    window._pendRules={{}}; rules.forEach(r=>{{window._pendRules[r.id]=r;}});
     rules.forEach(r=>{{
       var d=document.createElement('div'); d.className='pend-item';
-      d.innerHTML='<span>'+r.symbol+' '+r.side+' '+r.quantity_value+' hit ₹'+(r.trigger_hit_price||r.resolved_trigger_price).toFixed(2)+'</span><span><button class="pconf" onclick="confirmRule(\\''+r.id+'\\')">Confirm</button><button class="prej" onclick="rejectRule(\\''+r.id+'\\')">Reject</button></span>';
+      d.innerHTML='<span>'+r.symbol+' '+r.side+' '+r.quantity_value+' hit '+inrf(r.trigger_hit_price||r.resolved_trigger_price)+'</span><span><button class="pconf" onclick="confirmRule(\\''+r.id+'\\')">Confirm</button><button class="prej" onclick="rejectRule(\\''+r.id+'\\')">Reject</button></span>';
       list.appendChild(d);
     }});
   }}catch(e){{}}
@@ -1250,19 +1489,20 @@ async function pollPending(){{
 async function confirmRule(id,force){{
   var res=await afetch('/api/orders/'+id+'/confirm'+(force?'?force=true':''),{{method:'POST'}});
   if(res.status===409){{
-    // Price ran away between the trigger and your tap — say by how much and
-    // let it be an explicit decision rather than a silent fill.
+    // Price ran away between the trigger and your tap: the shell's dialog shows the trigger, the price now and the
+    // move in ₹ and %, and placing it anyway is an explicit second choice (UX audit H7), never a silent fill.
     var e=await res.json().catch(()=>({{}}));
-    if(confirm((e.error||'Price moved since the trigger.')+'\\n\\nPlace the order anyway at the current price?')){{
-      await afetch('/api/orders/'+id+'/confirm?force=true',{{method:'POST'}});
+    if(await uiPriceMoved(e,(window._pendRules||{{}})[id]||{{}})){{
+      var r2=await afetch('/api/orders/'+id+'/confirm?force=true',{{method:'POST'}});
+      if(r2.ok) uiSay('Order placed at the market price.'); else {{var e3=await r2.json().catch(()=>({{}}));uiSay('Not placed: '+(e3.error||r2.statusText),true);}}
     }}
   }} else if(!res.ok){{
     var e2=await res.json().catch(()=>({{}}));
-    alert('Confirm failed: '+(e2.error||res.statusText));
+    uiSay('Confirm failed: '+(e2.error||res.statusText),true);
   }} else {{
     var out=await res.json().catch(()=>({{}}));
     var legs=(out.result&&out.result.bracket_legs)||[];
-    if(legs.length) alert('Order placed. Protective legs created:\\n'+legs.map(l=>l.role+' @ ₹'+l.trigger+' x'+l.qty).join('\\n'));
+    uiSay('Order placed.'+(legs.length?' Protective legs: '+legs.map(l=>l.role+' at '+inrf(l.trigger)+' × '+l.qty).join(', ')+'.':''));
   }}
   pollPending(); loadMiniRules();
 }}
@@ -1273,7 +1513,7 @@ setInterval(pollPending,5000); pollPending();
     var res=await fetch('/api/orders/broker-status'); var s=await res.json();
     var msg, cls;
     if(!s.credentials_configured){{
-      msg='🟡 Dhan credentials not configured (atip_data/config.json) — Confirm will fail until set.'; cls='banner dry';
+      msg='🟡 Dhan credentials are not set up (Settings › Credentials), so Confirm will fail until they are.'; cls='banner dry';
     }} else if(s.is_live){{
       msg='🔴 LIVE — tapping Confirm on a pending rule places a REAL order with Dhan. Real money.'; cls='banner live';
     }} else {{
@@ -1281,10 +1521,11 @@ setInterval(pollPending,5000); pollPending();
       // because Dhan credentials existed -- regardless of broker_env. Every
       // order actually fills in the paper simulator at a live price and NEVER
       // reaches Dhan while broker_env is not LIVE.
-      msg='🟢 '+s.broker_env+' — orders are simulated at live prices and tracked here, but never reach Dhan. Set broker_env to LIVE in atip_data/config.json for real orders.'; cls='banner dry';
+      msg='🟢 '+s.broker_env+' — orders are simulated at live prices and tracked here; none reaches Dhan. Real orders need the LIVE switch.'; cls='banner dry';
     }}
     var b=document.getElementById('brokerBanner'); if(b){{b.textContent=msg;b.className=cls;}}
     var b2=document.getElementById('brokerBanner2'); if(b2){{b2.textContent=msg;b2.className=cls;}}
+    var bi=document.getElementById('brokerItem'); if(bi){{bi.setAttribute('data-sev',s.is_live?'3':(!s.credentials_configured?'1':'0')); ssLayout();}}
   }}catch(e){{}}
 }})();
 
@@ -1293,6 +1534,7 @@ async function pollLiveQuotes(){{
   try{{
     var res=await fetch('/api/live-quotes');
     if(!res.ok)return;
+    var at=res.headers.get('X-ATIP-Quotes-At')||'';
     var quotes=await res.json();
     document.querySelectorAll('[data-sym]').forEach(el=>{{
       var sym=el.dataset.sym, qd=quotes[sym];
@@ -1313,14 +1555,42 @@ async function pollLiveQuotes(){{
       var pct = (!isNaN(prev) && prev>0) ? ((qd.ltp-prev)/prev*100) : null;
       var col = pct===null ? '#e2e8f0' : (pct>=0 ? '#059669' : '#dc2626');
       var sign = (pct!==null && pct>=0) ? '+' : '';
-      cell.innerHTML = '₹'+qd.ltp.toFixed(2) + (pct!==null
-        ? ' <span style="font-size:10px;color:'+col+'">'+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
+      var arrow = pct===null ? '' : (pct>0 ? '▲ ' : (pct<0 ? '▼ ' : '• '));
+      cell.innerHTML = inrf(qd.ltp) + (pct!==null
+        ? ' <span class="chg" style="font-size:12px;color:'+col+'">'+arrow+sign+(qd.ltp-prev).toFixed(2)+' ('+sign+pct.toFixed(2)+'%)</span>'
         : '');
       cell.dataset.cmp = qd.ltp;
+      if(at) cell.title='price at '+at+' IST';
     }});
   }}catch(e){{}}
 }}
 setInterval(pollLiveQuotes,15000); pollLiveQuotes();
+// ── the 13 tables in four groups (UX audit H4); tab ids, labels and order are unchanged ──
+var TG={{scores:['scores','port'],lists:['vpi','zpi','rri','mri','cri'],flows:['fiidii','news','asia'],activity:['hist','orders','livefeeds']}};
+function tabId(t){{var m=/showTab\\('(\\w+)'/.exec(t.getAttribute('onclick')||'');return m?m[1]:'';}}
+function groupOf(id){{for(var g in TG){{if(TG[g].indexOf(id)>=0)return g;}}return 'lists';}}
+function showGroup(g,pick){{
+  document.querySelectorAll('.tgroups button').forEach(function(b){{b.setAttribute('aria-pressed',b.dataset.g===g?'true':'false');}});
+  var first=null, act=null;
+  document.querySelectorAll('.tabs .tab').forEach(function(t){{var on=groupOf(tabId(t))===g; t.setAttribute('data-hide',on?'0':'1'); if(on&&!first)first=t; if(on&&t.classList.contains('active'))act=t;}});
+  if(pick&&!act&&first) first.click();
+}}
+function tabsA11y(){{
+  document.querySelectorAll('.tabs .tab').forEach(function(t){{
+    if(t.dataset.ax) return; t.dataset.ax='1';
+    t.setAttribute('role','tab'); t.tabIndex=0; t.setAttribute('aria-selected',t.classList.contains('active')?'true':'false');
+    t.addEventListener('keydown',function(e){{if(e.key==='Enter'||e.key===' '){{e.preventDefault();t.click();}}}});
+    var id=tabId(t), pane=document.getElementById(id);
+    if(pane){{pane.setAttribute('role','tabpanel'); pane.tabIndex=0; pane.setAttribute('aria-label',(t.textContent||id).trim());}}
+  }});
+}}
+var _showTab0=showTab;
+showTab=function(id,el){{_showTab0(id,el); showGroup(groupOf(id),false);
+  document.querySelectorAll('.tabs .tab').forEach(function(t){{t.setAttribute('aria-selected',t===el?'true':'false');}});}};
+document.querySelectorAll('.tgroups button').forEach(function(b){{b.addEventListener('click',function(){{showGroup(b.dataset.g,true);}});}});
+function uiInit(){{tabsA11y(); var a=document.querySelector('.tabs .tab.active'); showGroup(groupOf(a?tabId(a):'scores'),false);
+  var tb=document.querySelector('.tabs'); if(tb) tb.setAttribute('data-ready','1'); ssLayout();}}
+uiInit(); window.addEventListener('load',uiInit); setInterval(ssLayout,3000);
 </script>{_stock_assets}{_w28_assets}{_w28b_assets}</body></html>"""
     # Catch a broken inline script before it silently disables every tab.
     _check_js(html)
@@ -1788,6 +2058,18 @@ if HAS_FASTAPI:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"deleted": True})
 
+    @app.get("/api/orders/broker-capability")
+    async def api_broker_capability():
+        """What the installed Dhan SDK offers for broker-side stops (orders.rules.broker_trailing_capability): the
+        order ticket's "Check broker" button (UX audit M5). Reads the local SDK only; nothing reaches Dhan."""
+        from orders.rules import broker_trailing_capability
+        try:
+            c = broker_trailing_capability()
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse(json_safe({k: c.get(k) for k in ("sdk_version", "supports_bracket", "supports_super_order",
+                                                             "supports_gtt", "notes")}))
+
     @app.get("/api/orders/broker-status")
     async def api_broker_status():
         from data.dhan import load_dhan_config
@@ -1830,12 +2112,14 @@ if HAS_FASTAPI:
         from starlette.concurrency import run_in_threadpool
         if is_viewer():                  # no Dhan here: the prices are the Mac's, in the copied database
             return JSONResponse({})
+        # X-ATIP-Quotes-At: when these prices were fetched (IST), so each CMP cell can say how old it is (UX audit H1)
         if not is_market_hours():
             cached = (_live_quotes_cache["data"]
                       if _live_quotes_cache["date"] == str(date.today()) else {})
-            return JSONResponse(cached)
+            return JSONResponse(cached, headers={"X-ATIP-Quotes-At": _live_quotes_cache.get("ts") or ""} if cached else None)
         # A thread, not the event loop: a request may wait on another's fetch or its turn at Dhan
-        return JSONResponse(await run_in_threadpool(_session_live_quotes))
+        data = await run_in_threadpool(_session_live_quotes)
+        return JSONResponse(data, headers={"X-ATIP-Quotes-At": _live_quotes_cache.get("ts") or ""} if data else None)
 
     def _session_live_quotes() -> dict:
         """The session's quotes, fetched from Dhan at most once per LIVE_QUOTES_TTL. A request that
@@ -1863,7 +2147,7 @@ if HAS_FASTAPI:
             if df.empty:
                 return {}
             out = _quotes_out(df)
-            _live_quotes_cache.update(date=today, data=out)
+            _live_quotes_cache.update(date=today, data=out, ts=datetime.now().strftime("%H:%M:%S"))
             return out
 
     # 2026-10-31 (DP-01 / MON-07): every Dhan feed's state for the Live tab and the phone's Live screen, served

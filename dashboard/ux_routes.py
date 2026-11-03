@@ -18,7 +18,7 @@ Pages (GET, rendered in the shell): /home /sessions /sessions/{sid} /accounting 
     GET  /api/v2/accounting/{ledger|trial-balance|session/{sid}|charges|tax|funds|recon}
     POST /api/v2/accounting/transfer {from, to, amount, reason}   /adjust {account, amount, reason}
     POST /api/v2/accounting/recon/import (CSV text)   /recon/cash   /recon/{id} {status, note}
-    GET/POST /api/v2/tax/config
+    GET/POST /api/v2/tax/config                  the tax settings; a save re-estimates the stored cycles
     GET  /api/v2/reports/kinds | schedules | archive | archive/{id}/download
     POST /api/v2/reports/generate {kind, params, formats}   /schedules   /schedules/{id}   /schedules/{id}/delete   /run-due
 
@@ -379,13 +379,18 @@ def register(app, guard, Req, get_connection, json_safe):
     @app.get("/api/v2/tax/config")
     async def api_v2_tax_config():
         from accounting import tax as TX
-        return JSONResponse({**TX.settings(), "disclaimer": TX.DISCLAIMER})
+        return JSONResponse({**TX.settings(), "slabs": TX.SLABS, "disclaimer": TX.DISCLAIMER})
 
     @app.post("/api/v2/tax/config", dependencies=guard)
     async def api_v2_tax_save(request: Req):
         b = await body(request)
+        from accounting import cycles as C
         from accounting import tax as TX
-        return await run_in_threadpool(call, lambda c: TX.save(b))
+
+        def save(c):
+            out = TX.save(b)
+            return {**out, "retaxed": C.sync(c)["retaxed"]}      # stored cycles re-estimated at the new rates
+        return await run_in_threadpool(call, save)
 
     # ── reports ───────────────────────────────────────────────────────────────────────────
     @app.get("/api/v2/reports/kinds")

@@ -2,6 +2,9 @@
 The /baskets page (W39): basket orders (EX-18) and stock SIP plans (EX-20). Reads and writes only through
 /api/orders/baskets and /api/orders/sip; where an order goes is decided by broker_env (PAPER by default) and the
 live-trading master switch, exactly as for a single order.
+
+UX audit (3 Nov 2026): every leg control is labelled, tables scroll inside keyboard-reachable regions, no
+page-wide horizontal scroll at 320 px; colours follow the page variables (re-pointed to the shell theme).
 """
 
 import json
@@ -9,17 +12,18 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Baskets &amp; SIP</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#34d399;--bad:#f87171;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1200px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1200px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;min-width:0;overflow-wrap:anywhere}
 h3{font-size:13px;color:var(--accent);margin-bottom:8px}.muted{color:var(--muted)}.ok{color:var(--good)}.bad{color:var(--bad)}.note{color:var(--warn)}
-table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:5px 7px;border-bottom:1px solid #33415555;text-align:left;vertical-align:top}th{color:var(--muted)}
-input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;font-size:12.5px}th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted)}
+input,select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12.5px;max-width:100%}
 button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12.5px;margin:2px}
-button.ghost{background:#334155}button.red{background:#b91c1c}label{color:var(--muted);font-size:12px;margin-right:6px}
+button.ghost{background:#334155}button.red{background:#b91c1c}label{color:var(--muted);font-size:12px;margin-right:6px;display:inline-block;max-width:100%}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}
+.tw{overflow:auto;max-width:100%}.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style></head><body>
 <div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Basket orders &amp; stock SIP</span> <span id="env" class="note"></span></div>
 <div><a href="/trading">Trading</a><a href="/wealth">Wealth</a><a href="/">← Dashboard</a></div></div>
@@ -44,13 +48,16 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const num=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});
 async function j(u,o){const r=await fetch(u,o);let t={};try{t=await r.json()}catch(e){}if(!r.ok)throw new Error(t.error||t.detail||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).join(', '));
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">${o.empty||'Nothing here yet.'}</td></tr>`}</tbody></table></div>`};
 const say=(id,t,bad)=>{document.getElementById(id).innerHTML=`<div class="${bad?'bad':'ok'}" style="margin-top:6px">${esc(t)}</div>`};
-function legRow(l){l=l||{side:'BUY',order_type:'MARKET',product_type:'CNC'};return `<div class="row leg"><input class="ls" size="10" placeholder="SYMBOL" value="${esc(l.symbol||'')}">
-<select class="lside"><option${l.side==='BUY'?' selected':''}>BUY</option><option${l.side==='SELL'?' selected':''}>SELL</option></select>
-<input class="lq" size="5" placeholder="qty" value="${esc(l.quantity||'')}"><select class="lot"><option${l.order_type==='MARKET'?' selected':''}>MARKET</option><option${l.order_type==='LIMIT'?' selected':''}>LIMIT</option></select>
-<input class="lp" size="7" placeholder="price" value="${l.price?esc(l.price):''}"><select class="lprod"><option${l.product_type==='CNC'?' selected':''}>CNC</option><option${l.product_type==='INTRADAY'?' selected':''}>INTRADAY</option></select>
-<button class="ghost" onclick="this.parentNode.remove()">✕</button></div>`}
+// UX audit M6: every control of a leg row names itself (Leg 2: side ...)
+function legRow(l){l=l||{side:'BUY',order_type:'MARKET',product_type:'CNC'};const n=document.querySelectorAll('.leg').length+1,L=x=>`Leg ${n}: ${x}`;return `<div class="row leg"><input class="ls" size="10" placeholder="SYMBOL" aria-label="${L('symbol')}" value="${esc(l.symbol||'')}">
+<select class="lside" aria-label="${L('side')}"><option${l.side==='BUY'?' selected':''}>BUY</option><option${l.side==='SELL'?' selected':''}>SELL</option></select>
+<input class="lq" size="5" placeholder="qty" aria-label="${L('quantity')}" value="${esc(l.quantity||'')}"><select class="lot" aria-label="${L('order type')}"><option${l.order_type==='MARKET'?' selected':''}>MARKET</option><option${l.order_type==='LIMIT'?' selected':''}>LIMIT</option></select>
+<input class="lp" size="7" placeholder="price" aria-label="${L('limit price')}" value="${l.price?esc(l.price):''}"><select class="lprod" aria-label="${L('product')}"><option${l.product_type==='CNC'?' selected':''}>CNC</option><option${l.product_type==='INTRADAY'?' selected':''}>INTRADAY</option></select>
+<button class="ghost" aria-label="Remove leg ${n}" onclick="this.parentNode.remove()">✕</button></div>`}
 function addLeg(l){document.getElementById('legs').insertAdjacentHTML('beforeend',legRow(l))}
 function newBasket(){document.getElementById('bid').value='';document.getElementById('bname').value='';document.getElementById('legs').innerHTML='';document.getElementById('bedit_t').textContent='New basket';addLeg()}
 function legs(){return [...document.querySelectorAll('.leg')].map(r=>({symbol:r.querySelector('.ls').value,side:r.querySelector('.lside').value,quantity:Number(r.querySelector('.lq').value),order_type:r.querySelector('.lot').value,price:Number(r.querySelector('.lp').value||0),product_type:r.querySelector('.lprod').value}))}

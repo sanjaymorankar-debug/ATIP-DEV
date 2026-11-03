@@ -18,6 +18,11 @@ The /trading page (W4): the minimum UI over the W4 API.
                bias test (GET /api/portfolio/risk-model)
 
 Everything is read from /api/*; nothing here computes a result.
+
+UX audit (3 Nov 2026): every table sits in its own keyboard-reachable scroll region (tabindex, role, label)
+and has a loading (shimmer), empty (why + what to do) and error (message + what to try) state; one failing
+read no longer blanks the sections after it. Risk limits show plain names (the config key is the tooltip).
+Colours come from the page variables, which the shell's legacy bridge re-points to its light / dark tokens.
 """
 
 import json
@@ -25,112 +30,156 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Trading</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#059669;--bad:#dc2626;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--good:#6ee7b7;--bad:#fca5a5;--warn:#fde68a;--goodbg:#0e2a22;--badbg:#3b1114;--warnbg:#2a2410}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
 h2{font-size:13px;color:var(--accent);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap;position:sticky;top:0;z-index:1}
 .muted{color:var(--muted)}.pos{color:var(--good)}.neg{color:var(--bad)}.note{color:var(--warn)}
-.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;background:#334155}
-.APPROVED,.FILLED,.AUTHORIZED{background:#065f46}.REJECTED,.FAILED,.BLOCKED{background:#7f1d1d}.REVIEW_REQUIRED,.PARTIALLY_FILLED,.CANCEL_PENDING{background:#78350f}
-button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;margin:2px}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;background:var(--panel2);color:var(--text)}
+.pill.APPROVED,.pill.FILLED,.pill.AUTHORIZED,.pill.OK,.pill.VALID,.pill.MATCHED{background:var(--goodbg);color:var(--good)}
+.pill.REJECTED,.pill.FAILED,.pill.BLOCKED,.pill.BREAKS,.pill.ERROR{background:var(--badbg);color:var(--bad)}
+.pill.REVIEW_REQUIRED,.pill.PARTIALLY_FILLED,.pill.CANCEL_PENDING,.pill.WARN,.pill.DEGRADED{background:var(--warnbg);color:var(--warn)}
+button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12.5px;margin:2px}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-.scroll{max-height:360px;overflow:auto}.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
-.nav a{color:var(--accent);margin-right:14px;text-decoration:none}
-h3{font-size:12px;color:var(--muted);margin:12px 0 6px}.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.nav{display:flex;flex-wrap:wrap;gap:4px 14px}.nav a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0;min-height:24px}
+h3{font-size:12.5px;color:var(--muted);margin:12px 0 6px}.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px}
+.grid2>div{min-width:0}
 .kpis{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:120px}
-.kpi b{display:block;font-size:15px}.kpi span{color:var(--muted);font-size:10.5px}
-select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
-button.danger{background:var(--bad)}
+.kpi b{display:block;font-size:15px;font-variant-numeric:tabular-nums}.kpi span{color:var(--muted);font-size:12px}
+select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12.5px}
+label{color:var(--muted);font-size:12px}
+button.danger{background:#b91c1c;color:#fff}
+p,.wrap>div{overflow-wrap:anywhere}
+/* tables scroll inside their own focusable region, never the page */
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw{max-height:360px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--muted);padding:8px 2px;margin:2px 0}
+.err{background:var(--badbg);color:var(--bad);border:1px solid var(--bad);border-radius:6px;padding:8px 10px;margin:4px 0}
+.skel{display:grid;gap:8px;padding:6px 0}.skel .ax-skel{height:14px}.ax-skel{background:var(--panel2);border-radius:6px;min-height:14px}
+.cfgkey{color:var(--muted);font-size:12px;cursor:help}
+@media(max-width:760px){.wrap{padding:12px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Trading — risk &amp; execution (W4)</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Trading — risk &amp; execution</span></div>
 <div><a href="/strategies">Strategies</a><a href="/backtests">Backtests</a><a href="/execution-lab">Execution lab</a><a href="/">← Dashboard</a></div></div>
 <div class="wrap">
-<div class="nav"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a><a href="#livepnl">Live P&amp;L</a><a href="#ops">Execution ops</a></div>
-<h2 id="status">Status</h2><div id="st"></div>
+<nav class="nav" aria-label="On this page"><a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#risk">Risk</a><a href="#prisk">Portfolio risk</a><a href="#execution">Execution</a><a href="#livepnl">Live P&amp;L</a><a href="#ops">Execution ops</a></nav>
+<h2 id="status">Status</h2><div id="st" data-load></div>
 <div class="row"><button class="ghost" onclick="run(false)">Evaluate risk on pending intents</button>
-<button onclick="run(true)">Run paper cycle (risk + paper orders)</button><span id="msg" class="note"></span></div>
-<h2 id="decisions">Latest decisions</h2><div id="dec" class="scroll"></div>
-<h2>Position intents</h2><div id="int" class="scroll"></div>
-<h2 id="risk">Risk limits</h2><div id="lim" class="scroll"></div>
-<h2>Risk decisions</h2><div id="rd" class="scroll"></div>
-<h2>Exposure (PAPER book)</h2><div id="exp"></div>
-<h2 id="prisk">Portfolio risk (W25)</h2>
-<div class="row">Book <select id="pbook" onchange="loadRisk()"><option>PAPER</option><option>LIVE</option></select>
-<button class="ghost" onclick="loadRisk()">Refresh</button><span id="pmsg" class="muted"></span></div>
-<div id="phead"></div>
-<div class="grid2"><div><h3>Value at risk / expected shortfall</h3><div id="pvar"></div></div>
-<div><h3>Concentration</h3><div id="pconc"></div></div></div>
-<h3>Risk contribution by position</h3><div id="prc" class="scroll"></div>
-<h3 id="pfrmh">Factor risk model (W40) <span class="muted">market + NSE industries + 8 styles, Barra-style</span></h3><div id="pfrm"></div>
-<h3>Correlation</h3><div id="pcorr" class="scroll"></div>
-<h3>Performance attribution</h3><div id="pperf" class="scroll"></div>
-<h3>Emergency exit</h3><div id="pemx"></div>
-<h2 id="livepnl">Live P&amp;L <span class="muted">(W29 MON-04: newest live quote per symbol; refreshes every 60 s)</span></h2>
-<div id="lp"></div><div id="lps"></div>
-<h2 id="ops">Execution operations (W29)</h2>
+<button onclick="run(true)">Run paper cycle (risk + paper orders)</button><span id="msg" class="note" role="status"></span></div>
+<h2 id="decisions">Latest decisions</h2><div id="dec" class="scroll" data-load></div>
+<h2>Position intents</h2><div id="int" class="scroll" data-load></div>
+<h2 id="risk">Risk limits</h2><div id="lim" class="scroll" data-load></div>
+<h2>Risk decisions</h2><div id="rd" class="scroll" data-load></div>
+<h2>Exposure (PAPER book)</h2><div id="exp" data-load></div>
+<h2 id="prisk">Portfolio risk</h2>
+<div class="row"><label for="pbook">Book</label> <select id="pbook" onchange="loadRisk()"><option>PAPER</option><option>LIVE</option></select>
+<button class="ghost" onclick="loadRisk()">Refresh</button><span id="pmsg" class="muted" role="status"></span></div>
+<div id="phead" data-load></div>
+<div class="grid2"><div><h3>Value at risk / expected shortfall</h3><div id="pvar" data-load></div></div>
+<div><h3>Concentration</h3><div id="pconc" data-load></div></div></div>
+<h3>Risk contribution by position</h3><div id="prc" class="scroll" data-load></div>
+<h3 id="pfrmh">Factor risk model <span class="muted">market + NSE industries + 8 styles, Barra-style</span></h3><div id="pfrm" data-load></div>
+<h3>Correlation</h3><div id="pcorr" class="scroll" data-load></div>
+<h3>Performance attribution</h3><div id="pperf" class="scroll" data-load></div>
+<h3>Emergency exit</h3><div id="pemx" data-load></div>
+<h2 id="livepnl">Live P&amp;L <span class="muted">(newest live quote per symbol; refreshes every 60 s)</span></h2>
+<div id="lp" data-load></div><div id="lps"></div>
+<h2 id="ops">Execution operations</h2>
 <div class="row"><button class="ghost" onclick="w29Run('/api/execution/broker-health/check',{})">Check broker health</button>
 <button class="ghost" onclick="w29Run('/api/execution/paper-match',{})">Match resting paper orders</button>
 <button class="ghost" onclick="w29Run('/api/execution/reconciliation/run',{})">Reconcile now</button>
-<select id="andays" onchange="loadOps()"><option>7</option><option selected>30</option><option>90</option></select><span id="w29msg" class="muted"></span></div>
-<div id="bh"></div><div id="rec" style="margin-top:8px"></div><div id="rest" style="margin-top:8px"></div>
-<div id="an" style="margin-top:8px"></div><div id="kz" style="margin-top:8px"></div>
-<h2 id="execution">Orders</h2><div id="ord" class="scroll"></div>
-<h2>Fills</h2><div id="fil" class="scroll"></div>
-<h2>Positions</h2><div id="pos" class="scroll"></div>
+<label for="andays">Analytics window, days</label> <select id="andays" onchange="loadOps()"><option>7</option><option selected>30</option><option>90</option></select><span id="w29msg" class="muted" role="status"></span></div>
+<div id="bh" data-load></div><div id="rec" style="margin-top:8px" data-load></div><div id="rest" style="margin-top:8px" data-load></div>
+<div id="an" style="margin-top:8px" data-load></div><div id="kz" style="margin-top:8px"></div>
+<h2 id="execution">Orders</h2><div id="ord" class="scroll" data-load></div>
+<h2>Fills</h2><div id="fil" class="scroll" data-load></div>
+<h2>Positions</h2><div id="pos" class="scroll" data-load></div>
 </div>
 <script>
 const TOKEN=__TOKEN__;
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num=(v,d=2)=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
-const pill=s=>`<span class="pill ${s}">${s}</span>`;
+const pill=s=>`<span class="pill ${esc(s)}">${esc(s)}</span>`;
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error((t.error&&t.error.message)||t.error||r.status);return t}
 // W8: every mutating call carries an Idempotency-Key; order create / cancel use a key tied to
 // the decision / order, so a double click or a network retry cannot act twice
 const idem=k=>k||((crypto.randomUUID&&crypto.randomUUID())||(Date.now()+'-'+Math.random().toString(36).slice(2)));
 const send=(m,u,b,k)=>j(u,{method:m,headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN,'Idempotency-Key':idem(k)},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit M7: shimmer while a section loads, one sentence (why + what to do) when it is empty,
+// the error and what to try when a read fails. Each section loads on its own (sec), so one failing
+// read never leaves the rest of the page blank.
+const SKEL='<div class="skel" role="status" aria-busy="true" aria-label="Loading"><div class="ax-skel"></div><div class="ax-skel"></div><div class="ax-skel"></div></div>';
+const TRY='Check that the ATIP server is running, then reload this page.';
+function skel(){document.querySelectorAll('[data-load]').forEach(el=>{if(!el.innerHTML.trim())el.innerHTML=SKEL})}
+function fail(el,what,e,tip){el=typeof el==='string'?document.getElementById(el):el;if(el)el.innerHTML=`<div class="err" role="alert"><b>Could not load ${esc(what)}:</b> ${esc((e&&e.message)||e)}. ${tip||TRY}</div>`}
+async function sec(id,what,fn,tip){const el=document.getElementById(id);try{await fn(el)}catch(e){fail(el,what,e,tip)}}
+const strip=x=>String(x).replace(/<[^>]*>/g,'');
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(strip).join(', '));
+  if(!rows.length)return `<p class="empty" role="status">${o.empty||'Nothing to show yet.'}</p>`;
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`};
+const yes=v=>v?'on':'off';
+// UX audit M3: plain names for the risk limits; the config key stays in the tooltip
+const LIMIT_LABEL={max_position_pct:'Max position size, % of equity',max_portfolio_exposure_pct:'Max total exposure, % of equity',
+  max_sector_exposure_pct:'Max exposure to one industry, % of equity',max_strategy_exposure_pct:'Max exposure to one strategy, % of equity',
+  max_capital_allocation_pct:'Max share of available cash one order may use, %',max_open_positions:'Max open positions',
+  max_order_quantity:'Max shares in one order',max_order_value_pct:'Max order value, % of equity',max_daily_trades:'Max orders a day',
+  per_trade_loss_pct:'Loss at the stop per trade, % of equity',default_stop_pct:'Stop used when an intent has none, % below entry',
+  daily_loss_limit_pct:'Daily loss limit, % of equity',portfolio_drawdown_limit_pct:'Portfolio drawdown limit, % from peak',
+  strategy_drawdown_limit_pct:'Strategy drawdown limit, % of its exposure cap',max_symbol_volatility_pct:'Max stock volatility, % a year',
+  max_adv_participation_pct:'Max order size, % of average daily volume',max_avg_correlation:'Max average correlation with holdings',
+  max_portfolio_var_pct:'Max 1-day VaR after the order, % of equity'};
+const human=k=>LIMIT_LABEL[k]||(k.charAt(0).toUpperCase()+k.slice(1)).replace(/_pct$/,', %').replace(/_/g,' ');
+const SRC={default:'built-in default',config:'config.json',db:'set on this page',override:'set on this page'};
 async function load(){
-  const s=await j('/api/execution/status');
-  document.getElementById('st').innerHTML=`Mode <b>${s.settings.mode}</b> · live trading <b class="${s.live_allowed?'neg':'pos'}">${s.live_allowed?'ALLOWED':'DISABLED'}</b> <span class="muted">(${esc(s.live_gate)}; live adapter ${esc(s.live_adapter)})</span> · kill switch ${s.kill_switch?'<b class="neg">HALTED</b> '+esc(s.kill_switch_reason):'<span class="pos">off</span>'} · auto-execute paper <b>${s.settings.auto_execute_paper}</b> · manual review <b>${s.settings.require_manual_review}</b> · pending intents <b>${s.pending_intents}</b>`;
-  const d=await j('/api/strategy-decisions?limit=100');
-  document.getElementById('dec').innerHTML=table(['Date','Strategy','Symbol','Decision','Confidence','Score','Regime','Reason codes','Reason'],d.map(x=>`<tr><td>${x.as_of}</td><td>${esc(x.strategy_id)} <span class="muted">${x.version}</span></td><td>${esc(x.symbol)}</td><td><b>${x.decision}</b> <span class="muted">${x.action}</span></td><td>${num(x.confidence)}</td><td>${num(x.score,1)}</td><td>${x.regime||''}</td><td class="muted">${esc((x.reason_codes||[]).join(', '))}</td><td class="muted" style="max-width:380px">${esc((x.reasons||[]).join('; '))}</td></tr>`));
-  const it=await j('/api/position-intents?limit=100');
-  document.getElementById('int').innerHTML=table(['Date','Strategy','Symbol','Side','Action','Qty','Entry ref','Stop','Target','Book','Authorization','Audit'],it.map(x=>`<tr><td>${x.as_of}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${x.side}</td><td>${x.action}</td><td>${x.quantity??'—'}</td><td>${num(x.entry_reference)}</td><td>${num(x.stop_price)}</td><td>${num(x.target_price)}</td><td>${x.book||''}</td><td>${pill(x.authorization_status)}</td><td><a style="color:var(--accent)" href="/api/audit/intent/${x.intent_id}" target="_blank">trail</a></td></tr>`));
-  const L=await j('/api/risk/limits');
-  document.getElementById('lim').innerHTML=table(['Limit','Value','Source','Default','Meaning'],Object.entries(L.limits).map(([k,v])=>`<tr><td>${k}</td><td><b>${v.value??'off'}</b></td><td class="muted">${v.source}</td><td class="muted">${v.default}</td><td class="muted">${esc(v.description)}</td></tr>`))+'<p class="muted">Change with PUT /api/risk/limits {"key": value | null | "default"}. W1 limits in config.json risk_limits also apply.</p>';
-  const R=await j('/api/risk/decisions?limit=100');
-  document.getElementById('rd').innerHTML=table(['When','Strategy','Symbol','Side','Requested','Approved','Status','Reason / binding checks',''],R.map(x=>{const f=(x.risk_checks||[]).filter(c=>c.status==='FAIL'||c.status==='WARN').map(c=>c.check+': '+c.message);return `<tr><td>${esc(x.created_at)}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${x.side}</td><td>${x.requested_quantity??'—'}</td><td>${x.approved_quantity}</td><td>${pill(x.risk_status)}</td><td class="muted" style="max-width:420px">${esc(x.rejection_reason||'')}${f.length?'<br>'+esc(f.join(' | ')):''}</td><td>${x.risk_status==='REVIEW_REQUIRED'?`<button onclick="approve('${x.risk_decision_id}')">Approve</button>`:x.risk_status==='APPROVED'?`<button class="ghost" onclick="order('${x.risk_decision_id}')">Paper order</button>`:''}</td></tr>`}));
-  try{const E=await j('/api/risk/exposure');const eq=E.equity||0;
-   document.getElementById('exp').innerHTML=`Equity <b>${num(E.equity)}</b> · cash ${num(E.cash)} · positions ${num(E.positions_value)} (${E.n_positions})`+
-   table(['Sector','Value','% equity'],Object.entries(E.by_sector).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${num(v)}</td><td>${eq?num(v/eq*100):'—'}%</td></tr>`))+
-   table(['Strategy','Value','% equity','P&L','Positions'],Object.entries(E.by_strategy).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${num(v.value)}</td><td>${eq?num(v.value/eq*100):'—'}%</td><td class="${v.pnl>=0?'pos':'neg'}">${num(v.pnl)}</td><td>${v.positions}</td></tr>`));}catch(e){document.getElementById('exp').textContent=e.message}
-  const O=await j('/api/oms/orders?limit=100');
-  document.getElementById('ord').innerHTML=table(['Created','Order','Strategy','Symbol','Side','Qty','Filled','Avg','Status','Mode','Reason',''],O.map(x=>`<tr><td>${esc(x.created_at)}</td><td><a style="color:var(--accent)" href="/api/oms/orders/${x.order_id}" target="_blank">${x.order_id}</a></td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${x.side}</td><td>${x.quantity}</td><td>${x.filled_quantity}</td><td>${num(x.avg_fill_price)}</td><td>${pill(x.status)}</td><td>${x.mode}</td><td class="muted">${esc(x.reason||'')}</td><td>${['CREATED','VALIDATED','ACKNOWLEDGED','PARTIALLY_FILLED'].includes(x.status)?`<button class="ghost" onclick="cancel('${x.order_id}')">Cancel</button>`:''}</td></tr>`));
-  const F=await j('/api/oms/fills?limit=100');
-  document.getElementById('fil').innerHTML=table(['When','Order','Strategy','Symbol','Side','Qty','Price','Fees','Price source'],F.map(x=>`<tr><td>${esc(x.filled_at)}</td><td>${x.order_id}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${x.side}</td><td>${x.quantity}</td><td>${num(x.price)}</td><td>${num(x.fees)}</td><td class="muted">${esc(x.price_source)}</td></tr>`));
-  try{const P=await j('/api/oms/positions');
-   document.getElementById('pos').innerHTML=table(['Symbol','Qty','Avg','Mark','Value','Unrealised'],P.positions.map(p=>`<tr><td>${esc(p.symbol)}</td><td>${p.qty}</td><td>${num(p.avg_price)}</td><td>${num(p.mark)}</td><td>${num(p.value)}</td><td class="${(p.unrealised||0)>=0?'pos':'neg'}">${num(p.unrealised)}</td></tr>`))+
-   '<p class="muted" style="margin-top:6px">By strategy (from W4 fills)</p>'+table(['Strategy','Symbol','Qty','Avg','Mark','Realised','Unrealised','P&L'],P.by_strategy.map(p=>`<tr><td>${esc(p.strategy_id)}</td><td>${esc(p.symbol)}</td><td>${p.quantity}</td><td>${num(p.avg_price)}</td><td>${num(p.mark)}</td><td>${num(p.realised)}</td><td>${num(p.unrealised)}</td><td class="${p.pnl>=0?'pos':'neg'}">${num(p.pnl)}</td></tr>`));}catch(e){document.getElementById('pos').textContent=e.message}
+  await Promise.all([
+  sec('st','the execution status',async el=>{const s=await j('/api/execution/status');
+    el.innerHTML=`Mode <b>${esc(s.settings.mode)}</b> · live trading <b class="${s.live_allowed?'neg':'pos'}">${s.live_allowed?'ALLOWED':'DISABLED'}</b> <span class="muted">(${esc(s.live_gate)}; live adapter ${esc(s.live_adapter)})</span> · kill switch ${s.kill_switch?'<b class="neg">HALTED</b> '+esc(s.kill_switch_reason):'<span class="pos">off</span>'} · auto-execute paper orders <b>${yes(s.settings.auto_execute_paper)}</b> · manual review <b>${yes(s.settings.require_manual_review)}</b> · pending intents <b>${s.pending_intents}</b>`}),
+  sec('dec','strategy decisions',async el=>{const d=await j('/api/strategy-decisions?limit=100');
+    el.innerHTML=table(['Date','Strategy','Symbol','Decision','Confidence','Score','Regime','Reason codes','Reason'],d.map(x=>`<tr><td>${esc(x.as_of)}</td><td>${esc(x.strategy_id)} <span class="muted">${esc(x.version)}</span></td><td>${esc(x.symbol)}</td><td><b>${esc(x.decision)}</b> <span class="muted">${esc(x.action)}</span></td><td>${num(x.confidence)}</td><td>${num(x.score,1)}</td><td>${esc(x.regime||'')}</td><td class="muted">${esc((x.reason_codes||[]).join(', '))}</td><td class="muted" style="min-width:220px;max-width:380px">${esc((x.reasons||[]).join('; '))}</td></tr>`),
+      {label:'Latest strategy decisions',empty:'No strategy decisions yet. Strategies decide in the post-market run (16:45 IST on trading days), or from Strategies › Generate decisions.'})}),
+  sec('int','position intents',async el=>{const it=await j('/api/position-intents?limit=100');
+    el.innerHTML=table(['Date','Strategy','Symbol','Side','Action','Qty','Entry ref','Stop','Target','Book','Authorization','Audit'],it.map(x=>`<tr><td>${esc(x.as_of)}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${esc(x.side)}</td><td>${esc(x.action)}</td><td>${x.quantity??'—'}</td><td>${num(x.entry_reference)}</td><td>${num(x.stop_price)}</td><td>${num(x.target_price)}</td><td>${esc(x.book||'')}</td><td>${pill(x.authorization_status)}</td><td><a style="color:var(--accent)" href="/api/audit/intent/${esc(x.intent_id)}" target="_blank">trail</a></td></tr>`),
+      {label:'Position intents',empty:'No position intents yet. Strategies write them in the post-market run (16:45 IST on trading days); “Run paper cycle” above then sends approved ones to the paper book.'})}),
+  sec('lim','the risk limits',async el=>{const L=await j('/api/risk/limits');
+    el.innerHTML=table(['Limit','Value','Source','Default','Meaning'],Object.entries(L.limits).map(([k,v])=>`<tr><td><span title="Config key: ${esc(k)}">${esc(human(k))}</span> <span class="cfgkey" title="Config key: ${esc(k)}" aria-label="config key ${esc(k)}">ⓘ</span></td><td><b>${v.value??'off'}</b></td><td class="muted">${esc(SRC[v.source]||v.source)}</td><td class="muted">${v.default??'off'}</td><td class="muted">${esc(String(v.description||'').replace(/^[A-Z]{2,4}-\d+:\s*/,'').replace(/\bW\d+\s+/g,''))}</td></tr>`),
+      {label:'Risk limits',empty:'No risk limits are configured, so the risk engine uses its built-in defaults.'})+'<p class="muted">Change a limit with PUT /api/risk/limits {"key": value | null | "default"}. The older limits in config.json (risk_limits) also apply.</p>'}),
+  sec('rd','risk decisions',async el=>{const R=await j('/api/risk/decisions?limit=100');
+    el.innerHTML=table(['When','Strategy','Symbol','Side','Requested','Approved','Status','Reason / binding checks',''],R.map(x=>{const f=(x.risk_checks||[]).filter(c=>c.status==='FAIL'||c.status==='WARN').map(c=>c.check+': '+c.message);return `<tr><td>${esc(x.created_at)}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${esc(x.side)}</td><td>${x.requested_quantity??'—'}</td><td>${x.approved_quantity??'—'}</td><td>${pill(x.risk_status)}</td><td class="muted" style="min-width:220px;max-width:420px">${esc(x.rejection_reason||'')}${f.length?'<br>'+esc(f.join(' | ')):''}</td><td>${x.risk_status==='REVIEW_REQUIRED'?`<button onclick="approve('${esc(x.risk_decision_id)}')">Approve</button>`:x.risk_status==='APPROVED'?`<button class="ghost" onclick="order('${esc(x.risk_decision_id)}')">Paper order</button>`:''}</td></tr>`}),
+      {label:'Risk decisions',empty:'No risk decisions yet. Press “Evaluate risk on pending intents” above once strategies have written intents.'})}),
+  sec('exp','the exposure',async el=>{const E=await j('/api/risk/exposure');const eq=E.equity||0;
+    el.innerHTML=`Equity <b>${num(E.equity)}</b> · cash ${num(E.cash)} · positions ${num(E.positions_value)} (${E.n_positions})`+
+     table(['Sector','Value','% equity'],Object.entries(E.by_sector||{}).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${num(v)}</td><td>${eq?num(v/eq*100):'—'}%</td></tr>`),{label:'Exposure by sector',empty:'No open positions in the paper book, so there is no sector exposure.'})+
+     table(['Strategy','Value','% equity','P&L','Positions'],Object.entries(E.by_strategy||{}).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${num(v.value)}</td><td>${eq?num(v.value/eq*100):'—'}%</td><td class="${v.pnl>=0?'pos':'neg'}">${num(v.pnl)}</td><td>${v.positions}</td></tr>`),{label:'Exposure by strategy',empty:'No strategy holds a paper position yet.'})}),
+  sec('ord','orders',async el=>{const O=await j('/api/oms/orders?limit=100');
+    el.innerHTML=table(['Created','Order','Strategy','Symbol','Side','Qty','Filled','Avg','Status','Mode','Reason',''],O.map(x=>`<tr><td>${esc(x.created_at)}</td><td><a style="color:var(--accent)" href="/api/oms/orders/${esc(x.order_id)}" target="_blank">${esc(x.order_id)}</a></td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${esc(x.side)}</td><td>${x.quantity}</td><td>${x.filled_quantity}</td><td>${num(x.avg_fill_price)}</td><td>${pill(x.status)}</td><td>${esc(x.mode)}</td><td class="muted">${esc(x.reason||'')}</td><td>${['CREATED','VALIDATED','ACKNOWLEDGED','PARTIALLY_FILLED'].includes(x.status)?`<button class="ghost" onclick="cancel('${esc(x.order_id)}')">Cancel</button>`:''}</td></tr>`),
+      {label:'Orders',empty:'No orders yet. Paper orders come from approved risk decisions (“Paper order”) or from “Run paper cycle” above.'})}),
+  sec('fil','fills',async el=>{const F=await j('/api/oms/fills?limit=100');
+    el.innerHTML=table(['When','Order','Strategy','Symbol','Side','Qty','Price','Fees','Price source'],F.map(x=>`<tr><td>${esc(x.filled_at)}</td><td>${esc(x.order_id)}</td><td>${esc(x.strategy_id)}</td><td>${esc(x.symbol)}</td><td>${esc(x.side)}</td><td>${x.quantity}</td><td>${num(x.price)}</td><td>${num(x.fees)}</td><td class="muted">${esc(x.price_source)}</td></tr>`),
+      {label:'Fills',empty:'No fills yet. A fill appears here when a paper order executes.'})}),
+  sec('pos','positions',async el=>{const P=await j('/api/oms/positions');
+    el.innerHTML=table(['Symbol','Qty','Avg','Mark','Value','Unrealised'],P.positions.map(p=>`<tr><td>${esc(p.symbol)}</td><td>${p.qty}</td><td>${num(p.avg_price)}</td><td>${num(p.mark)}</td><td>${num(p.value)}</td><td class="${(p.unrealised||0)>=0?'pos':'neg'}">${num(p.unrealised)}</td></tr>`),{label:'Positions',empty:'No open positions in the paper book.'})+
+     '<p class="muted" style="margin-top:6px">By strategy (from strategy fills)</p>'+table(['Strategy','Symbol','Qty','Avg','Mark','Realised','Unrealised','P&L'],P.by_strategy.map(p=>`<tr><td>${esc(p.strategy_id)}</td><td>${esc(p.symbol)}</td><td>${p.quantity}</td><td>${num(p.avg_price)}</td><td>${num(p.mark)}</td><td>${num(p.realised)}</td><td>${num(p.unrealised)}</td><td class="${p.pnl>=0?'pos':'neg'}">${num(p.pnl)}</td></tr>`),{label:'Positions by strategy',empty:'No strategy has filled an order yet.'})})]);
 }
 async function run(ex){const m=document.getElementById('msg');m.textContent='running…';try{const r=await send('POST','/api/execution/run',{execute:ex});m.textContent=`${r.status}: ${r.rows} intents; risk ${JSON.stringify(r.risk)}; ${r.orders.length} orders`+(r.error?' — '+r.error:'');load()}catch(e){m.textContent=e.message}}
 async function approve(id){try{await send('POST',`/api/risk/decisions/${id}/approve`);load()}catch(e){alert(e.message)}}
 async function order(id){if(!confirm('Create and submit a PAPER order for this approved decision?'))return;try{await send('POST','/api/oms/orders',{risk_decision_id:id},`order-${id}`);load()}catch(e){alert(e.message)}}
 async function cancel(id){try{await send('POST',`/api/oms/orders/${id}/cancel`,{},`cancel-${id}`);load()}catch(e){alert(e.message)}}
 async function loadFrm(b){const el=document.getElementById('pfrm');
-  let A;try{A=await j('/api/portfolio/risk-model?book='+b)}catch(e){el.textContent=e.message;return}
+  let A;try{A=await j('/api/portfolio/risk-model?book='+b)}catch(e){fail(el,'the factor risk model',e);return}
   const pc=v=>v==null?'—':num(v*100,1)+'%';
-  if(A.status!=='OK'){el.innerHTML=`<p class="muted">${esc(A.note||A.status)}</p>`+(A.status==='NOT_BUILT'?`<button class="ghost" onclick="frmRun()">Build / update the risk model now</button><span id="frmmsg" class="muted"></span>`:'')+((A.coverage||{}).uncovered||[]).map(u=>`<div class="muted">${esc(u.symbol)}: ${esc(u.reason)}</div>`).join('');return}
+  if(A.status!=='OK'){el.innerHTML=`<p class="muted">${esc(A.note||A.status)}</p>`+(A.status==='NOT_BUILT'?`<button class="ghost" onclick="frmRun()">Build / update the risk model now</button><span id="frmmsg" class="muted" role="status"></span>`:'')+((A.coverage||{}).uncovered||[]).map(u=>`<div class="muted">${esc(u.symbol)}: ${esc(u.reason)}</div>`).join('');return}
   const R=A.risk||{},B=A.beta||{},AC=A.active||{},G=A.groups||{},BT=A.bias_test||{},CV=A.coverage||{};
   const bp=((A.bias||{}).portfolios||[])[0]||{};
   const k=(t,v)=>`<div class="kpi"><span>${t}</span><b>${v}</b></div>`;
   el.innerHTML=`<p class="muted">model as of ${esc(A.as_of)} · ${A.model.factors} factors · ${A.model.covariance_sessions} sessions of factor returns · covers ${pc(CV.value_share)} of the book</p>`+
    `<div class="kpis">${k('Total vol (ann.)',num(R.total_vol_pct_annual)+'%')}${k('Factor / specific',pc(R.factor_share)+' / '+pc(R.specific_share))}${k('Beta vs '+esc(B.benchmark||'—'),num(B.value))}${k('Active risk (ann.)',AC.active_vol_pct_annual==null?'—':num(AC.active_vol_pct_annual)+'%')}${k('1-day VaR 95% (model)',num((A.risk_value||{}).var95_1d_value,0)+' <span>'+num(R.var95_1d_pct)+'%</span>')}${k('Bias (this book)',bp.bias==null?'—':num(bp.bias,3)+' <span>'+(bp.in_band?'inside':'OUTSIDE')+' '+(bp.band||[]).map(x=>num(x)).join('–')+', '+bp.sessions+' sessions</span>')}</div>`+
    `<p class="muted">Share of variance: market ${pc(G.market)} · industries ${pc(G.industry)} · styles ${pc(G.style)} · specific ${pc(G.specific)}</p>`+
-   `<div class="grid2"><div>`+table(['Factor','Kind','Exposure','Vol (ann.)','Share of variance'],(A.factors||[]).slice(0,12).map(f=>`<tr><td>${esc(f.factor)}</td><td class="muted">${f.kind}</td><td>${num(f.exposure,3)}</td><td>${num(f.factor_vol_pct_annual,1)}%</td><td><b>${pc(f.share_of_variance)}</b></td></tr>`))+`</div><div>`+
-   table(['Symbol','Weight','MCR (ann.)','Risk share','of which specific','Specific vol','Filled'],(A.stocks||[]).map(s=>`<tr><td>${esc(s.symbol)}</td><td>${pc(s.weight)}</td><td>${num(s.mcr_pct_annual)}%</td><td><b>${pc(s.risk_share)}</b></td><td>${pc(s.risk_share_specific)}</td><td>${num(s.specific_vol_pct_annual,1)}%</td><td class="muted">${esc((s.filled||[]).join(', '))}${s.specific_from_bucket?' specific from size bucket':''}</td></tr>`))+`</div></div>`+
+   `<div class="grid2"><div>`+table(['Factor','Kind','Exposure','Vol (ann.)','Share of variance'],(A.factors||[]).slice(0,12).map(f=>`<tr><td>${esc(f.factor)}</td><td class="muted">${esc(f.kind)}</td><td>${num(f.exposure,3)}</td><td>${num(f.factor_vol_pct_annual,1)}%</td><td><b>${pc(f.share_of_variance)}</b></td></tr>`),{label:'Risk model: variance by factor',empty:'No factor exposures for this book.'})+`</div><div>`+
+   table(['Symbol','Weight','MCR (ann.)','Risk share','of which specific','Specific vol','Filled'],(A.stocks||[]).map(s=>`<tr><td>${esc(s.symbol)}</td><td>${pc(s.weight)}</td><td>${num(s.mcr_pct_annual)}%</td><td><b>${pc(s.risk_share)}</b></td><td>${pc(s.risk_share_specific)}</td><td>${num(s.specific_vol_pct_annual,1)}%</td><td class="muted">${esc((s.filled||[]).join(', '))}${s.specific_from_bucket?' specific from size bucket':''}</td></tr>`),{label:'Risk model: contribution by position',empty:'No positions covered by the model.'})+`</div></div>`+
    `<p class="muted">Benchmark: ${esc((A.benchmark||{}).description||'')}${(CV.uncovered||[]).length?' · not covered: '+CV.uncovered.map(u=>esc(u.symbol)).join(', '):''}</p>`+
    (BT.portfolios?`<p class="muted">Model bias test ${esc(BT.from)} → ${esc(BT.to)} (${BT.sessions} sessions): ${BT.in_band} of ${BT.portfolios} test portfolios inside the 95% band, median bias ${num(BT.median_bias,3)} (1 = forecasts right; above 1 = risk under-forecast)</p>`:'');
 }
@@ -138,53 +187,57 @@ async function frmRun(){const m=document.getElementById('frmmsg');try{const r=aw
 async function loadRisk(){
   const b=document.getElementById('pbook').value, m=document.getElementById('pmsg');m.textContent=' computing…';
   loadFrm(b);
-  let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent=' '+e.message;return}
+  const ids=['phead','pvar','pconc','prc','pcorr','pperf'];
+  let A;try{A=await j('/api/risk/portfolio?book='+b)}catch(e){m.textContent='';ids.forEach(i=>fail(i,'the portfolio risk',e));return}
   m.textContent=' as of '+A.as_of+(A.coverage?` · risk covers ${num(A.coverage.value_share*100,1)}% of the book (${A.coverage.sessions} sessions)`:'');
   const X=A.exposure||{}, V=A.var||{}, C=A.concentration||{}, RA=A.risk_attribution||{}, CO=A.correlation||{};
   const l95=((V.levels||[]).find(l=>l.confidence==0.95)||{}).historical||{};
   const k=(t,v)=>`<div class="kpi"><span>${t}</span><b>${v}</b></div>`;
+  const none=`The ${esc(b)} book holds nothing, so there is nothing to measure.`;
   document.getElementById('phead').innerHTML=A.note&&!X.positions?.length?`<p class="muted">${esc(A.note)}</p>`:
    `<div class="kpis">${k('Positions',X.n_positions??'—')}${k('Invested',num(X.positions_value,0))}${k('Equity',num(X.equity,0))}${k('1-day VaR 95%',num(l95.var_value,0)+' <span>'+num(l95.var_pct)+'%</span>')}${k('ES 95%',num(l95.es_value,0))}${k('Volatility (ann.)',num(V.annual_vol_pct)+'%')}${k('Beta',num(RA.portfolio_beta))}${k('Effective N',num(C.effective_n))}${k('Avg correlation',num(CO.avg_pairwise_weighted))}</div>`+
-   table(['Sector','Value','Weight','% equity'],Object.entries(X.by_sector||{}).map(([s,v])=>`<tr><td>${esc(s)}</td><td>${num(v.value,0)}</td><td>${num(v.weight*100,1)}%</td><td>${v.pct_equity==null?'—':num(v.pct_equity,1)+'%'}</td></tr>`));
+   table(['Sector','Value','Weight','% equity'],Object.entries(X.by_sector||{}).map(([s,v])=>`<tr><td>${esc(s)}</td><td>${num(v.value,0)}</td><td>${num(v.weight*100,1)}%</td><td>${v.pct_equity==null?'—':num(v.pct_equity,1)+'%'}</td></tr>`),{label:'Portfolio risk by sector',empty:none});
   const meth=['historical','parametric','monte_carlo','historical_10d','parametric_10d'];
-  document.getElementById('pvar').innerHTML=table(['Method','Conf.','VaR %','VaR Rs','ES %','ES Rs','VaR % equity'],(V.levels||[]).flatMap(l=>meth.filter(x=>l[x]).map(x=>`<tr><td>${x.replace('_',' ')}</td><td>${l.confidence*100}%</td><td>${num(l[x].var_pct)}</td><td>${num(l[x].var_value,0)}</td><td>${num(l[x].es_pct)}</td><td>${num(l[x].es_value,0)}</td><td>${l[x].var_pct_equity==null?'—':num(l[x].var_pct_equity)}</td></tr>`)))+(V.worst_day_pct!=null?`<p class="muted">Worst day in window ${num(V.worst_day_pct)}% · losses shown positive</p>`:'');
-  document.getElementById('pconc').innerHTML=C.n?table(['Measure','Value'],[['Largest weight',num(C.max_weight*100,1)+'%'],['Top 5 weight',num(C.top5_weight*100,1)+'%'],['HHI',num(C.hhi,3)],['Effective positions',num(C.effective_n)],['Sectors',C.n_sectors],['Effective sectors',num(C.effective_sectors)],['Diversification ratio',num(CO.diversification_ratio)],['Systematic share of variance',RA.systematic_share==null?'—':num(RA.systematic_share*100,1)+'%']].map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td></tr>`)):'<p class="muted">—</p>';
-  document.getElementById('prc').innerHTML=table(['Symbol','Sector','Weight','Risk share','Risk / weight','Vol (ann.)','Beta','Component VaR 95% Rs'],(RA.positions||[]).map(p=>`<tr><td>${esc(p.symbol)}</td><td class="muted">${esc(p.sector)}</td><td>${num(p.weight*100,1)}%</td><td><b>${num(p.risk_share*100,1)}%</b></td><td class="${p.risk_to_weight>1.2?'neg':''}">${num(p.risk_to_weight)}</td><td>${num(p.vol_annual_pct,1)}%</td><td>${num(p.beta)}</td><td>${num(p.component_var95_value,0)}</td></tr>`));
+  document.getElementById('pvar').innerHTML=table(['Method','Conf.','VaR %','VaR Rs','ES %','ES Rs','VaR % equity'],(V.levels||[]).flatMap(l=>meth.filter(x=>l[x]).map(x=>`<tr><td>${x.replace('_',' ')}</td><td>${l.confidence*100}%</td><td>${num(l[x].var_pct)}</td><td>${num(l[x].var_value,0)}</td><td>${num(l[x].es_pct)}</td><td>${num(l[x].es_value,0)}</td><td>${l[x].var_pct_equity==null?'—':num(l[x].var_pct_equity)}</td></tr>`)),{label:'Value at risk and expected shortfall',empty:V.note?esc(V.note):none})+(V.worst_day_pct!=null?`<p class="muted">Worst day in window ${num(V.worst_day_pct)}% · losses shown positive</p>`:'');
+  document.getElementById('pconc').innerHTML=C.n?table(['Measure','Value'],[['Largest weight',num(C.max_weight*100,1)+'%'],['Top 5 weight',num(C.top5_weight*100,1)+'%'],['HHI',num(C.hhi,3)],['Effective positions',num(C.effective_n)],['Sectors',C.n_sectors],['Effective sectors',num(C.effective_sectors)],['Diversification ratio',num(CO.diversification_ratio)],['Systematic share of variance',RA.systematic_share==null?'—':num(RA.systematic_share*100,1)+'%']].map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td></tr>`),{label:'Concentration'}):`<p class="muted">${none}</p>`;
+  document.getElementById('prc').innerHTML=table(['Symbol','Sector','Weight','Risk share','Risk / weight','Vol (ann.)','Beta','Component VaR 95% Rs'],(RA.positions||[]).map(p=>`<tr><td>${esc(p.symbol)}</td><td class="muted">${esc(p.sector)}</td><td>${num(p.weight*100,1)}%</td><td><b>${num(p.risk_share*100,1)}%</b></td><td class="${p.risk_to_weight>1.2?'neg':''}">${num(p.risk_to_weight)}</td><td>${num(p.vol_annual_pct,1)}%</td><td>${num(p.beta)}</td><td>${num(p.component_var95_value,0)}</td></tr>`),{label:'Risk contribution by position',empty:none});
   const M=CO.matrix;
-  document.getElementById('pcorr').innerHTML=M?`<table><thead><tr><th></th>${M.symbols.map(s=>`<th>${esc(s)}</th>`).join('')}</tr></thead><tbody>${M.values.map((r,i)=>`<tr><th>${esc(M.symbols[i])}</th>${r.map((v,jx)=>`<td style="background:${i==jx?'transparent':v>=0?`rgba(220,38,38,${Math.min(Math.abs(v),1)*.7})`:`rgba(5,150,105,${Math.min(Math.abs(v),1)*.7})`}">${num(v)}</td>`).join('')}</tr>`).join('')}</tbody></table><p class="muted">Highly correlated pairs (≥0.7): ${(CO.high_pairs||[]).map(p=>esc(p.a+'/'+p.b+' '+p.corr)).join(', ')||'none'}</p>`:`<p class="muted">${esc(CO.note||'—')}</p>`;
+  document.getElementById('pcorr').innerHTML=M?`<div class="tw" tabindex="0" role="region" aria-label="Correlation matrix"><table><thead><tr><th scope="col"><span class="muted">Symbol</span></th>${M.symbols.map(s=>`<th scope="col">${esc(s)}</th>`).join('')}</tr></thead><tbody>${M.values.map((r,i)=>`<tr><th scope="row">${esc(M.symbols[i])}</th>${r.map((v,jx)=>`<td style="background:${i==jx?'transparent':v>=0?`rgba(220,38,38,${Math.min(Math.abs(v),1)*.55})`:`rgba(5,150,105,${Math.min(Math.abs(v),1)*.55})`}">${num(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="muted">Highly correlated pairs (≥0.7): ${(CO.high_pairs||[]).map(p=>esc(p.a+'/'+p.b+' '+p.corr)).join(', ')||'none above 0.7'}</p>`:`<p class="muted">${esc(CO.note||'Correlation needs at least two positions with price history.')}</p>`;
   const P=A.performance_attribution||{}, Bn=P.brinson;
-  document.getElementById('pperf').innerHTML=P.positions?`<p>${P.from} → ${P.to}: book <b class="${P.portfolio_return_pct>=0?'pos':'neg'}">${num(P.portfolio_return_pct)}%</b> vs ${P.benchmark} ${num(P.benchmark_return_pct)}% · beta ${num(P.beta)} → market part ${num(P.beta_return_pct)}%, alpha <b>${num(P.alpha_return_pct)}%</b>${Bn?` · Brinson vs ${esc(Bn.benchmark)}: allocation ${num(Bn.allocation_pct)}%, selection ${num(Bn.selection_pct)}%`:''}</p>`+
-   table(['Symbol','Start weight','Return','Contribution'],P.positions.map(p=>`<tr><td>${esc(p.symbol)}</td><td>${num(p.start_weight*100,1)}%</td><td class="${p.return_pct>=0?'pos':'neg'}">${num(p.return_pct)}%</td><td>${num(p.contribution_pct,3)}%</td></tr>`))+`<p class="muted">${esc(P.method)}</p>`:`<p class="muted">${esc(P.note||P.error||'—')}</p>`;
+  document.getElementById('pperf').innerHTML=P.positions?`<p>${esc(P.from)} → ${esc(P.to)}: book <b class="${P.portfolio_return_pct>=0?'pos':'neg'}">${num(P.portfolio_return_pct)}%</b> vs ${esc(P.benchmark)} ${num(P.benchmark_return_pct)}% · beta ${num(P.beta)} → market part ${num(P.beta_return_pct)}%, alpha <b>${num(P.alpha_return_pct)}%</b>${Bn?` · Brinson vs ${esc(Bn.benchmark)}: allocation ${num(Bn.allocation_pct)}%, selection ${num(Bn.selection_pct)}%`:''}</p>`+
+   table(['Symbol','Start weight','Return','Contribution'],P.positions.map(p=>`<tr><td>${esc(p.symbol)}</td><td>${num(p.start_weight*100,1)}%</td><td class="${p.return_pct>=0?'pos':'neg'}">${num(p.return_pct)}%</td><td>${num(p.contribution_pct,3)}%</td></tr>`),{label:'Performance attribution',empty:none})+`<p class="muted">${esc(P.method)}</p>`:`<p class="muted">${esc(P.note||P.error||'No performance attribution yet: the book needs positions held over at least one session.')}</p>`;
   try{const E=await j('/api/risk/emergency-exit?book='+b);
-   document.getElementById('pemx').innerHTML=`<p>${E.positions.length} position(s), ${num(E.value,0)} · ${E.open_orders.length} open order(s) · kill switch ${E.kill_switch_on?'<b class="neg">ON</b>':'off'}</p><p class="muted">Will: ${E.will.map(esc).join('; ')}.</p>`+(E.confirm?`<button class="danger" onclick="flatten('${b}','${E.confirm}')">Emergency exit ${b}…</button>`:'<p class="muted">nothing to flatten</p>');}catch(e){document.getElementById('pemx').textContent=e.message}
+   document.getElementById('pemx').innerHTML=`<p>${E.positions.length} position(s), ${num(E.value,0)} · ${E.open_orders.length} open order(s) · kill switch ${E.kill_switch_on?'<b class="neg">ON</b>':'off'}</p><p class="muted">Will: ${E.will.map(esc).join('; ')}.</p>`+(E.confirm?`<button class="danger" onclick="flatten('${esc(b)}','${esc(E.confirm)}')">Emergency exit ${esc(b)}…</button>`:'<p class="muted">Nothing to flatten: the book has no positions or open orders.</p>');}catch(e){fail('pemx','the emergency-exit preview',e)}
 }
 async function flatten(b,code){const t=prompt(`EMERGENCY EXIT (${b}): halts all trading, cancels open orders`+(b==='PAPER'?' and sells every paper position.':'. LIVE: no order is sent; you get the sell list.')+`\nType ${code} to confirm:`);if(t!==code)return;
  const reason=prompt('Reason (recorded):')||'';try{const r=await send('POST','/api/risk/emergency-exit',{book:b,confirm:code,reason},`emx-${code}`);alert(`${r.status}: sold ${r.sold.length}, failed ${r.failed.length}, cancelled ${r.cancelled_orders.length}`+(r.manual_sells.length?`\nSell at broker: `+r.manual_sells.map(x=>x.symbol+' '+x.qty).join(', '):''));load();loadRisk()}catch(e){alert(e.message)}}
 async function w29Run(u,b){const m=document.getElementById('w29msg');m.textContent=' running…';
   try{const r=await send('POST',u,b||{},'w29-'+Date.now());m.textContent=' '+(r.overall||r.result||r.status||'done');loadOps();load()}catch(e){m.textContent=' '+e.message}}
-async function loadPnl(){try{const P=await j('/api/pnl/live');const card=(b,t)=>`<div class="kpi" style="display:inline-block;min-width:200px;margin:0 10px 8px 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px"><div class="muted">${t}</div><div style="font-size:18px;font-weight:700" class="${(b.day_pnl||0)>=0?'pos':'neg'}">₹${num(b.day_pnl,0)} today</div><div class="muted">value ₹${num(b.value,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} pos</div></div>`;
-  const rows=[...P.LIVE.rows.map(r=>({...r,book:'LIVE'})),...P.PAPER.rows.map(r=>({...r,book:'PAPER'}))];
-  document.getElementById('lp').innerHTML=card(P.LIVE,'LIVE holdings')+card(P.PAPER,'PAPER book')+`<span class="muted">${P.PAPER.cash!=null?'paper cash ₹'+num(P.PAPER.cash,0)+' · realised ₹'+num(P.PAPER.realized_to_date,0):''} ${P.stale_prices.length?'· stale prices: '+esc(P.stale_prices.slice(0,8).join(', ')):''}</span>`
-   +table(['Book','Symbol','Qty','Avg','Price','Day %','Day P&L','Unrealised','Price source'],rows.map(r=>`<tr><td>${r.book}</td><td><b>${esc(r.symbol)}</b></td><td>${r.qty}</td><td>${num(r.avg)}</td><td>${num(r.price)}</td><td class="${(r.day_pct||0)>=0?'pos':'neg'}">${num(r.day_pct)}%</td><td class="${(r.day_pnl||0)>=0?'pos':'neg'}">${num(r.day_pnl,0)}</td><td class="${(r.unrealized||0)>=0?'pos':'neg'}">${num(r.unrealized,0)}</td><td class="muted">${esc(r.price_source||'')}${r.quote_age_min!=null?' · '+r.quote_age_min+'m':''}</td></tr>`))
-   +Object.entries(P.strategies).map(([s,b])=>`<div class="muted">strategy ${esc(s)}: day ₹${num(b.day_pnl,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} open</div>`).join('');
+async function loadPnl(){try{const P=await j('/api/pnl/live');const card=(b,t)=>`<div class="kpi" style="display:inline-block;min-width:min(200px,100%);margin:0 10px 8px 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px"><div class="muted">${t}</div><div style="font-size:18px;font-weight:700;font-variant-numeric:tabular-nums" class="${(b.day_pnl||0)>=0?'pos':'neg'}">₹${num(b.day_pnl,0)} today</div><div class="muted">value ₹${num(b.value,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} pos</div></div>`;
+  const rows=[...(P.LIVE.rows||[]).map(r=>({...r,book:'LIVE'})),...(P.PAPER.rows||[]).map(r=>({...r,book:'PAPER'}))];
+  document.getElementById('lp').innerHTML=card(P.LIVE,'LIVE holdings')+card(P.PAPER,'PAPER book')+`<span class="muted">${P.PAPER.cash!=null?'paper cash ₹'+num(P.PAPER.cash,0)+' · realised ₹'+num(P.PAPER.realized_to_date,0):''} ${(P.stale_prices||[]).length?'· stale prices: '+esc(P.stale_prices.slice(0,8).join(', ')):''}</span>`
+   +table(['Book','Symbol','Qty','Avg','Price','Day %','Day P&L','Unrealised','Price source'],rows.map(r=>`<tr><td>${esc(r.book)}</td><td><b>${esc(r.symbol)}</b></td><td>${r.qty}</td><td>${num(r.avg)}</td><td>${num(r.price)}</td><td class="${(r.day_pct||0)>=0?'pos':'neg'}">${num(r.day_pct)}%</td><td class="${(r.day_pnl||0)>=0?'pos':'neg'}">${num(r.day_pnl,0)}</td><td class="${(r.unrealized||0)>=0?'pos':'neg'}">${num(r.unrealized,0)}</td><td class="muted">${esc(r.price_source||'')}${r.quote_age_min!=null?' · '+r.quote_age_min+'m':''}</td></tr>`),
+     {label:'Live P&L by holding',empty:'Neither book holds anything right now, so there is no live P&L.'})
+   +Object.entries(P.strategies||{}).map(([s,b])=>`<div class="muted">strategy ${esc(s)}: day ₹${num(b.day_pnl,0)} · unrealised ₹${num(b.unrealized,0)} · ${b.positions} open</div>`).join('');
   const S=await j('/api/pnl/live/series');const pts=(S.series.PAPER||[]).concat([]);const l=(S.series.LIVE||[]);
   const spark=(v,lbl)=>{if(v.length<2)return '';const ys=v.map(p=>p.day_pnl||0),mn=Math.min(...ys,0),mx=Math.max(...ys,0),rg=mx-mn||1,w=420,h=70;
-   return `<div class="muted">${lbl} day P&L ${v[0].ts}→${v[v.length-1].ts}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px"><line x1="0" x2="${w}" y1="${h-4-(0-mn)/rg*(h-8)}" y2="${h-4-(0-mn)/rg*(h-8)}" stroke="#475569" stroke-dasharray="3 3"/><path d="${v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-4)+2).toFixed(1)},${(h-4-((p.day_pnl||0)-mn)/rg*(h-8)).toFixed(1)}`).join('')}" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg>`};
-  document.getElementById('lps').innerHTML=spark(l,'LIVE')+spark(pts,'PAPER')}catch(e){document.getElementById('lp').textContent=e.message}}
+   return `<div class="muted">${lbl} day P&L ${esc(v[0].ts)}→${esc(v[v.length-1].ts)}</div><svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px" role="img" aria-label="${lbl} day P&amp;L through the session"><line x1="0" x2="${w}" y1="${h-4-(0-mn)/rg*(h-8)}" y2="${h-4-(0-mn)/rg*(h-8)}" style="stroke:var(--muted)" stroke-dasharray="3 3"/><path d="${v.map((p,i)=>`${i?'L':'M'}${(i/(v.length-1)*(w-4)+2).toFixed(1)},${(h-4-((p.day_pnl||0)-mn)/rg*(h-8)).toFixed(1)}`).join('')}" fill="none" style="stroke:var(--accent)" stroke-width="1.5"/></svg>`};
+  document.getElementById('lps').innerHTML=spark(l,'LIVE')+spark(pts,'PAPER')}catch(e){fail('lp','the live P&L',e)}}
 async function loadOps(){
-  try{const B=await j('/api/execution/broker-health');const L=B.latest;document.getElementById('bh').innerHTML=L?`<b>Broker health ${pill(L.overall)}</b> <span class="muted">${esc(String(L.checked_at).slice(0,16))}${L.in_session?'':' (outside session)'}</span>`+table(['Check','Status','Detail'],L.checks.map(c=>`<tr><td>${esc(c.check)}</td><td>${pill(c.status)}</td><td class="muted">${esc(c.detail)}${c.latency_ms!=null?' · '+c.latency_ms+' ms':''}</td></tr>`)):'<span class="muted">no broker health check yet</span>'}catch(e){document.getElementById('bh').textContent=e.message}
-  try{const R=await j('/api/execution/reconciliation?limit=1');const r=R[0];document.getElementById('rec').innerHTML=r?`<b>Reconciliation ${pill(r.status)}</b> <span class="muted">${esc(r.trade_date)} · ${r.breaks} breaks · ${r.explained} explained</span>`+table(['Book','Kind','Symbol / order','Detail'],Object.entries(r.details).flatMap(([bk,d])=>[...d.breaks.map(x=>[bk,'BREAK',x]),...d.explained.map(x=>[bk,'explained',x])]).map(([bk,k,x])=>`<tr><td>${bk}</td><td>${k}</td><td>${esc(x.symbol||x.order_id)}</td><td class="muted">${esc(JSON.stringify(x))}</td></tr>`)):'<span class="muted">no reconciliation yet</span>'}catch(e){document.getElementById('rec').textContent=e.message}
-  try{const O=await j('/api/oms/orders?limit=200');const rest=(Array.isArray(O)?O:O.orders||[]).filter(o=>['ACKNOWLEDGED','CREATED','VALIDATED'].includes(o.status));
-   document.getElementById('rest').innerHTML=`<b>Resting / open orders</b>`+table(['Order','Symbol','Side','Qty','Type','Limit','Trigger','Status','Actions'],rest.map(o=>`<tr><td>${esc(o.order_id)}</td><td>${esc(o.symbol)}</td><td>${o.side}</td><td>${o.quantity}</td><td>${esc(o.order_type)}</td><td>${num(o.limit_price)}</td><td>${num(o.trigger_price)}</td><td>${pill(o.status)}</td><td><button class="ghost" onclick="w29Modify('${o.order_id}')">Modify</button></td></tr>`))}catch(e){document.getElementById('rest').textContent=e.message}
-  try{const d=document.getElementById('andays').value;const A=await j('/api/execution/analytics?days='+d);const o=A.overall;
-   document.getElementById('an').innerHTML=`<b>Execution analytics</b> <span class="muted">${esc(A.period)}${A.note?' · '+esc(A.note):''}</span>`+table(['Orders','Fill rate (qty)','Fill rate (orders)','Rejected','Cancelled','Failed','Time to fill p50 / p90','Slippage bps mean / p90 / worst','Slippage cost','Fees'],[`<tr><td>${o.orders}</td><td>${o.fill_rate_qty==null?'—':num(o.fill_rate_qty*100,1)+'%'}</td><td>${o.fill_rate_orders==null?'—':num(o.fill_rate_orders*100,1)+'%'}</td><td>${o.rejected}</td><td>${o.cancelled}</td><td>${o.failed}</td><td>${num(o.time_to_fill_s.median,1)}s / ${num(o.time_to_fill_s.p90,1)}s</td><td>${num(o.slippage_bps.mean)} / ${num(o.slippage_bps.p90)} / ${num(o.slippage_bps.worst)}</td><td>₹${num(o.slippage_cost_rs,0)}</td><td>₹${num(o.fees_rs,0)}</td></tr>`])
-    +(o.rejection_reasons.length?`<div class="muted">rejections: ${o.rejection_reasons.map(r=>esc(r.reason)+' ×'+r.count).join(' · ')}</div>`:'')}catch(e){document.getElementById('an').textContent=e.message}
-  try{const K=await j('/api/zerodha/status');document.getElementById('kz').innerHTML=`<b>Zerodha session</b> ${pill(K.state)} <span class="muted">${esc(K.detail)}</span> ${K.state!=='VALID'&&K.configured?'<button class="ghost" onclick="w29Kite()">Log in to Zerodha</button>':''}`}catch(e){}
+  await Promise.all([
+  sec('bh','the broker health',async el=>{const B=await j('/api/execution/broker-health');const L=B.latest;el.innerHTML=L?`<b>Broker health ${pill(L.overall)}</b> <span class="muted">${esc(String(L.checked_at).slice(0,16))}${L.in_session?'':' (outside session)'}</span>`+table(['Check','Status','Detail'],L.checks.map(c=>`<tr><td>${esc(c.check)}</td><td>${pill(c.status)}</td><td class="muted">${esc(c.detail)}${c.latency_ms!=null?' · '+c.latency_ms+' ms':''}</td></tr>`),{label:'Broker health checks'}):'<p class="muted"><b>Broker health:</b> no check yet. Press “Check broker health” above.</p>'}),
+  sec('rec','the reconciliation',async el=>{const R=await j('/api/execution/reconciliation?limit=1');const r=R[0];el.innerHTML=r?`<b>Reconciliation ${pill(r.status)}</b> <span class="muted">${esc(r.trade_date)} · ${r.breaks} breaks · ${r.explained} explained</span>`+table(['Book','Kind','Symbol / order','Detail'],Object.entries(r.details).flatMap(([bk,d])=>[...d.breaks.map(x=>[bk,'BREAK',x]),...d.explained.map(x=>[bk,'explained',x])]).map(([bk,k,x])=>`<tr><td>${esc(bk)}</td><td>${k}</td><td>${esc(x.symbol||x.order_id)}</td><td class="muted">${esc(JSON.stringify(x))}</td></tr>`),{label:'Reconciliation breaks',empty:'No breaks: the books agree with the orders and fills.'}):'<p class="muted"><b>Reconciliation:</b> none run yet. It runs after the post-market cycle, or press “Reconcile now”.</p>'}),
+  sec('rest','the open orders',async el=>{const O=await j('/api/oms/orders?limit=200');const rest=(Array.isArray(O)?O:O.orders||[]).filter(o=>['ACKNOWLEDGED','CREATED','VALIDATED'].includes(o.status));
+    el.innerHTML=`<b>Resting / open orders</b>`+table(['Order','Symbol','Side','Qty','Type','Limit','Trigger','Status','Actions'],rest.map(o=>`<tr><td>${esc(o.order_id)}</td><td>${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${o.quantity}</td><td>${esc(o.order_type)}</td><td>${num(o.limit_price)}</td><td>${num(o.trigger_price)}</td><td>${pill(o.status)}</td><td><button class="ghost" onclick="w29Modify('${esc(o.order_id)}')">Modify</button></td></tr>`),{label:'Resting and open orders',empty:'No resting or open orders: every order has filled, been cancelled or been rejected.'})}),
+  sec('an','the execution analytics',async el=>{const d=document.getElementById('andays').value;const A=await j('/api/execution/analytics?days='+d);const o=A.overall;
+    el.innerHTML=`<b>Execution analytics</b> <span class="muted">${esc(A.period)}${A.note?' · '+esc(A.note):''}</span>`+table(['Orders','Fill rate (qty)','Fill rate (orders)','Rejected','Cancelled','Failed','Time to fill p50 / p90','Slippage bps mean / p90 / worst','Slippage cost','Fees'],[`<tr><td>${o.orders}</td><td>${o.fill_rate_qty==null?'—':num(o.fill_rate_qty*100,1)+'%'}</td><td>${o.fill_rate_orders==null?'—':num(o.fill_rate_orders*100,1)+'%'}</td><td>${o.rejected}</td><td>${o.cancelled}</td><td>${o.failed}</td><td>${num(o.time_to_fill_s.median,1)}s / ${num(o.time_to_fill_s.p90,1)}s</td><td>${num(o.slippage_bps.mean)} / ${num(o.slippage_bps.p90)} / ${num(o.slippage_bps.worst)}</td><td>₹${num(o.slippage_cost_rs,0)}</td><td>₹${num(o.fees_rs,0)}</td></tr>`],{label:'Execution analytics'})
+     +(o.rejection_reasons.length?`<div class="muted">rejections: ${o.rejection_reasons.map(r=>esc(r.reason)+' ×'+r.count).join(' · ')}</div>`:'')}),
+  (async()=>{try{const K=await j('/api/zerodha/status');document.getElementById('kz').innerHTML=`<b>Zerodha session</b> ${pill(K.state)} <span class="muted">${esc(K.detail)}</span> ${K.state!=='VALID'&&K.configured?'<button class="ghost" onclick="w29Kite()">Log in to Zerodha</button>':''}`}catch(e){}})()]);
 }
 async function w29Modify(oid){const q=prompt('New quantity (blank = keep):','');if(q===null)return;const l=prompt('New limit price (blank = keep):','');if(l===null)return;const t=prompt('New trigger price (blank = keep):','');if(t===null)return;
   try{await send('POST',`/api/oms/orders/${oid}/modify`,{quantity:q||null,limit_price:l||null,trigger_price:t||null},'mod-'+oid+'-'+Date.now());loadOps();load()}catch(e){alert(e.message)}}
 async function w29Kite(){try{const r=await j('/api/zerodha/login-url');window.open(r.login_url,'_blank')}catch(e){alert(e.message)}}
-load();loadRisk();loadPnl();loadOps();setInterval(loadPnl,60000);
+skel();load();loadRisk();loadPnl();loadOps();setInterval(loadPnl,60000);
 </script></body></html>"""
 
 

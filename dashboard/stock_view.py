@@ -457,34 +457,35 @@ def register(app, get_connection, json_safe):
 
 ASSETS = r"""
 <style>
-th[data-sorted="asc"]::after{content:" \25B2";color:#38bdf8;font-size:9px}
-th[data-sorted="desc"]::after{content:" \25BC";color:#38bdf8;font-size:9px}
+th[data-sorted="asc"]::after{content:" \25B2";color:var(--ax-brand,#38bdf8);font-size:12px}
+th[data-sorted="desc"]::after{content:" \25BC";color:var(--ax-brand,#38bdf8);font-size:12px}
 tr[data-sym]{cursor:pointer}.tod-card[data-sym]{cursor:pointer}
-.tfilter{display:flex;gap:6px;align-items:center;margin:0 0 8px;flex-wrap:wrap}.tfilter .cnt{font-size:11px;color:#64748b}
-#sv-back{position:fixed;inset:0;background:rgba(2,6,23,.72);display:none;z-index:900;overflow:auto;padding:24px 12px}
+.tfilter{display:flex;gap:6px;align-items:center;margin:0 0 8px;flex-wrap:wrap}.tfilter .cnt{font-size:12px;color:var(--ax-muted,var(--ax-muted,#64748b))}
+#sv-back{position:fixed;inset:0;background:rgba(2,6,23,.72);display:none;z-index:985;overflow:auto;padding:24px 12px}
 #sv-back.on{display:block}
-#sv{max-width:1040px;margin:0 auto;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px 16px;color:#e2e8f0}
+#sv{max-width:1040px;margin:0 auto;background:var(--ax-surface,#1e293b);border:1px solid var(--ax-border,#334155);border-radius:12px;padding:14px 16px;color:var(--ax-text,#e2e8f0)}
 #sv .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
-#sv .sym{font-size:20px;font-weight:700}#sv .nm{font-size:12px;color:#94a3b8}
-#sv .px{font-size:22px;font-weight:700}#sv .up{color:#059669}#sv .dn{color:#dc2626}#sv .mut{color:#64748b}
+#sv .sym{font-size:20px;font-weight:700}#sv .nm{font-size:12px;color:var(--ax-muted,#94a3b8)}
+#sv .px{font-size:22px;font-weight:700}#sv .up{color:var(--ax-pos,#059669)}#sv .dn{color:var(--ax-neg,#dc2626)}#sv .mut{color:var(--ax-muted,#64748b)}
 #sv .btns button{border:none;border-radius:6px;padding:6px 14px;margin-left:4px;cursor:pointer;font-weight:600;color:#fff}
-#sv .b-buy{background:#059669}#sv .b-sell{background:#dc2626}#sv .b-x{background:#334155}
+#sv .b-buy{background:#059669}#sv .b-sell{background:#dc2626}#sv .b-x{background:var(--ax-surface-3,#334155)}
+#sv .b-nobuy{display:inline-block;padding:6px 10px;border:1px dashed var(--ax-border,#475569);border-radius:6px;color:var(--ax-muted,#94a3b8);font-size:12px;cursor:help;margin-right:6px}
 #sv .bar{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 6px;align-items:center}
-#sv .bar button{background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11.5px}
+#sv .bar button{background:var(--ax-surface-2,#0f172a);border:1px solid var(--ax-border,#334155);color:var(--ax-muted,#94a3b8);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12px}
 #sv .bar button.on{background:#2563eb;color:#fff;border-color:#2563eb}
 #sv .sp{flex:1}
-#sv svg{width:100%;display:block;background:#0f172a;border-radius:8px}
-#sv .tip{font-size:11px;color:#cbd5e1;min-height:16px;margin:4px 2px}
-#sv #svnoid{background:#0f172a;border-radius:8px;padding:14px 12px;margin:0;font-size:12px}
+#sv svg{width:100%;display:block;background:var(--ax-surface-2,#0f172a);border-radius:8px}
+#sv .tip{font-size:12px;color:var(--ax-text-2,#cbd5e1);min-height:16px;margin:4px 2px}
+#sv #svnoid{background:var(--ax-surface-2,#0f172a);border-radius:8px;padding:14px 12px;margin:0;font-size:12px}
 #sv .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:10px 0}
-#sv .kv div{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:6px 9px}
-#sv .kv span{display:block;font-size:10px;color:#64748b;text-transform:uppercase}
+#sv .kv div{background:var(--ax-surface-2,#0f172a);border:1px solid var(--ax-border,#334155);border-radius:8px;padding:6px 9px}
+#sv .kv span{display:block;font-size:12px;color:var(--ax-muted,#64748b);text-transform:uppercase}
 #sv .kv b{font-size:13px}
 #sv .tabs2{display:flex;gap:4px;margin:12px 0 8px;flex-wrap:wrap}
-#sv .tabs2 div{padding:4px 11px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #334155;color:#94a3b8}
+#sv .tabs2 div{padding:4px 11px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--ax-border,#334155);color:var(--ax-muted,#94a3b8)}
 #sv .tabs2 div.on{background:#2563eb;color:#fff;border-color:#2563eb}
 #sv .pane{display:none;max-height:340px;overflow:auto}#sv .pane.on{display:block}
-#sv table{font-size:11.5px}
+#sv table{font-size:12px}
 </style>
 <div id="sv-back" onclick="if(event.target===this)svClose()"><div id="sv" role="dialog" aria-modal="true"></div></div>
 <script>
@@ -659,7 +660,7 @@ function render(){
   var cmp=(live&&live>0)?live:s.last_close, chg=s.prev_close?((cmp-s.prev_close)/s.prev_close*100):null;
   var h='<div class="hd"><div><div class="sym">'+esc(d.symbol)+'</div><div class="nm">'+esc(d.name||'')+'</div></div>'+
    '<div><div class="px">₹'+n(cmp)+' '+pc(chg)+'</div><div class="nm">'+(live&&live>0?'live':'close '+esc(s.last_date))+'</div></div>'+
-   '<div class="btns"><button class="b-buy" onclick="svOrder(\'BUY\')">Buy</button><button class="b-sell" onclick="svOrder(\'SELL\')">Sell</button><button class="b-x" onclick="svClose()">✕</button></div></div>';
+   '<div class="btns">'+(svSig(d)==='BUY'?'<button class="b-buy" onclick="svOrder(\'BUY\')">Buy</button>':'<span class="b-nobuy" title="Buy appears only on a BUY signal. Signal now: '+esc(svSig(d)||'none')+'">No buy · '+esc(svSig(d)||'no signal')+'</span>')+'<button class="b-sell" onclick="svOrder(\'SELL\')">Sell</button><button class="b-x" onclick="svClose()">✕</button></div></div>';
   h+='<div class="kv">'+[['52W high',n(s.high_52w)],['52W low',n(s.low_52w)],['1W',pc(s.ret_1w)],['1M',pc(s.ret_1m)],['3M',pc(s.ret_3m)],['6M',pc(s.ret_6m)],['1Y',pc(s.ret_1y)],['3Y',pc(s.ret_3y)],['5Y',pc(s.ret_5y)],['Since '+esc(s.first_date||''),pc(s.ret_all)],['High / low (loaded)',n(s.high_all)+' / '+n(s.low_all)],['Avg vol 20D',n(s.avg_volume_20d,0)]]
     .map(function(x){return '<div><span>'+x[0]+'</span><b>'+x[1]+'</b></div>'}).join('')+'</div>';
   h+='<div class="bar">'+Object.keys(RANGES).map(function(r){return '<button class="'+(!S.ix&&S.range===r?'on':'')+'" onclick="svRange(\''+r+'\')">'+r+'</button>'}).join('')+
@@ -684,8 +685,10 @@ window.svOv=function(k){S.ov[k]=!S.ov[k];render()};
 window.svInd=function(k){S.ind[k]=!S.ind[k];save('sv'+k,S.ind[k]);render()};
 window.svPat=function(){S.pat=!S.pat;save('svpat',S.pat);render()};
 window.svTab=function(id,el){document.querySelectorAll('#sv .pane').forEach(function(x){x.classList.remove('on')});document.querySelectorAll('#sv .tabs2 div').forEach(function(x){x.classList.remove('on')});document.getElementById('sv-'+id).classList.add('on');el.classList.add('on')};
-window.svOrder=function(side){var d=S.data;if(typeof openOrderModal!=='function'){alert('Order entry is not available on this page');return}
-  var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;svClose();openOrderModal(d.symbol,(live&&live>0)?live:d.stats.last_close,side)};
+// Buy only on a BUY signal (3 Nov 2026): the latest stored EOD signal decides.
+window.svSig=function(d){var sc=(d&&d.scores)||[];return sc.length?String(sc[sc.length-1].signal||'').toUpperCase():''};
+window.svOrder=function(side){var d=S.data;if(typeof openOrderModal!=='function'){if(window.AX&&AX.toast)AX.toast('Order entry is not available on this page',true);return}
+  var live=(typeof liveCmpFor==='function')?liveCmpFor(d.symbol):null;svClose();openOrderModal(d.symbol,(live&&live>0)?live:d.stats.last_close,side,svSig(d))};
 
 function chart(){
   var d=S.data,ix=S.ix>0,box=document.getElementById('svc'),pl=document.getElementById('svpl'),tip=document.getElementById('svtip');

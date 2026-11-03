@@ -12,6 +12,9 @@ optional exit load.
 Charts are single-series lines (one hue, #3987e5 -- validated for this dark surface), 2px, crosshair tooltip;
 reference levels (0, the hurdle) are dashed muted lines. Every charted value is also listed in a table, except
 the rolling-return series (one point per NAV date), which is summarised by its statistics table.
+
+UX audit (3 Nov 2026): the section tabs are buttons, tables scroll inside keyboard-reachable regions (no
+page-wide horizontal scroll on a phone), every input is labelled and colours follow the shell theme.
 """
 
 import json
@@ -19,46 +22,50 @@ import json
 PAGE = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ATIP Data Platform</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--series:#3987e5;--grid:#334155;--warn:#f59e0b}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#334155;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--series:#3987e5;--grid:#334155;--warn:#fde68a;--bad:#fca5a5;--badbg:#3b1114}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 .top{background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.top a{color:var(--accent);text-decoration:none;margin-left:12px}.wrap{padding:14px 16px;max-width:1400px}
-.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}.tab{padding:6px 12px;border-radius:6px;background:var(--panel);cursor:pointer;color:var(--muted)}
-.tab.on{background:#2563eb;color:#fff}.pane{display:none}.pane.on{display:block}
+.top>div:last-child{display:flex;flex-wrap:wrap;gap:4px 12px}.top a{color:var(--accent);text-decoration:none;display:inline-block;padding:4px 0}.wrap{padding:14px 16px;max-width:1400px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}.tabs .tab{padding:6px 12px;border-radius:6px;background:var(--panel);cursor:pointer;color:var(--muted);border:1px solid var(--line);font-size:13px;margin:0}
+.tabs .tab.on{background:#2563eb;color:#fff;border-color:#2563eb}.pane{display:none}.pane.on{display:block}
 h2{font-size:13px;color:var(--accent);margin:14px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
-table{width:100%;border-collapse:collapse;background:var(--panel);font-size:11.5px}
-th,td{padding:5px 7px;border-bottom:1px solid #1e293b55;text-align:left;vertical-align:top}th{color:var(--muted);background:var(--bg);white-space:nowrap}
-.muted{color:var(--muted)}.note{color:var(--warn)}.scroll{max-height:420px;overflow:auto}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
-.row{display:flex;gap:12px;flex-wrap:wrap}.row>.card{flex:1;min-width:300px}
-button,select,input{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11.5px;margin:1px}
-select,input{background:var(--bg);color:var(--text);border:1px solid var(--line)}label{color:var(--muted);margin-right:8px}
+table{width:100%;border-collapse:collapse;overflow-wrap:normal;background:var(--panel);font-size:12.5px}
+th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-variant-numeric:tabular-nums}th{color:var(--muted);background:var(--bg);white-space:nowrap;position:sticky;top:0;z-index:1}
+.muted{color:var(--muted)}.note{color:var(--warn)}
+.tw{overflow:auto;max-width:100%;margin:2px 0}.scroll .tw{max-height:420px}.scroll.s240 .tw{max-height:240px}
+.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--muted);padding:8px 2px;margin:2px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;min-width:0;overflow-wrap:anywhere}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>.card,.row>div{flex:1;min-width:min(300px,100%)}
+button,select,input{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12.5px;margin:1px;max-width:100%}
+select,input{background:var(--bg);color:var(--text);border:1px solid var(--line)}label{color:var(--muted);margin-right:8px;font-size:12.5px;display:inline-block}
 .chart{position:relative;width:100%;height:180px}.chart svg{width:100%;height:100%;display:block}
-.tip{position:absolute;pointer-events:none;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:11px;display:none;white-space:nowrap}.tip b{display:block}
+.tip{position:absolute;pointer-events:none;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:12px;display:none;white-space:nowrap}.tip b{display:block}
+@media(max-width:760px){.wrap{padding:12px}.tw td:first-child,.tw th:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}.tw thead th:first-child{z-index:2;background:var(--bg)}}
 </style></head><body>
-<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Data platform (W35)</span></div>
+<div class="top"><div><b style="color:var(--accent)">📊 ATIP</b> <span class="muted">Data platform</span></div>
 <div><a href="/market">Market</a><a href="/quant">Quant</a><a href="/">← Dashboard</a></div></div>
-<div class="wrap"><div class="tabs" id="tabs"></div>
+<div class="wrap"><div class="tabs" id="tabs" role="tablist" aria-label="Data platform sections"></div>
 
-<div class="pane" id="p-lake"><div class="card"><div id="lake"></div><button onclick="verify()">Verify hashes</button>
+<div class="pane" role="tabpanel" id="p-lake"><div class="card"><div id="lake"></div><button onclick="verify()">Verify hashes</button>
  <label>archive table <input id="atab" size="14" placeholder="prices_daily"></label><label>date col <input id="acol" size="8" value="date"></label><label>start <input id="ast" size="10"></label><button onclick="archive()">Archive to lake</button></div></div>
 
-<div class="pane" id="p-ticks"><div class="row"><div class="card"><b>Tick capture</b> <span class="muted">live_feed.capture_ticks</span><div id="ticks"></div><button onclick="minuteBars()">Build today's 1-min bars</button></div>
+<div class="pane" role="tabpanel" id="p-ticks"><div class="row"><div class="card"><b>Tick capture</b> <span class="muted">live_feed.capture_ticks</span><div id="ticks"></div><button onclick="minuteBars()">Build today's 1-min bars</button></div>
 <div class="card" style="flex:2"><b>Order-book depth — latest per symbol</b> <span class="muted">depth.enabled</span> <button onclick="depthNow()">Snapshot now</button><div id="depth" class="scroll"></div></div></div></div>
 
-<div class="pane" id="p-fo"><div class="card"><label>underlying <input id="fsym" size="12" value="NIFTY"></label><label>expiry <select id="fexp"><option value="">all</option></select></label>
+<div class="pane" role="tabpanel" id="p-fo"><div class="card"><label>underlying <input id="fsym" size="12" value="NIFTY"></label><label>expiry <select id="fexp"><option value="">all</option></select></label>
 <button onclick="chain()">Latest option chain</button> <button onclick="chainNow()">Snapshot now</button> <button onclick="contracts()">EOD contracts</button><div id="fo" class="scroll" style="margin-top:8px"></div></div></div>
 
-<div class="pane" id="p-macro"><div class="row"><div class="card" style="flex:2"><b>Macro series (point in time)</b> <button onclick="macroRefresh()">Refresh now</button><div id="macro" class="scroll"></div></div>
+<div class="pane" role="tabpanel" id="p-macro"><div class="row"><div class="card" style="flex:2"><b>Macro series (point in time)</b> <button onclick="macroRefresh()">Refresh now</button><div id="macro" class="scroll"></div></div>
 <div class="card"><b id="mt">Series — pick one</b><div class="chart" id="mchart"></div><b>Calendar</b><div id="cal"></div>
 <label>date <input id="cd" size="10"></label><label>event <input id="ce" size="18"></label><button onclick="addCal()">Add</button></div></div></div>
 
-<div class="pane" id="p-assets"><div class="row"><div class="card"><b>Assets</b> <button onclick="assetsRefresh()">Refresh now</button><div id="assets" class="scroll"></div></div>
+<div class="pane" role="tabpanel" id="p-assets"><div class="row"><div class="card"><b>Assets</b> <button onclick="assetsRefresh()">Refresh now</button><div id="assets" class="scroll"></div></div>
 <div class="card" style="flex:2"><b id="at">Price — pick an asset</b><div class="chart" id="achart"></div>
-<b>Mutual fund NAVs</b> <input id="mfq" size="20" placeholder="search scheme"><button onclick="mfSearch()">Search</button> <span class="muted">pick a scheme for its analytics</span><div id="mf" class="scroll" style="max-height:240px"></div></div></div>
+<b>Mutual fund NAVs</b> <input id="mfq" size="20" placeholder="search scheme" aria-label="Search mutual fund schemes" onkeydown="if(event.key==='Enter')mfSearch()"><button onclick="mfSearch()">Search</button> <span class="muted">pick a scheme for its analytics</span><div id="mf" class="scroll s240"></div></div></div>
 <div class="card" id="mfd" style="display:none"><div id="mfh"></div>
-<div class="row" style="margin-top:4px"><div style="flex:1;min-width:280px"><h2>Returns</h2><div id="mfret"></div><h2>Risk</h2><div id="mfrisk"></div></div>
-<div style="flex:1;min-width:280px"><h2 id="mfrt">Rolling returns</h2><label>window <select id="mfwin" onchange="mfRolling()"><option>1Y</option><option>3Y</option></select></label><label>hurdle % a year <input id="mfhurdle" size="4" value="7" onchange="if(MF)mfOpen(MF.scheme.scheme_code)"></label>
+<div class="row" style="margin-top:4px"><div style="flex:1;min-width:min(280px,100%)"><h2>Returns</h2><div id="mfret"></div><h2>Risk</h2><div id="mfrisk"></div></div>
+<div style="flex:1;min-width:min(280px,100%)"><h2 id="mfrt">Rolling returns</h2><label>window <select id="mfwin" onchange="mfRolling()"><option>1Y</option><option>3Y</option></select></label><label>hurdle % a year <input id="mfhurdle" size="4" value="7" onchange="if(MF)mfOpen(MF.scheme.scheme_code)"></label>
 <div class="chart" id="mfrchart"></div><div id="mfrs"></div></div></div>
 <h2>Category rank</h2><div id="mfcat"></div>
 <h2>SIP calculator <span class="muted">(on the stored NAVs; a holiday buys at the next NAV)</span></h2>
@@ -66,7 +73,7 @@ select,input{background:var(--bg);color:var(--text);border:1px solid var(--line)
 <label title="0.005 % of every purchase, taken before units are allotted"><input type="checkbox" id="sipsd" checked> stamp duty 0.005 %</label><label title="RTAs allot units to 3 decimals, rounded down"><input type="checkbox" id="sipru" checked> units to 3 decimals</label><label>exit load % <input id="sipel" size="3" placeholder="none"></label><label>on units held under <input id="sipeld" size="4" value="365"> days</label>
 <div id="sipout" style="margin-top:6px"></div><p class="muted" id="mfnote" style="margin-top:8px"></p></div></div>
 
-<div class="pane" id="p-alt"><div class="card"><div id="alt"></div></div><div class="card"><b id="altt">Observations — pick a source metric</b><div id="altobs" class="scroll"></div></div></div>
+<div class="pane" role="tabpanel" id="p-alt"><div class="card"><div id="alt"></div></div><div class="card"><b id="altt">Observations — pick a source metric</b><div id="altobs" class="scroll"></div></div></div>
 </div>
 <script>
 const TOKEN=__TOKEN__;
@@ -74,16 +81,20 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const num=(v,d=2)=>v==null?'—':Number(v).toFixed(d);
 async function j(u,o){const r=await fetch(u,o);const t=await r.json();if(!r.ok)throw new Error(t.error||t.detail||r.status);return t}
 const post=(u,b)=>j(u,{method:'POST',headers:{'Content-Type':'application/json','X-ATIP-Token':TOKEN},body:JSON.stringify(b||{})});
-const table=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">none</td></tr>`}</tbody></table>`;
+// UX audit: every table scrolls inside its own keyboard-reachable region, never the page
+const strip=x=>String(x).replace(/<[^>]*>/g,'');
+const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).map(strip).join(', '));
+  if(!rows.length)return `<p class="empty" role="status">${o.empty||'Nothing to show yet.'}</p>`;
+  return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`};
 function lineChart(el,pts,{fmt=v=>num(v),label='value',refs=[]}={}){
   el.innerHTML='';const tip=document.createElement('div');tip.className='tip';if(!pts.length){el.textContent='no data';return}
   const W=el.clientWidth||600,H=el.clientHeight||180,L=52,R=10,T=10,B=22,ys=pts.map(p=>p.y).concat(refs.map(r=>r.y)),lo=Math.min(...ys),hi=Math.max(...ys),pad=(hi-lo)*0.08||1,y0=lo-pad,y1=hi+pad;
   const X=i=>L+(pts.length===1?0:(W-L-R)*i/(pts.length-1)),Y=v=>T+(H-T-B)*(1-(v-y0)/(y1-y0));
   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   const add=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);svg.appendChild(e);return e};
-  for(let k=0;k<=3;k++){const v=y0+(y1-y0)*k/3,y=Y(v);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1});const t=add('text',{x:L-6,y:y+3,'text-anchor':'end',fill:'var(--muted)','font-size':10});t.textContent=fmt(v)}
-  [0,pts.length-1].forEach(i=>{const t=add('text',{x:X(i),y:H-6,'text-anchor':i?'end':'start',fill:'var(--muted)','font-size':10});t.textContent=pts[i].x});
-  refs.forEach(r=>{const y=Y(r.y);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'4 3'});const t=add('text',{x:W-R-2,y:y-3,'text-anchor':'end',fill:'var(--muted)','font-size':10});t.textContent=r.label});
+  for(let k=0;k<=3;k++){const v=y0+(y1-y0)*k/3,y=Y(v);add('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1});const t=add('text',{x:L-6,y:y+4,'text-anchor':'end',style:'fill:var(--muted)','font-size':12});t.textContent=fmt(v)}
+  [0,pts.length-1].forEach(i=>{const t=add('text',{x:X(i),y:H-5,'text-anchor':i?'end':'start',style:'fill:var(--muted)','font-size':12});t.textContent=pts[i].x});
+  refs.forEach(r=>{const y=Y(r.y);add('line',{x1:L,x2:W-R,y1:y,y2:y,style:'stroke:var(--muted)','stroke-width':1,'stroke-dasharray':'4 3'});const t=add('text',{x:W-R-2,y:y-3,'text-anchor':'end',style:'fill:var(--muted)','font-size':12});t.textContent=r.label});
   add('path',{d:pts.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(''),fill:'none',stroke:'var(--series)','stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'});
   const last=pts.length-1;add('circle',{cx:X(last),cy:Y(pts[last].y),r:4,fill:'var(--series)',stroke:'var(--panel)','stroke-width':2});
   const hair=add('line',{y1:T,y2:H-B,stroke:'var(--muted)','stroke-width':1,visibility:'hidden'}),dot=add('circle',{r:4,fill:'var(--series)',stroke:'var(--panel)','stroke-width':2,visibility:'hidden'});
@@ -94,9 +105,9 @@ function lineChart(el,pts,{fmt=v=>num(v),label='value',refs=[]}={}){
   hit.addEventListener('pointerleave',()=>{hair.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');tip.style.display='none'});
   el.appendChild(svg);el.appendChild(tip)}
 const TABS=[['lake','Data lake'],['ticks','Ticks & depth'],['fo','Derivatives'],['macro','Macro'],['assets','Multi-asset'],['alt','Alt data']];const loaded={};
-function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.id===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
+function show(id){document.querySelectorAll('.tab').forEach(t=>{t.classList.toggle('on',t.dataset.id===id);t.setAttribute('aria-selected',t.dataset.id===id?'true':'false')});document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+id));
   if(!loaded[id]){loaded[id]=1;({lake,ticks:ticksTab,fo:chain,macro,assets,alt})[id]()}try{localStorage.setItem('atip_dp_tab',id)}catch(e){}}
-document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<div class="tab" data-id="${id}" onclick="show('${id}')">${l}</div>`).join('');
+document.getElementById('tabs').innerHTML=TABS.map(([id,l])=>`<button type="button" class="tab" role="tab" aria-selected="false" aria-controls="p-${id}" data-id="${id}" onclick="show('${id}')">${l}</button>`).join('');
 
 async function lake(){const L=await j('/api/data/lake');document.getElementById('lake').innerHTML=`<div class="muted">root ${esc(L.root)} · new files written as <b>${esc(L.write_format)}</b>${L.write_format!=='parquet'?' (pip install pyarrow duckdb for Parquet + SQL)':''}</div>`+
   table(['Dataset','Partitions','Files','Rows','MB','First','Last','Formats'],L.datasets.map(d=>`<tr><td><b>${esc(d.dataset)}</b></td><td>${d.partitions}</td><td>${d.files}</td><td>${Number(d.rows||0).toLocaleString('en-IN')}</td><td>${num((d.bytes||0)/1048576,1)}</td><td>${esc(d.first)}</td><td>${esc(d.last)}</td><td>${esc(d.formats)}</td></tr>`))}
@@ -154,7 +165,7 @@ function mfCat(){const C=MF.category||{},el=document.getElementById('mfcat');if(
   const rk=r=>r.rank?`<b>${r.rank}</b> of ${r.of} <span class="muted">(${esc(r.order)}; median ${pct(r.category_median)})</span>`:`${why(r.reason)} <span class="muted">(${r.of} ranked)</span>`,cv=C.coverage;
   el.innerHTML=`<div class="muted">${esc((C.category_parsed||{}).label||C.category)} · ${esc(C.peer_filter)} · ${cv.compared} compared of ${cv.in_category_stored} stored in the category (${cv.with_1y} with 1Y, ${cv.with_3y} with 3Y)${cv.truncated_to?' · first '+cv.truncated_to+' only':''}. ${esc(cv.note)}</div>`+
     table(['1Y return','3Y CAGR','1Y volatility'],[`<tr><td>${rk(C.rank.return_1y)}</td><td>${rk(C.rank.cagr_3y)}</td><td>${rk(C.rank.volatility_1y)}</td></tr>`])+
-    `<div class="scroll" style="max-height:220px;margin-top:6px">`+table(['Scheme','1Y','3Y CAGR','1Y volatility'],C.peers.map(p=>`<tr${p.is_target?' style="outline:1px solid var(--accent)"':''}><td><a href="#" style="color:var(--accent)" onclick="mfOpen('${esc(p.scheme_code)}');return false">${esc(p.scheme_name||p.scheme_code)}</a></td><td>${pct(p.return_1y_pct)}</td><td>${pct(p.cagr_3y_pct)}</td><td>${pct(p.volatility_1y_pct)}</td></tr>`))+'</div>'}
+    `<div class="scroll s240" style="margin-top:6px">`+table(['Scheme','1Y','3Y CAGR','1Y volatility'],C.peers.map(p=>`<tr${p.is_target?' style="outline:1px solid var(--accent)"':''}><td><a href="#" style="color:var(--accent)" onclick="mfOpen('${esc(p.scheme_code)}');return false">${esc(p.scheme_name||p.scheme_code)}</a></td><td>${pct(p.return_1y_pct)}</td><td>${pct(p.cagr_3y_pct)}</td><td>${pct(p.volatility_1y_pct)}</td></tr>`))+'</div>'}
 async function mfSip(){if(!MF)return;const q=new URLSearchParams({amount:val('sipa'),day:val('sipd')});[['start','sips'],['end','sipe'],['lump_sum','sipl'],['step_up_pct','sipsu'],['exit_load_pct','sipel']].forEach(([k,id])=>{if(val(id))q.set(k,val(id))});
   if(val('sipel')&&val('sipeld'))q.set('exit_load_days',val('sipeld'));
   q.set('stamp_duty',document.getElementById('sipsd').checked?'1':'0');q.set('round_units',document.getElementById('sipru').checked?'1':'0');
@@ -167,7 +178,7 @@ async function mfSip(){if(!MF)return;const q=new URLSearchParams({amount:val('si
       table(['','Invested','Stamp duty','Units','Value','Exit load','Gain','Absolute','XIRR'],[`<tr><td><b>SIP</b> ${S.instalments} × ${inr(I.amount)} on day ${I.day}${su}</td><td>${inr(S.invested)}</td><td>${inr(S.stamp_duty)}</td><td>${num(S.units,dp)}</td><td>${inr(S.value)}</td><td>${ld(S)}</td><td>${inr(S.gain)}</td><td>${pct(S.absolute_return_pct)}</td><td><b>${pct(S.xirr_pct)}</b></td></tr>`,
         `<tr><td><b>Lump sum</b> on ${esc(L.date)} <span class="muted">(${esc(L.basis)})</span></td><td>${inr(L.invested)}</td><td>${inr(L.stamp_duty)}</td><td>${num(L.units,dp)}</td><td>${inr(L.value)}</td><td>${ld(L)}</td><td>${inr(L.gain)}</td><td>${pct(L.absolute_return_pct)}</td><td><b>${pct(L.xirr_pct)}</b></td></tr>`])+
       (EL?`<div class="muted">Gain, absolute return and XIRR are after the exit load (${num(I.exit_load_pct,2)}% on units held under ${I.exit_load_days} days on ${esc(R.valuation.date)}).</div>`:'')+
-      `<div class="scroll" style="max-height:200px;margin-top:6px">`+table(['Scheduled','Allotted','Amount','NAV','Units','Total units'].concat(EL?['Held','Exit load']:[]),R.schedule.map(x=>`<tr><td>${esc(x.scheduled)}</td><td>${esc(x.nav_date)}${x.days_late?` <span class="muted">+${x.days_late}d</span>`:''}</td><td>${inr(x.amount)}</td><td>${num(x.nav,4)}</td><td>${num(x.units,dp)}</td><td>${num(x.cumulative_units,dp)}</td>${EL?`<td>${x.days_held}d</td><td>${inr(x.exit_load)}</td>`:''}</tr>`))+'</div>'+
+      `<div class="scroll s240" style="margin-top:6px">`+table(['Scheduled','Allotted','Amount','NAV','Units','Total units'].concat(EL?['Held','Exit load']:[]),R.schedule.map(x=>`<tr><td>${esc(x.scheduled)}</td><td>${esc(x.nav_date)}${x.days_late?` <span class="muted">+${x.days_late}d</span>`:''}</td><td>${inr(x.amount)}</td><td>${num(x.nav,4)}</td><td>${num(x.units,dp)}</td><td>${num(x.cumulative_units,dp)}</td>${EL?`<td>${x.days_held}d</td><td>${inr(x.exit_load)}</td>`:''}</tr>`))+'</div>'+
       (R.skipped.length?`<div class="muted">${R.skipped.length} instalments skipped: ${esc(R.skipped[0].reason)}</div>`:'')}
   catch(e){el.innerHTML=`<p class="note">${esc(e.message)}</p>`}}
 

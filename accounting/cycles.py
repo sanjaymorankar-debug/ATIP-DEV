@@ -303,14 +303,19 @@ def pool_extras(s: dict, rules: list, trades: list, transfers: list = ()) -> dic
 
 # -- stored cycles ------------------------------------------------------------------------------
 
+RETAX_FIELDS = ("tax_est", "tax_head", "actual_pnl", "end_amount", "compound_basis")
+
+
 def sync(conn, sid: str | None = None, force: bool = False) -> dict:
     """Write every closed cycle of every pool session (or `sid`) not stored yet -- backfill included -- and post
-    it to the ledger. force=True recomputes the stored rows of the current pools. Returns rows written."""
+    it to the ledger. A stored cycle whose tax estimate no longer matches the tax settings (or the session's
+    compounding basis) is re-estimated, and the ledger posts the difference. force=True recomputes every stored
+    row of the current pools. Returns rows written and rows re-estimated."""
     from orders import sessions as S
     ensure_tables(conn)
     cfg = TX.settings()
     models = _models()
-    written = 0
+    written = retaxed = 0
     sids = [sid] if sid else [_row(r)["id"] for r in conn.execute(
         "SELECT id FROM trading_sessions WHERE start_capital IS NOT NULL AND start_capital > 0").fetchall()]
     for i in sids:
@@ -321,22 +326,37 @@ def sync(conn, sid: str | None = None, force: bool = False) -> dict:
         tr = S._trades(rules, S._charges(conn, rules), since=s.get("pool_started_at"))
         ids = [x for lg in _legs(rules).values() for x in lg["order_ids"]]
         ch = chain(s, rules, tr, transfers_for(conn, i, s.get("pool_started_at")), cfg, _paper_ids(conn, ids), models)
+        have = {r["rule_id"]: r for r in stored(conn, i)}
         for c in ch["cycles"]:
             if not c["closed"]:
                 continue
             vals = {k: c.get(k) for k in CYCLE_COLUMNS}
             vals["written_at"] = _now()
-            verb = "INSERT OR REPLACE" if force else "INSERT OR IGNORE"
+            old = have.get(c["rule_id"])
+            stale = old is not None and any(_differs(old.get(k), vals.get(k)) for k in RETAX_FIELDS)
+            verb = "INSERT OR REPLACE" if force or stale else "INSERT OR IGNORE"
             cur = conn.execute(f"{verb} INTO session_cycles ({', '.join(CYCLE_COLUMNS)}) VALUES "
                                f"({', '.join('?' * len(CYCLE_COLUMNS))})", tuple(vals[k] for k in CYCLE_COLUMNS))
-            written += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            n = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            written += n if old is None else 0
+            retaxed += 1 if stale and n else 0
     conn.commit()
     try:
         from accounting import ledger as L
         L.post_all(conn)
+        L.true_up_tax(conn)
     except Exception as e:
         log.warning(f"  ledger posting after cycle sync: {e}")
-    return {"written": written, "sessions": len(sids)}
+    return {"written": written, "retaxed": retaxed, "sessions": len(sids)}
+
+
+def _differs(a, b) -> bool:
+    if isinstance(a, (int, float)) or isinstance(b, (int, float)):
+        try:
+            return abs(float(a or 0) - float(b or 0)) >= 0.005
+        except (TypeError, ValueError):
+            return True
+    return str(a or "") != str(b or "")
 
 
 def stored(conn, sid: str | None = None, since: str | None = None) -> list:

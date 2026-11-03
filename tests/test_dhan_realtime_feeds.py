@@ -683,14 +683,19 @@ def test_the_dashboard_has_a_live_tab_and_the_phone_a_live_screen(client):
     assert "window.atipLoadFeeds" in client.get("/market").text
 
 
-def test_both_apps_reach_the_live_feed_page():
-    # 2 Nov 2026: the owner's redesign set the apps' tabs to exactly Home, Trade, Sessions, Reports and More; the feed
-    # page /m?tab=live (31 Oct, a tab of its own then) is under More -> Markets -> Live feeds in the shell's sections
+def test_both_apps_have_a_live_tab():
+    # 31 Oct 2026 a tab of its own; 2 Nov moved under More for the redesign's five tabs; 3 Nov the owner asked for it
+    # back: Home, Trade, Live, Sessions, More in both apps (Reports is under More, and on the web shell's own bar)
+    import re
     kt = (ROOT / "mobile/android/app/src/main/java/com/atip/mobile/MainActivity.kt").read_text()
-    assert 'Tab("/more", R.string.tab_more' in kt
-    assert 'screen(4, "/more")' in (ROOT / "mobile/ios/ATIP/ContentView.swift").read_text()
+    assert re.findall(r'Tab\("([^"]+)", R\.string', kt) == ["/home", "/command", "/m?tab=live", "/sessions", "/more"]
+    assert '<string name="tab_live">Live</string>' in (ROOT / "mobile/android/app/src/main/res/values/strings.xml").read_text()
+    assert (ROOT / "mobile/android/app/src/main/res/drawable/ic_tab_live.xml").exists()
+    swift = (ROOT / "mobile/ios/ATIP/ContentView.swift").read_text()
+    assert re.findall(r'screen\(\d, "([^"]+)"\)', swift) == ["/home", "/command", "/m?tab=live", "/sessions", "/more"]
     from dashboard.shell import NAV
-    assert ("Live feeds", "/m?tab=live") in [(label, href) for *_, kids in NAV for label, href, _ in kids]
+    links = [(label, href) for *_, kids in NAV for label, href, _ in kids]
+    assert ("Live feeds", "/m?tab=live") in links and any(href == "/reports" for _, href in links)
 
 
 # ══ constraints ═════════════════════════════════════════════════════════════════════════════════════════════
