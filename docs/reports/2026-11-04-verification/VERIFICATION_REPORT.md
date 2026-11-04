@@ -3,8 +3,8 @@
 **Date of report:** 4 Nov 2026, evening. All times are IST (UTC + 5:30).
 **Role:** QA lead and quant reviewer. Nothing in CHANGES.md or the earlier reports was taken as true until it was reproduced.
 **Build verified:** master `369f6d6` = the code the live Mac has run since 00:11:17 IST (pid 36453, started 00:11:17; its
-folder's code equals `fac38d3`). **Phase 3 fixes:** branch `claude/verify-2026-11-04` (uncommitted working tree in
-`.claude/worktrees/verify-2026-11-04`), not merged and not deployed.
+folder's code equals `fac38d3`). **Phase 3 fixes:** branch `claude/verify-2026-11-04`, merged into master at 22:55 IST
+(`7887351`); not deployed — the live Mac runs `369f6d6` until it is restarted from master.
 **Servers.** ATIP has no hosted servers (see the testing report §1): **Test** = this code on a fresh DB (`main.py --init`,
 :8812); **Prod** = this code on a SQLite backup of the live `atip.db` taken at 18:03:26 IST (:8813). The live Mac (:8000)
 was only read (one `GET /home` → 200, and the process list).
@@ -149,7 +149,7 @@ before and after the fixes; manual checks in the in-app browser.
 | ID | Check | Result | Evidence |
 |---|---|---|---|
 | V5-1 | Full suite on the verified build (master) | **FAIL → fixed** | 18:03:42–18:13:03: 2,522 passed, 65 skipped, **4 failed** — 3 × `test_w39_perf_budget` (the sandbox refuses local sockets; same as 3 Nov) and **`test_dhan_chain_rows_for_the_nearest_expiries`** (hard-coded 3 Nov expiry; fails from 4 Nov, VF-11) |
-| V5-2 | Full suite after the fixes | PASS: 18:58:35–19:07:37 IST (9 min 0 s): 2,533 passed, 65 skipped, 4 failed — the 3 `test_w39_perf_budget` socket tests (14/14 pass outside the sandbox, 19:07:50) and `test_order_paths_are_untouched`, which asserts a clean git tree under `orders/` and passes once the branch is committed; no other failure | `evidence/v5/` |
+| V5-2 | Full suite after the fixes | PASS: 18:58:35–19:07:37 IST (9 min 0 s): 2,533 passed, 65 skipped, 4 failed — the 3 `test_w39_perf_budget` socket tests (14/14 pass outside the sandbox, 19:07:50) and `test_order_paths_are_untouched`, which asserts a clean git tree under `orders/` and passes once the branch is committed; no other failure. On master after the merge (`7887351`, 22:55:10–23:04:11 IST): 2,534 passed, 65 skipped, 3 failed — only the socket tests (14/14 outside the sandbox, 23:04:48) | `evidence/v5/` |
 | V5-3 | Hand-calculated formula tests per score | PASS | `test_score_audit_2026_11_03.py`: VPI, MRI, RRI, ZPI, CRI, ACS, ATIP, RS by hand |
 | V5-4 | 10-session regression, CRI↓ ordering, UI smoke, dialog flow | PASS | `test_ten_sessions_are_filled…`, `test_rank_fill_orders_cri_ascending…`, `test_board_rank_puts_lower_cri_first…`, `test_pages_render_the_kpi_strip…`, `test_every_order_send_path_asks_first…` (code-level) + the live dialog checks |
 | V5-5 | Mutation: break a formula | PASS | CRI ×15 → ×12: killed (1 test) |
@@ -214,7 +214,7 @@ fails; Low = cosmetic or rare. **Status after Phase 3.**
 2. **VF-08** — is "top-momentum" meant as the ATIP rank (today) or a price-momentum rank?
 3. **VF-04** — `max_orders_per_day` = 10 equals the number of sessions, so no session can buy again on the day it sells.
    Raise it if same-day re-entry is wanted (the fix only stops the doomed orders).
-4. **Merge and deploy** the Phase 3 branch (not done: the live Mac runs `369f6d6`).
+4. **Deploy** the Phase 3 fixes: merged into master at 22:55 IST (`7887351`); the live Mac runs `369f6d6` until a restart.
 5. **VF-16** — build the apps where Xcode and the Android SDK exist.
 
 ⚠️ *This analysis is for informational purposes only and does not constitute financial advice. Past performance is not

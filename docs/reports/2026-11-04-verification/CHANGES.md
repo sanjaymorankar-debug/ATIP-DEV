@@ -3,8 +3,9 @@
 Branch `claude/verify-2026-11-04` (worktree `.claude/worktrees/verify-2026-11-04`), cut from master `369f6d6` (the code
 the live Mac has run since 00:11 IST, = `fac38d3` plus tracker/report commits). This is a delta patch: every file is
 changed in place. Unzip at the project root (`~/ATIP`). Defect IDs (VF-xx) refer to the defect log in
-[VERIFICATION_REPORT.md](VERIFICATION_REPORT.md) §3. **Not merged, not committed, not deployed** — the live Mac still runs
-`369f6d6`.
+[VERIFICATION_REPORT.md](VERIFICATION_REPORT.md) §3. **Committed** (`09eeeaa` code + tests, `ac7b5c8` apps, `3fc44af` docs)
+and **merged into master** at 22:55 IST (`7887351`). **Not deployed:** the live Mac still runs `369f6d6` until it is
+restarted from master.
 
 ## Scores (V2)
 
@@ -47,8 +48,9 @@ changed in place. Unzip at the project root (`~/ATIP`). Defect IDs (VF-xx) refer
 | `tests/verification/recompute_scores.py` (new) | Independent recomputation of the 7 scores from the raw tables (does not import `scores.engine`). |
 | `tests/verification/test_independent_recompute.py` (new, 2 tests) | **VF-06** the post-market pipeline vs the recomputation, all 7 scores within 0.01; SAFETY = 100 − CRI. Kills the SAFETY-sign mutant that survived every earlier test. |
 | `tests/verification/v1_sessions_harness.py`, `v2_invariance.py` (new) | The V1 point-in-time allocator harness and the V2 look-ahead / normalisation / NULL-EMA / composite checks (scripts, run on copies). |
-| `tests/test_verify_fixes_2026_11_04.py` (new, 7 tests) | VF-02 (×2), VF-03, VF-04, VF-05, VF-07, VF-20. All 7 fail on the unfixed code. |
+| `tests/test_verify_fixes_2026_11_04.py` (new, 9 tests) | VF-02 (×2), VF-03, VF-04, VF-05, VF-07, VF-20, VF-22, VF-32. All 9 fail on the unfixed code. |
 | `tests/test_dhan_realtime_feeds.py` | **VF-11** the option-chain test's clock is pinned to 3 Nov (its fake expiries are 3/10/17 Nov); it failed from 4 Nov. |
+| `tests/test_ui_fixes_v2.py` | Comment only: the order-path guard notes why `orders/autopick.py` and `orders/rules.py` change (both were already allowed). |
 
 ## Docs and tracker
 

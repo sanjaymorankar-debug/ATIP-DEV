@@ -496,11 +496,11 @@ Branch `claude/full-review-2026-11-03` (from master `29b488e`). Reports: `docs/r
 
 ---
 
-# 4 Nov 2026: independent verification of the 3 Nov work, and its fixes (branch claude/verify-2026-11-04, not merged)
+# 4 Nov 2026: independent verification of the 3 Nov work, and its fixes (merged into master 7887351, not yet live)
 
 Owner prompt 4 Nov 2026 06:00 PM IST: verify every 3 Nov claim with evidence, then fix what fails. Report:
 `docs/reports/2026-11-04-verification/VERIFICATION_REPORT.md`; testing report `docs/testing/ATIP_Verification_Test_Report_2026-11-04.md`;
-delta zip `deliverables/2026-11-04/ATIP_verification_delta_2026-11-04.zip`. Not merged and not deployed: the live Mac still runs `369f6d6`.
+delta zip `deliverables/2026-11-04/ATIP_verification_delta_2026-11-04.zip`. Merged into master at 22:55 IST (`7887351`); not deployed: the live Mac still runs `369f6d6` until a restart.
 
 **Verified as claimed:** the code-review fixes; ten sessions with ten distinct stocks (four dates, independent ranking); the seven
 score formulas (42/42 recomputed within 0.01 without the engine); no look-ahead; the backtest (reproduced to the last digit);

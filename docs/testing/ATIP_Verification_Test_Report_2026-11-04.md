@@ -23,9 +23,10 @@ The market closed at 15:30; the snapshot holds the whole 4 Nov session (10 auto-
 | Verified build (master `369f6d6`), worktree, sandbox | 18:03:42 → 18:13:03 (9 min 19 s) | 2,522 passed, 65 skipped, **4 failed**: 3 × `test_w39_perf_budget` (sandbox refuses local sockets; same on 3 Nov) + `test_dhan_chain_rows_for_the_nearest_expiries` (dated test, VF-11) |
 | Phase 3 tree, first pass | 18:41:39 → 18:51:12 (9 min 32 s) | 2,531 passed, 65 skipped, 4 failed: the 3 socket tests + `test_order_paths_are_untouched` (it fails on any uncommitted tree under `orders/`; passes once committed) |
 | Phase 3 tree, final | 18:58:35 → 19:07:37 (9 min 0 s) | **2,533 passed, 65 skipped, 4 failed**: the 3 socket tests (14/14 `test_w39_perf_budget` pass outside the sandbox at 19:07:50) + `test_order_paths_are_untouched` (uncommitted tree; passes once committed) |
+| Master after the merge (`7887351`; same files as the branch tip `3fc44af`) | 22:55:10 → 23:04:11 (9 min 1 s) | **2,534 passed, 65 skipped, 3 failed**: only the 3 socket tests (14/14 `test_w39_perf_budget` pass outside the sandbox at 23:04:48); `test_order_paths_are_untouched` passes on the committed tree |
 
-New tests (all pass on the Phase 3 tree; the 7 fix tests and the 2 recompute tests fail on the unfixed code):
-`tests/test_verify_fixes_2026_11_04.py` (7), `tests/verification/test_independent_recompute.py` (2). Changed:
+New tests (all pass on the Phase 3 tree; the 9 fix tests and the 2 recompute tests fail on the unfixed code):
+`tests/test_verify_fixes_2026_11_04.py` (9), `tests/verification/test_independent_recompute.py` (2). Changed:
 `tests/test_dhan_realtime_feeds.py` (clock pinned).
 
 Mutation (scratch export of `369f6d6`): CRI formula killed; board limit, seeded sessions and auto-pick limit killed;
@@ -53,9 +54,13 @@ Detail: `docs/reports/2026-11-04-verification/evidence/v5/mutation.txt`.
 |---|---|---|
 | Live Mac | `369f6d6` (code = `fac38d3`), running since 00:11:17 IST | yes — it **is** the verified build; the Phase 3 fixes are **not** on it |
 | Test / Prod | the Phase 3 working tree on `369f6d6` | yes (the tree the final suite ran on) |
+| master | `7887351` (merge of `claude/verify-2026-11-04`, 22:55 IST) | yes — the same files as the tested tree; suite re-run on it (§2) |
 
-**Not done:** merging the branch into master, restarting the live Mac, native app builds (no SDKs). Rollback is not needed:
-nothing on the live Mac changed.
+The live folder `/Users/agtci/ATIP` is parked on branch `claude/live-running-2026-11-04` at `369f6d6` (the running commit),
+so the merge did not put `atip.css` / `atip.js` live ahead of the Python code. At the restart: switch the folder to
+master, take a pre-release backup, then kickstart.
+
+**Not done:** restarting the live Mac, native app builds (no SDKs). Rollback is not needed: nothing on the live Mac changed.
 
 ## 5. Open issues
 
