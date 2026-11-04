@@ -382,7 +382,38 @@
   });
 
   // ── tables: sort, filter, columns, CSV, row -> drawer ────────────────────────────────────
-  function cellVal(td) { var v = td.getAttribute("data-v"); if (v !== null && v !== "" && !isNaN(v)) return Number(v); return (td.textContent || "").trim().toLowerCase(); }
+  // Verification 4 Nov 2026 (VF-23, VF-24): a cell that holds only a number -- "₹1,538.57", "−₹253.34", "+3.5%", "#118",
+  // "▲ +12" -- sorts as that number (without data-v the Sessions table view sorted "#118" before "#2"), and is right-aligned.
+  var NUM_CELL = /^(?:[▲▼]\s*)?[+\-−]?\s*(?:₹|Rs\.?\s?|#)?\s*[+\-−]?\d[\d,]*(?:\.\d+)?\s*(?:%|x|×)?$/;
+  function numOf(text) {
+    var t = (text || "").trim();
+    if (!NUM_CELL.test(t)) return null;
+    var n = Number(t.replace(/[^\d.]/g, ""));
+    return isFinite(n) ? (/[\-−▼]/.test(t) ? -n : n) : null;
+  }
+  function cellVal(td) {
+    var v = td.getAttribute("data-v"); if (v !== null && v !== "" && !isNaN(v)) return Number(v);
+    var n = numOf(td.textContent); return n !== null ? n : (td.textContent || "").trim().toLowerCase();
+  }
+  function cellCmp(x, y) {                       // numbers in order, numbers before text, text in natural order (S2 < S10)
+    var nx = typeof x === "number", ny = typeof y === "number";
+    if (nx && ny) return x - y; if (nx) return -1; if (ny) return 1;
+    return String(x).localeCompare(String(y), undefined, { numeric: true });
+  }
+  // Right-aligned: a cell of numbers only -- one number, or a price with its change ("₹1,577.30 ▲ +53.30 (+3.50%)").
+  // Dates, times, ranges ("₹0 – ₹4,00,000") and fractions ("1/1") stay as text.
+  var NUM_ALIGN = /^[\s₹#+\-−▲▼().,%\d]*\d[\s₹#+\-−▲▼().,%\d]*$/, DATE = /^\s*\d{4}-\d{2}-\d{2}/;
+  AX.alignNumbers = function (root) {
+    (root || document).querySelectorAll("td").forEach(function (td) {
+      var t = (td.textContent || "").trim();
+      td.classList.toggle("ax-n", t !== "" && NUM_ALIGN.test(t) && !DATE.test(t));
+    });
+  };
+  var alignQueued = false;
+  function queueAlign() {
+    if (alignQueued) return; alignQueued = true;
+    (window.requestAnimationFrame || setTimeout)(function () { alignQueued = false; AX.alignNumbers(); });
+  }
   AX.enhanceTable = function (t) {
     if (!t || t.__ax) return; t.__ax = true;
     var ths = t.tHead ? Array.prototype.slice.call(t.tHead.rows[0].cells) : [];
@@ -395,7 +426,7 @@
         th.setAttribute("aria-sort", dir);
         var body = t.tBodies[0], rows = Array.prototype.slice.call(body.rows).filter(function (r) { return !r.classList.contains("ax-total"); });
         var totals = Array.prototype.slice.call(body.rows).filter(function (r) { return r.classList.contains("ax-total"); });
-        rows.sort(function (a, b) { var x = cellVal(a.cells[i] || a), y = cellVal(b.cells[i] || b); var c = x < y ? -1 : x > y ? 1 : 0; return dir === "ascending" ? c : -c; });
+        rows.sort(function (a, b) { var c = cellCmp(cellVal(a.cells[i] || a), cellVal(b.cells[i] || b)); return dir === "ascending" ? c : -c; });
         rows.concat(totals).forEach(function (r) { body.appendChild(r); });
       };
       th.addEventListener("click", go); th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
@@ -737,6 +768,12 @@
     if (pi) { pi.addEventListener("input", function () { paletteFilter(pi.value); }); pi.addEventListener("keydown", paletteKeys); }
     document.querySelectorAll("table.ax-table").forEach(AX.enhanceTable);
     toolbar(); AX.charts(); overflowMenu(); AX.clamps(); legacy();
+    AX.alignNumbers();                           // VF-24: and again whenever a table's rows or cells are redrawn
+    if (window.MutationObserver) new MutationObserver(function (ms) {
+      for (var k = 0; k < ms.length; k++) {               // inside a table, or a container that was given a new table
+        var el = ms[k].target.nodeType === 1 ? ms[k].target : ms[k].target.parentElement;
+        if (el && el.closest && (el.closest("table") || (ms[k].addedNodes.length && el.querySelector("table")))) { queueAlign(); return; } }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
     var init = AX.data("ax-state", null); if (init) { try { paint(init); } catch (e) {} }
     poll(); setInterval(poll, 30000);
     // a symbol picked in the search opens the stock panel on the ATIP Scores page

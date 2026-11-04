@@ -585,12 +585,23 @@ window.openStock=function(sym){
   var b=document.getElementById('sv-back'),p=document.getElementById('sv');
   p.innerHTML='<div class="hd"><div><div class="sym">'+esc(sym)+'</div><div class="nm">loading history…</div></div><div class="btns"><button class="b-x" onclick="svClose()">✕</button></div></div>';
   b.classList.add('on');document.body.style.overflow='hidden';
+  /* Verification 4 Nov 2026 (VF-26): a modal takes the focus, keeps it, and gives it back on close */
+  if(!S.back)S.back=document.activeElement;svFocus();
   fetch('/api/stock/'+encodeURIComponent(sym)+'/history?sessions=2500').then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||r.status);return j})})
-   .then(function(d){if(S.sym!==sym)return;S.data=d;render()})
+   .then(function(d){if(S.sym!==sym)return;S.data=d;render();svFocus()})
    .catch(function(e){p.querySelector('.nm').textContent='No history: '+e.message});
 };
-window.svClose=function(){document.getElementById('sv-back').classList.remove('on');document.body.style.overflow='';S.sym=null};
-document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.sym)svClose()});
+window.svClose=function(){document.getElementById('sv-back').classList.remove('on');document.body.style.overflow='';S.sym=null;
+  var r=S.back;S.back=null;if(r&&r.focus&&document.contains(r))r.focus()};
+function svFocus(){var p=document.getElementById('sv');if(!p||p.contains(document.activeElement))return;
+  var x=p.querySelector('.b-x');if(x){x.setAttribute('aria-label','Close');x.focus()}}
+document.addEventListener('keydown',function(e){if(!S.sym)return;if(e.key==='Escape'){svClose();return}
+  if(e.key!=='Tab')return;var p=document.getElementById('sv');
+  var f=Array.prototype.filter.call(p.querySelectorAll('button,a[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'),function(el){return el.offsetParent!==null});
+  if(!f.length){e.preventDefault();return}var a=f[0],z=f[f.length-1];
+  if(!p.contains(document.activeElement)){e.preventDefault();a.focus()}
+  else if(e.shiftKey&&document.activeElement===a){e.preventDefault();z.focus()}
+  else if(!e.shiftKey&&document.activeElement===z){e.preventDefault();a.focus()}});
 setInterval(function(){if(S.sym&&typeof _secsLeft!=='undefined'&&_secsLeft<60)_secsLeft=60},1000);
 document.addEventListener('click',function(e){
   var t=e.target; if(!t.closest)return;
