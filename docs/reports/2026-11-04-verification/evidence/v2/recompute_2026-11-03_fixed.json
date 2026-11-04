@@ -1,0 +1,1981 @@
+{
+ "date": "2026-11-03",
+ "tolerance": 0.01,
+ "msi_single_value": true,
+ "msi": 58.95,
+ "symbols": {
+  "RELIANCE": {
+   "has_technical_row": true,
+   "bars": 260,
+   "null_ema": false,
+   "null_sma200": false,
+   "indicators": {
+    "rsi_14": {
+     "recomputed": 66.6761,
+     "stored": 66.6761,
+     "abs_diff": 0.0
+    },
+    "atr_pct": {
+     "recomputed": 2.5994,
+     "stored": 2.599,
+     "abs_diff": 0.0004
+    },
+    "adx_14": {
+     "recomputed": 28.0636,
+     "stored": 28.0636,
+     "abs_diff": 0.0
+    },
+    "ema_9": {
+     "recomputed": 1224.8704,
+     "stored": 1224.8704,
+     "abs_diff": 0.0
+    },
+    "ema_21": {
+     "recomputed": 1212.3359,
+     "stored": 1212.3359,
+     "abs_diff": 0.0
+    },
+    "sma_200": {
+     "recomputed": 1327.076,
+     "stored": 1327.076,
+     "abs_diff": 0.0
+    },
+    "volume_ratio": {
+     "recomputed": 2.1082,
+     "stored": 2.108,
+     "abs_diff": 0.0002
+    },
+    "macd_hist_pct": {
+     "recomputed": 1.0733,
+     "stored": 1.0733,
+     "abs_diff": 0.0
+    },
+    "above_200dma": {
+     "recomputed": 0,
+     "stored": 0,
+     "abs_diff": 0
+    }
+   },
+   "components": {
+    "VPI": {
+     "LQ": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MR": {
+      "recomputed": 26.6478,
+      "stored": 26.64779999999999,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NS": {
+      "recomputed": 68.46,
+      "stored": 68.46,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RS": {
+      "recomputed": 65.59,
+      "stored": 65.59,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "TS": {
+      "recomputed": 46.77,
+      "stored": 46.77,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "V": {
+      "recomputed": 31.188,
+      "stored": 31.188000000000002,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VOL": {
+      "recomputed": 70.2667,
+      "stored": 70.26666666666667,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "MRI": {
+     "ADX": {
+      "recomputed": 46.77,
+      "stored": 46.77,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "EMA": {
+      "recomputed": 75,
+      "stored": 75.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MACD": {
+      "recomputed": 17.81,
+      "stored": 17.81,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 68.46,
+      "stored": 68.46,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 50,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "RRI": {
+     "News": {
+      "recomputed": 68.46,
+      "stored": 68.46,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSIRecovery": {
+      "recomputed": 73.3522,
+      "stored": 73.35220000000001,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Recovery": {
+      "recomputed": 25.8895,
+      "stored": 25.88946459412782,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "CRI": {
+     "Distribution": {
+      "recomputed": 63.24,
+      "stored": 63.24,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketWeakness": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NegativeNews": {
+      "recomputed": 31.54,
+      "stored": 31.540000000000006,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volatility": {
+      "recomputed": 38.985,
+      "stored": 38.985,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "WeakTrend": {
+      "recomputed": 40,
+      "stored": 40.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ZPI": {
+     "ATR": {
+      "recomputed": 68.81,
+      "stored": 68.81,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Institutional": {
+      "recomputed": 12.32,
+      "stored": 12.32,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "News": {
+      "recomputed": 68.46,
+      "stored": 68.46,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Resistance": {
+      "recomputed": 56.1272,
+      "stored": 56.1272,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Sector": {
+      "recomputed": 60.0,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Trend": {
+      "recomputed": 15,
+      "stored": 15.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ACS": {
+     "Agreement": {
+      "recomputed": 0.0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "DataQuality": {
+      "recomputed": 87.5,
+      "stored": 87.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "HistoricalAccuracy": {
+      "recomputed": 40.62,
+      "stored": 40.62,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Liquidity": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketRegime": {
+      "recomputed": 57.71,
+      "stored": 57.71,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ATIP": {
+     "INS": {
+      "recomputed": 57.91,
+      "stored": 57.91,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MRI": {
+      "recomputed": 54.56,
+      "stored": 54.56,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MSI": {
+      "recomputed": 58.95,
+      "stored": 58.95,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RRI": {
+      "recomputed": 53.32,
+      "stored": 53.32,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "SAFETY": {
+      "recomputed": 64.98,
+      "stored": 64.98,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 55.86,
+      "stored": 55.86,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VPI": {
+      "recomputed": 54.86,
+      "stored": 54.86,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "ZPI": {
+      "recomputed": 39.38,
+      "stored": 39.38,
+      "abs_diff": 0.0,
+      "match": "True"
+     }
+    },
+    "INS": {
+     "DII": {
+      "recomputed": 1.79,
+      "stored": 1.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "FII": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    }
+   },
+   "scores": {
+    "vpi": {
+     "recomputed": 54.86,
+     "stored": 54.86,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "mri": {
+     "recomputed": 54.56,
+     "stored": 54.56,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "rri": {
+     "recomputed": 53.32,
+     "stored": 53.32,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "zpi": {
+     "recomputed": 39.38,
+     "stored": 39.38,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "cri": {
+     "recomputed": 35.02,
+     "stored": 35.02,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "acs": {
+     "recomputed": 49.8,
+     "stored": 49.8,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "atip": {
+     "recomputed": 55.86,
+     "stored": 55.86,
+     "abs_diff": 0.0,
+     "pass": "True"
+    }
+   },
+   "all_scores_pass": true,
+   "components_all_match": true,
+   "worst_component_diff": 0.0
+  },
+  "HDFCBANK": {
+   "has_technical_row": true,
+   "bars": 260,
+   "null_ema": false,
+   "null_sma200": false,
+   "indicators": {
+    "rsi_14": {
+     "recomputed": 58.4409,
+     "stored": 58.4409,
+     "abs_diff": 0.0
+    },
+    "atr_pct": {
+     "recomputed": 2.0635,
+     "stored": 2.064,
+     "abs_diff": 0.0005
+    },
+    "adx_14": {
+     "recomputed": 16.6173,
+     "stored": 16.6173,
+     "abs_diff": 0.0
+    },
+    "ema_9": {
+     "recomputed": 700.6867,
+     "stored": 700.6867,
+     "abs_diff": 0.0
+    },
+    "ema_21": {
+     "recomputed": 703.757,
+     "stored": 703.757,
+     "abs_diff": 0.0
+    },
+    "sma_200": {
+     "recomputed": 787.2068,
+     "stored": 787.2068,
+     "abs_diff": 0.0
+    },
+    "volume_ratio": {
+     "recomputed": 1.4792,
+     "stored": 1.479,
+     "abs_diff": 0.0002
+    },
+    "macd_hist_pct": {
+     "recomputed": 0.2254,
+     "stored": 0.2254,
+     "abs_diff": 0.0
+    },
+    "above_200dma": {
+     "recomputed": 0,
+     "stored": 0,
+     "abs_diff": 0
+    }
+   },
+   "components": {
+    "VPI": {
+     "LQ": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MR": {
+      "recomputed": 43.1182,
+      "stored": 43.1182,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NS": {
+      "recomputed": 57.61,
+      "stored": 57.61,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RS": {
+      "recomputed": 41.24,
+      "stored": 41.24,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "TS": {
+      "recomputed": 27.7,
+      "stored": 27.7,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "V": {
+      "recomputed": 24.768,
+      "stored": 24.768,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VOL": {
+      "recomputed": 49.3,
+      "stored": 49.300000000000004,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "MRI": {
+     "ADX": {
+      "recomputed": 27.7,
+      "stored": 27.7,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "EMA": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MACD": {
+      "recomputed": 43.24,
+      "stored": 43.24,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 57.61,
+      "stored": 57.61,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 50,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 73.95,
+      "stored": 73.95,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "RRI": {
+     "News": {
+      "recomputed": 57.61,
+      "stored": 57.61,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSIRecovery": {
+      "recomputed": 56.8818,
+      "stored": 56.8818,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Recovery": {
+      "recomputed": 13.3196,
+      "stored": 13.319611878859144,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 73.95,
+      "stored": 73.95,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "CRI": {
+     "Distribution": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketWeakness": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NegativeNews": {
+      "recomputed": 42.39,
+      "stored": 42.39,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volatility": {
+      "recomputed": 30.96,
+      "stored": 30.96,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "WeakTrend": {
+      "recomputed": 40,
+      "stored": 40.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ZPI": {
+     "ATR": {
+      "recomputed": 75.23,
+      "stored": 75.23,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Institutional": {
+      "recomputed": 40.11,
+      "stored": 40.11,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "News": {
+      "recomputed": 57.61,
+      "stored": 57.61,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 60,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Resistance": {
+      "recomputed": 33.2346,
+      "stored": 33.2346,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Sector": {
+      "recomputed": 60.0,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Trend": {
+      "recomputed": 15,
+      "stored": 15.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 45,
+      "stored": 45.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ACS": {
+     "Agreement": {
+      "recomputed": 0.0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "DataQuality": {
+      "recomputed": 87.5,
+      "stored": 87.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "HistoricalAccuracy": {
+      "recomputed": 34.38,
+      "stored": 34.38,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Liquidity": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketRegime": {
+      "recomputed": 57.71,
+      "stored": 57.71,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ATIP": {
+     "INS": {
+      "recomputed": 57.91,
+      "stored": 57.91,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MRI": {
+      "recomputed": 46.32,
+      "stored": 46.32,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MSI": {
+      "recomputed": 58.95,
+      "stored": 58.95,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RRI": {
+      "recomputed": 40.84,
+      "stored": 40.84,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "SAFETY": {
+      "recomputed": 73.06,
+      "stored": 73.06,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 45.61,
+      "stored": 45.61,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VPI": {
+      "recomputed": 44.92,
+      "stored": 44.92,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "ZPI": {
+      "recomputed": 44.78,
+      "stored": 44.78,
+      "abs_diff": 0.0,
+      "match": "True"
+     }
+    },
+    "INS": {
+     "DII": {
+      "recomputed": 1.79,
+      "stored": 1.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "FII": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    }
+   },
+   "scores": {
+    "vpi": {
+     "recomputed": 44.92,
+     "stored": 44.92,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "mri": {
+     "recomputed": 46.32,
+     "stored": 46.32,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "rri": {
+     "recomputed": 40.84,
+     "stored": 40.84,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "zpi": {
+     "recomputed": 44.78,
+     "stored": 44.78,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "cri": {
+     "recomputed": 26.94,
+     "stored": 26.94,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "acs": {
+     "recomputed": 48.07,
+     "stored": 48.07,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "atip": {
+     "recomputed": 52.78,
+     "stored": 52.78,
+     "abs_diff": 0.0,
+     "pass": "True"
+    }
+   },
+   "all_scores_pass": true,
+   "components_all_match": true,
+   "worst_component_diff": 0.0
+  },
+  "LAURUSLABS": {
+   "has_technical_row": true,
+   "bars": 260,
+   "null_ema": false,
+   "null_sma200": false,
+   "indicators": {
+    "rsi_14": {
+     "recomputed": 68.9223,
+     "stored": 68.9223,
+     "abs_diff": 0.0
+    },
+    "atr_pct": {
+     "recomputed": 3.2481,
+     "stored": 3.248,
+     "abs_diff": 0.0001
+    },
+    "adx_14": {
+     "recomputed": 25.4189,
+     "stored": 25.4189,
+     "abs_diff": 0.0
+    },
+    "ema_9": {
+     "recomputed": 2228.1589,
+     "stored": 2228.1589,
+     "abs_diff": 0.0
+    },
+    "ema_21": {
+     "recomputed": 2131.5055,
+     "stored": 2131.5055,
+     "abs_diff": 0.0
+    },
+    "sma_200": {
+     "recomputed": 1461.4205,
+     "stored": 1461.4205,
+     "abs_diff": 0.0
+    },
+    "volume_ratio": {
+     "recomputed": 1.8435,
+     "stored": 1.843,
+     "abs_diff": 0.0005
+    },
+    "macd_hist_pct": {
+     "recomputed": 1.3023,
+     "stored": 1.3023,
+     "abs_diff": 0.0
+    },
+    "above_200dma": {
+     "recomputed": 1,
+     "stored": 1,
+     "abs_diff": 0
+    }
+   },
+   "components": {
+    "VPI": {
+     "LQ": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MR": {
+      "recomputed": 22.1554,
+      "stored": 22.155399999999986,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NS": {
+      "recomputed": 68.48,
+      "stored": 68.48,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RS": {
+      "recomputed": 90.9,
+      "stored": 90.9,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "TS": {
+      "recomputed": 42.36,
+      "stored": 42.36,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "V": {
+      "recomputed": 38.976,
+      "stored": 38.976,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VOL": {
+      "recomputed": 61.4333,
+      "stored": 61.43333333333333,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "MRI": {
+     "ADX": {
+      "recomputed": 42.36,
+      "stored": 42.36,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "EMA": {
+      "recomputed": 75,
+      "stored": 75.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MACD": {
+      "recomputed": 10.94,
+      "stored": 10.94,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 68.48,
+      "stored": 68.48,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 50,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 92.15,
+      "stored": 92.15,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "RRI": {
+     "News": {
+      "recomputed": 68.48,
+      "stored": 68.48,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSIRecovery": {
+      "recomputed": 77.8446,
+      "stored": 77.84460000000001,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Recovery": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 80,
+      "stored": 80.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 92.15,
+      "stored": 92.15,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "CRI": {
+     "Distribution": {
+      "recomputed": 55.29,
+      "stored": 55.29,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketWeakness": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NegativeNews": {
+      "recomputed": 31.52,
+      "stored": 31.519999999999996,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volatility": {
+      "recomputed": 48.72,
+      "stored": 48.720000000000006,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "WeakTrend": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ZPI": {
+     "ATR": {
+      "recomputed": 61.02,
+      "stored": 61.02,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Institutional": {
+      "recomputed": 14.75,
+      "stored": 14.75,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "News": {
+      "recomputed": 68.48,
+      "stored": 68.48,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Resistance": {
+      "recomputed": 50.8378,
+      "stored": 50.8378,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Sector": {
+      "recomputed": 35.0,
+      "stored": 35.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 80,
+      "stored": 80.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Trend": {
+      "recomputed": 85,
+      "stored": 85.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ACS": {
+     "Agreement": {
+      "recomputed": 20.0,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "DataQuality": {
+      "recomputed": 87.5,
+      "stored": 87.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "HistoricalAccuracy": {
+      "recomputed": 43.75,
+      "stored": 43.75,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Liquidity": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketRegime": {
+      "recomputed": 57.71,
+      "stored": 57.71,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ATIP": {
+     "INS": {
+      "recomputed": 57.91,
+      "stored": 57.91,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MRI": {
+      "recomputed": 51.01,
+      "stored": 51.01,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MSI": {
+      "recomputed": 58.95,
+      "stored": 58.95,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RRI": {
+      "recomputed": 86.29,
+      "stored": 86.29,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "SAFETY": {
+      "recomputed": 71.54,
+      "stored": 71.54,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 63.89,
+      "stored": 63.89,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VPI": {
+      "recomputed": 57.84,
+      "stored": 57.84,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "ZPI": {
+      "recomputed": 50.05,
+      "stored": 50.05,
+      "abs_diff": 0.0,
+      "match": "True"
+     }
+    },
+    "INS": {
+     "DII": {
+      "recomputed": 1.79,
+      "stored": 1.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "FII": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    }
+   },
+   "scores": {
+    "vpi": {
+     "recomputed": 57.84,
+     "stored": 57.84,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "mri": {
+     "recomputed": 51.01,
+     "stored": 51.01,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "rri": {
+     "recomputed": 86.29,
+     "stored": 86.29,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "zpi": {
+     "recomputed": 50.05,
+     "stored": 50.05,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "cri": {
+     "recomputed": 28.46,
+     "stored": 28.46,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "acs": {
+     "recomputed": 55.12,
+     "stored": 55.12,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "atip": {
+     "recomputed": 62.94,
+     "stored": 62.94,
+     "abs_diff": 0.0,
+     "pass": "True"
+    }
+   },
+   "all_scores_pass": true,
+   "components_all_match": true,
+   "worst_component_diff": 0.0
+  },
+  "REDINGTON": {
+   "has_technical_row": true,
+   "bars": 260,
+   "null_ema": false,
+   "null_sma200": false,
+   "indicators": {
+    "rsi_14": {
+     "recomputed": 35.7003,
+     "stored": 35.7003,
+     "abs_diff": 0.0
+    },
+    "atr_pct": {
+     "recomputed": 5.2077,
+     "stored": 5.208,
+     "abs_diff": 0.0003
+    },
+    "adx_14": {
+     "recomputed": 33.5569,
+     "stored": 33.5569,
+     "abs_diff": 0.0
+    },
+    "ema_9": {
+     "recomputed": 348.6412,
+     "stored": 348.6412,
+     "abs_diff": 0.0
+    },
+    "ema_21": {
+     "recomputed": 364.3728,
+     "stored": 364.3728,
+     "abs_diff": 0.0
+    },
+    "sma_200": {
+     "recomputed": 286.6732,
+     "stored": 286.6732,
+     "abs_diff": 0.0
+    },
+    "volume_ratio": {
+     "recomputed": 1.2422,
+     "stored": 1.242,
+     "abs_diff": 0.0002
+    },
+    "macd_hist_pct": {
+     "recomputed": -1.6985,
+     "stored": -1.6985,
+     "abs_diff": 0.0
+    },
+    "above_200dma": {
+     "recomputed": 1,
+     "stored": 1,
+     "abs_diff": 0
+    }
+   },
+   "components": {
+    "VPI": {
+     "LQ": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MR": {
+      "recomputed": 94.2997,
+      "stored": 94.2997,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NS": {
+      "recomputed": 50.0,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RS": {
+      "recomputed": 0.0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 55.93,
+      "stored": 55.93,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "V": {
+      "recomputed": 62.496,
+      "stored": 62.496,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VOL": {
+      "recomputed": 41.4,
+      "stored": 41.4,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "MRI": {
+     "ADX": {
+      "recomputed": 55.93,
+      "stored": 55.93,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "EMA": {
+      "recomputed": 30,
+      "stored": 30.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MACD": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 50.0,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 60,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 62.1,
+      "stored": 62.1,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "RRI": {
+     "News": {
+      "recomputed": 50.0,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSIRecovery": {
+      "recomputed": 11.4006,
+      "stored": 11.400599999999997,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Recovery": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 80,
+      "stored": 80.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 62.1,
+      "stored": 62.1,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "CRI": {
+     "Distribution": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketWeakness": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NegativeNews": {
+      "recomputed": 50.0,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volatility": {
+      "recomputed": 78.12,
+      "stored": 78.12,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "WeakTrend": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ZPI": {
+     "ATR": {
+      "recomputed": 37.5,
+      "stored": 37.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Institutional": {
+      "recomputed": 81.84,
+      "stored": 81.84,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "News": {
+      "recomputed": 50.0,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 90,
+      "stored": 90.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Resistance": {
+      "recomputed": 67.1138,
+      "stored": 67.1138,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Sector": {
+      "recomputed": 35.0,
+      "stored": 35.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Support": {
+      "recomputed": 80,
+      "stored": 80.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Trend": {
+      "recomputed": 85,
+      "stored": 85.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 45,
+      "stored": 45.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ACS": {
+     "Agreement": {
+      "recomputed": 60.0,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "DataQuality": {
+      "recomputed": 87.5,
+      "stored": 87.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "HistoricalAccuracy": {
+      "recomputed": 34.38,
+      "stored": 34.38,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Liquidity": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketRegime": {
+      "recomputed": 57.71,
+      "stored": 57.71,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ATIP": {
+     "INS": {
+      "recomputed": 57.91,
+      "stored": 57.91,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MRI": {
+      "recomputed": 64.2,
+      "stored": 64.2,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MSI": {
+      "recomputed": 58.95,
+      "stored": 58.95,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RRI": {
+      "recomputed": 67.09,
+      "stored": 67.09,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "SAFETY": {
+      "recomputed": 67.34,
+      "stored": 67.34,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 55.79,
+      "stored": 55.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VPI": {
+      "recomputed": 56.96,
+      "stored": 56.96,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "ZPI": {
+      "recomputed": 64.5,
+      "stored": 64.5,
+      "abs_diff": 0.0,
+      "match": "True"
+     }
+    },
+    "INS": {
+     "DII": {
+      "recomputed": 1.79,
+      "stored": 1.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "FII": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    }
+   },
+   "scores": {
+    "vpi": {
+     "recomputed": 56.96,
+     "stored": 56.96,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "mri": {
+     "recomputed": 64.2,
+     "stored": 64.2,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "rri": {
+     "recomputed": 67.09,
+     "stored": 67.09,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "zpi": {
+     "recomputed": 64.5,
+     "stored": 64.5,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "cri": {
+     "recomputed": 32.66,
+     "stored": 32.66,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "acs": {
+     "recomputed": 61.4,
+     "stored": 61.4,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "atip": {
+     "recomputed": 61.9,
+     "stored": 61.9,
+     "abs_diff": 0.0,
+     "pass": "True"
+    }
+   },
+   "all_scores_pass": true,
+   "components_all_match": true,
+   "worst_component_diff": 0.0
+  },
+  "VEDPOWER": {
+   "has_technical_row": true,
+   "bars": 98,
+   "null_ema": false,
+   "null_sma200": true,
+   "indicators": {
+    "rsi_14": {
+     "recomputed": 59.2711,
+     "stored": 59.314,
+     "abs_diff": 0.0429
+    },
+    "atr_pct": {
+     "recomputed": 5.405,
+     "stored": 5.403,
+     "abs_diff": 0.002
+    },
+    "adx_14": {
+     "recomputed": 23.7197,
+     "stored": 23.3924,
+     "abs_diff": 0.3273
+    },
+    "ema_9": {
+     "recomputed": 31.7245,
+     "stored": 31.7245,
+     "abs_diff": 0.0
+    },
+    "ema_21": {
+     "recomputed": 31.5353,
+     "stored": 31.5353,
+     "abs_diff": 0.0
+    },
+    "sma_200": {
+     "recomputed": null,
+     "stored": null,
+     "abs_diff": null
+    },
+    "volume_ratio": {
+     "recomputed": 0.9614,
+     "stored": 0.961,
+     "abs_diff": 0.0004
+    },
+    "macd_hist_pct": {
+     "recomputed": 1.5644,
+     "stored": 1.5644,
+     "abs_diff": 0.0
+    },
+    "above_200dma": {
+     "recomputed": null,
+     "stored": 0,
+     "abs_diff": null
+    }
+   },
+   "components": {
+    "VPI": {
+     "LQ": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MR": {
+      "recomputed": 41.372,
+      "stored": 41.372,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NS": {
+      "recomputed": 64.1,
+      "stored": 64.1,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RS": {
+      "recomputed": 54.88,
+      "stored": 54.88,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "TS": {
+      "recomputed": 38.99,
+      "stored": 38.99,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "V": {
+      "recomputed": 64.836,
+      "stored": 64.836,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VOL": {
+      "recomputed": 32.0333,
+      "stored": 32.03333333333333,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "MRI": {
+     "ADX": {
+      "recomputed": 38.99,
+      "stored": 38.99,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "EMA": {
+      "recomputed": 75,
+      "stored": 75.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MACD": {
+      "recomputed": 3.08,
+      "stored": 3.08,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 64.1,
+      "stored": 64.1,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 50,
+      "stored": 50.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 48.05,
+      "stored": 48.05,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "RRI": {
+     "News": {
+      "recomputed": 64.1,
+      "stored": 64.1,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSIRecovery": {
+      "recomputed": 58.628,
+      "stored": 58.628,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Recovery": {
+      "recomputed": 41.8291,
+      "stored": 41.82913860333214,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 48.05,
+      "stored": 48.05,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "CRI": {
+     "Distribution": {
+      "recomputed": 20,
+      "stored": 20.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketWeakness": {
+      "recomputed": 0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "NegativeNews": {
+      "recomputed": 35.9,
+      "stored": 35.900000000000006,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volatility": {
+      "recomputed": 81.045,
+      "stored": 81.04499999999999,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ZPI": {
+     "ATR": {
+      "recomputed": 35.16,
+      "stored": 35.16,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "News": {
+      "recomputed": 64.1,
+      "stored": 64.1,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RSI": {
+      "recomputed": 60,
+      "stored": 60.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Resistance": {
+      "recomputed": 46.7848,
+      "stored": 46.7848,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Sector": {
+      "recomputed": 35.0,
+      "stored": 35.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Volume": {
+      "recomputed": 65,
+      "stored": 65.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ACS": {
+     "Agreement": {
+      "recomputed": 0.0,
+      "stored": 0.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "DataQuality": {
+      "recomputed": 87.5,
+      "stored": 87.5,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "HistoricalAccuracy": {
+      "recomputed": 7.14,
+      "stored": 7.14,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "Liquidity": {
+      "recomputed": 100,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MarketRegime": {
+      "recomputed": 57.71,
+      "stored": 57.71,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "ATIP": {
+     "INS": {
+      "recomputed": 57.91,
+      "stored": 57.91,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MRI": {
+      "recomputed": 41.49,
+      "stored": 41.49,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "MSI": {
+      "recomputed": 58.95,
+      "stored": 58.95,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "RRI": {
+      "recomputed": 50.57,
+      "stored": 50.57,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "SAFETY": {
+      "recomputed": 62.16,
+      "stored": 62.16,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "TS": {
+      "recomputed": 57.83,
+      "stored": 57.83,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "VPI": {
+      "recomputed": 56.01,
+      "stored": 56.01,
+      "abs_diff": 0.0,
+      "match": "True"
+     },
+     "ZPI": {
+      "recomputed": 50.68,
+      "stored": 50.68,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    },
+    "INS": {
+     "DII": {
+      "recomputed": 1.79,
+      "stored": 1.79,
+      "abs_diff": 0.0,
+      "match": true
+     },
+     "FII": {
+      "recomputed": 100.0,
+      "stored": 100.0,
+      "abs_diff": 0.0,
+      "match": true
+     }
+    }
+   },
+   "scores": {
+    "vpi": {
+     "recomputed": 56.01,
+     "stored": 56.01,
+     "abs_diff": 0.0,
+     "pass": "True"
+    },
+    "mri": {
+     "recomputed": 41.49,
+     "stored": 41.49,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "rri": {
+     "recomputed": 50.57,
+     "stored": 50.57,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "zpi": {
+     "recomputed": 50.68,
+     "stored": 50.68,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "cri": {
+     "recomputed": 37.84,
+     "stored": 37.84,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "acs": {
+     "recomputed": 40.5,
+     "stored": 40.5,
+     "abs_diff": 0.0,
+     "pass": true
+    },
+    "atip": {
+     "recomputed": 55.24,
+     "stored": 55.24,
+     "abs_diff": 0.0,
+     "pass": "True"
+    }
+   },
+   "all_scores_pass": true,
+   "components_all_match": true,
+   "worst_component_diff": 0.0
+  },
+  "ICICILIFE": {
+   "error": "no ai_scores row"
+  }
+ }
+}

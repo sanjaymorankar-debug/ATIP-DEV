@@ -493,3 +493,28 @@ Branch `claude/full-review-2026-11-03` (from master `29b488e`). Reports: `docs/r
 - Moving the evening jobs out of the 21:00 stop window.
 - Add NSE's 2027 holidays.
 - S1's target is 4 %; the others are 3 %.
+
+---
+
+# 4 Nov 2026: independent verification of the 3 Nov work, and its fixes (branch claude/verify-2026-11-04, not merged)
+
+Owner prompt 4 Nov 2026 06:00 PM IST: verify every 3 Nov claim with evidence, then fix what fails. Report:
+`docs/reports/2026-11-04-verification/VERIFICATION_REPORT.md`; testing report `docs/testing/ATIP_Verification_Test_Report_2026-11-04.md`;
+delta zip `deliverables/2026-11-04/ATIP_verification_delta_2026-11-04.zip`. Not merged and not deployed: the live Mac still runs `369f6d6`.
+
+**Verified as claimed:** the code-review fixes; ten sessions with ten distinct stocks (four dates, independent ranking); the seven
+score formulas (42/42 recomputed within 0.01 without the engine); no look-ahead; the backtest (reproduced to the last digit);
+the order dialog; dark default; the KPI strip and cards.
+
+**Found and fixed**
+- **Scores.** A re-score of a past day read news published after it (MSI). A stock with no indicators yet was scored from
+  stand-ins (a "safe" CRI). A score's breakdown kept parts that no longer counted.
+- **Sessions.** After the day's 10 buys, sessions that sold kept queuing buys the daily limit refused (3 failed NEULANDLAB buys
+  on 4 Nov); they now wait and say why. Command Center's Confirm & send now shows shares and the order value.
+- **Screens.** The dark-theme alert badge was unreadable (1.9:1); tables sort numbers as numbers; numbers line up right;
+  P&L shows ▲ + / ▼ − as well as colour; the stock panel holds keyboard focus; "/" shows "Updated HH:MM:SS IST".
+- **Tests.** A test dated to 3 Nov failed from 4 Nov; a flipped SAFETY sign in ATIP passed every test — both closed.
+- **Apps** 2026.11.04.1 (8); no native change.
+
+**Owner decisions (not changed):** ATIP, VPI and RRI stay BROKEN out of sample (VPI flip + BUY gate re-set, RRI redesign);
+"momentum" sessions rank by ATIP, not price momentum; `max_orders_per_day` 10 = the number of sessions, so no same-day re-entry.

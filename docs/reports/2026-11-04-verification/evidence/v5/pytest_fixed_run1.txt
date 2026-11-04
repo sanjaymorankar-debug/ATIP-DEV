@@ -1,0 +1,13 @@
+start 04 Nov 2026 18:41:39 IST
+        # failed exit legs, expired confirmations) and broker.py (a LIVE buy valued at Rs 0).
+tests/test_ema_gap.py::test_a_failed_download_is_recorded_not_fatal
+tests/test_ema_gap.py::test_a_failed_download_is_recorded_not_fatal
+tests/test_ema_gap.py::test_a_failed_download_is_recorded_not_fatal
+    conn.execute("INSERT INTO enterprise_user (user_id,username,email,display_name,password_hash,status,failed_logins,"
+    conn.execute("UPDATE enterprise_user SET failed_logins=0, last_login_at=? WHERE user_id=?", (_now(), u["user_id"]))
+FAILED tests/test_ui_fixes_v2.py::test_order_paths_are_untouched - AssertionE...
+FAILED tests/test_w39_perf_budget.py::test_block_network_refuses_outside_hosts_and_keeps_loopback
+FAILED tests/test_w39_perf_budget.py::test_server_mode_over_real_http - Permi...
+FAILED tests/test_w39_perf_budget.py::test_cli_exit_codes - PermissionError: ...
+4 failed, 2531 passed, 65 skipped, 6302 warnings in 572.60s (0:09:32)
+end 04 Nov 2026 18:51:12 IST

@@ -1,0 +1,88 @@
+
+================ test  (axe 4.13.0, 84 runs)
+non-200: []
+errors: []
+theme problems: []
+hscroll: 0 []
+axe:
+  scrollable-region-focusable [serious] nodes=10 runs=10 pages=10: /command@light_375, /command@dark_375, /watchlist@light_375, /watchlist@dark_375, /trading@light_375, /trading@dark_375, /baskets@light_375, /baskets@dark_375, /command/signals@light_375, /command/signals@dark_375
+contrast distinct: []
+tabular (light):
+  /sessions@1440 tables=1 visible 0/0 fail (all 10/10; noTabular 10 notRight 10; effectiveTabularFail 10) ex: tr:nth-of-type(1)>td:nth-of-type(11) '0/0' normal/start ; tr:nth-of-type(2)>td:nth-of-type(11) '0/0' normal/start
+  /sessions@375 tables=1 visible 0/0 fail (all 10/10; noTabular 10 notRight 0; effectiveTabularFail 10) ex: tr:nth-of-type(1)>td:nth-of-type(11) '0/0' normal/right ; tr:nth-of-type(2)>td:nth-of-type(11) '0/0' normal/right
+  /trading@1440 tables=2 visible 34/34 fail (all 34/34; noTabular 0 notRight 34; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '10' tabular-nums/left ; tr:nth-of-type(1)>td.muted:nth-of-type(4) '10' tabular-nums/left
+  /trading@375 tables=2 visible 34/34 fail (all 34/34; noTabular 0 notRight 34; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '10' tabular-nums/left ; tr:nth-of-type(1)>td.muted:nth-of-type(4) '10' tabular-nums/left
+  /accounting@1440 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@375 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /settings@1440 tables=1 visible 0/0 fail (all 9/20; noTabular 9 notRight 9; effectiveTabularFail 9) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' normal/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' normal/start
+  /settings@375 tables=1 visible 0/0 fail (all 9/20; noTabular 9 notRight 9; effectiveTabularFail 9) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' normal/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' normal/start
+colour-blind:
+  /trading@light_1440 fail 2/4 legacy 0/0 {"pos":2} ex: '₹0 today' (pos) ctx 'LIVE holdings₹0 todayvalue ₹0 · unrealis' ; '₹0 today' (pos) ctx 'PAPER book₹0 todayvalue ₹0 · unrealised '
+  /trading@light_375 fail 2/4 legacy 0/0 {"pos":2} ex: '₹0 today' (pos) ctx 'LIVE holdings₹0 todayvalue ₹0 · unrealis' ; '₹0 today' (pos) ctx 'PAPER book₹0 todayvalue ₹0 · unrealised '
+  /trading@dark_1440 fail 2/4 legacy 0/0 {"pos":2} ex: '₹0 today' (pos) ctx 'LIVE holdings₹0 todayvalue ₹0 · unrealis' ; '₹0 today' (pos) ctx 'PAPER book₹0 todayvalue ₹0 · unrealised '
+  /trading@dark_375 fail 2/4 legacy 0/0 {"pos":2} ex: '₹0 today' (pos) ctx 'LIVE holdings₹0 todayvalue ₹0 · unrealis' ; '₹0 today' (pos) ctx 'PAPER book₹0 todayvalue ₹0 · unrealised '
+  /wealth@light_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /m@light_1440 fail 2/2 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—'
+  /m@light_375 fail 2/2 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—'
+  /m@dark_1440 fail 2/2 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—'
+  /m@dark_375 fail 2/2 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—'
+
+================ prod  (axe 4.13.0, 84 runs)
+non-200: []
+errors: []
+theme problems: []
+hscroll: 0 []
+axe:
+  color-contrast [serious] nodes=42 runs=42 pages=42: /home@dark_1440, /home@dark_375, /sessions@dark_1440, /sessions@dark_375, /sessions/S1@dark_1440, /sessions/S1@dark_375, /@dark_1440, /@dark_375, /command@dark_1440, /command@dark_375, /watchlist@dark_1440, /watchlist@dark_375, /trading@dark_1440, /trading@dark_375, /market@dark_1440, /market@dark_375, /research@dark_1440, /research@dark_375, /accounting@dark_1440, /accounting@dark_375, /reports@dark_1440, /reports@dark_375, /settings@dark_1440, /settings@dark_375, /more@dark_1440, /more@dark_375, /wealth@dark_1440, /wealth@dark_375, /lab@dark_1440, /lab@dark_375, /baskets@dark_1440, /baskets@dark_375, /global-asia@dark_1440, /global-asia@dark_375, /m@dark_1440, /m@dark_375, /m?tab=live@dark_1440, /m?tab=live@dark_375, /command/signals@dark_1440, /command/signals@dark_375, /markets@dark_1440, /markets@dark_375
+contrast distinct: [{"target":"span[data-ax-unread=\"\"]","ratio":1.89,"fg":"#ffffff","bg":"#fca5a5","fontSize":"7.5pt (10px)","text":"13","example":"/markets@dark_1440"},{"target":"span[data-ax-unread2=\"\"]","ratio":1.89,"fg":"#ffffff","bg":"#fca5a5","fontSize":"7.5pt (10px)","text":"13","example":"/markets@dark_375"}]
+tabular (light):
+  /home@1440 tables=1 visible 0/20 fail (all 0/40; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /home@375 tables=1 visible 0/20 fail (all 0/40; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /sessions@1440 tables=1 visible 0/0 fail (all 41/41; noTabular 41 notRight 41; effectiveTabularFail 10) ex: tr:nth-of-type(1)>td:nth-of-type(6) '₹1,538.57' normal/start ; tr:nth-of-type(1)>td:nth-of-type(7) '₹1,600.11' normal/start
+  /sessions@375 tables=1 visible 0/0 fail (all 41/41; noTabular 41 notRight 0; effectiveTabularFail 10) ex: tr:nth-of-type(1)>td:nth-of-type(6) '₹1,538.57' normal/right ; tr:nth-of-type(1)>td:nth-of-type(7) '₹1,600.11' normal/right
+  /sessions/S1@1440 tables=1 visible 0/37 fail (all 0/37; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /sessions/S1@375 tables=1 visible 0/37 fail (all 0/37; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /@1440 tables=15 visible 499/499 fail (all 6115/6115; noTabular 0 notRight 6115; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(1) '1' tabular-nums/start ; tr:nth-of-type(1)>td:nth-of-type(3) '65' tabular-nums/start
+  /@375 tables=15 visible 449/449 fail (all 6115/6115; noTabular 0 notRight 6115; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(3) '65' tabular-nums/start ; tr:nth-of-type(1)>td:nth-of-type(4) '62' tabular-nums/start
+  /command@1440 tables=1 visible 2/2 fail (all 2/2; noTabular 0 notRight 2; effectiveTabularFail 0) ex: tr>td.num:nth-of-type(3) '65' tabular-nums/start ; tr>td.num.muted:nth-of-type(4) '₹1,577.30' tabular-nums/start
+  /command@375 tables=1 visible 2/2 fail (all 2/2; noTabular 0 notRight 2; effectiveTabularFail 0) ex: tr>td.num:nth-of-type(3) '65' tabular-nums/start ; tr>td.num.muted:nth-of-type(4) '₹1,577.30' tabular-nums/start
+  /trading@1440 tables=15 visible 397/397 fail (all 397/397; noTabular 0 notRight 397; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '10' tabular-nums/left ; tr:nth-of-type(1)>td.muted:nth-of-type(4) '10' tabular-nums/left
+  /trading@375 tables=15 visible 397/397 fail (all 397/397; noTabular 0 notRight 397; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '10' tabular-nums/left ; tr:nth-of-type(1)>td.muted:nth-of-type(4) '10' tabular-nums/left
+  /market@1440 tables=3 visible 509/509 fail (all 509/509; noTabular 0 notRight 509; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(3) '12.26' tabular-nums/left ; tr:nth-of-type(1)>td:nth-of-type(4) '12.31' tabular-nums/left
+  /market@375 tables=3 visible 508/508 fail (all 509/509; noTabular 0 notRight 509; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(3) '12.26' tabular-nums/left ; tr:nth-of-type(1)>td:nth-of-type(4) '12.31' tabular-nums/left
+  /accounting@1440 tables=1 visible 0/186 fail (all 0/186; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@375 tables=1 visible 0/186 fail (all 0/186; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /settings@1440 tables=1 visible 0/0 fail (all 9/20; noTabular 9 notRight 9; effectiveTabularFail 9) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' normal/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' normal/start
+  /settings@375 tables=1 visible 0/0 fail (all 9/20; noTabular 9 notRight 9; effectiveTabularFail 9) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' normal/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' normal/start
+  /wealth@1440 tables=3 visible 0/1 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /wealth@375 tables=3 visible 0/1 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /global-asia@1440 tables=4 visible 0/52 fail (all 0/52; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /global-asia@375 tables=4 visible 0/52 fail (all 0/52; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /m?tab=live@1440 tables=1 visible 1/1 fail (all 1/1; noTabular 0 notRight 1; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td.lf-hide:nth-of-type(4) '14' tabular-nums/left
+  /m?tab=live@375 tables=1 visible 0/0 fail (all 1/1; noTabular 0 notRight 1; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td.lf-hide:nth-of-type(4) '14' tabular-nums/left
+  /command/signals@1440 tables=1 visible 486/486 fail (all 486/486; noTabular 0 notRight 486; effectiveTabularFail 0) ex: tr.sel:nth-of-type(1)>td.num.muted:nth-of-type(1) '1' tabular-nums/start ; tr.sel:nth-of-type(1)>td.num:nth-of-type(4) '65' tabular-nums/start
+  /command/signals@375 tables=1 visible 486/486 fail (all 486/486; noTabular 0 notRight 486; effectiveTabularFail 0) ex: tr.sel:nth-of-type(1)>td.num.muted:nth-of-type(1) '1' tabular-nums/start ; tr.sel:nth-of-type(1)>td.num:nth-of-type(4) '65' tabular-nums/start
+colour-blind:
+  /@light_1440 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@light_375 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@dark_1440 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@dark_375 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /command@light_1440 fail 2/17 legacy 0/0 {"down":2} ex: 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5' ; 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5'
+  /command@light_375 fail 2/15 legacy 0/0 {"down":2} ex: 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5' ; 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5'
+  /command@dark_1440 fail 2/17 legacy 0/0 {"down":2} ex: 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5' ; 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5'
+  /command@dark_375 fail 2/15 legacy 0/0 {"down":2} ex: 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5' ; 'max_orders_per_day: 11 would exceed the ' (down) ctx 'ENTRY BUY 100 NEULANDLAB · trigger ₹19,5'
+  /trading@light_1440 fail 25/71 legacy 0/0 {"neg":2,"pos":23} ex: '1.52' (neg) ctx 'ANGELONEFinancial Services17.1%25.8%1.52' ; '1.34' (neg) ctx 'DIXONConsumer Durables16.6%22.3%1.3440.9' ; '₹98 today' (pos) ctx 'LIVE holdings₹98 todayvalue ₹76,436 · un'
+  /trading@light_375 fail 25/69 legacy 0/0 {"neg":2,"pos":23} ex: '1.52' (neg) ctx 'ANGELONEFinancial Services17.1%25.8%1.52' ; '1.34' (neg) ctx 'DIXONConsumer Durables16.6%22.3%1.3440.9' ; '₹98 today' (pos) ctx 'LIVE holdings₹98 todayvalue ₹76,436 · un'
+  /trading@dark_1440 fail 25/71 legacy 0/0 {"neg":2,"pos":23} ex: '1.52' (neg) ctx 'ANGELONEFinancial Services17.1%25.8%1.52' ; '1.34' (neg) ctx 'DIXONConsumer Durables16.6%22.3%1.3440.9' ; '₹98 today' (pos) ctx 'LIVE holdings₹98 todayvalue ₹76,436 · un'
+  /trading@dark_375 fail 25/69 legacy 0/0 {"neg":2,"pos":23} ex: '1.52' (neg) ctx 'ANGELONEFinancial Services17.1%25.8%1.52' ; '1.34' (neg) ctx 'DIXONConsumer Durables16.6%22.3%1.3440.9' ; '₹98 today' (pos) ctx 'LIVE holdings₹98 todayvalue ₹76,436 · un'
+  /wealth@light_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /m@light_1440 fail 2/7 legacy 0/0 {"(token pos)":2} ex: '₹4,501' (pos) ctx '₹5,08,776 · day ₹4,501' ; 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran'
+  /m@light_375 fail 2/7 legacy 0/0 {"(token pos)":2} ex: '₹4,501' (pos) ctx '₹5,08,776 · day ₹4,501' ; 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran'
+  /m@dark_1440 fail 2/7 legacy 0/0 {"(token pos)":2} ex: '₹4,501' (pos) ctx '₹5,08,776 · day ₹4,501' ; 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran'
+  /m@dark_375 fail 2/7 legacy 0/0 {"(token pos)":2} ex: '₹4,501' (pos) ctx '₹5,08,776 · day ₹4,501' ; 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran'

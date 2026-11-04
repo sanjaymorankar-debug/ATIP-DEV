@@ -1,0 +1,7 @@
+[3 Nov 23:13 snapshot (before the TDPOWERSYS repair)] sawtooth (>=2 jump-and-revert pairs in 120 sessions): scored 0 of 499; all EQ 10 of 2926
+   scored: []
+   TDPOWERSYS max one-day |move| over its history: 104.1%  days >25%: 3
+   independent stored-CRI OOS 1d IC (>=300-session universe): mean -0.0834, t -2.12, n 13  (report: -0.0834, t -2.12)
+[4 Nov 18:03 snapshot (after the repair)] sawtooth (>=2 jump-and-revert pairs in 120 sessions): scored 0 of 499; all EQ 10 of 2929
+   scored: []
+   TDPOWERSYS max one-day |move| over its history: 16.0%  days >25%: 0
