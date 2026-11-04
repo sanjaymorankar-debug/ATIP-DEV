@@ -599,6 +599,23 @@ def list_rules(symbol: str = None, status: str = None) -> list[dict]:
         conn.close()
 
 
+def with_estimates(rows: list[dict]) -> list[dict]:
+    """Pending rules with est_qty / est_value: the shares and money a confirm would send, sized read-only the way
+    execute_rule sizes them (a pool buy's quantity_value 100 is 100 % of the session's cash, not 100 shares). Every
+    confirm dialog reads these -- "/" (review 3 Nov 2026, dashboard H1) and Command Center (verification 4 Nov, VF-05)."""
+    for r in rows:
+        try:
+            px = float(r.get("trigger_hit_price") or r.get("resolved_trigger_price") or 0) or None
+            qt = r.get("quantity_type")
+            n = (int(r["quantity_value"]) if qt == "SHARES" else _session_sized(r, px)["quantity"] if qt == QTY_SESSION
+                 else _risk_sized(r, px)["quantity"] if qt == QTY_RISK else _resolve_quantity(r, px)) if px else None
+            r["est_qty"] = n or None
+            r["est_value"] = round(n * px, 2) if n and px else None
+        except Exception as e:
+            log.debug(f"  pending sizing {r.get('id')}: {e}")
+    return rows
+
+
 def delete_rule(rule_id: str) -> bool:
     conn = get_connection()
     try:

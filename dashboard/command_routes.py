@@ -149,7 +149,8 @@ def summary(conn) -> dict:
     mo = _market_open()
     broker = _broker()
     try:
-        pending = rules.list_rules(status=rules.PENDING_CONFIRMATION)
+        # VF-05 (verification 4 Nov 2026): sized like "/", so Confirm & send's dialog shows shares and order value
+        pending = rules.with_estimates(rules.list_rules(status=rules.PENDING_CONFIRMATION))
     except Exception:
         pending = []
     recent = _rows(conn, "SELECT id, symbol, side, status, role, quantity_value, resolved_trigger_price, "

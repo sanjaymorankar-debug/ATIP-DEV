@@ -1,0 +1,258 @@
+{
+ "score_day": "2026-11-04",
+ "run_day": "2026-11-05",
+ "filters": {
+  "min_turnover": 20000000000.0,
+  "min_price": null,
+  "rank_fill_off": false
+ },
+ "picked": 3,
+ "distinct_picked": 3,
+ "picks_in_session_order": [
+  "PVRINOX",
+  "RELIANCE",
+  "HDFCBANK"
+ ],
+ "waiting": [
+  {
+   "session": "S4",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S5",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S6",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S7",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S8",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S9",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  },
+  {
+   "session": "S10",
+   "reason": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)"
+  }
+ ],
+ "sql_entry_rules": 3,
+ "sql_distinct_symbols": 3,
+ "board_filled": 3,
+ "board_rows": 10,
+ "board_message": "3 of 10 sessions filled (1 on BUY signals, 2 rank-filled (no BUY signal free)) \u2014 S4, S5, S6, S7, S8, S9, S10: no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+ "board_rows_detail": [
+  {
+   "session": "S1",
+   "symbol": "PVRINOX",
+   "status": "QUEUED",
+   "rank": 1,
+   "rank_of": 499,
+   "rationale": "ATIP BUY signal on 2026-11-04, score 65.29",
+   "entry": 1585.19,
+   "target": 1648.6,
+   "stoploss": 1553.49,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-11-04",
+    "atip": 65.29,
+    "vpi": 61.61,
+    "mri": 49.75,
+    "rri": 82.56,
+    "zpi": 66.93,
+    "cri": 24.59,
+    "acs": 63.83,
+    "signal": "BUY",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S2",
+   "symbol": "RELIANCE",
+   "status": "QUEUED",
+   "rank": 252,
+   "rank_of": 499,
+   "rationale": "no BUY signal free: next-ranked eligible stock on 2026-11-04 (ATIP HOLD 54.61, lowest CRI among equals)",
+   "entry": 1317.55,
+   "target": 1357.08,
+   "stoploss": 1291.2,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-11-04",
+    "atip": 54.61,
+    "vpi": 49.97,
+    "mri": 45.1,
+    "rri": 44.24,
+    "zpi": 41.45,
+    "cri": 27.05,
+    "acs": 53.96,
+    "signal": "HOLD",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S3",
+   "symbol": "HDFCBANK",
+   "status": "QUEUED",
+   "rank": 306,
+   "rank_of": 499,
+   "rationale": "no BUY signal free: next-ranked eligible stock on 2026-11-04 (ATIP HOLD 53.14, lowest CRI among equals)",
+   "entry": 740.38,
+   "target": 762.59,
+   "stoploss": 725.57,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-11-04",
+    "atip": 53.14,
+    "vpi": 45.57,
+    "mri": 52.99,
+    "rri": 45.43,
+    "zpi": 36.3,
+    "cri": 31.95,
+    "acs": 52.23,
+    "signal": "HOLD",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S4",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S5",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S6",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S7",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S8",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S9",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S10",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal or rank-fill stock (PVRINOX is taken; RELIANCE is taken; HDFCBANK is taken)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  }
+ ],
+ "independent_top10": [
+  "PVRINOX",
+  "RELIANCE",
+  "HDFCBANK"
+ ],
+ "independent_eligible": 3,
+ "order_matches_independent": true,
+ "momentum20_top10": [
+  "LTTS",
+  "ATHERENERG",
+  "PVRINOX",
+  "IGIL",
+  "BHARTIHEXA",
+  "TATAELXSI",
+  "WIPRO",
+  "ACUTAAS",
+  "ZENSARTECH",
+  "PPLPHARMA"
+ ],
+ "overlap_with_momentum20": [
+  "PVRINOX"
+ ]
+}

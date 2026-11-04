@@ -1,0 +1,2325 @@
+{
+ "summary": {
+  "scope": "/Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/dashboard",
+  "filesScanned": 77,
+  "filesWithColours": 31,
+  "totalLiterals": 1138,
+  "totalExcludingVendor": 1089,
+  "byKind": {
+   ".py": 917,
+   ".js": 2,
+   ".css": 170
+  },
+  "top20": [
+   {
+    "file": "dashboard/server.py",
+    "hex": 339,
+    "rgb": 1,
+    "total": 340,
+    "vendor": false,
+    "top": [
+     [
+      "#94a3b8",
+      60
+     ],
+     [
+      "#dc2626",
+      43
+     ],
+     [
+      "#059669",
+      27
+     ],
+     [
+      "#38bdf8",
+      26
+     ],
+     [
+      "#334155",
+      25
+     ],
+     [
+      "#64748b",
+      24
+     ],
+     [
+      "#fff",
+      17
+     ],
+     [
+      "#f59e0b",
+      16
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/static/atip/atip.css",
+    "hex": 158,
+    "rgb": 8,
+    "total": 166,
+    "vendor": false,
+    "top": [
+     [
+      "#10b981",
+      8
+     ],
+     [
+      "#64748b",
+      5
+     ],
+     [
+      "#fff",
+      4
+     ],
+     [
+      "#94a3b8",
+      4
+     ],
+     [
+      "#9ca3af",
+      4
+     ],
+     [
+      "#6b7280",
+      4
+     ],
+     [
+      "#e2e8f0",
+      4
+     ],
+     [
+      "#cbd5e1",
+      4
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/stock_view.py",
+    "hex": 84,
+    "rgb": 1,
+    "total": 85,
+    "vendor": false,
+    "top": [
+     [
+      "#64748b",
+      11
+     ],
+     [
+      "#94a3b8",
+      10
+     ],
+     [
+      "#334155",
+      8
+     ],
+     [
+      "#0f172a",
+      6
+     ],
+     [
+      "#38bdf8",
+      5
+     ],
+     [
+      "#dc2626",
+      5
+     ],
+     [
+      "#475569",
+      5
+     ],
+     [
+      "#059669",
+      4
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/global_asia.py",
+    "hex": 71,
+    "rgb": 1,
+    "total": 72,
+    "vendor": false,
+    "top": [
+     [
+      "#7f1d1d",
+      3
+     ],
+     [
+      "#fee2e2",
+      3
+     ],
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#94a3b8",
+      3
+     ],
+     [
+      "#38bdf8",
+      3
+     ],
+     [
+      "#111a2c",
+      3
+     ],
+     [
+      "#22304a",
+      3
+     ],
+     [
+      "#9aa8c1",
+      3
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w39_page.py",
+    "hex": 67,
+    "rgb": 1,
+    "total": 68,
+    "vendor": false,
+    "top": [
+     [
+      "#3987e5",
+      8
+     ],
+     [
+      "#0f172a",
+      6
+     ],
+     [
+      "#2563eb",
+      6
+     ],
+     [
+      "#7f1d1d",
+      5
+     ],
+     [
+      "#d95926",
+      5
+     ],
+     [
+      "#064e3b",
+      4
+     ],
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#fecaca",
+      3
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/command_page.py",
+    "hex": 49,
+    "rgb": 1,
+    "total": 50,
+    "vendor": false,
+    "top": [
+     [
+      "#fbbf24",
+      4
+     ],
+     [
+      "#fff",
+      2
+     ],
+     [
+      "#fb923c",
+      2
+     ],
+     [
+      "#0b1220",
+      1
+     ],
+     [
+      "#111a2c",
+      1
+     ],
+     [
+      "#17243b",
+      1
+     ],
+     [
+      "#22304a",
+      1
+     ],
+     [
+      "#e6ebf5",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/static/vendor/lightweight-charts-5.0.9/lightweight-charts.standalone.production.js",
+    "hex": 38,
+    "rgb": 11,
+    "total": 49,
+    "vendor": true,
+    "top": [
+     [
+      "#26a69a",
+      5
+     ],
+     [
+      "#131722",
+      4
+     ],
+     [
+      "#ef5350",
+      4
+     ],
+     [
+      "#fff",
+      3
+     ],
+     [
+      "#2196f3",
+      3
+     ],
+     [
+      "#9598a1",
+      2
+     ],
+     [
+      "#d6dcde",
+      2
+     ],
+     [
+      "#2b2b43",
+      2
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w38_page.py",
+    "hex": 34,
+    "rgb": 0,
+    "total": 34,
+    "vendor": false,
+    "top": [
+     [
+      "#0f172a",
+      5
+     ],
+     [
+      "#2563eb",
+      4
+     ],
+     [
+      "#fff",
+      3
+     ],
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#38bdf8",
+      2
+     ],
+     [
+      "#34d399",
+      2
+     ],
+     [
+      "#33415555",
+      2
+     ],
+     [
+      "#78350f",
+      2
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/market_page.py",
+    "hex": 33,
+    "rgb": 0,
+    "total": 33,
+    "vendor": false,
+    "top": [
+     [
+      "#94a3b8",
+      5
+     ],
+     [
+      "#334155",
+      4
+     ],
+     [
+      "#38bdf8",
+      3
+     ],
+     [
+      "#0f172a",
+      2
+     ],
+     [
+      "#1e293b",
+      2
+     ],
+     [
+      "#fca5a5",
+      2
+     ],
+     [
+      "#fde68a",
+      2
+     ],
+     [
+      "#e2e8f0",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/wealth_page.py",
+    "hex": 23,
+    "rgb": 0,
+    "total": 23,
+    "vendor": false,
+    "top": [
+     [
+      "#0369a1",
+      4
+     ],
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#1e3a5f",
+      2
+     ],
+     [
+      "#dbeafe",
+      2
+     ],
+     [
+      "#fff",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w28_assets.py",
+    "hex": 19,
+    "rgb": 0,
+    "total": 19,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#94a3b8",
+      3
+     ],
+     [
+      "#38bdf8",
+      2
+     ],
+     [
+      "#e2e8f0",
+      2
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#065f46",
+      1
+     ],
+     [
+      "#d1fae5",
+      1
+     ],
+     [
+      "#7f1d1d",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w34_page.py",
+    "hex": 18,
+    "rgb": 0,
+    "total": 18,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#3987e5",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#fde68a",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w35_page.py",
+    "hex": 18,
+    "rgb": 0,
+    "total": 18,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#2563eb",
+      3
+     ],
+     [
+      "#3987e5",
+      2
+     ],
+     [
+      "#fff",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/execution_page.py",
+    "hex": 17,
+    "rgb": 0,
+    "total": 17,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#fff",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/strategy_page.py",
+    "hex": 17,
+    "rgb": 0,
+    "total": 17,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ],
+     [
+      "#fca5a5",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/ml_page.py",
+    "hex": 15,
+    "rgb": 0,
+    "total": 15,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ],
+     [
+      "#fca5a5",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w37_page.py",
+    "hex": 15,
+    "rgb": 0,
+    "total": 15,
+    "vendor": false,
+    "top": [
+     [
+      "#2563eb",
+      3
+     ],
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#fff",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/backtest_page.py",
+    "hex": 14,
+    "rgb": 0,
+    "total": 14,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ],
+     [
+      "#fca5a5",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/w39_retail_page.py",
+    "hex": 14,
+    "rgb": 0,
+    "total": 14,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      3
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ],
+     [
+      "#fca5a5",
+      1
+     ]
+    ]
+   },
+   {
+    "file": "dashboard/quant_page.py",
+    "hex": 13,
+    "rgb": 0,
+    "total": 13,
+    "vendor": false,
+    "top": [
+     [
+      "#334155",
+      2
+     ],
+     [
+      "#0f172a",
+      1
+     ],
+     [
+      "#1e293b",
+      1
+     ],
+     [
+      "#e2e8f0",
+      1
+     ],
+     [
+      "#94a3b8",
+      1
+     ],
+     [
+      "#38bdf8",
+      1
+     ],
+     [
+      "#6ee7b7",
+      1
+     ],
+     [
+      "#fca5a5",
+      1
+     ]
+    ]
+   }
+  ],
+  "atipCss": {
+   "tokenHex": 97,
+   "tokenRgb": 4,
+   "componentHex": 158,
+   "componentRgb": 8,
+   "componentKinds": {
+    "declaration (applied colour)": 15,
+    "comment": 1,
+    "attr-selector (legacy bridge matcher)": 150
+   },
+   "appliedCount": 15,
+   "componentLines": [
+    {
+     "line": 73,
+     "colours": [
+      "#FFFFFF"
+     ],
+     "src": ".ax-env { color: #FFFFFF; letter-spacing: .04em; }"
+    },
+    {
+     "line": 76,
+     "colours": [
+      "#FECDCA"
+     ],
+     "src": ".ax-env[data-env=\"LIVE\"] { background: var(--ax-env-live); font-weight: 800; box-shadow: 0 0 0 2px #FECDCA; }"
+    },
+    {
+     "line": 84,
+     "colours": [
+      "#fff"
+     ],
+     "src": "background: var(--ax-neg); color: #fff; font: 700 10px/16px var(--ax-font); }"
+    },
+    {
+     "line": 85,
+     "colours": [
+      "#fff"
+     ],
+     "src": ".ax-killbtn { min-height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--ax-kill); color: #fff;"
+    },
+    {
+     "line": 113,
+     "colours": [
+      "rgba(3,6,14,.45)"
+     ],
+     "src": ".ax-scrim.open { display: block; position: fixed; inset: 0; background: rgba(3,6,14,.45); z-index: 940; }"
+    },
+    {
+     "line": 186,
+     "colours": [
+      "#fff"
+     ],
+     "src": ".ax-btn.danger { background: var(--ax-kill); border-color: var(--ax-kill); color: #fff; }"
+    },
+    {
+     "line": 258,
+     "colours": [
+      "rgba(0,0,0,.18)"
+     ],
+     "src": "border-left: 1px solid var(--ax-border); box-shadow: -8px 0 24px rgba(0,0,0,.18); transform: translateX(102%); transition: transform .18s ease;"
+    },
+    {
+     "line": 267,
+     "colours": [
+      "rgba(0,0,0,.3)"
+     ],
+     "src": "color: var(--ax-text); font: 14px/1.5 var(--ax-font); box-shadow: 0 20px 40px rgba(0,0,0,.3); }"
+    },
+    {
+     "line": 268,
+     "colours": [
+      "rgba(3,6,14,.55)"
+     ],
+     "src": "dialog.ax-dialog::backdrop { background: rgba(3,6,14,.55); }"
+    },
+    {
+     "line": 282,
+     "colours": [
+      "#fff"
+     ],
+     "src": ".ax-toast.bad { background: var(--ax-neg); color: #fff; }"
+    },
+    {
+     "line": 387,
+     "colours": [
+      "rgba(0,0,0,.22)"
+     ],
+     "src": "color: var(--ax-text); border: 1px solid var(--ax-border); border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.22); font: 13.5px/1.45 var(--ax-font); }"
+    },
+    {
+     "line": 580,
+     "colours": [
+      "#047857"
+     ],
+     "src": "body.ax-legacy [style*=\"background: #10B981\"] { background-color: #047857 !important; }"
+    },
+    {
+     "line": 636,
+     "colours": [
+      "rgba(0,0,0,.25)",
+      "rgba(255,255,255,.25)"
+     ],
+     "src": "details.ax-tech.ax-onbanner[open] { background: rgba(0,0,0,.25); border-color: rgba(255,255,255,.25); color: inherit; }"
+    },
+    {
+     "line": 660,
+     "colours": [
+      "rgba(16,24,40,.18)"
+     ],
+     "src": "background: var(--ax-surface); border: 1px solid var(--ax-border); border-radius: var(--ax-radius); box-shadow: 0 8px 24px rgba(16,24,40,.18); z-index: 960; }"
+    }
+   ]
+  }
+ },
+ "perFile": {
+  "dashboard/__init__.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/assistant_page.py": {
+   "hex": 12,
+   "rgb": 0,
+   "total": 12,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#fde68a",
+     1
+    ]
+   ]
+  },
+  "dashboard/backtest_page.py": {
+   "hex": 14,
+   "rgb": 0,
+   "total": 14,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/command_more.py": {
+   "hex": 2,
+   "rgb": 0,
+   "total": 2,
+   "vendor": false,
+   "top": [
+    [
+     "#fbbf24",
+     2
+    ]
+   ]
+  },
+  "dashboard/command_page.py": {
+   "hex": 49,
+   "rgb": 1,
+   "total": 50,
+   "vendor": false,
+   "top": [
+    [
+     "#fbbf24",
+     4
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#fb923c",
+     2
+    ],
+    [
+     "#0b1220",
+     1
+    ],
+    [
+     "#111a2c",
+     1
+    ],
+    [
+     "#17243b",
+     1
+    ],
+    [
+     "#22304a",
+     1
+    ],
+    [
+     "#e6ebf5",
+     1
+    ]
+   ]
+  },
+  "dashboard/command_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/enterprise_page.py": {
+   "hex": 11,
+   "rgb": 0,
+   "total": 11,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ],
+    [
+     "#fde68a",
+     1
+    ]
+   ]
+  },
+  "dashboard/enterprise_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/execution_page.py": {
+   "hex": 17,
+   "rgb": 0,
+   "total": 17,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ]
+   ]
+  },
+  "dashboard/execution_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/fmt.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/global_asia.py": {
+   "hex": 71,
+   "rgb": 1,
+   "total": 72,
+   "vendor": false,
+   "top": [
+    [
+     "#7f1d1d",
+     3
+    ],
+    [
+     "#fee2e2",
+     3
+    ],
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#94a3b8",
+     3
+    ],
+    [
+     "#38bdf8",
+     3
+    ],
+    [
+     "#111a2c",
+     3
+    ],
+    [
+     "#22304a",
+     3
+    ],
+    [
+     "#9aa8c1",
+     3
+    ]
+   ]
+  },
+  "dashboard/labels.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/market_page.py": {
+   "hex": 33,
+   "rgb": 0,
+   "total": 33,
+   "vendor": false,
+   "top": [
+    [
+     "#94a3b8",
+     5
+    ],
+    [
+     "#334155",
+     4
+    ],
+    [
+     "#38bdf8",
+     3
+    ],
+    [
+     "#0f172a",
+     2
+    ],
+    [
+     "#1e293b",
+     2
+    ],
+    [
+     "#fca5a5",
+     2
+    ],
+    [
+     "#fde68a",
+     2
+    ],
+    [
+     "#e2e8f0",
+     1
+    ]
+   ]
+  },
+  "dashboard/market_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/ml_page.py": {
+   "hex": 15,
+   "rgb": 0,
+   "total": 15,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/ml_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/ml_w24_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/news_impact_view.py": {
+   "hex": 4,
+   "rgb": 0,
+   "total": 4,
+   "vendor": false,
+   "top": [
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#64748b",
+     1
+    ]
+   ]
+  },
+  "dashboard/ops_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/options_v2.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/portfolio_risk_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/quant_page.py": {
+   "hex": 13,
+   "rgb": 0,
+   "total": 13,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/quant_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/research_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/risk_model_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/saas_page.py": {
+   "hex": 2,
+   "rgb": 0,
+   "total": 2,
+   "vendor": false,
+   "top": [
+    [
+     "#7f1d1d",
+     2
+    ]
+   ]
+  },
+  "dashboard/saas_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/score_glossary.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/security.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/server.py": {
+   "hex": 339,
+   "rgb": 1,
+   "total": 340,
+   "vendor": false,
+   "top": [
+    [
+     "#94a3b8",
+     60
+    ],
+    [
+     "#dc2626",
+     43
+    ],
+    [
+     "#059669",
+     27
+    ],
+    [
+     "#38bdf8",
+     26
+    ],
+    [
+     "#334155",
+     25
+    ],
+    [
+     "#64748b",
+     24
+    ],
+    [
+     "#fff",
+     17
+    ],
+    [
+     "#f59e0b",
+     16
+    ]
+   ]
+  },
+  "dashboard/shell.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/static/atip/atip.css": {
+   "hex": 158,
+   "rgb": 8,
+   "total": 166,
+   "vendor": false,
+   "top": [
+    [
+     "#10b981",
+     8
+    ],
+    [
+     "#64748b",
+     5
+    ],
+    [
+     "#fff",
+     4
+    ],
+    [
+     "#94a3b8",
+     4
+    ],
+    [
+     "#9ca3af",
+     4
+    ],
+    [
+     "#6b7280",
+     4
+    ],
+    [
+     "#e2e8f0",
+     4
+    ],
+    [
+     "#cbd5e1",
+     4
+    ]
+   ]
+  },
+  "dashboard/static/atip/atip.js": {
+   "hex": 1,
+   "rgb": 0,
+   "total": 1,
+   "vendor": false,
+   "top": [
+    [
+     "#ddd",
+     1
+    ]
+   ]
+  },
+  "dashboard/static/atip/options.css": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/static/atip/options.js": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/static/atip/workspace.css": {
+   "hex": 2,
+   "rgb": 2,
+   "total": 4,
+   "vendor": false,
+   "top": [
+    [
+     "#fff",
+     2
+    ],
+    [
+     "rgba(16,24,40,.18)",
+     1
+    ],
+    [
+     "rgba(16,24,40,.28)",
+     1
+    ]
+   ]
+  },
+  "dashboard/static/atip/workspace.js": {
+   "hex": 1,
+   "rgb": 0,
+   "total": 1,
+   "vendor": false,
+   "top": [
+    [
+     "#888",
+     1
+    ]
+   ]
+  },
+  "dashboard/static/vendor/lightweight-charts-5.0.9/lightweight-charts.standalone.production.js": {
+   "hex": 38,
+   "rgb": 11,
+   "total": 49,
+   "vendor": true,
+   "top": [
+    [
+     "#26a69a",
+     5
+    ],
+    [
+     "#131722",
+     4
+    ],
+    [
+     "#ef5350",
+     4
+    ],
+    [
+     "#fff",
+     3
+    ],
+    [
+     "#2196f3",
+     3
+    ],
+    [
+     "#9598a1",
+     2
+    ],
+    [
+     "#d6dcde",
+     2
+    ],
+    [
+     "#2b2b43",
+     2
+    ]
+   ]
+  },
+  "dashboard/stock_view.py": {
+   "hex": 84,
+   "rgb": 1,
+   "total": 85,
+   "vendor": false,
+   "top": [
+    [
+     "#64748b",
+     11
+    ],
+    [
+     "#94a3b8",
+     10
+    ],
+    [
+     "#334155",
+     8
+    ],
+    [
+     "#0f172a",
+     6
+    ],
+    [
+     "#38bdf8",
+     5
+    ],
+    [
+     "#dc2626",
+     5
+    ],
+    [
+     "#475569",
+     5
+    ],
+    [
+     "#059669",
+     4
+    ]
+   ]
+  },
+  "dashboard/strategy_builder_page.py": {
+   "hex": 12,
+   "rgb": 0,
+   "total": 12,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/strategy_page.py": {
+   "hex": 17,
+   "rgb": 0,
+   "total": 17,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/strategy_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/ux_kit.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/ux_pages.py": {
+   "hex": 1,
+   "rgb": 0,
+   "total": 1,
+   "vendor": false,
+   "top": [
+    [
+     "#ddd",
+     1
+    ]
+   ]
+  },
+  "dashboard/ux_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w28_assets.py": {
+   "hex": 19,
+   "rgb": 0,
+   "total": 19,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#94a3b8",
+     3
+    ],
+    [
+     "#38bdf8",
+     2
+    ],
+    [
+     "#e2e8f0",
+     2
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#065f46",
+     1
+    ],
+    [
+     "#d1fae5",
+     1
+    ],
+    [
+     "#7f1d1d",
+     1
+    ]
+   ]
+  },
+  "dashboard/w28_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w28b_assets.py": {
+   "hex": 8,
+   "rgb": 0,
+   "total": 8,
+   "vendor": false,
+   "top": [
+    [
+     "#34d399",
+     2
+    ],
+    [
+     "#f87171",
+     2
+    ],
+    [
+     "#e2e8f0",
+     2
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#64748b",
+     1
+    ]
+   ]
+  },
+  "dashboard/w28b_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w29_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w34_page.py": {
+   "hex": 18,
+   "rgb": 0,
+   "total": 18,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#3987e5",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#fde68a",
+     1
+    ]
+   ]
+  },
+  "dashboard/w34_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w35_page.py": {
+   "hex": 18,
+   "rgb": 0,
+   "total": 18,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#2563eb",
+     3
+    ],
+    [
+     "#3987e5",
+     2
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ]
+   ]
+  },
+  "dashboard/w35_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w36_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w37_page.py": {
+   "hex": 15,
+   "rgb": 0,
+   "total": 15,
+   "vendor": false,
+   "top": [
+    [
+     "#2563eb",
+     3
+    ],
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ]
+   ]
+  },
+  "dashboard/w37_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w38_page.py": {
+   "hex": 34,
+   "rgb": 0,
+   "total": 34,
+   "vendor": false,
+   "top": [
+    [
+     "#0f172a",
+     5
+    ],
+    [
+     "#2563eb",
+     4
+    ],
+    [
+     "#fff",
+     3
+    ],
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#38bdf8",
+     2
+    ],
+    [
+     "#34d399",
+     2
+    ],
+    [
+     "#33415555",
+     2
+    ],
+    [
+     "#78350f",
+     2
+    ]
+   ]
+  },
+  "dashboard/w38_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w39_page.py": {
+   "hex": 67,
+   "rgb": 1,
+   "total": 68,
+   "vendor": false,
+   "top": [
+    [
+     "#3987e5",
+     8
+    ],
+    [
+     "#0f172a",
+     6
+    ],
+    [
+     "#2563eb",
+     6
+    ],
+    [
+     "#7f1d1d",
+     5
+    ],
+    [
+     "#d95926",
+     5
+    ],
+    [
+     "#064e3b",
+     4
+    ],
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#fecaca",
+     3
+    ]
+   ]
+  },
+  "dashboard/w39_retail_page.py": {
+   "hex": 14,
+   "rgb": 0,
+   "total": 14,
+   "vendor": false,
+   "top": [
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ],
+    [
+     "#94a3b8",
+     1
+    ],
+    [
+     "#38bdf8",
+     1
+    ],
+    [
+     "#6ee7b7",
+     1
+    ],
+    [
+     "#fca5a5",
+     1
+    ]
+   ]
+  },
+  "dashboard/w39_retail_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w39_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/w40_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_page.py": {
+   "hex": 23,
+   "rgb": 0,
+   "total": 23,
+   "vendor": false,
+   "top": [
+    [
+     "#0369a1",
+     4
+    ],
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#1e3a5f",
+     2
+    ],
+    [
+     "#dbeafe",
+     2
+    ],
+    [
+     "#fff",
+     2
+    ],
+    [
+     "#0f172a",
+     1
+    ],
+    [
+     "#1e293b",
+     1
+    ],
+    [
+     "#e2e8f0",
+     1
+    ]
+   ]
+  },
+  "dashboard/wealth_routes.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/__init__.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/advisor_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/allocation_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/goals_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/overview_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/performance_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/rebalance_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/wealth_ui/wealth_tab.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/widget_schemas.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  },
+  "dashboard/workspace.py": {
+   "hex": 0,
+   "rgb": 0,
+   "total": 0,
+   "vendor": false,
+   "top": []
+  }
+ }
+}

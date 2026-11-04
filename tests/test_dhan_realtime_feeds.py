@@ -469,10 +469,19 @@ class _NSE:
                                              "underlyingValue": 25009}}]}}
 
 
+class _Nov3(date):
+    """The fake chain's expiries are 3, 10 and 17 Nov 2026: pin today to the 3rd, or the test starts failing on the
+    4th, when the 3 Nov expiry is (rightly) dropped as past (verification 4 Nov 2026, VF-11)."""
+    @classmethod
+    def today(cls):
+        return cls(2026, 11, 3)
+
+
 def test_dhan_chain_rows_for_the_nearest_expiries(conn, monkeypatch, tmp_path):
     from data import derivatives_store as DS, lake
     monkeypatch.setattr(lake, "ROOT", tmp_path / "lake")
     monkeypatch.setattr(DS, "_expiries", {})
+    monkeypatch.setattr(DS, "date", _Nov3)
     fake = _DhanChain()
     out = DS.snapshot_option_chain("NIFTY", conn, source="dhan", dhan=fake)
     assert out["status"] == "SUCCESS" and out["source"] == "dhan" and out["rows"] == 4      # 2 expiries x CE/PE

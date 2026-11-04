@@ -1,0 +1,173 @@
+{
+ "date": "2026-10-29",
+ "lookahead_indicators": {
+  "rows": 8,
+  "identical": true
+ },
+ "lookahead_scores": {
+  "symbols": 499,
+  "differ": 499,
+  "examples": [
+   {
+    "symbol": "360ONE",
+    "a": [
+     51.08,
+     55.33,
+     33.92,
+     51.28,
+     32.01,
+     50.1,
+     56.12,
+     "HOLD"
+    ],
+    "b": [
+     51.08,
+     55.33,
+     33.92,
+     51.28,
+     32.01,
+     50.1,
+     56.95,
+     "HOLD"
+    ]
+   },
+   {
+    "symbol": "AADHARHFC",
+    "a": [
+     40.65,
+     48.86,
+     23.86,
+     54.07,
+     32.21,
+     44.06,
+     51.95,
+     "HOLD"
+    ],
+    "b": [
+     40.65,
+     48.86,
+     23.86,
+     54.07,
+     32.21,
+     44.06,
+     52.78,
+     "HOLD"
+    ]
+   },
+   {
+    "symbol": "AARTIIND",
+    "a": [
+     47.97,
+     58.78,
+     49.73,
+     42.65,
+     43.23,
+     42.49,
+     54.77,
+     "HOLD"
+    ],
+    "b": [
+     47.97,
+     58.78,
+     49.73,
+     42.65,
+     43.23,
+     42.49,
+     55.6,
+     "HOLD"
+    ]
+   },
+   {
+    "symbol": "AAVAS",
+    "a": [
+     39.72,
+     49.76,
+     22.4,
+     53.83,
+     33.94,
+     44.09,
+     52.0,
+     "HOLD"
+    ],
+    "b": [
+     39.72,
+     49.76,
+     22.4,
+     53.83,
+     33.94,
+     44.09,
+     52.83,
+     "HOLD"
+    ]
+   },
+   {
+    "symbol": "ABB",
+    "a": [
+     53.85,
+     52.04,
+     43.73,
+     51.37,
+     33.41,
+     54.06,
+     56.92,
+     "HOLD"
+    ],
+    "b": [
+     53.85,
+     52.04,
+     43.73,
+     51.37,
+     33.41,
+     54.06,
+     57.75,
+     "HOLD"
+    ]
+   }
+  ]
+ },
+ "normalisation_history_removed": {
+  "symbols": 499,
+  "differ": 0,
+  "examples": []
+ },
+ "null_ema": {
+  "symbol": "RELIANCE",
+  "mri_components": [
+   "ADX",
+   "MACD",
+   "News",
+   "RSI",
+   "Volume"
+  ],
+  "ema_left_out": true,
+  "mri": 61.41,
+  "mri_rebuilt_from_present": 61.41,
+  "matches": true,
+  "mri_if_ema_were_0": 52.2,
+  "mri_before_null": 56.7
+ },
+ "composite": {
+  "weight_sums": {
+   "ACS": 1.0,
+   "ATIP": 1.2,
+   "CRI": 1.0,
+   "FS": 1.0,
+   "INS": 1.0,
+   "MH": 1.05,
+   "MRI": 1.0,
+   "MSI": 1.0,
+   "PHS": 1.0,
+   "RRI": 1.0,
+   "SPI": 1.0,
+   "TOD": 1.0,
+   "TS": 1.0,
+   "VPI": 1.0,
+   "ZPI": 1.0
+  },
+  "component_min": 0.0,
+  "component_max": 100.0,
+  "components": 27395,
+  "on_0_100_scale": true,
+  "atip_weight_present_avg": 0.95
+ }
+}

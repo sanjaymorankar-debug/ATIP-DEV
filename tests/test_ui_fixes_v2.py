@@ -357,6 +357,8 @@ def test_order_paths_are_untouched():
     # board; UI fixes v2 itself still touches nothing under orders/ or execution/.
     # The full code review (3 Nov 2026 night) fixes the order engine on purpose: rules.py (a stale OCO sibling sent twice,
     # failed exit legs, expired confirmations) and broker.py (a LIVE buy valued at Rs 0).
+    # The 4 Nov verification changes autopick.py (no buy queued once max_orders_per_day is used) and rules.py (order
+    # estimates shared by "/" and Command Center) on purpose.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 

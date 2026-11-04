@@ -81,6 +81,16 @@ def list_formulas(conn) -> list:
 
 
 def store_components(conn, symbol: str, trade_date, captured: dict) -> int:
+    # Verification 4 Nov 2026 (VF-02): the capture is the whole record of this run for the symbol and day. An upsert
+    # alone kept components a re-score no longer used (944 "Support" rows of stocks with no 200-day average), so the
+    # score breakdown showed parts that did not count. Replace the day's rows instead: all of a stock's (an index such
+    # as INS can drop out whole), and only the captured indices of the market-wide __MARKET__ row.
+    if symbol == "__MARKET__":
+        if captured:
+            conn.execute(f"DELETE FROM score_components WHERE symbol=? AND date=? AND index_name IN "
+                         f"({','.join('?' * len(captured))})", (symbol, str(trade_date), *captured))
+    else:
+        conn.execute("DELETE FROM score_components WHERE symbol=? AND date=?", (symbol, str(trade_date)))
     n = 0
     for idx, v in captured.items():
         for comp, val in v["components"].items():

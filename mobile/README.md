@@ -4,7 +4,18 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.03.3** (Android `versionCode` 7 / `versionName` 2026.11.03.3; iOS `CFBundleShortVersionString`
+**Version 2026.11.04.1** (Android `versionCode` 8 / `versionName` 2026.11.04.1; iOS `CFBundleShortVersionString`
+2026.11.04.1 / `CFBundleVersion` 8), 4 Nov 2026 evening (verification pass). No native change: the fixes are on the
+server, so the apps show them as soon as the Mac runs this code.
+
+* **Command Center's Confirm & send** now shows the shares and the order value of a session buy (≈ N shares,
+  ₹ value), as "/" already did, before anything is sent.
+* **Sessions** say "today's 10 buys are used" instead of queuing a buy the daily limit would refuse, and a
+  shortfall line names rank-fill when its stocks were all taken.
+* **Scores**: a stock with no indicators yet (a listing under 20 sessions old) is not scored, so it no longer
+  shows a "safe" CRI built from stand-ins; a score's breakdown shows only the parts that counted.
+
+Earlier, **2026.11.03.3** (Android `versionCode` 7 / `versionName` 2026.11.03.3; iOS `CFBundleShortVersionString`
 2026.11.03.3 / `CFBundleVersion` 7), 3 Nov 2026 night (full review + design system):
 
 * **Dark by default.** Both apps start dark (iOS `preferredColorScheme(.dark)`, Android `MODE_NIGHT_YES`), as the web

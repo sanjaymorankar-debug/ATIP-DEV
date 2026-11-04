@@ -1,0 +1,19 @@
+start 18:04:06 IST
+wrote /Users/agtci/ATIP/.ux_build/verify-2026-11-04/validation/validation_repro.json
+pit point-in-time recompute, 489 symbols 353 sessions; OOS ['2026-06-03', '2026-11-03']
+  atip  BROKEN    {1: (0.0088, np.float64(0.76)), 5: (0.0174, np.float64(0.58)), 10: (0.0185, np.float64(0.46)), 20: (0.0306, np.float64(0.51))}
+  vpi   BROKEN    {1: (-0.0042, np.float64(-0.51)), 5: (0.0063, np.float64(0.35)), 10: (0.0153, np.float64(0.57)), 20: (0.0319, np.float64(0.75))}
+  mri   WEAK      {1: (0.0059, np.float64(0.94)), 5: (0.0175, np.float64(1.27)), 10: (0.0211, np.float64(1.15)), 20: (0.0324, np.float64(1.12))}
+  rri   BROKEN    {1: (-0.0165, np.float64(-1.43)), 5: (-0.003, np.float64(-0.1)), 10: (0.0052, np.float64(0.12)), 20: (0.0149, np.float64(0.24))}
+  zpi   WEAK      {1: (0.0169, np.float64(1.61)), 5: (0.0203, np.float64(0.71)), 10: (0.0131, np.float64(0.36)), 20: (0.0275, np.float64(0.48))}
+  cri   WORKING   {1: (-0.0453, np.float64(-4.41)), 5: (-0.0312, np.float64(-1.23)), 10: (-0.0182, np.float64(-0.63)), 20: (-0.0137, np.float64(-0.39))}
+  acs   WEAK      {1: (0.0125, np.float64(1.16)), 5: (0.0204, np.float64(0.8)), 10: (0.0263, np.float64(0.76)), 20: (0.0394, np.float64(0.74))}
+stored stored ai_scores (as deployed) 44 sessions; OOS ['2026-10-14', '2026-11-03']
+  atip  WEAK      {1: (-0.0102, np.float64(-0.24)), 5: (0.0463, np.float64(0.51)), 10: (0.0703, np.float64(1.04)), 20: (None, None)}
+  vpi   WEAK      {1: (-0.0009, np.float64(-0.04)), 5: (0.0494, np.float64(0.99)), 10: (0.1093, np.float64(1.59)), 20: (None, None)}
+  mri   BROKEN    {1: (-0.0026, np.float64(-0.06)), 5: (-0.0444, np.float64(-0.8)), 10: (-0.0276, np.float64(-1.17)), 20: (None, None)}
+  rri   BROKEN    {1: (-0.0159, np.float64(-0.36)), 5: (0.0422, np.float64(0.4)), 10: (0.043, np.float64(0.52)), 20: (None, None)}
+  zpi   BROKEN    {1: (-0.0143, np.float64(-0.43)), 5: (0.0188, np.float64(0.18)), 10: (-0.0189, np.float64(-0.32)), 20: (None, None)}
+  cri   WORKING   {1: (-0.0834, np.float64(-2.12)), 5: (-0.157, np.float64(-3.72)), 10: (-0.1947, np.float64(-1.91)), 20: (None, None)}
+  acs   WORKING   {1: (0.059, np.float64(1.29)), 5: (0.1495, np.float64(2.7)), 10: (0.2095, np.float64(3.73)), 20: (None, None)}
+end 18:04:53 IST

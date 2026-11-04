@@ -1,0 +1,62 @@
+start 04 Nov 2026 18:03:42 IST
+tests/test_enterprise_owner_book.py: 74 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/enterprise/users.py:296: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("UPDATE enterprise_session SET last_seen_at=? WHERE token_hash=?", (_now(), r["token_hash"]))
+
+tests/test_enterprise_owner_book.py::test_another_tenant_keeps_its_own_book
+tests/test_enterprise_owner_book.py::test_another_tenant_keeps_its_own_book
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/execution/tenant_books.py:60: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO tenant_paper_account (tenant_id,starting_cash,cash,realized_pnl,peak_equity,created_at,"
+
+tests/test_enterprise_owner_book.py: 34 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/strategy_engine/registry.py:46: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy (strategy_id,name,description,kind,category,status,current_version,source,"
+
+tests/test_enterprise_owner_book.py: 17 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/strategy_engine/registry.py:73: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy_version (strategy_id,version,definition_json,definition_hash,notes,created_at) "
+
+tests/test_enterprise_owner_book.py: 39 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/strategy_engine/lifecycle.py:69: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy_engine_event (strategy_id,version,event_type,from_state,to_state,message,"
+
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/strategy_engine/selection.py:106: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.executemany("INSERT INTO strategy_regime_mapping (regime,strategy_id,no_trade,priority,weight,enabled,"
+
+tests/test_risk_controls.py::test_the_token_lets_the_call_through
+  /Users/agtci/ATIP/.venv/lib/python3.15/site-packages/dhanhq/_security.py:120: DtypeWarning: Columns (14: SEM_SERIES, 15: SM_SYMBOL_NAME) have mixed types. Specify dtype option on import or set low_memory=False.
+    df = pd.read_csv(filename)
+
+tests/test_risk_controls.py::test_the_token_lets_the_call_through
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/data/dhan.py:196: DtypeWarning: Columns (14: SEM_SERIES, 15: SM_SYMBOL_NAME) have mixed types. Specify dtype option on import or set low_memory=False.
+    df = pd.read_csv(str(SEC_LIST_PATH))
+
+tests/test_risk_controls.py::test_the_token_lets_the_call_through
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/data/dhan.py:217: DtypeWarning: Columns (14: SEM_SERIES, 15: SM_SYMBOL_NAME) have mixed types. Specify dtype option on import or set low_memory=False.
+    df = pd.read_csv(str(SEC_LIST_PATH))
+
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+tests/test_w39_qa_suite.py::test_postmarket_scores_a_seeded_session_end_to_end
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-04/data/technical.py:97: Pandas4Warning: The 'lsuffix' and 'rsuffix' keywords in DataFrame.join are deprecated and will be removed in a future version. Use the 'suffixes' keyword instead.
+    merged = s.join(b, how="inner", lsuffix="_s", rsuffix="_b").dropna()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_dhan_realtime_feeds.py::test_dhan_chain_rows_for_the_nearest_expiries
+FAILED tests/test_w39_perf_budget.py::test_block_network_refuses_outside_hosts_and_keeps_loopback
+FAILED tests/test_w39_perf_budget.py::test_server_mode_over_real_http - Permi...
+FAILED tests/test_w39_perf_budget.py::test_cli_exit_codes - PermissionError: ...
+4 failed, 2522 passed, 65 skipped, 6268 warnings in 559.07s (0:09:19)
+end 04 Nov 2026 18:13:03 IST

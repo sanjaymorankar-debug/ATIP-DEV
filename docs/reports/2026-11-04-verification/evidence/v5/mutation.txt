@@ -1,0 +1,28 @@
+Mutation check, 4 Nov 2026 (IST). Scratch copy: `git archive HEAD` of master 369f6d6 into
+.ux_build/verify-2026-11-04/mutation/base (never the live folder). Each mutant applied with sed, the target tests run,
+then the file copied back; every file was compared with the worktree afterwards ("restored").
+
+Target tests: tests/test_score_audit_2026_11_03.py tests/test_full_review_2026_11_03.py tests/test_autopick.py
+tests/test_session_pools.py   (baseline: 86 passed)
+
+M1  formula   scores/engine.py:538  CRI Volatility atr_pct*15 -> atr_pct*12
+    -> 1 failed: test_score_audit_2026_11_03.py::test_cri_by_hand_higher_is_riskier                         KILLED
+M2  composite scores/engine.py:979  ATIP SAFETY = 100 - CRI -> SAFETY = CRI (sign flipped)
+    -> 86 passed; also 135 passed in test_full_review + test_fii_dii_and_delivery_factor + test_regressions
+       + test_w39_qa_suite (every test that runs run_scoring_pipeline)                                   SURVIVED (VF-06)
+M3  limit     orders/session_board.py:25  TARGET = 10 -> 9
+    -> 4 failed (test_board_has_ten_rows_and_says_ten_of_ten, test_board_says_why_when_fewer_than_ten_are_eligible,
+       test_board_gives_each_row_its_rank..., test_pages_render_the_kpi_strip_the_session_grid_and_the_stamp)   KILLED
+M4  limit     orders/sessions.py:72  MAX_SESSIONS = 10 -> 9
+    -> 86 passed. MAX_SESSIONS is never read (dead constant): an equivalent mutant, not a test gap (VF-14)
+M4b limit     orders/sessions.py DEFAULTS without ("S10", ...) (9 slots seeded)
+    -> 8 failed (ten-session, board, setup_pools tests)                                                     KILLED
+M5  limit     orders/autopick.py run(): mine = mine[:9] (auto-pick serves 9 sessions)
+    -> 4 failed (ten sessions filled, BUY first then fill, board 10 of 10, board rank/counts)              KILLED
+
+After the Phase 3 test additions (tests/verification/test_independent_recompute.py):
+M2  -> 2 failed: test_every_score_equals_the_independent_recomputation, test_atip_safety_is_100_minus_cri_and_lower_risk_raises_atip  KILLED
+M1  -> 1 failed: test_every_score_equals_the_independent_recomputation                                       KILLED
+
+Phase 3 regression tests (tests/test_verify_fixes_2026_11_04.py) on the UNFIXED master copy: 7 of 7 fail;
+on the fixed tree: 7 of 7 pass.

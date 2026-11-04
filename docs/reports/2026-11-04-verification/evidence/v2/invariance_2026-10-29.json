@@ -1,0 +1,57 @@
+{
+ "date": "2026-10-29",
+ "lookahead_indicators": {
+  "rows": 8,
+  "identical": true
+ },
+ "lookahead_scores": {
+  "symbols": 499,
+  "differ": 0,
+  "examples": []
+ },
+ "normalisation_history_removed": {
+  "symbols": 499,
+  "differ": 0,
+  "examples": []
+ },
+ "null_ema": {
+  "symbol": "RELIANCE",
+  "mri_components": [
+   "ADX",
+   "MACD",
+   "News",
+   "RSI",
+   "Volume"
+  ],
+  "ema_left_out": true,
+  "mri": 61.41,
+  "mri_rebuilt_from_present": 61.41,
+  "matches": true,
+  "mri_if_ema_were_0": 52.2,
+  "mri_before_null": 56.7
+ },
+ "composite": {
+  "weight_sums": {
+   "ACS": 1.0,
+   "ATIP": 1.2,
+   "CRI": 1.0,
+   "FS": 1.0,
+   "INS": 1.0,
+   "MH": 1.05,
+   "MRI": 1.0,
+   "MSI": 1.0,
+   "PHS": 1.0,
+   "RRI": 1.0,
+   "SPI": 1.0,
+   "TOD": 1.0,
+   "TS": 1.0,
+   "VPI": 1.0,
+   "ZPI": 1.0
+  },
+  "component_min": 0.0,
+  "component_max": 100.0,
+  "components": 27395,
+  "on_0_100_scale": true,
+  "atip_weight_present_avg": 0.95
+ }
+}

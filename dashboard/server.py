@@ -1039,6 +1039,7 @@ details.sector .ss-sum{{font-weight:400;color:var(--ax-text,#e2e8f0);font-size:1
 .rm-ok{{background:var(--ax-pos,#059669)}}.rm-warn{{background:var(--ax-warn,#f59e0b)}}.rm-bad{{background:var(--ax-neg,#dc2626)}}
 .mrow input,.mrow select{{min-width:0}}
 td,th{{font-variant-numeric:tabular-nums}}
+#st thead th{{position:sticky;top:0;z-index:2;background:var(--ax-surface-2)}}
 @media (max-width:767px){{
  .sstrip{{margin:8px 10px 0}}.kpi-row{{padding:8px 10px}}.kpi{{flex:1 1 140px;min-width:0}}
  .main{{padding:10px;min-width:0}}.body{{display:block}}
@@ -1052,7 +1053,7 @@ td,th{{font-variant-numeric:tabular-nums}}
 <body>
 <div class="topbar legacy-only"><div><span class="logo">📊 ATIP</span> <span style="color:#64748b">AI Trading Intelligence Platform</span></div><div style="display:flex;gap:10px;align-items:center"><a href="/command" style="font-size:12px;color:#fbbf24;text-decoration:none;font-weight:600">Command Center</a><a href="/global-asia" style="font-size:12px;color:#38bdf8;text-decoration:none">Global &amp; Asia</a><a href="/wealth" style="font-size:12px;color:#38bdf8;text-decoration:none">Wealth</a><a href="/strategies" style="font-size:12px;color:#38bdf8;text-decoration:none">Strategies</a><a href="/trading" style="font-size:12px;color:#38bdf8;text-decoration:none">Trading</a><a href="/ml" style="font-size:12px;color:#38bdf8;text-decoration:none">ML</a><a href="/assistant" style="font-size:12px;color:#38bdf8;text-decoration:none">Assistant</a><a href="/brokers" style="font-size:12px;color:#38bdf8;text-decoration:none">Brokers</a><a href="/compliance" style="font-size:12px;color:#38bdf8;text-decoration:none">Compliance</a><a href="/m" style="font-size:12px;color:#38bdf8;text-decoration:none">Mobile</a><a href="/quant" style="font-size:12px;color:#38bdf8;text-decoration:none">Quant</a><a href="/market" style="font-size:12px;color:#38bdf8;text-decoration:none">Market</a><a href="/account" style="font-size:12px;color:#38bdf8;text-decoration:none">Account</a><a href="/admin" style="font-size:12px;color:#38bdf8;text-decoration:none">Admin</a><a href="/backtests" style="font-size:12px;color:#38bdf8;text-decoration:none">Backtests</a></div></div>
 <div id="sstrip" class="sstrip" role="region" aria-label="Status">
- <div class="ss-head"><span class="ss-meta">Data as of {gen} IST · <span id="clk" class="nowrap">Refresh in 5:00</span></span>
+ <div class="ss-head"><span class="ss-meta">Data as of {gen} IST · <span class="ax-updated" data-ax-updated title="When the last live quote arrived">Updated —</span> · <span id="clk" class="nowrap">Refresh in 5:00</span></span>
   <button type="button" class="rf" onclick="location.reload()">↻ Refresh now</button>
   <button type="button" class="ss-more" id="ssMore" aria-expanded="false" aria-controls="ssItems" hidden></button></div>
  <div class="ss-items" id="ssItems">
@@ -1263,6 +1264,7 @@ function srt(tid,col){{
   const tbody=tb.querySelector('tbody'); rows.forEach(r=>tbody.appendChild(r));
   tb.querySelectorAll('thead th').forEach((th,i)=>{{
     th.dataset.sorted = (i===col) ? (asc?'asc':'desc') : '';
+    if(th.dataset.sortable) th.setAttribute('aria-sort', (i===col) ? (asc?'ascending':'descending') : 'none');
   }});
 }}
 // Make every table sortable, and make it look sortable. Sorting already existed
@@ -1279,6 +1281,9 @@ function makeSortable(){{
       th.style.cursor='pointer';
       th.title='Sort by '+label;
       th.addEventListener('click',function(){{srt(tb.id,i);}});
+      /* Verification 4 Nov 2026 (VF-27): sortable from the keyboard too, and the sort is announced */
+      th.tabIndex=0; th.setAttribute('aria-sort','none');
+      th.addEventListener('keydown',function(e){{if(e.key==='Enter'||e.key===' '){{e.preventDefault();srt(tb.id,i);}}}});
     }});
   }});
 }}
@@ -2066,20 +2071,9 @@ if HAS_FASTAPI:
 
     @app.get("/api/orders/pending")
     async def api_pending_orders():
-        rows = oe.list_rules(status=oe.PENDING_CONFIRMATION)
         # Review 3 Nov 2026 (dashboard H1): the confirm dialog shows shares and value, not a raw quantity_value (a pool
         # buy's "100" is 100 % of the session's cash). Sized read-only, the way execute_rule will size it.
-        for r in rows:
-            try:
-                px = float(r.get("trigger_hit_price") or r.get("resolved_trigger_price") or 0) or None
-                qt = r.get("quantity_type")
-                n = (int(r["quantity_value"]) if qt == "SHARES" else oe._session_sized(r, px)["quantity"] if qt == oe.QTY_SESSION
-                     else oe._risk_sized(r, px)["quantity"] if qt == oe.QTY_RISK else oe._resolve_quantity(r, px)) if px else None
-                r["est_qty"] = n or None
-                r["est_value"] = round(n * px, 2) if n and px else None
-            except Exception as e:
-                log.debug(f"  pending sizing {r.get('id')}: {e}")
-        return JSONResponse(json_safe(rows))
+        return JSONResponse(json_safe(oe.with_estimates(oe.list_rules(status=oe.PENDING_CONFIRMATION))))
 
     @app.post("/api/orders/{rule_id}/confirm", dependencies=_guard)
     async def api_confirm_order(rule_id: str, force: bool = False):

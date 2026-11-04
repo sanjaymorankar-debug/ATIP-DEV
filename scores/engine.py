@@ -84,7 +84,9 @@ def get_ns(sym,td,conn):
         log.debug(f"  {sym} weighted news score unavailable ({e}); 7-day average used")
     from datetime import timedelta
     since=str((datetime.strptime(str(td),"%Y-%m-%d")-timedelta(days=7)).date())
-    r=conn.execute("SELECT AVG(news_score) as ns FROM news_articles WHERE symbols_mentioned LIKE ? AND fetched_at>=?",(f'%\"{sym}\"%',since)).fetchone()
+    until=str((datetime.strptime(str(td),"%Y-%m-%d")+timedelta(days=1)).date())     # VF-20: nothing after td
+    r=conn.execute("SELECT AVG(news_score) as ns FROM news_articles WHERE symbols_mentioned LIKE ? AND fetched_at>=? "
+                   "AND fetched_at<?",(f'%\"{sym}\"%',since,until)).fetchone()
     return float(r["ns"]) if r and r["ns"] else 50.0
 
 def get_fii(td,conn):
@@ -762,7 +764,10 @@ def compute_msi(td,conn,weights):
     fii=get_fii(td,conn); idx=get_idx(td,conn); glb=get_global(td,conn); c={}
     from datetime import timedelta
     since=str((datetime.strptime(str(td),"%Y-%m-%d")-timedelta(hours=24)).date())
-    r=conn.execute("SELECT AVG(news_score) as ns FROM news_articles WHERE fetched_at>=?",(since,)).fetchone()
+    # Verification 4 Nov 2026 (VF-20): bounded above, as get_news_confidence is. With no upper bound a re-score of a past
+    # session (the evening re-score of a late day, a backfill, a validation run) averaged news published after it.
+    until=str((datetime.strptime(str(td),"%Y-%m-%d")+timedelta(days=1)).date())
+    r=conn.execute("SELECT AVG(news_score) as ns FROM news_articles WHERE fetched_at>=? AND fetched_at<?",(since,until)).fetchone()
     c["News"]=float(r["ns"]) if r and r["ns"] else 50.0
     c["FII"]=minmax(fii.get("fii_5d_avg",0) or 0,-2000,2000)
     c["DII"]=minmax(fii.get("dii_5d_avg",0) or 0,-500,1500)
@@ -939,11 +944,17 @@ def run_scoring_pipeline(trade_date=None):
         _SQL_SCORE="""INSERT INTO ai_scores (symbol,date,vpi,spi,rri,mri,cri,msi,zpi,acs,tech_score,fund_score,inst_score,news_score,atip_score,tod_score,`signal`,confidence,beta_1y,mh_score,regime,top_factor_1,top_factor_2,top_factor_3)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(symbol,date) DO UPDATE SET vpi=excluded.vpi,spi=excluded.spi,mri=excluded.mri,rri=excluded.rri,cri=excluded.cri,msi=excluded.msi,zpi=excluded.zpi,acs=excluded.acs,tech_score=excluded.tech_score,fund_score=excluded.fund_score,inst_score=excluded.inst_score,news_score=excluded.news_score,atip_score=excluded.atip_score,tod_score=excluded.tod_score,`signal`=excluded.`signal`,confidence=excluded.confidence,beta_1y=excluded.beta_1y,mh_score=excluded.mh_score,regime=excluded.regime,top_factor_1=excluded.top_factor_1,top_factor_2=excluded.top_factor_2,top_factor_3=excluded.top_factor_3"""
-        pending=[]
+        pending=[]; no_ind=[]
         for sym in symbols:
             _CAPTURE={}
             try:
                 tech=get_tech(sym,trade_date,conn); prices=get_prices(sym,trade_date,conn)
+                if not tech:
+                    # Verification 4 Nov 2026 (VF-03): no indicator row for the day (under 20 sessions of history, e.g.
+                    # ICICILIFE with 10) left every technical component out, so the scores were built from stand-ins
+                    # alone -- MRI 50 from neutral news, CRI 23 ("safe") from Distribution 20 and no market weakness --
+                    # and the stock could rank and be bought. Without indicators there is nothing to score.
+                    no_ind.append(sym); continue
                 fund=get_fund(sym,conn,trade_date) if flags["fundamentals"] else {}
                 inst=get_inst(sym,trade_date,conn)
                 ns=get_ns(sym,trade_date,conn)
@@ -1002,6 +1013,14 @@ def run_scoring_pipeline(trade_date=None):
             except Exception as e: log.warning(f"  {sym}: {e}")
             finally:
                 _CAPTURE=None
+        if no_ind:
+            result["no_indicators"]=no_ind
+            log.info(f"  {len(no_ind)} stock(s) not scored, no indicators for the day: {', '.join(no_ind[:8])}"
+                     + (" …" if len(no_ind)>8 else ""))
+            for sym in no_ind:                # a re-score leaves no row from an earlier run of the day
+                conn.execute("DELETE FROM ai_scores WHERE symbol=? AND date=?",(sym,str(trade_date)))
+                try: conn.execute("DELETE FROM score_components WHERE symbol=? AND date=?",(sym,str(trade_date)))
+                except Exception as e: log.debug(f"  {sym} components: {e}")
         from scores.formulas import store_components
         written=set()
         for sym,cap,params in pending:

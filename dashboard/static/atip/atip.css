@@ -11,6 +11,11 @@
   --ax-text: #101828; --ax-text-2: #344054; --ax-muted: #5D6B82;
   --ax-brand: #1D4ED8; --ax-brand-ink: #FFFFFF; --ax-brand-soft: #E8EEFC; --ax-focus: #1D4ED8;
   --ax-pos: #067647; --ax-pos-bg: #E3F6EE; --ax-neg: #B42318; --ax-neg-bg: #FDECEA;
+  --ax-neg-ink: #FFFFFF;
+  --ax-on-fill: #FFFFFF; --ax-live-ring: #FECDCA; --ax-ok-fill: #047857;
+  --ax-scrim: rgba(3,6,14,.45); --ax-backdrop: rgba(3,6,14,.55); --ax-veil: rgba(0,0,0,.25); --ax-veil-line: rgba(255,255,255,.25);
+  --ax-shadow-drawer: -8px 0 24px rgba(0,0,0,.18); --ax-shadow-dialog: 0 20px 40px rgba(0,0,0,.3);
+  --ax-shadow-pop: 0 12px 28px rgba(0,0,0,.22); --ax-shadow-menu: 0 8px 24px rgba(16,24,40,.18);
   --ax-warn: #93370D; --ax-warn-bg: #FEF6DA; --ax-info: #175CD3; --ax-info-bg: #EAF2FF;
   --ax-series-1: #2a78d6; --ax-series-2: #eb6834; --ax-grid: #E4E7EC;
   --ax-env-paper: #0E7490; --ax-env-sandbox: #6941C6; --ax-env-live: #B42318;
@@ -29,7 +34,7 @@
     --ax-border: #2A3A57; --ax-border-soft: #22304A;
     --ax-text: #E6EBF5; --ax-text-2: #C9D3E6; --ax-muted: #9AA8C1;
     --ax-brand: #60A5FA; --ax-brand-ink: #0B1220; --ax-brand-soft: #142B4D; --ax-focus: #93C5FD;
-    --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114;
+    --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114; --ax-neg-ink: #2A0A0C;
     --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
     --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
     --ax-shadow: 0 1px 2px rgba(0,0,0,.4); --ax-auto: #FDBA74; --ax-auto-bg: #3A1F0A;
@@ -42,7 +47,7 @@
   --ax-border: #2A3A57; --ax-border-soft: #22304A;
   --ax-text: #E6EBF5; --ax-text-2: #C9D3E6; --ax-muted: #9AA8C1;
   --ax-brand: #60A5FA; --ax-brand-ink: #0B1220; --ax-brand-soft: #142B4D; --ax-focus: #93C5FD;
-  --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114;
+  --ax-pos: #6EE7B7; --ax-pos-bg: #0E2A22; --ax-neg: #FCA5A5; --ax-neg-bg: #3B1114; --ax-neg-ink: #2A0A0C;
   --ax-warn: #FDE68A; --ax-warn-bg: #2A2410; --ax-info: #93C5FD; --ax-info-bg: #12233F;
   --ax-series-1: #3987e5; --ax-series-2: #d95926; --ax-grid: #22304A;
   --ax-shadow: 0 1px 2px rgba(0,0,0,.4); --ax-auto: #FDBA74; --ax-auto-bg: #3A1F0A;
@@ -70,10 +75,10 @@ body.ax-native { margin: 0; background: var(--ax-bg); color: var(--ax-text); fon
   color: var(--ax-text-2); background: var(--ax-surface); }
 .ax-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font: 600 12px/1.4 var(--ax-font);
   white-space: nowrap; border: 1px solid transparent; }
-.ax-env { color: #FFFFFF; letter-spacing: .04em; }
+.ax-env { color: var(--ax-on-fill); letter-spacing: .04em; }
 .ax-env[data-env="PAPER"] { background: var(--ax-env-paper); }
 .ax-env[data-env="SANDBOX"] { background: var(--ax-env-sandbox); }
-.ax-env[data-env="LIVE"] { background: var(--ax-env-live); font-weight: 800; box-shadow: 0 0 0 2px #FECDCA; }
+.ax-env[data-env="LIVE"] { background: var(--ax-env-live); font-weight: 800; box-shadow: 0 0 0 2px var(--ax-live-ring); }
 .ax-run[data-status="RUNNING"] { background: var(--ax-run); color: var(--ax-run-ink); }
 .ax-run[data-status="STOPPED"] { background: var(--ax-stop); color: var(--ax-stop-ink); }
 .ax-run[data-status="RESUMING"] { background: var(--ax-resume); color: var(--ax-resume-ink); }
@@ -81,8 +86,8 @@ body.ax-native { margin: 0; background: var(--ax-bg); color: var(--ax-text); fon
   background: transparent; color: var(--ax-text-2); cursor: pointer; font: 16px var(--ax-font); position: relative; }
 .ax-iconbtn:hover { background: var(--ax-surface-2); }
 .ax-count { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
-  background: var(--ax-neg); color: #fff; font: 700 10px/16px var(--ax-font); }
-.ax-killbtn { min-height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--ax-kill); color: #fff;
+  background: var(--ax-neg); color: var(--ax-neg-ink); font: 700 10px/16px var(--ax-font); }
+.ax-killbtn { min-height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--ax-kill); color: var(--ax-on-fill);
   font: 700 13px var(--ax-font); cursor: pointer; white-space: nowrap; }
 .ax-killbtn[data-halted="1"] { background: var(--ax-neg-bg); color: var(--ax-neg); outline: 2px solid var(--ax-neg); }
 .ax-rail { position: fixed; z-index: 950; left: 0; top: 0; bottom: 0; width: var(--ax-rail-w); overflow-y: auto; background: var(--ax-surface);
@@ -110,7 +115,7 @@ body.ax-native { margin: 0; background: var(--ax-bg); color: var(--ax-text); fon
   /* closed, the rail is also hidden from the keyboard and screen readers, not just moved off-screen */
   .ax-rail { transform: translateX(-102%); visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s; box-shadow: var(--ax-shadow); }
   .ax-rail.open { transform: none; visibility: visible; transition: transform .18s ease; }
-  .ax-scrim.open { display: block; position: fixed; inset: 0; background: rgba(3,6,14,.45); z-index: 940; }
+  .ax-scrim.open { display: block; position: fixed; inset: 0; background: var(--ax-scrim); z-index: 940; }
   .ax-menu { display: inline-grid; }
 }
 @media (max-width: 767px) {
@@ -183,7 +188,7 @@ html.ax-app .ax-rail, html.ax-app .ax-tabbar, html.ax-app .ax-menu, html.ax-app 
   cursor: pointer; text-decoration: none !important; white-space: nowrap; }
 .ax-btn:hover { background: var(--ax-surface-2); }
 .ax-btn.primary { background: var(--ax-brand); border-color: var(--ax-brand); color: var(--ax-brand-ink); }
-.ax-btn.danger { background: var(--ax-kill); border-color: var(--ax-kill); color: #fff; }
+.ax-btn.danger { background: var(--ax-kill); border-color: var(--ax-kill); color: var(--ax-on-fill); }
 .ax-btn.ghost { border-color: transparent; background: transparent; }
 .ax-btn.sm { min-height: 32px; padding: 0 10px; font-size: 12.5px; }
 .ax-btn:disabled, .ax-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
@@ -245,6 +250,10 @@ table.ax-table { width: 100%; border-collapse: separate; border-spacing: 0; font
 .ax-table th[aria-sort="descending"]::after { content: " ▼"; font-size: 9px; }
 .ax-table td { padding: 7px 10px; border-bottom: 1px solid var(--ax-border-soft); white-space: nowrap; }
 .ax-table td.n, .ax-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
+/* Verification 4 Nov 2026 (VF-24): every table, the older pages' too -- tabular figures, and a cell that holds only a
+   number (atip.js AX.alignNumbers adds .ax-n) right-aligned, over any inline left alignment. */
+td, th { font-variant-numeric: tabular-nums; }
+td.ax-n { text-align: right !important; }
 .ax-table tbody tr[data-drawer] { cursor: pointer; }
 .ax-table tbody tr:hover { background: var(--ax-surface-2); }
 .ax-table tr.ax-total td { font-weight: 700; background: var(--ax-surface-2); }
@@ -255,7 +264,7 @@ table.ax-table { width: 100%; border-collapse: separate; border-spacing: 0; font
 
 /* drawer and dialogs */
 .ax-drawer { position: fixed; z-index: 980; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--ax-surface); color: var(--ax-text);
-  border-left: 1px solid var(--ax-border); box-shadow: -8px 0 24px rgba(0,0,0,.18); transform: translateX(102%); transition: transform .18s ease;
+  border-left: 1px solid var(--ax-border); box-shadow: var(--ax-shadow-drawer); transform: translateX(102%); transition: transform .18s ease;
   display: flex; flex-direction: column; font: 14px/1.5 var(--ax-font); }
 .ax-drawer:not(.open) { visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s; }
 .ax-drawer.open { transform: none; visibility: visible; }
@@ -264,8 +273,8 @@ table.ax-table { width: 100%; border-collapse: separate; border-spacing: 0; font
 .ax-drawer .ax-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
 .ax-drawer footer { padding: 12px 16px; border-top: 1px solid var(--ax-border-soft); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 dialog.ax-dialog { margin: auto; border: 1px solid var(--ax-border); border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 24px)); background: var(--ax-surface);
-  color: var(--ax-text); font: 14px/1.5 var(--ax-font); box-shadow: 0 20px 40px rgba(0,0,0,.3); }
-dialog.ax-dialog::backdrop { background: rgba(3,6,14,.55); }
+  color: var(--ax-text); font: 14px/1.5 var(--ax-font); box-shadow: var(--ax-shadow-dialog); }
+dialog.ax-dialog::backdrop { background: var(--ax-backdrop); }
 .ax-dialog .ax-dhead { padding: 16px 18px 6px; font-size: 17px; font-weight: 700; }
 .ax-dialog .ax-dbody { padding: 6px 18px 12px; }
 .ax-dialog .ax-dfoot { padding: 12px 18px 16px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
@@ -279,7 +288,7 @@ dialog.ax-dialog::backdrop { background: rgba(3,6,14,.55); }
 .ax-palette .ax-kind { margin-left: auto; font-size: 12px; color: var(--ax-muted); text-transform: uppercase; letter-spacing: .05em; }
 .ax-toast { position: fixed; z-index: 1000; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--ax-text); color: var(--ax-surface);
   padding: 10px 16px; border-radius: 8px; font: 600 13.5px var(--ax-font); max-width: calc(100vw - 32px); box-shadow: var(--ax-shadow); }
-.ax-toast.bad { background: var(--ax-neg); color: #fff; }
+.ax-toast.bad { background: var(--ax-neg); color: var(--ax-neg-ink); }
 
 /* sessions */
 .ax-sessions { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
@@ -384,7 +393,7 @@ body.ax-shelled .top > div > b[style*="--accent"]:first-child + .muted { color: 
 .ax-bellwrap { position: relative; display: inline-flex; }
 @media (max-width: 767px) { .ax-bellwrap.ax-hide-sm { display: none; } }
 .ax-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 960; width: min(360px, calc(100vw - 24px)); background: var(--ax-surface);
-  color: var(--ax-text); border: 1px solid var(--ax-border); border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.22); font: 13.5px/1.45 var(--ax-font); }
+  color: var(--ax-text); border: 1px solid var(--ax-border); border-radius: 10px; box-shadow: var(--ax-shadow-pop); font: 13.5px/1.45 var(--ax-font); }
 .ax-pophead { padding: 10px 14px 6px; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; }
 .ax-poplist { list-style: none; margin: 0; padding: 0 6px; max-height: 320px; overflow: auto; }
 .ax-poplist li { padding: 8px; border-top: 1px solid var(--ax-border-soft); }
@@ -577,7 +586,7 @@ body.ax-legacy [style*="background: #059669"],
 body.ax-legacy [style*="background:#10b981"],
 body.ax-legacy [style*="background: #10b981"],
 body.ax-legacy [style*="background:#10B981"],
-body.ax-legacy [style*="background: #10B981"] { background-color: #047857 !important; }
+body.ax-legacy [style*="background: #10B981"] { background-color: var(--ax-ok-fill) !important; }
 body.ax-legacy [style*="font-size:9px"],
 body.ax-legacy [style*="font-size:9.5px"],
 body.ax-legacy [style*="font-size:10px"],
@@ -633,7 +642,7 @@ details.ax-tech > summary, details.ax-how > summary { cursor: pointer; color: va
 details.ax-tech > summary::-webkit-details-marker, details.ax-how > summary::-webkit-details-marker { display: none; }
 details.ax-tech[open], details.ax-how[open] { display: block; margin: 4px 0; padding: 8px 10px; border: 1px solid var(--ax-border-soft); border-radius: 8px;
   background: var(--ax-surface-2); }
-details.ax-tech.ax-onbanner[open] { background: rgba(0,0,0,.25); border-color: rgba(255,255,255,.25); color: inherit; }
+details.ax-tech.ax-onbanner[open] { background: var(--ax-veil); border-color: var(--ax-veil-line); color: inherit; }
 details.ax-tech code { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px var(--ax-mono); }
 .ax-term { border-bottom: 1px dotted currentColor; cursor: help; }
 /* "See also" (G2): the links an older page had in its own top bar, now one quiet row at the bottom */
@@ -657,7 +666,7 @@ details.ax-tech code { white-space: pre-wrap; overflow-wrap: anywhere; font: 12p
 .ax-topicons { display: inline-flex; align-items: center; gap: 2px; }
 .ax-overflow { display: none; position: relative; }
 .ax-ovmenu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 230px; display: flex; flex-direction: column; padding: 6px;
-  background: var(--ax-surface); border: 1px solid var(--ax-border); border-radius: var(--ax-radius); box-shadow: 0 8px 24px rgba(16,24,40,.18); z-index: 960; }
+  background: var(--ax-surface); border: 1px solid var(--ax-border); border-radius: var(--ax-radius); box-shadow: var(--ax-shadow-menu); z-index: 960; }
 .ax-ovmenu a, .ax-ovmenu button { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 6px;
   background: none; color: var(--ax-text); font: 14px var(--ax-font); text-align: left; cursor: pointer; text-decoration: none; }
 .ax-ovmenu a:hover, .ax-ovmenu button:hover { background: var(--ax-surface-2); }

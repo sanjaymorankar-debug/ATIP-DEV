@@ -240,7 +240,8 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
             f'title="When the last live quote arrived">{_e("Updated " + fd["updated"]) if fd.get("updated") else "Updated —"}</span>')
     # W5: the P&L strip on the Trade screens, its box drawn now (fixed height) so the page never shifts when it fills
     trade_page = sec == "trade" or path.startswith(("/stock/", "/trading", "/execution-lab", "/baskets"))
-    pnl_strip = ('<div class="ax-pnlstrip" data-ax-pnlstrip role="status" aria-label="Today at a glance">'
+    # Verification 4 Nov 2026 (VF-29): it scrolls sideways at 375 px, so it takes keyboard focus (axe scrollable-region-focusable)
+    pnl_strip = ('<div class="ax-pnlstrip" data-ax-pnlstrip role="status" aria-label="Today at a glance" tabindex="0">'
                  '<span><b>Today</b> <span data-k="today">…</span></span><span><b>Open positions</b> <span data-k="open">…</span></span>'
                  '<span><b>Waiting for your tap</b> <span data-k="waiting">…</span></span>'
                  '<span><b>Loss budget used</b> <span data-k="budget">…</span></span></div>') if trade_page else ""

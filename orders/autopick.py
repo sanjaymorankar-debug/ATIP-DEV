@@ -237,6 +237,14 @@ def _waiting_on(conn, s: dict) -> str | None:
     if failed:
         return (f"today's buy of {failed[-1]['symbol']} failed ({str(failed[-1].get('execution_error') or 'no reason')[:90]}); "
                 "auto-pick tries again on the next trading day")
+    # Verification 4 Nov 2026 (VF-04): with the day's BUY count used up (risk_limits.max_orders_per_day), the risk check
+    # refuses every buy at the send. On 4 Nov the ten 09:15 buys used the 10, and three sessions that sold at a profit
+    # each queued NEULANDLAB, which FAILED. Wait instead of queuing a buy that cannot be placed. The limit is unchanged.
+    from orders.risk import _orders_today, limits
+    cap = limits().get("max_orders_per_day")
+    if cap and _orders_today(conn) >= cap:
+        return (f"today's {cap:g} buys are used (risk limit max_orders_per_day); "
+                "auto-pick tries again on the next trading day")
     return None
 
 
@@ -314,8 +322,10 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
                         break
             if not pick:
                 more = f"; {len(passed) - 3} more" if len(passed) > 3 else ""
+                # VF-07 (verification 4 Nov 2026): say "rank-fill" too when its stocks were looked at and all taken
+                what = (cands.get("what") or "BUY signal") + (" or rank-fill stock" if cands.get("n_fill") else "")
                 out.append({"session": s["id"], "type": "WAITING",
-                            "reason": f"no free {cands.get('what') or 'BUY signal'}" + (
+                            "reason": f"no free {what}" + (
                                 f" ({'; '.join(passed[:3])}{more})" if passed
                                 else f": {cands['reason']}" if cands["reason"] else "")})
                 continue
