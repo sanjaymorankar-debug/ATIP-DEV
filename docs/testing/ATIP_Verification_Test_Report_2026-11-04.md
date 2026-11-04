@@ -52,17 +52,45 @@ Detail: `docs/reports/2026-11-04-verification/evidence/v5/mutation.txt`.
 
 | Place | Version | Matches the verified build? |
 |---|---|---|
-| Live Mac | `369f6d6` (code = `fac38d3`), running since 00:11:17 IST | yes — it **is** the verified build; the Phase 3 fixes are **not** on it |
+| Live Mac | until 23:45:45 IST: `369f6d6` (pid 36453, since 00:11:17); **from 23:45:47 IST: master `f8002be`** (pid 42595) | yes — the merged, tested tree (§6) |
 | Test / Prod | the Phase 3 working tree on `369f6d6` | yes (the tree the final suite ran on) |
 | master | `7887351` (merge of `claude/verify-2026-11-04`, 22:55 IST) | yes — the same files as the tested tree; suite re-run on it (§2) |
 
-The live folder `/Users/agtci/ATIP` is parked on branch `claude/live-running-2026-11-04` at `369f6d6` (the running commit),
-so the merge did not put `atip.css` / `atip.js` live ahead of the Python code. At the restart: switch the folder to
-master, take a pre-release backup, then kickstart.
+From the merge (22:55) until the restart (23:45) the live folder `/Users/agtci/ATIP` was parked on branch
+`claude/live-running-2026-11-04` at `369f6d6`, so `atip.css` / `atip.js` did not go live ahead of the Python code. It is on
+master again since 23:45:45 IST.
 
-**Not done:** restarting the live Mac, native app builds (no SDKs). Rollback is not needed: nothing on the live Mac changed.
+**Not done:** native app builds (no SDKs).
 
 ## 5. Open issues
 
 See the verification report §3 (VF-01, VF-08 and VF-18 are owner decisions; VF-16 needs Xcode / the Android SDK;
 VF-10, 12, 13, 14, 15, 17, 21, 30, 31, 32, 33 are open with their reasons).
+
+## 6. Deployment on the Mac (4 Nov 2026, 23:45 IST)
+
+Owner: "Restart tonight". The market was closed and ATIP was in its 21:00–06:00 stop window (read-only, no orders, no job
+running), and no other ATIP session was running.
+
+| Step | IST (4 Nov 2026) | Result |
+|---|---|---|
+| Live folder check | 23:45 | `/Users/agtci/ATIP` on `claude/live-running-2026-11-04` @ `369f6d6`, no tracked change; no other ATIP session running |
+| Pre-release backup | 23:45:26 | `atip_data/backups/atip-pre-release-20261104-234526.db`, 529,195,008 bytes, sha256 `1735499a…f71df0` |
+| Folder to master | 23:45:45 | master `f8002be` (merge `7887351` + report commit; not pushed) |
+| Restart (`launchctl kickstart -k gui/$UID/com.atip.platform`) | 23:45:45 | pid 36453 → 42595; `/home` 200 at 23:45:47; PAPER; "Every recent session through 2026-11-04 is scored"; order-rules monitor started; no error (the only new stderr line is the old pandas `DtypeWarning` from `data/companies.py`) |
+| New code served | 23:46 | `atip.css` has `--ax-neg-ink`, `atip.js` has `AX.alignNumbers`, `/` has the "Updated" stamp |
+| Pages and APIs | 23:46 | 14 pages + `/api/sessions/board`, `/api/command/summary`, `/api/orders/pending`, `/api/v2/pnl-strip`: all 200. Board: 10 rows, "7 of 10 sessions filled … S2, S6, S10: today's buy of NEULANDLAB failed (max_orders_per_day …)" |
+| Live sweep (21 pages × light/dark × 1440/375) | 23:46:34–23:51:41 | 84/84 HTTP 200, 0 JS errors, 0 axe violations, 0 tabular failures, themes applied, no sideways scroll at 375. At 1440, 6 runs scroll sideways (VF-34, below). Screenshots `docs/testing/screenshots/verify-2026-11-04/web/live_*.png` |
+
+**Found live (both pre-existing; the same with the `369f6d6` atip.css / atip.js swapped in, so not caused by this deploy):**
+VF-34 — in the stop window only, the header's "⏸ ATIP stopped — resumes 06:00 IST" and feed pills push the alert icons
+26–50 px past 1,440 on `/command`, `/command/signals`, `/trading` (and `/sessions`); VF-35 — a session card with a
+4-digit P&L wraps "P&L +" / "₹1,144.40". Both Low and open.
+
+**Rollback:** `git -C /Users/agtci/ATIP switch claude/live-running-2026-11-04` (= `369f6d6`) and kickstart, or
+`git revert -m 1 7887351` on master and kickstart. No data was changed by the deploy; the 23:45:26 backup restores the
+database if needed (`python -m ops restore atip-pre-release-20261104-234526.db`, with ATIP stopped).
+
+**At the next open (09:15 IST):** S2, S6 and S10 wait for a stock and auto-pick again (the day's buy count starts at 0);
+if the 10 buys of the day are used, a free session now waits with "today's 10 buys are used" instead of queuing a buy the
+risk check refuses. The next scoring run replaces the stale `score_components` rows and drops stocks with no indicators.

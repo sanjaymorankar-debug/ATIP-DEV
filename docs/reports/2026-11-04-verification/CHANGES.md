@@ -4,8 +4,7 @@ Branch `claude/verify-2026-11-04` (worktree `.claude/worktrees/verify-2026-11-04
 the live Mac has run since 00:11 IST, = `fac38d3` plus tracker/report commits). This is a delta patch: every file is
 changed in place. Unzip at the project root (`~/ATIP`). Defect IDs (VF-xx) refer to the defect log in
 [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md) §3. **Committed** (`09eeeaa` code + tests, `ac7b5c8` apps, `3fc44af` docs)
-and **merged into master** at 22:55 IST (`7887351`). **Not deployed:** the live Mac still runs `369f6d6` until it is
-restarted from master.
+and **merged into master** at 22:55 IST (`7887351`). **Live on the Mac since 23:45:47 IST** (master `f8002be`, pid 42595).
 
 ## Scores (V2)
 

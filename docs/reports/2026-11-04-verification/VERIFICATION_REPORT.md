@@ -4,7 +4,7 @@
 **Role:** QA lead and quant reviewer. Nothing in CHANGES.md or the earlier reports was taken as true until it was reproduced.
 **Build verified:** master `369f6d6` = the code the live Mac has run since 00:11:17 IST (pid 36453, started 00:11:17; its
 folder's code equals `fac38d3`). **Phase 3 fixes:** branch `claude/verify-2026-11-04`, merged into master at 22:55 IST
-(`7887351`); not deployed — the live Mac runs `369f6d6` until it is restarted from master.
+(`7887351`); live on the Mac since 23:45:47 IST (master `f8002be`, pid 42595).
 **Servers.** ATIP has no hosted servers (see the testing report §1): **Test** = this code on a fresh DB (`main.py --init`,
 :8812); **Prod** = this code on a SQLite backup of the live `atip.db` taken at 18:03:26 IST (:8813). The live Mac (:8000)
 was only read (one `GET /home` → 200, and the process list).
@@ -206,6 +206,8 @@ fails; Low = cosmetic or rare. **Status after Phase 3.**
 | VF-31 | V4 | Low | "Updated —" shown as fresh | state default | open | — |
 | VF-32 | V4 | Med | 1,138 colour literals | legacy pages | atip.css tokenised; legacy pages open | — |
 | VF-33 | Research | Med | 44/448 fair values outside 0.2–5× price (BAJAJFINSV ₹2.31 crore vs ₹1,718) | valuation inputs' units | open (not used by scores or orders) | — |
+| VF-34 | Deploy | Low | live, stop window only (21:00–06:00): header 1,466–1,490 px in 1,440 on `/command`, `/command/signals`, `/trading`, `/sessions` — the "⏸ ATIP stopped — resumes 06:00 IST" pill (243 px) + the feed pill (237 px) push the alert icons out. Same with the old atip.css/js (pre-existing); Test/Prod ran with the schedule off, so they never showed it | header pills don't compact | open | — |
+| VF-35 | Deploy | Low | live: a session card with a 4-digit P&L wraps "P&L +" / "₹1,144.40" at 1,440 (S3). Same with the old atip.css/js (pre-existing) | compact card width | open | — |
 
 ## 4. What needs the owner
 
@@ -214,7 +216,7 @@ fails; Low = cosmetic or rare. **Status after Phase 3.**
 2. **VF-08** — is "top-momentum" meant as the ATIP rank (today) or a price-momentum rank?
 3. **VF-04** — `max_orders_per_day` = 10 equals the number of sessions, so no session can buy again on the day it sells.
    Raise it if same-day re-entry is wanted (the fix only stops the doomed orders).
-4. **Deploy** the Phase 3 fixes: merged into master at 22:55 IST (`7887351`); the live Mac runs `369f6d6` until a restart.
+4. ~~Deploy the Phase 3 fixes~~ — done: merged 22:55 IST (`7887351`), live since 23:45:47 IST (testing report §6).
 5. **VF-16** — build the apps where Xcode and the Android SDK exist.
 
 ⚠️ *This analysis is for informational purposes only and does not constitute financial advice. Past performance is not
