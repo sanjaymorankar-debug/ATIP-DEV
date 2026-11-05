@@ -252,7 +252,7 @@ def chrome(path: str, query: str, st: dict, root: str = "", title: str = "") -> 
  <button class="ax-iconbtn ax-wl-toggle" type="button" data-ax-wl-toggle aria-controls="ax-wl" aria-expanded="false" aria-label="Show or hide the watchlist (W)" title="Watchlist (W)">{icon("star")}</button>
  <button class="ax-search" type="button" data-ax-search aria-label="Search pages, symbols and commands (Ctrl K)">{icon("search", 18)} <span class="ax-searchlabel">Search</span> <kbd>Ctrl K</kbd></button>
  <span class="ax-pill ax-env ax-env-top" data-ax-env data-env="{_e(env)}" role="status">{_e(env)}</span>
- <span class="ax-pill ax-run" data-ax-run data-status="{_e(status)}" role="status" aria-live="polite">{sym} <span class="ax-runtext">{_e(st.get("banner") or "ATIP running")}</span></span>
+ <span class="ax-pill ax-run" data-ax-run data-status="{_e(status)}" role="status" aria-live="polite" title="{_e(st.get("banner") or "ATIP running")}">{sym} <span class="ax-runtext">{_e(st.get("banner") or "ATIP running")}</span><span class="ax-runshort">{_e(st.get("banner_short") or "")}</span></span>
  {feed}
  {kill}
  <span class="ax-topicons">
@@ -316,13 +316,13 @@ def head_tags(root: str = "", app: bool = False) -> str:
 
 def light_state() -> dict:
     """Run state, env, halt and role -- no session arithmetic (the page renders with this, the script polls the rest)."""
-    out = {"status": "RUNNING", "banner": "ATIP running", "env": "PAPER", "halted": False, "halt_reason": None,
-           "role": "TRADER"}
+    out = {"status": "RUNNING", "banner": "ATIP running", "banner_short": "Running", "env": "PAPER", "halted": False,
+           "halt_reason": None, "role": "TRADER"}
     try:
         from dashboard.global_asia import status_payload
         s = status_payload()
-        out.update({k: s.get(k) for k in ("status", "banner", "read_only", "next_stop", "next_resume", "now_ist",
-                                          "last_updated", "live_feeds") if k in s})
+        out.update({k: s.get(k) for k in ("status", "banner", "banner_short", "read_only", "next_stop", "next_resume",
+                                          "now_ist", "last_updated", "live_feeds") if k in s})
         out["role"] = s.get("role") or "TRADER"
     except Exception as e:
         log.debug(f"  shell status: {e}")
