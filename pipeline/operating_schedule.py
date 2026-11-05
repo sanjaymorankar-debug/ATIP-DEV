@@ -345,6 +345,9 @@ def status(now: datetime | None = None) -> dict:
                "next_resume": next_resume(now).strftime("%Y-%m-%d %H:%M"),
                "banner": (f"ATIP stopped — resumes {cfg['resume_at']} IST" if state == STOPPED else
                           "ATIP resuming — running the 06:00 sequence" if state == RESUMING else "ATIP running"),
+               # VF-34 (5 Nov 2026): the top bar's words when the sentence above does not fit beside the other pills
+               "banner_short": (f"Stopped till {cfg['resume_at']}" if state == STOPPED else
+                                "Resuming" if state == RESUMING else "Running"),
                "read_only": state == STOPPED, "orders_blocked": state == STOPPED,
                "last_updated": last_updated(conn), "trading_day": trading,
                "live_feeds": bool(state == RUNNING and trading),

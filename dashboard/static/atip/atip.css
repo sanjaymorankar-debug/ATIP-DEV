@@ -755,3 +755,22 @@ html.ax-ready body.ax-shelled:not(.ax-native) #ax-main { visibility: visible; an
 @container axtop (max-width: 1180px) { .ax-updated { display: none; } }
 /* a long status chip ("→ Next pick · after the stop window") wraps inside its card instead of widening the page */
 .ax-tcard { overflow-wrap: anywhere; } .ax-tcard .ax-st { white-space: normal; max-width: 100%; }
+/* VF-34 (5 Nov 2026): the top bar never spills past the screen (the stop window's "⏸ ATIP stopped — resumes 06:00 IST"
+   pushed the alert, theme and profile icons out when the watchlist was open). The search keeps its own width (it shrank
+   under its label and spilled over the PAPER pill); atip.js AX.fitTop drops the "Ctrl K" hint, gives the feed pill and
+   then the run pill their short words, folds the icons into "⋯", then hides the breadcrumb's page part; the pills end in
+   "…" only if that is not enough */
+.ax-runshort { display: none; }
+.ax-top .ax-search { flex: none; }
+.ax-top .ax-run { flex: 0 2 auto; min-width: 0; }
+.ax-top .ax-feed { flex: 0 4 auto; min-width: 0; }
+.ax-run .ax-runtext, .ax-run .ax-runshort, .ax-feed .ax-feedtext, .ax-feed .ax-feedshort { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ax-top.ax-fit-kbd .ax-search kbd, .ax-top.ax-fit-feed .ax-feed .ax-feedtext, .ax-top.ax-fit-run .ax-run .ax-runtext,
+.ax-top.ax-fit-icons .ax-topicons, .ax-top.ax-fit-crumb .ax-crumbs .ax-crumb-page { display: none; }
+.ax-top.ax-fit-feed .ax-feed .ax-feedshort, .ax-top.ax-fit-run .ax-run .ax-runshort { display: inline; }
+.ax-top.ax-fit-icons .ax-overflow { display: inline-flex; }
+@container axtop (max-width: 860px) { .ax-top.ax-fit-run .ax-run .ax-runshort { display: none; } }   /* the symbol alone, as before */
+/* VF-35 (5 Nov 2026): a card's "P&L +₹1,144.40" and "Wins 1/1" each stay on one line; when both do not fit side by side,
+   "Wins" moves under the P&L (the figure split after its sign on a narrow Home card) */
+.ax-tc-foot { flex-wrap: wrap; row-gap: 2px; }
+.ax-tc-foot > span { white-space: nowrap; }

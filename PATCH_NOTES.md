@@ -518,3 +518,17 @@ the order dialog; dark default; the KPI strip and cards.
 
 **Owner decisions (not changed):** ATIP, VPI and RRI stay BROKEN out of sample (VPI flip + BUY gate re-set, RRI redesign);
 "momentum" sessions rank by ATIP, not price momentum; `max_orders_per_day` 10 = the number of sessions, so no same-day re-entry.
+
+# 5 Nov 2026: the top bar in the stop window, and the session card's P&L (VF-34, VF-35)
+
+Both were found on the live Mac right after the 4 Nov deploy and were there before it. Branch `claude/fix-vf34-vf35-2026-11-05`.
+- **Top bar (VF-34).** Between 21:00 and 06:00 the "⏸ ATIP stopped — resumes 06:00 IST" pill, next to the feed pill, pushed the
+  alert, theme and profile icons past the right edge whenever the watchlist was open (Command Center, Signals, Orders &
+  execution, and every page after them). The bar now gives way in a fixed order before anything is pushed out: the search's
+  "Ctrl K" hint goes, the feed pill says "Stale · 20 h 24 min" / "Closed · 16:45", the run pill says "Stopped till 06:00", and
+  only then do the icons fold into "⋯" (which shows the unread count); on a very tight bar the breadcrumb keeps
+  its section ("Trade") and drops the page name, which the page's heading repeats. The full sentence stays in the pill's tooltip and in the
+  stop banner under the bar. The search box no longer shrinks under its own label.
+- **Session card (VF-35).** On Home a card split "P&L +₹1,144.40" after the sign. A figure now stays whole; when the P&L and
+  the wins do not fit side by side, "Wins" moves to the next line.
+- No database change, no app change (the apps hide the run pill and load the cards from the server).

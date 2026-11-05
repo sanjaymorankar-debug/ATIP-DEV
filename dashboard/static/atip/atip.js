@@ -229,7 +229,8 @@
     document.querySelectorAll("[data-ax-env]").forEach(function (el) { el.setAttribute("data-env", d.env); el.textContent = d.env; el.title = d.env === "LIVE" ? "LIVE: real money" : d.env === "SANDBOX" ? "SANDBOX: Dhan's test host" : "PAPER: simulated fills"; });
     var sym = { RUNNING: "●", STOPPED: "⏸", RESUMING: "↻" };
     document.querySelectorAll("[data-ax-run]").forEach(function (el) {
-      el.setAttribute("data-status", d.status); el.innerHTML = (sym[d.status] || "●") + ' <span class="ax-runtext">' + AX.esc(d.banner) + "</span>";
+      el.setAttribute("data-status", d.status); el.innerHTML = (sym[d.status] || "●") + ' <span class="ax-runtext">' + AX.esc(d.banner) + "</span>" +
+        '<span class="ax-runshort">' + AX.esc(d.banner_short || "") + "</span>";
       el.title = d.banner + (d.status === "STOPPED" ? " · read-only" : " · stops " + String(d.next_stop || "").slice(11) + " IST");
     });
     var k = document.querySelector("[data-ax-kill]");
@@ -252,11 +253,37 @@
       if (el.classList.contains("ax-feed")) el.title = "Live price feed: " + (d.feed.text || "") + (d.feed.updated ? " · updated " + d.feed.updated : "");
     });
     if (d.feed && d.feed.updated) AX.stamp(String(d.feed.updated).replace(/ IST.*$/, ""), d.feed.state === "stale" || d.feed.state === "none");
+    AX.fitTop();                                 // the pills' words changed: fit them again (VF-34)
     var ul = document.querySelector("[data-ax-alerts]");
     if (ul && d.alerts) ul.innerHTML = d.alerts.length ? d.alerts.map(function (a) {
       var tone = /critical|error/.test(a.severity) ? "bad" : a.severity === "warning" ? "warn" : "";
       return '<li><time>' + AX.esc(AX.istShort(a.at)) + ' IST</time><span class="ax-st ' + tone + '">' + AX.esc(a.severity || "info") + "</span> " + AX.esc(a.title) + "</li>";
     }).join("") : '<li class="ax-muted">No alerts yet.</li>';
+  }
+  // VF-34 (5 Nov 2026): the top bar says less before it spills past the screen. While its words are cut (or the bar
+  // overflows) it drops, in turn, the search's "Ctrl K" hint, the feed pill's long words, the run pill's long words (the
+  // full sentence stays in their title, and the stop banner under the bar repeats it), folds its icons into "⋯" and
+  // hides the breadcrumb's page part (the page's own heading names it). atip.css cuts the pills with "…" only if all of
+  // that is not enough.
+  var FIT = [["ax-fit-kbd", ".ax-search kbd"], ["ax-fit-feed", ".ax-feedtext"], ["ax-fit-run", ".ax-runtext"],
+             ["ax-fit-icons", ".ax-topicons"], ["ax-fit-crumb", ".ax-crumb-page"]];
+  AX.fitTop = function () {
+    var top = document.querySelector(".ax-top"); if (!top) return;
+    var cut = function () {
+      if (top.scrollWidth > top.clientWidth + 1) return true;
+      return Array.prototype.some.call(top.querySelectorAll(".ax-runtext, .ax-runshort, .ax-feedtext, .ax-feedshort, .ax-crumb-page"),
+        function (el) { return el.offsetWidth > 0 && el.scrollWidth > el.clientWidth + 1; });
+    };
+    FIT.forEach(function (f) { top.classList.remove(f[0]); });
+    for (var i = 0; i < FIT.length && cut(); i++) {
+      var long = top.querySelector(FIT[i][1]);           // only where it still shows (a narrow bar hides it already)
+      if (long && long.offsetWidth > 0) top.classList.add(FIT[i][0]);
+    }
+  };
+  var fitQueued = false;
+  function queueFit() {
+    if (fitQueued) return; fitQueued = true;
+    (window.requestAnimationFrame || setTimeout)(function () { fitQueued = false; AX.fitTop(); });
   }
   function bell(open) {
     var p = document.getElementById("ax-bellpop"), b = document.querySelector("[data-ax-bell]"); if (!p || !b) return;
@@ -775,6 +802,9 @@
         if (el && el.closest && (el.closest("table") || (ms[k].addedNodes.length && el.querySelector("table")))) { queueAlign(); return; } }
     }).observe(document.body, { childList: true, subtree: true, characterData: true });
     var init = AX.data("ax-state", null); if (init) { try { paint(init); } catch (e) {} }
+    var topBar = document.querySelector(".ax-top");      // VF-34: fit again whenever the bar's width changes (window, watchlist)
+    if (topBar && window.ResizeObserver) new ResizeObserver(queueFit).observe(topBar);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(queueFit);
     poll(); setInterval(poll, 30000);
     // a symbol picked in the search opens the stock panel on the ATIP Scores page
     var st = q.get("stock"); if (st && typeof window.openStock === "function") setTimeout(function () { try { window.openStock(st); } catch (e) {} }, 400);
