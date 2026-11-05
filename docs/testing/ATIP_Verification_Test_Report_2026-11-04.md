@@ -144,6 +144,38 @@ in "…" (1–3 px short): that step was added for them.
 |---|---|---|
 | The fix, before the breadcrumb step | 13:23:43 → 13:34:22 | **2,539 passed, 65 skipped, 3 failed**: only the 3 socket tests (14/14 `test_w39_perf_budget` pass outside the sandbox at 13:34:40). 2,539 = master's 2,534 + the 5 new tests |
 | The final fix (JS/CSS and the new test changed since) | 13:39:27 → 13:50:02 | 2,537 passed, 65 skipped, 4 failed, 2 errors: the 3 socket tests + `test_wealth_permissions_exist_and_reach_existing_roles`, and errors in `test_add_is_capped_at_max_position_pct` and `test_the_w39b_tools_in_a_real_stdio_session` ("database is locked", "no such table: order_rules" from the order-monitor thread). This is the known market-hours race (09:15–15:30 IST: a dashboard test's order monitor keeps running into later tests' temporary databases); the three files pass on their own on the fix (67/67, 13:51) |
+| The committed fix (`eba5afd`), after the close | 15:31:23 → 15:40:08 | **2,539 passed, 65 skipped, 3 failed**: only the 3 socket tests. The 13:39 run's extra failure and 2 errors are gone outside market hours (`.ux_build/fix-2026-11-05/pytest_after_close.txt`) |
 
-**Not done here:** merge, restart and the live check (owner's call; the change needs a restart because
-`pipeline/operating_schedule.py` and `dashboard/shell.py` changed).
+Merged and deployed the same evening: §8.
+
+## 8. Deployment on the Mac (5 Nov 2026, 21:10 IST)
+
+Owner: "Yes, tonight" (commit, merge, restart in the stop window), then "You can merge now india market is down" (17:33).
+Merged after the close; restarted at 21:10, in the stop window (no scheduled job runs in it) after the last evening job (20:50).
+
+| Step | IST (5 Nov 2026) | Result |
+|---|---|---|
+| Commits on the branch | 15:00 | `d266ed6` code + tests, `eba5afd` reports + tracker |
+| Merge into master | 17:33:36 | `fde1951` (`--no-ff`; its tree = `eba5afd`, the tested tree); not pushed. Rollback branch `claude/live-running-2026-11-05` = `0ab3de9` |
+| Between merge and restart | right after 17:33 | New atip.css / atip.js served from disk (the old Python still ran): 24 loads (`/home`, `/command`, `/trading`, `/sessions` × 1,440 / 1,366 / 1,024 × watchlist closed / open) 0 problems; 5 pages at 1,440 with the watchlist, 0 script errors. The pages kept the old `?v=` hash until the restart |
+| Live folder check | 21:10:36 | `/Users/agtci/ATIP` on master `fde1951`, no tracked change, no stray code from another session; ATIP STOPPED, pid 42595 |
+| Pre-release backup | 21:10:42 | `atip_data/backups/atip-pre-release-20261105-211042.db`, 555,974,656 bytes, sha256 `a367cdbe…412c15` |
+| Restart (`launchctl kickstart -k gui/$UID/com.atip.platform`) | 21:10:58 | pid 42595 → 55822; `/api/v2/shell/state` 200 at 21:11:00, STOPPED, `banner_short` "Stopped till 06:00"; "Every recent session through 2026-11-05 is scored"; order-rules monitor started; no error or traceback in `launchd.err` / `launchd.out` |
+| New code served | 21:11 | `/home`'s run pill: `title="ATIP stopped — resumes 06:00 IST"`, `.ax-runtext` and `.ax-runshort` "Stopped till 06:00" |
+| Live sweep (`header_cards.js live`) | 21:11:20–21:20:28 | 22 pages × 14 widths × watchlist closed / open = 528 loads in the real stop window: **528 HTTP 200, 0 problems** (nothing past the edge, no search spill, no cut words, 0 split card figures out of 2,640 checked). The run pill read the full sentence in 146 loads, "Stopped till 06:00" in 74, the ⏸ symbol only in 308 (bars of 860 px and less, as before) |
+
+| Check (528 loads each, stopped) | Before (`0ab3de9`, copy) | Prod (fix, copy) | **Live Mac (fix)** |
+|---|---|---|---|
+| Icons or Kill switch off-screen | 80 | 0 | **0** |
+| Search spills over its neighbour | 233 | 0 | **0** |
+| Card figure split | 8 | 0 | **0** |
+
+At 1,440 with the watchlist open the live bar reads "Trade › Command Center · PAPER · ⏸ Stopped till 06:00 · Closed · 16:45
+· Kill switch" with the bell (4), menu, theme and profile icons on screen; Home keeps the full sentence and shows S3
+"P&L +₹1,534.74" and S5 "P&L +₹1,231.37" whole, with "Wins 1/1" under them. Screenshots:
+`docs/testing/screenshots/fix-2026-11-05/live_*.png` (1,440, 1,366 and 375 for Home, Sessions, Command Center, Signals,
+Orders & execution).
+
+**Rollback:** `git -C /Users/agtci/ATIP switch claude/live-running-2026-11-05` (= `0ab3de9`) and kickstart, or
+`git revert -m 1 fde1951` on master and kickstart. The deploy changed no data; the 21:10:42 backup restores the database if
+needed (`python -m ops restore atip-pre-release-20261105-211042.db`, with ATIP stopped).
