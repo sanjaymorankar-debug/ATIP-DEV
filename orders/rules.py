@@ -407,9 +407,12 @@ def settle_oco_group(rule: dict, filled_qty: float) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
     try:
+        # Verification 5 Nov 2026 (VF5-06): a leg waiting for its confirmation tap (bracket_auto_exit off) is live too. Only
+        # ACTIVE siblings were settled, so after a stop filled a target already PENDING_CONFIRMATION survived, and tapping
+        # Confirm sent a second SELL of a position that was already flat (in LIVE, any other demat shares of the symbol).
         siblings = [dict(r) for r in conn.execute(
-            "SELECT * FROM order_rules WHERE oco_group_id=? AND id!=? AND status=?",
-            (group, rule["id"], ACTIVE)).fetchall()]
+            "SELECT * FROM order_rules WHERE oco_group_id=? AND id!=? AND status IN (?, ?)",
+            (group, rule["id"], ACTIVE, PENDING_CONFIRMATION)).fetchall()]
 
         if role == ROLE_STOP:
             ids = [s["id"] for s in siblings]

@@ -100,9 +100,10 @@ def test_rri_by_hand():
 
 def test_vpi_by_hand():
     tech = {"atr_pct": 2, "adx_14": 30, "volume_ratio": 1.5, "rsi_14": 45}
-    # V 24, TS 50, RS 60, LQ 40, VOL 50, MR 80+(50-45) = 85, NS 50; FG and IS absent
-    # (4.32 + 7.5 + 7.2 + 4 + 5 + 8.5 + 3.5) / 0.82 = 40.02 / 0.82 = 48.80
-    assert E.compute_vpi(tech, pd.DataFrame(), {}, pd.DataFrame(), 50.0, W_VPI, rs=60, liquidity=40) == 48.8
+    # V = 100 - 2 x 12 = 76 (calm = high since VF-01, 5 Nov 2026), TS 50, RS 60, LQ 40, VOL 50, MR 80+(50-45) = 85,
+    # NS 50; FG and IS absent
+    # (13.68 + 7.5 + 7.2 + 4 + 5 + 8.5 + 3.5) / 0.82 = 49.38 / 0.82 = 60.22
+    assert E.compute_vpi(tech, pd.DataFrame(), {}, pd.DataFrame(), 50.0, W_VPI, rs=60, liquidity=40) == 60.22
 
 
 def test_relative_strength_vs_nifty_by_hand():
@@ -142,7 +143,7 @@ def test_composite_weights_sum_to_one_before_safety():
 # ── CRI: lower is better everywhere it ranks ────────────────────────────────────────────────────
 
 def test_buy_needs_a_low_cri_and_a_zero_cri_is_the_safest():
-    good = {"atip_score": 70, "vpi": 65, "zpi": 60, "acs": 70, "mri": 50}
+    good = {"atip_score": 70, "vpi": 70, "zpi": 60, "acs": 70, "mri": 50}     # VPI over the loose gate (66.5 since VF-01)
     mh = {"mh_score": 55, "regime": "BULL"}
     assert E.determine_signal({**good, "cri": 20}, mh) == "BUY"
     assert E.determine_signal({**good, "cri": 0}, mh) == "BUY"          # 0 used to be read as 100

@@ -194,7 +194,13 @@ def test_the_viewer_starts_no_order_monitor(viewer, srv, monkeypatch):
 
 
 def test_the_trader_starts_its_order_monitor(no_config, srv, monkeypatch):
+    monkeypatch.delenv("ATIP_ORDER_MONITOR", raising=False)        # conftest switches it off for every test
     assert _started_monitors(srv, monkeypatch) == [1]
+
+
+def test_order_monitor_off_starts_none(no_config, srv, monkeypatch):
+    monkeypatch.setenv("ATIP_ORDER_MONITOR", "off")
+    assert _started_monitors(srv, monkeypatch) == []
 
 
 # ── the copy from the Mac ──────────────────────────────────────────────────

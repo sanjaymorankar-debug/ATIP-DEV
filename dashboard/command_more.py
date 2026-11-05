@@ -34,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 
 from dashboard.command_routes import _broker, _feed, _finite, _market_open, _rows
 
-FACTORS = [("vpi", "Volatility potential (VPI)"), ("mri", "Momentum (MRI)"), ("rri", "Recovery (RRI)"),
+FACTORS = [("vpi", "Volatility potential (VPI)"), ("mri", "Momentum-reversal (MRI)"), ("rri", "Recovery (RRI)"),
            ("zpi", "Buy zone (ZPI)"), ("acs", "Composite (ACS)"), ("spi", "Stability (SPI)"),
            ("msi", "MSI"), ("tech_score", "Technical"), ("fund_score", "Fundamental"),
            ("inst_score", "Institutional"), ("news_score", "News"), ("cri", "Crash risk (CRI, lower is better)")]
