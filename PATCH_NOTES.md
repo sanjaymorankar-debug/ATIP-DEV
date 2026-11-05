@@ -536,7 +536,8 @@ merged into master at 17:33 IST (`fde1951`); live on the Mac since 21:11 IST 5 N
 
 # 5 Nov 2026: profit-calculation audit of the ten sessions (prompt 8:05 PM IST)
 
-Report: `docs/reports/2026-11-05-profit-audit/PROFIT_AUDIT_REPORT.md`. Branch `claude/pnl-audit-2026-11-05`.
+Report: `docs/reports/2026-11-05-profit-audit/PROFIT_AUDIT_REPORT.md`. Branch `claude/pnl-audit-2026-11-05`,
+merged into master at about 22:50 IST, 5 Nov (not pushed); live at the next restart. Tracker rows PA-REC, PA-01..PA-11.
 
 **Verified:** today's realised P&L (5 trades: gross ₹1,704.13, charges ₹358.01, net ₹1,346.12, ₹777.04 after the tax
 estimate) and every session's since-start P&L (10 trades, net ₹3,609.50, ₹2,404.84 after the estimate). An independent

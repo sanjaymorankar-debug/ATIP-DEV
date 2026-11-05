@@ -8,7 +8,7 @@
 | Data | SQLite backup of the live `atip.db`, 20:07:58 IST (read-only; nothing in the live database was written by the audit) |
 | Dhan | `GET /v2/trades` and `GET /v2/orders` at 20:10:30 IST, `GET /v2/fundlimit` at about 20:20 IST. **No order was placed, modified or cancelled.** |
 | Live dashboard | `/api/v2/periods`, `/api/command/pnl`, `/api/sessions`, `/api/pnl`, `/api/pnl/live` at 20:12:19 IST; `/home` and `/accounting?tab=pnl` at 20:17 IST (GET only) |
-| Fixes | branch `claude/pnl-audit-2026-11-05` (worktree `.claude/worktrees/pnl-audit-2026-11-05`). **Not merged, not live.** |
+| Fixes | branch `claude/pnl-audit-2026-11-05` (worktree `.claude/worktrees/pnl-audit-2026-11-05`). **Merged into `master` at about 22:50 IST, 5 Nov (not pushed); live at the next restart.** The LIVE history repair has not run. |
 
 The prompt names `atip/orders_engine.py`, `atip/data/orders.py`, `atip/data/dhan.py` and `atip/dashboard/server.py`. Those paths do not
 exist. The code that does that work is `orders/rules.py` (triggers, exit legs, fills), `orders/broker.py` + `orders/paper.py`
@@ -153,7 +153,7 @@ There are no gaps or jumps. The whole paper account's stored `pnl_daily.realised
 | **PA-08** | S7's pool cash is **−₹15.70**. GAIL was sized at the trigger price, then filled at the simulator's own quote a little higher: 137 × ₹182.38 + ₹29.64 = ₹25,015.70 from ₹25,000. The books record this correctly; the sizing price was stale. | Size from the same quote the fill uses, or keep a 0.1% cash buffer. |
 | **PA-09** | DP charge ₹15.93 per sale is ATIP's setting; Dhan's published rate appears to be ₹12.50 + GST = ₹14.75. All ten sessions pay it on every sale (about ₹1.18 per sale too pessimistic if Dhan's rate holds). | Check one Dhan contract note and set `backtest.cost_overrides.dp_charge_per_sell`. |
 | **PA-10** | `ledger()` values an open trade with no price at its entry, so its unrealised shows ₹0 without saying so. The `/command/pnl` report lists such stocks as "unpriced"; the session ledger does not. | Add an "unpriced" flag to the session's open rows. |
-| **PA-11** | The tracker xlsx/csv and `PATCH_NOTES.md` are also edited by the unmerged branch `claude/verify-2026-11-05`. | Tracker rows PA-01..PA-11 are listed here and get added at merge time, so the two branches do not conflict in the binary xlsx. |
+| **PA-11** | The tracker xlsx/csv and `PATCH_NOTES.md` are also edited by the unmerged branch `claude/verify-2026-11-05`. | Done at the merge: rows PA-REC and PA-01..PA-11 (CSV Seq 559–570, xlsx Seq 532–543 and the sheet "Profit audit 2026-11-05"), numbered after that branch's rows. Whichever of the two merges second keeps both sets of rows in the xlsx. |
 
 ## 6. Tests
 
@@ -180,11 +180,11 @@ Against untouched `master` (`fde1951`), the 7 tests that cover PA-01/02/03 fail,
 | `master` `fde1951` + the new tests | 2,552 | 10: the 7 audit tests above, plus 3 `test_w39_perf_budget` (sandbox refuses local sockets) | 65 |
 | this branch | **2,559** | **3**: the same 3 sandbox-socket tests, nothing else | 65 |
 
-`test_ui_fixes_v2.py::test_order_paths_are_untouched` guards the order code. It allows only listed files to change and needs a clean tree. It now lists `orders/sessions.py` with the reason, as the 3 and 4 Nov reviews did for theirs. It passes once the branch is committed (checked on a temporary commit that was undone at once). Until the branch is committed it fails by design.
+`test_ui_fixes_v2.py::test_order_paths_are_untouched` guards the order code. It allows only listed files to change and needs a clean tree. It now lists `orders/sessions.py` with the reason, as the 3 and 4 Nov reviews did for theirs. It passes on the committed branch (69 of 69 with the audit tests).
 
 ## 7. Deploying (owner's go-ahead needed for each step)
 
-1. **Merge** `claude/pnl-audit-2026-11-05` into `master`. It merges cleanly with `claude/verify-2026-11-05`: that branch changes `settle_oco_group` in `orders/rules.py`, this one `execute_rule`. Re-add the tracker rows after whichever merges second.
+1. **Merge** `claude/pnl-audit-2026-11-05` into `master` (done, about 22:50 IST, 5 Nov). It merges cleanly with `claude/verify-2026-11-05`: that branch changes `settle_oco_group` in `orders/rules.py`, this one `execute_rule`. Re-add the tracker rows after whichever merges second.
 2. **Back up, then repair the LIVE history:**
    1. `python -m ops backup --kind pre-release`
    2. `python -m tools.repair_live_pnl_daily` (dry run: the 18 rows and their new day P&L)
@@ -192,7 +192,7 @@ Against untouched `master` (`fde1951`), the 7 tests that cover PA-01/02/03 fail,
    
    Run this **before** the next 16:49 IST `pnl_daily` job after the restart. Otherwise the first row with the real cash (₹2,350) is compared with the paper-inflated row before it. The like-for-like basis (PA-01) prevents the false *profit* in that case, but not the false *loss* against a stored paper peak.
 3. **Restart** the Mac's ATIP in the stop window (Python changes), on a clean tree (`git status`), after the backup.
-4. **Rollback:** `master` at `fde1951`. The repair keeps the holdings figures, and the cash it clears was the paper balance, never the real account's.
+4. **Rollback:** `master` at `424ae48` (the commit before the merge). The repair keeps the holdings figures, and the cash it clears was the paper balance, never the real account's.
 
 ## 8. Re-running the audit
 
