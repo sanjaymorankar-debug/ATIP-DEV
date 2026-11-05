@@ -105,10 +105,14 @@ def _live_cash() -> float | None:
     available_balance() returns 0.0 when no field parses (orders/broker.py),
     which as equity would read as the whole cash balance lost -- a drawdown
     that blocks every BUY. Zero is therefore treated as unknown; the cost is
-    that a genuinely empty account falls back to the unrealised-P&L basis."""
+    that a genuinely empty account falls back to the unrealised-P&L basis.
+
+    The real account's funds whatever broker_env says (profit audit 5 Nov 2026, PA-01): under PAPER
+    the execution broker is the simulator, and its Rs 3.17 lakh balance was stored as the LIVE book's
+    cash from 25 Sep 2026 -- the paper sessions' buys then read as a Rs 1.44 lakh LIVE loss."""
     try:
         from orders.broker import available_balance
-        v = available_balance()
+        v = available_balance(account=True)
         return float(v) if v else None
     except Exception as e:
         log.debug(f"  live cash unavailable: {e}")
@@ -148,12 +152,17 @@ def _previous_row(conn, env: str, before: date) -> dict | None:
     return dict(r) if r else None
 
 
-def _pnl_basis(s: dict) -> float | None:
-    """What day P&L is the change of: equity when known, else unrealised +
-    realised (LIVE without a cash figure)."""
-    if s.get("equity") is not None:
-        return s["equity"]
-    return (s.get("unrealised") or 0) + (s.get("realised_cum") or 0)
+def _day_pnl(s: dict, prev: dict | None) -> float | None:
+    """Day P&L against the previous stored row, like for like: the change in equity when both rows
+    have one, else the change in unrealised + realised. Profit audit 5 Nov 2026 (PA-01): a row with
+    equity used to be set against a previous row's unrealised P&L alone, so the first day a cash
+    figure appeared read the whole cash balance as that day's profit."""
+    if not prev:
+        return None
+    if s.get("equity") is not None and prev.get("equity") is not None:
+        return round(s["equity"] - prev["equity"], 2)
+    now = (s.get("unrealised") or 0) + (s.get("realised_cum") or 0)
+    return round(now - ((prev.get("unrealised") or 0) + (prev.get("realised_cum") or 0)), 2)
 
 
 def risk_state(conn, env: str, cash: float | None = None, ask_broker: bool = False) -> dict:
@@ -165,12 +174,7 @@ def risk_state(conn, env: str, cash: float | None = None, ask_broker: bool = Fal
     """
     s = portfolio_summary(conn, env, cash=cash, ask_broker=ask_broker)
     prev = _previous_row(conn, env, date.today()) if _table_exists(conn, "pnl_daily") else None
-    basis = _pnl_basis(s)
-    prev_basis = None
-    if prev:
-        prev_basis = prev["equity"] if (s["equity"] is not None and prev["equity"] is not None) \
-            else (prev["unrealised"] or 0) + (prev["realised_cum"] or 0)
-    day_pnl = round(basis - prev_basis, 2) if prev_basis is not None else None
+    day_pnl = _day_pnl(s, prev)
     peak = None
     if s["equity"] is not None:
         stored = conn.execute("SELECT MAX(peak_equity) FROM pnl_daily WHERE env=?", (env,)).fetchone()[0] \
@@ -198,12 +202,7 @@ def record_daily_pnl(trade_date: date | str | None = None, envs=ENVS) -> dict:
             prev = _previous_row(conn, env, td)
             if not s["positions"] and s["cash"] is None and not prev:
                 continue                                   # nothing in this environment, ever
-            basis = _pnl_basis(s)
-            prev_basis = None
-            if prev:
-                prev_basis = prev["equity"] if (s["equity"] is not None and prev["equity"] is not None) \
-                    else (prev["unrealised"] or 0) + (prev["realised_cum"] or 0)
-            day_pnl = round(basis - prev_basis, 2) if prev_basis is not None else None
+            day_pnl = _day_pnl(s, prev)
             peak = max(x for x in (s["equity"], prev["peak_equity"] if prev else None) if x is not None) \
                 if (s["equity"] is not None or (prev and prev["peak_equity"] is not None)) else None
             dd = round((peak - s["equity"]) / peak * 100, 2) if peak and s["equity"] is not None else None

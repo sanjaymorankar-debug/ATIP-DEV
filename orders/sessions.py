@@ -525,6 +525,14 @@ def _trades(rules: list, charges: dict | None = None, since: str | None = None) 
         fee_share = fee_in / qty if qty else 0.0             # the entry's charges, per share
         pnl = sum(sign * (float(l["execution_price"]) - px) * float(l.get("execution_quantity") or 0)
                   for l in done) - fee_out - fee_share * closed_qty
+        # Profit audit 5 Nov 2026 (PA-03): each exit leg's P&L on the day it filled, so a trade sold in parts over two
+        # days books each part on its own day (usage() counted every part again on the day of the last one)
+        by_day = {}
+        for l in done:
+            lq = float(l.get("execution_quantity") or 0)
+            d = str(l.get("updated_at") or "")[:10]
+            by_day[d] = by_day.get(d, 0.0) + sign * (float(l["execution_price"]) - px) * lq \
+                - charges.get(l["id"], 0.0) - fee_share * lq
         held = qty - closed_qty
         cash = sum(sign * float(l["execution_price"]) * float(l.get("execution_quantity") or 0) for l in done) \
             - fee_out - sign * px * qty - fee_in
@@ -545,7 +553,8 @@ def _trades(rules: list, charges: dict | None = None, since: str | None = None) 
                     "exit_date": max((str(l.get("updated_at") or "")[:10] for l in done), default=None),
                     "exit_price": round(sum(float(l["execution_price"]) * float(l.get("execution_quantity") or 0)
                                             for l in done) / closed_qty, 2) if closed_qty else None,
-                    "pnl": round(pnl, 2), "charges": round(fee_in + fee_out, 2),
+                    "pnl": round(pnl, 2), "realised_by_day": {d: round(v, 2) for d, v in by_day.items()},
+                    "charges": round(fee_in + fee_out, 2),
                     "held_qty": held, "held_cost": round(sign * px * held + fee_share * held, 2),
                     "cash_flow": round(cash, 2), "risk": round(risk, 2) if risk else None,
                     "r": round(pnl / risk, 2) if risk and done else None})
@@ -558,7 +567,7 @@ def usage(conn, sid: str, on: str | None = None) -> dict:
     rules = _linked_rules(conn, sid)
     tr = _trades(rules, _charges(conn, rules))
     return {"trades_today": sum(1 for t in tr if t["date"] == on),
-            "realised_today": round(sum(t["pnl"] for t in tr if t["exit_date"] == on), 2),
+            "realised_today": round(sum(t["realised_by_day"].get(on, 0.0) for t in tr), 2),
             "open_value": round(sum(t["value"] for t in tr if not t["closed"]), 2)}
 
 

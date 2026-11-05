@@ -3,7 +3,7 @@ Live strategy / P&L monitoring (MON-04), W29.
 
     live_pnl(conn)   right now, at the newest live quote per symbol (live_quotes, today):
         LIVE   latest synced holdings: value, day P&L vs previous close, unrealised vs cost
-        PAPER  paper_position: value, day P&L, unrealised, realised (book to date), cash
+        PAPER  paper_position: value, day P&L, unrealised, realised (book to date, GROSS: before charges), cash
         strategies  open W4 positions per strategy (oms_fill net quantity, average cost)
                valued live: unrealised and day P&L
         Each row says where its price came from (live quote and its age, or the last close
