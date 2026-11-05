@@ -8,7 +8,7 @@
 | Data | SQLite backup of the live `atip.db`, 20:07:58 IST (read-only; nothing in the live database was written by the audit) |
 | Dhan | `GET /v2/trades` and `GET /v2/orders` at 20:10:30 IST, `GET /v2/fundlimit` at about 20:20 IST. **No order was placed, modified or cancelled.** |
 | Live dashboard | `/api/v2/periods`, `/api/command/pnl`, `/api/sessions`, `/api/pnl`, `/api/pnl/live` at 20:12:19 IST; `/home` and `/accounting?tab=pnl` at 20:17 IST (GET only) |
-| Fixes | branch `claude/pnl-audit-2026-11-05` (worktree `.claude/worktrees/pnl-audit-2026-11-05`). **Merged into `master` at about 22:50 IST, 5 Nov (not pushed); live at the next restart.** The LIVE history repair has not run. |
+| Fixes | branch `claude/pnl-audit-2026-11-05` (worktree `.claude/worktrees/pnl-audit-2026-11-05`). **Merged into `master` at 22:42 IST, 5 Nov (`fd0e93a`, not pushed); live at the next restart.** The LIVE history repair has not run. |
 
 The prompt names `atip/orders_engine.py`, `atip/data/orders.py`, `atip/data/dhan.py` and `atip/dashboard/server.py`. Those paths do not
 exist. The code that does that work is `orders/rules.py` (triggers, exit legs, fills), `orders/broker.py` + `orders/paper.py`
@@ -184,7 +184,7 @@ Against untouched `master` (`fde1951`), the 7 tests that cover PA-01/02/03 fail,
 
 ## 7. Deploying (owner's go-ahead needed for each step)
 
-1. **Merge** `claude/pnl-audit-2026-11-05` into `master` (done, about 22:50 IST, 5 Nov). It merges cleanly with `claude/verify-2026-11-05`: that branch changes `settle_oco_group` in `orders/rules.py`, this one `execute_rule`. Re-add the tracker rows after whichever merges second.
+1. **Merge** `claude/pnl-audit-2026-11-05` into `master` (done: `fd0e93a`, 22:42 IST, 5 Nov). It merges cleanly with `claude/verify-2026-11-05`: that branch changes `settle_oco_group` in `orders/rules.py`, this one `execute_rule`. Re-add the tracker rows after whichever merges second.
 2. **Back up, then repair the LIVE history:**
    1. `python -m ops backup --kind pre-release`
    2. `python -m tools.repair_live_pnl_daily` (dry run: the 18 rows and their new day P&L)
