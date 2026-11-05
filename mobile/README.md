@@ -4,7 +4,18 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.04.1** (Android `versionCode` 8 / `versionName` 2026.11.04.1; iOS `CFBundleShortVersionString`
+**Version 2026.11.05.1** (Android `versionCode` 9 / `versionName` 2026.11.05.1; iOS `CFBundleShortVersionString`
+2026.11.05.1 / `CFBundleVersion` 9), 5 Nov 2026 afternoon (re-verification pass). No native change: the fixes are on the
+server, so the apps show them as soon as the Mac runs this code.
+
+* **VPI reads calm as good.** A stock's VPI now rises when its daily range (ATR %) is small, and the BUY rule needs
+  VPI 66.5 (or 76.5 on the stricter set) — the legend on the scores screens says so. Expect fewer, calmer BUYs.
+* **MRI is labelled "Momentum-reversal"**, as its badge tooltip already said ("a dip that is turning").
+* **Sessions** can buy again on the day they sell once the Mac's daily buy limit is 20 (owner decision).
+* **Order safety:** a stop that fills now also cancels a target leg still waiting for your tap, so a late Confirm
+  cannot sell a position that is already flat.
+
+Earlier, **2026.11.04.1** (Android `versionCode` 8 / `versionName` 2026.11.04.1; iOS `CFBundleShortVersionString`
 2026.11.04.1 / `CFBundleVersion` 8), 4 Nov 2026 evening (verification pass). No native change: the fixes are on the
 server, so the apps show them as soon as the Mac runs this code.
 
