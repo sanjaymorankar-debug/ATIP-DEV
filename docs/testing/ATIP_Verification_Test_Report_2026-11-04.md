@@ -94,3 +94,56 @@ database if needed (`python -m ops restore atip-pre-release-20261104-234526.db`,
 **At the next open (09:15 IST):** S2, S6 and S10 wait for a stock and auto-pick again (the day's buy count starts at 0);
 if the 10 buys of the day are used, a free session now waits with "today's 10 buys are used" instead of queuing a buy the
 risk check refuses. The next scoring run replaces the stale `score_components` rows and drops stocks with no indicators.
+
+## 7. Follow-up fixes: VF-34 and VF-35 (5 Nov 2026)
+
+Owner: "Fix both now" (5 Nov, ~13:05 IST, market open). Branch `claude/fix-vf34-vf35-2026-11-05` from master `0ab3de9`
+(the live code); the live Mac and its folder were not touched. Change list: `CHANGES.md` "Follow-up (5 Nov 2026)".
+
+**Servers.** Both defects need the stop window, which Test/Prod never showed (they ran with the schedule off). So the three
+servers ran with the schedule **on** and a manual stop (`scheduler_override` mode `stop`) in their own database copies: the
+bar shows "⏸ ATIP stopped — resumes 06:00 IST" exactly as the live Mac does 21:00–06:00, and no order can run on the copies.
+
+| "Server" | Code | Database | Port |
+|---|---|---|---|
+| **Before** | `0ab3de9` (export of the live code) | copy of the 4 Nov 18:49 live snapshot (S3 P&L +₹1,144.40) | 8824 |
+| **Test** | the fix | copy of the fresh Test DB (`main.py --init`) | 8822 |
+| **Prod** | the fix | copy of the 4 Nov 18:49 live snapshot | 8823 |
+
+**Width sweep** (`.ux_build/fix-2026-11-05/ui/header_cards.js`, 13:19–13:29 IST): 22 pages × 14 widths (360–1,920 px) ×
+watchlist closed / open (open only from 768 px) = 528 loads per server, the bar in the stopped state on every load.
+
+| Check | Before (`0ab3de9`) | Test (fix) | Prod (fix) |
+|---|---|---|---|
+| HTTP 200 | 528/528 | 504/528 (the 24 others: `/stock/RELIANCE` → 404, no such stock in a fresh DB; 200 on the snapshot) | 528/528 |
+| Page scrolls sideways / a bar item past the edge | **80** (icons or Kill switch off-screen; all 22 pages, at 1,440 and 1,600 with the watchlist open) | 0 | 0 |
+| Search box spills over its neighbour | **233** | 0 | 0 |
+| Run pill's words cut ("…") | 0 | 0 | 0 |
+| A card figure split ("P&L +" / "₹1,144.40") | **8** (Home, 414–1,920 px) | 0 | 0 |
+| A card wider than its box | 0 | 0 | 0 |
+
+At 1,440 with the watchlist open (a 904 px bar) the fixed bar reads "Trade › Command Center · PAPER · ⏸ Stopped till 06:00 ·
+Stale · 20 h 34 min · Kill switch · ⋯ (9)"; the before bar had lost its breadcrumb, squeezed the search to 20 px and pushed the
+Kill switch and the four icons up to 191 px off the screen. Screenshots: `docs/testing/screenshots/fix-2026-11-05/`
+(`before_*`, `test_*`, `prod_*` at 1,440, 1,366 and 375 for Home, Sessions, Command Center, Signals, Orders & execution).
+
+The Test and Prod rows are the final run (13:39–13:49 IST, after the breadcrumb step was added); the first run
+(13:19–13:29, before it) was also 0 problems on both (`.ux_build/fix-2026-11-05/ui/run1/`).
+
+**Every run state** (`ui/states.js`, Prod, 13:39–13:49 IST): RUNNING / RESUMING / STOPPED × the live Mac's feed words
+("Market closed · last tick 16:45 IST") and the longer stale ones × 9 widths (768–1,920) × watchlist closed / open × 5 pages
+= 540 loads, the shell-state poll rewritten in the browser. **0** with anything past the edge, **0** with cut words, the
+state right on all 540. What gave way: the Ctrl K hint 182 times, the feed's long words 84, the run's long words 70 (41
+resuming, 28 stopped, 1 running: Orders & execution at 1,440 with the watchlist open), the icons 6, the breadcrumb's page part 4 (Orders
+& execution at 768 px). The first run, before the breadcrumb step, found 4 loads there where the feed's short words ended
+in "…" (1–3 px short): that step was added for them.
+
+**Tests.** New `tests/test_fix_vf34_vf35_2026_11_05.py` (5): all 5 fail on `0ab3de9` and pass on the fix.
+
+| Full suite (worktree, sandbox) | When (IST) | Result |
+|---|---|---|
+| The fix, before the breadcrumb step | 13:23:43 → 13:34:22 | **2,539 passed, 65 skipped, 3 failed**: only the 3 socket tests (14/14 `test_w39_perf_budget` pass outside the sandbox at 13:34:40). 2,539 = master's 2,534 + the 5 new tests |
+| The final fix (JS/CSS and the new test changed since) | 13:39:27 → 13:50:02 | 2,537 passed, 65 skipped, 4 failed, 2 errors: the 3 socket tests + `test_wealth_permissions_exist_and_reach_existing_roles`, and errors in `test_add_is_capped_at_max_position_pct` and `test_the_w39b_tools_in_a_real_stdio_session` ("database is locked", "no such table: order_rules" from the order-monitor thread). This is the known market-hours race (09:15–15:30 IST: a dashboard test's order monitor keeps running into later tests' temporary databases); the three files pass on their own on the fix (67/67, 13:51) |
+
+**Not done here:** merge, restart and the live check (owner's call; the change needs a restart because
+`pipeline/operating_schedule.py` and `dashboard/shell.py` changed).

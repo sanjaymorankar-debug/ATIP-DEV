@@ -56,6 +56,21 @@ and **merged into master** at 22:55 IST (`7887351`). **Live on the Mac since 23:
 `docs/reports/2026-11-04-verification/*` (this file, VERIFICATION_REPORT.md, evidence/), `docs/testing/ATIP_Verification_Test_Report_2026-11-04.md`,
 `ATIP_MASTER_TRACKER.xlsx` + `docs/ATIP_MASTER_TRACKER.csv` (phase 21 + corrected rows; backups `*-before-verification.*`), `PATCH_NOTES.md`.
 
+## Follow-up (5 Nov 2026): VF-34 and VF-35, found live after the deploy
+
+Owner: "Fix both now" (5 Nov, ~13:05 IST). Branch `claude/fix-vf34-vf35-2026-11-05`, cut from master `0ab3de9` (the live
+code). Both were pre-existing (the same with the `369f6d6` CSS/JS).
+
+| File | Change |
+|---|---|
+| `pipeline/operating_schedule.py` | **VF-34** `status()` adds `banner_short`: "Stopped till 06:00", "Resuming" or "Running" — the run pill's words when the full sentence does not fit. An added key; `banner` is unchanged. |
+| `dashboard/shell.py` | **VF-34** the run pill carries both texts (`.ax-runtext`, `.ax-runshort`) and the full sentence as its title; `light_state()` passes `banner_short`. |
+| `dashboard/static/atip/atip.js` | **VF-34** `paint()` writes both texts; `AX.fitTop()` runs after every status poll and whenever the bar's width changes (ResizeObserver: window, watchlist). While a pill's words are cut or the bar overflows, it drops in turn the search's "Ctrl K" hint, the feed pill's long words, the run pill's long words, folds the four icons into "⋯" (which already carries the unread count), then hides the breadcrumb's page part (the page's heading names it). |
+| `dashboard/static/atip/atip.css` | **VF-34** the search keeps its own width (it shrank under its label and spilled over the PAPER pill); the run and feed pills may shrink and end in "…" as the last resort; the `ax-fit-*` steps. **VF-35** a card's "P&L +₹1,144.40" and "Wins 1/1" each stay on one line; when both do not fit, "Wins" moves under the P&L. |
+| `tests/test_fix_vf34_vf35_2026_11_05.py` (new, 5 tests) | The short words per state, the shell markup, the fit order in atip.js, the CSS rules, the card footer. All 5 fail on `0ab3de9`. |
+
+The mobile apps hide the run pill (`html.ax-app`) and load the cards from the server: no app change, no new build.
+
 ## Rollout notes
 
 * **No schema change, no data repair.** The stale `score_components` rows and ICICILIFE's provisional rows are replaced at
