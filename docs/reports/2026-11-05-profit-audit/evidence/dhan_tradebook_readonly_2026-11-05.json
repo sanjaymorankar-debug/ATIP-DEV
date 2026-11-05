@@ -1,0 +1,13 @@
+{
+ "fetched_at_ist": "2026-11-05T20:10:30+05:30",
+ "get_trade_book": {
+  "status": "success",
+  "remarks": "",
+  "data": []
+ },
+ "get_order_list": {
+  "status": "success",
+  "remarks": "",
+  "data": []
+ }
+}

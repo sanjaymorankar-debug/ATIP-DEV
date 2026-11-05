@@ -532,3 +532,27 @@ Both were found on the live Mac right after the 4 Nov deploy and were there befo
 - **Session card (VF-35).** On Home a card split "P&L +₹1,144.40" after the sign. A figure now stays whole; when the P&L and
   the wins do not fit side by side, "Wins" moves to the next line.
 - No database change, no app change (the apps hide the run pill and load the cards from the server).
+
+# 5 Nov 2026: profit-calculation audit of the ten sessions (prompt 8:05 PM IST)
+
+Report: `docs/reports/2026-11-05-profit-audit/PROFIT_AUDIT_REPORT.md`. Branch `claude/pnl-audit-2026-11-05`.
+
+**Verified:** today's realised P&L (5 trades: gross ₹1,704.13, charges ₹358.01, net ₹1,346.12, ₹777.04 after the tax
+estimate) and every session's since-start P&L (10 trades, net ₹3,609.50, ₹2,404.84 after the estimate). An independent
+recompute from the raw fills (`tests/verification/pnl_reconcile.py`, no app P&L code) agrees with Home, Accounting, the
+APIs, `session_cycles` and the general ledger to ₹0.01 (per-order rounding of charges). Dhan's trade book is empty, as it
+should be: the sessions trade on paper. No orphan, duplicate or mis-tagged fill.
+
+**Found and fixed**
+- **PA-01 (high).** The real account's P&L (`/api/pnl`, `pnl_daily` LIVE) carried the paper account's cash (₹3.17 lakh;
+  the real Dhan account holds ₹2,350.16), so the paper sessions' buys read as a LIVE loss of ₹1,43,596.19 on 4 Nov and a
+  25-32 % drawdown, which would have refused every BUY once LIVE. The LIVE book now asks the real account; day P&L compares
+  like with like. `tools/repair_live_pnl_daily.py` clears the stored rows (dry run by default; run after a backup).
+- **PA-02.** A partial fill now records, and puts exits on, only the shares that filled.
+- **PA-03.** A trade sold in parts over two days books each part on its own day (the session's daily loss limit counted
+  the first part twice).
+- **PA-04.** `/execution`'s "realised" now says it is gross and covers the whole paper account.
+
+**Owner decisions (not changed):** Home's headline is after a per-trade tax estimate without same-day set-off (PA-05); the
+session card's P&L vs the table's realised (PA-06); before LIVE, settle rules from Dhan's trade book (PA-07); S7's
+−₹15.70 cash from a stale sizing price (PA-08); the DP charge rate (PA-09); unpriced open trades (PA-10).
