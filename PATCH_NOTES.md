@@ -521,7 +521,8 @@ the order dialog; dark default; the KPI strip and cards.
 
 # 5 Nov 2026: the top bar in the stop window, and the session card's P&L (VF-34, VF-35)
 
-Both were found on the live Mac right after the 4 Nov deploy and were there before it. Branch `claude/fix-vf34-vf35-2026-11-05`.
+Both were found on the live Mac right after the 4 Nov deploy and were there before it. Branch `claude/fix-vf34-vf35-2026-11-05`,
+merged into master at 17:33 IST (`fde1951`); live on the Mac since 21:11 IST 5 Nov.
 - **Top bar (VF-34).** Between 21:00 and 06:00 the "⏸ ATIP stopped — resumes 06:00 IST" pill, next to the feed pill, pushed the
   alert, theme and profile icons past the right edge whenever the watchlist was open (Command Center, Signals, Orders &
   execution, and every page after them). The bar now gives way in a fixed order before anything is pushed out: the search's

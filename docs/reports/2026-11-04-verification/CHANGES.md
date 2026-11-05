@@ -59,7 +59,8 @@ and **merged into master** at 22:55 IST (`7887351`). **Live on the Mac since 23:
 ## Follow-up (5 Nov 2026): VF-34 and VF-35, found live after the deploy
 
 Owner: "Fix both now" (5 Nov, ~13:05 IST). Branch `claude/fix-vf34-vf35-2026-11-05`, cut from master `0ab3de9` (the live
-code). Both were pre-existing (the same with the `369f6d6` CSS/JS).
+code). Both were pre-existing (the same with the `369f6d6` CSS/JS). **Committed** (`d266ed6` code + tests, `eba5afd` docs),
+**merged into master** at 17:33 IST (`fde1951`), **live on the Mac since 21:11:00 IST** (pid 55822; testing report §8).
 
 | File | Change |
 |---|---|
