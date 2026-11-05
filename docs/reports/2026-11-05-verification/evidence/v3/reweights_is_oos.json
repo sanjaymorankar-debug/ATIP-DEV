@@ -1,0 +1,354 @@
+{
+ "now": {
+  "atip": {
+   "verdict": "BROKEN",
+   "h1": {
+    "is": 0.0188,
+    "oos": 0.0083,
+    "is_t": 2.58,
+    "oos_t": 0.73
+   },
+   "h5": {
+    "is": 0.028,
+    "oos": 0.0172,
+    "is_t": 1.96,
+    "oos_t": 0.58
+   },
+   "h20": {
+    "is": 0.0372,
+    "oos": 0.0304,
+    "is_t": 1.16,
+    "oos_t": 0.51
+   }
+  },
+  "mri": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0046,
+    "oos": 0.007,
+    "is_t": 1.08,
+    "oos_t": 1.12
+   },
+   "h5": {
+    "is": 0.014,
+    "oos": 0.0179,
+    "is_t": 1.51,
+    "oos_t": 1.31
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0329,
+    "is_t": 1.07,
+    "oos_t": 1.14
+   }
+  },
+  "zpi": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0206,
+    "oos": 0.0167,
+    "is_t": 3.98,
+    "oos_t": 1.6
+   },
+   "h5": {
+    "is": 0.0301,
+    "oos": 0.0203,
+    "is_t": 2.58,
+    "oos_t": 0.72
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0266,
+    "is_t": 0.8,
+    "oos_t": 0.47
+   }
+  }
+ },
+ "old_mri": {
+  "atip": {
+   "verdict": "BROKEN",
+   "h1": {
+    "is": 0.0174,
+    "oos": 0.0037,
+    "is_t": 2.38,
+    "oos_t": 0.33
+   },
+   "h5": {
+    "is": 0.0222,
+    "oos": 0.0086,
+    "is_t": 1.5,
+    "oos_t": 0.31
+   },
+   "h20": {
+    "is": 0.0322,
+    "oos": 0.0193,
+    "is_t": 0.99,
+    "oos_t": 0.33
+   }
+  },
+  "mri": {
+   "verdict": "INVERTED",
+   "h1": {
+    "is": -0.0019,
+    "oos": -0.0152,
+    "is_t": -0.38,
+    "oos_t": -1.9
+   },
+   "h5": {
+    "is": -0.0171,
+    "oos": -0.0321,
+    "is_t": -1.54,
+    "oos_t": -2.15
+   },
+   "h20": {
+    "is": -0.0164,
+    "oos": -0.0366,
+    "is_t": -0.8,
+    "oos_t": -1.16
+   }
+  },
+  "zpi": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0206,
+    "oos": 0.0167,
+    "is_t": 3.98,
+    "oos_t": 1.6
+   },
+   "h5": {
+    "is": 0.0301,
+    "oos": 0.0203,
+    "is_t": 2.58,
+    "oos_t": 0.72
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0266,
+    "is_t": 0.8,
+    "oos_t": 0.47
+   }
+  }
+ },
+ "old_zpi": {
+  "atip": {
+   "verdict": "BROKEN",
+   "h1": {
+    "is": 0.0151,
+    "oos": 0.0041,
+    "is_t": 2.03,
+    "oos_t": 0.36
+   },
+   "h5": {
+    "is": 0.0228,
+    "oos": 0.0113,
+    "is_t": 1.57,
+    "oos_t": 0.38
+   },
+   "h20": {
+    "is": 0.0318,
+    "oos": 0.0227,
+    "is_t": 1.01,
+    "oos_t": 0.37
+   }
+  },
+  "mri": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0046,
+    "oos": 0.007,
+    "is_t": 1.08,
+    "oos_t": 1.12
+   },
+   "h5": {
+    "is": 0.014,
+    "oos": 0.0179,
+    "is_t": 1.51,
+    "oos_t": 1.31
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0329,
+    "is_t": 1.07,
+    "oos_t": 1.14
+   }
+  },
+  "zpi": {
+   "verdict": "BROKEN",
+   "h1": {
+    "is": 0.0051,
+    "oos": -0.0057,
+    "is_t": 0.96,
+    "oos_t": -0.61
+   },
+   "h5": {
+    "is": 0.0098,
+    "oos": -0.0131,
+    "is_t": 0.81,
+    "oos_t": -0.53
+   },
+   "h20": {
+    "is": 0.0023,
+    "oos": -0.0203,
+    "is_t": 0.09,
+    "oos_t": -0.4
+   }
+  }
+ },
+ "atip_without_safety": {
+  "atip": {
+   "verdict": "BROKEN",
+   "h1": {
+    "is": -0.0014,
+    "oos": -0.0061,
+    "is_t": -0.2,
+    "oos_t": -0.56
+   },
+   "h5": {
+    "is": 0.0131,
+    "oos": 0.007,
+    "is_t": 1.03,
+    "oos_t": 0.25
+   },
+   "h20": {
+    "is": 0.0248,
+    "oos": 0.029,
+    "is_t": 0.96,
+    "oos_t": 0.49
+   }
+  },
+  "mri": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0046,
+    "oos": 0.007,
+    "is_t": 1.08,
+    "oos_t": 1.12
+   },
+   "h5": {
+    "is": 0.014,
+    "oos": 0.0179,
+    "is_t": 1.51,
+    "oos_t": 1.31
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0329,
+    "is_t": 1.07,
+    "oos_t": 1.14
+   }
+  },
+  "zpi": {
+   "verdict": "WEAK",
+   "h1": {
+    "is": 0.0206,
+    "oos": 0.0167,
+    "is_t": 3.98,
+    "oos_t": 1.6
+   },
+   "h5": {
+    "is": 0.0301,
+    "oos": 0.0203,
+    "is_t": 2.58,
+    "oos_t": 0.72
+   },
+   "h20": {
+    "is": 0.0205,
+    "oos": 0.0266,
+    "is_t": 0.8,
+    "oos_t": 0.47
+   }
+  }
+ },
+ "verdict": {
+  "mri": {
+   "by_horizon": {
+    "h1": {
+     "is_now": 0.0046,
+     "is_old": -0.0019,
+     "oos_now": 0.007,
+     "oos_old": -0.0152,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h5": {
+     "is_now": 0.014,
+     "is_old": -0.0171,
+     "oos_now": 0.0179,
+     "oos_old": -0.0321,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h20": {
+     "is_now": 0.0205,
+     "is_old": -0.0164,
+     "oos_now": 0.0329,
+     "oos_old": -0.0366,
+     "is_better": true,
+     "oos_better": true
+    }
+   },
+   "oos_better_at_all": true,
+   "is_better_at_all": true
+  },
+  "zpi": {
+   "by_horizon": {
+    "h1": {
+     "is_now": 0.0206,
+     "is_old": 0.0051,
+     "oos_now": 0.0167,
+     "oos_old": -0.0057,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h5": {
+     "is_now": 0.0301,
+     "is_old": 0.0098,
+     "oos_now": 0.0203,
+     "oos_old": -0.0131,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h20": {
+     "is_now": 0.0205,
+     "is_old": 0.0023,
+     "oos_now": 0.0266,
+     "oos_old": -0.0203,
+     "is_better": true,
+     "oos_better": true
+    }
+   },
+   "oos_better_at_all": true,
+   "is_better_at_all": true
+  },
+  "atip": {
+   "by_horizon": {
+    "h1": {
+     "is_now": 0.0188,
+     "is_old": -0.0014,
+     "oos_now": 0.0083,
+     "oos_old": -0.0061,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h5": {
+     "is_now": 0.028,
+     "is_old": 0.0131,
+     "oos_now": 0.0172,
+     "oos_old": 0.007,
+     "is_better": true,
+     "oos_better": true
+    },
+    "h20": {
+     "is_now": 0.0372,
+     "is_old": 0.0248,
+     "oos_now": 0.0304,
+     "oos_old": 0.029,
+     "is_better": true,
+     "oos_better": true
+    }
+   },
+   "oos_better_at_all": true,
+   "is_better_at_all": true
+  }
+ }
+}

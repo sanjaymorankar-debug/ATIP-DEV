@@ -112,7 +112,7 @@ def main(argv=None):
     ap.add_argument("--symbols", default="")
     ap.add_argument("--json")
     ap.add_argument("--spec", choices=("2026-11-05", "2026-11-03"), default="2026-11-05",
-                    help="2026-11-03: VPI V = ATR% x 12 and VPI gates 70 / 60 (rows scored before the VF-01 change)")
+                    help="2026-11-03: VPI V = ATR%% x 12 and VPI gates 70 / 60 (rows scored before the VF-01 change)")
     a = ap.parse_args(argv)
     if a.db.endswith("atip_data/atip.db"):
         raise SystemExit("point it at a copy")

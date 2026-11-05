@@ -1,0 +1,62 @@
+start 05 Nov 2026 13:14:11 IST
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/enterprise/users.py:81: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.executemany("INSERT INTO enterprise_user_role (tenant_id,user_id,role,granted_by,granted_at) VALUES (?,?,?,?,?)",
+
+tests/test_enterprise_owner_book.py: 126 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/enterprise/users.py:244: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO enterprise_session (token_hash,user_id,tenant_id,created_at,expires_at,last_seen_at,ip,"
+
+tests/test_enterprise_owner_book.py: 84 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/enterprise/users.py:253: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO enterprise_refresh_token (token_hash,family_id,user_id,tenant_id,created_at,expires_at,ip)"
+
+tests/test_enterprise_owner_book.py: 42 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/enterprise/users.py:226: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("UPDATE enterprise_user SET failed_logins=0, last_login_at=? WHERE user_id=?", (_now(), u["user_id"]))
+
+tests/test_enterprise_owner_book.py: 74 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/enterprise/users.py:296: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("UPDATE enterprise_session SET last_seen_at=? WHERE token_hash=?", (_now(), r["token_hash"]))
+
+tests/test_enterprise_owner_book.py::test_another_tenant_keeps_its_own_book
+tests/test_enterprise_owner_book.py::test_another_tenant_keeps_its_own_book
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/execution/tenant_books.py:60: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO tenant_paper_account (tenant_id,starting_cash,cash,realized_pnl,peak_equity,created_at,"
+
+tests/test_enterprise_owner_book.py: 34 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/strategy_engine/registry.py:46: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy (strategy_id,name,description,kind,category,status,current_version,source,"
+
+tests/test_enterprise_owner_book.py: 17 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/strategy_engine/registry.py:73: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy_version (strategy_id,version,definition_json,definition_hash,notes,created_at) "
+
+tests/test_enterprise_owner_book.py: 39 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/strategy_engine/lifecycle.py:69: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.execute("INSERT INTO strategy_engine_event (strategy_id,version,event_type,from_state,to_state,message,"
+
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+tests/test_enterprise_owner_book.py::test_no_get_route_shows_the_owner_book_to_another_tenant
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/strategy_engine/selection.py:106: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    conn.executemany("INSERT INTO strategy_regime_mapping (regime,strategy_id,no_trade,priority,weight,enabled,"
+
+tests/test_verify_fixes_2026_11_04.py: 5 warnings
+tests/test_w39_qa_suite.py: 6 warnings
+tests/verification/test_independent_recompute.py: 6 warnings
+  /Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/data/technical.py:97: Pandas4Warning: The 'lsuffix' and 'rsuffix' keywords in DataFrame.join are deprecated and will be removed in a future version. Use the 'suffixes' keyword instead.
+    merged = s.join(b, how="inner", lsuffix="_s", rsuffix="_b").dropna()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_verify_fixes_2026_11_04.py::test_the_wait_reason_says_rank_fill_when_its_stocks_are_taken
+FAILED tests/test_w39_perf_budget.py::test_block_network_refuses_outside_hosts_and_keeps_loopback
+FAILED tests/test_w39_perf_budget.py::test_server_mode_over_real_http - Permi...
+FAILED tests/test_w39_perf_budget.py::test_cli_exit_codes - PermissionError: ...
+ERROR tests/test_ux_shell.py::test_pages_pass_the_structural_accessibility_audit[/settings]
+end 05 Nov 2026 13:24:39 IST

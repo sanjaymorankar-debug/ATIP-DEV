@@ -518,3 +518,28 @@ the order dialog; dark default; the KPI strip and cards.
 
 **Owner decisions (not changed):** ATIP, VPI and RRI stay BROKEN out of sample (VPI flip + BUY gate re-set, RRI redesign);
 "momentum" sessions rank by ATIP, not price momentum; `max_orders_per_day` 10 = the number of sessions, so no same-day re-entry.
+
+---
+
+# 5 Nov 2026: independent re-verification and the owner's decisions (branch claude/verify-2026-11-05, not merged)
+
+Owner prompt (4 Nov 06:00 PM IST) run again on 5 Nov from 01:05 PM IST as a fresh full pass; owner decisions the same
+afternoon: VF-01 fix only if out of sample proves it and re-gate BUY, VF-08 keep the ATIP rank, VF-04 raise
+`max_orders_per_day` to 20. Report: `docs/reports/2026-11-05-verification/VERIFICATION_REPORT.md`; testing report
+`docs/testing/ATIP_Verification_Test_Report_2026-11-05.md`; delta zip
+`deliverables/2026-11-05/ATIP_verification_delta_2026-11-05.zip`. Not merged and not deployed: the live Mac still runs `0ab3de9`.
+
+**Verified as claimed:** the code-review fixes (24 of 26 High/Medium; Q-H1 and P-H1 partial); ten sessions on four more dates and
+the live board; the seven scores for all 498 stocks within 0.01 by an independent script, with the indicators recomputed from
+OHLCV; no look-ahead (extended corruption); the backtest to the last digit; the 3 Nov reweights better in and out of sample;
+the UI sweep (168 runs, 0 axe violations); the order dialog.
+
+**Changed:** VPI's V reads ATR as calm = high (VPI BROKEN → WORKING out of sample; ATIP BROKEN → WEAK) with the VPI BUY gates
+re-set in-sample to 76.5 / 66.5; MRI labelled "Momentum-reversal"; the evening re-score fetches the session's F&O file (MSI's
+PCR); a PCR-only FII/DII row is not "flows in"; a stop fill also cancels a target pending confirmation; `ATIP_ORDER_MONITOR=off`
+for tests and QA copies (the suite was flaky in market hours); dead `FILL_TARGET` removed; DESIGN.md screenshots in git; apps
+2026.11.05.1 (build 9).
+
+**Not changed:** RRI (its in-sample redesign failed the out-of-sample rule; still BROKEN, owner); hard-coded colours in legacy
+pages (822); session names; VF-34 / VF-35 (another session). **To do at deploy:** `max_orders_per_day: 20` in the live
+`atip_data/config.json`.

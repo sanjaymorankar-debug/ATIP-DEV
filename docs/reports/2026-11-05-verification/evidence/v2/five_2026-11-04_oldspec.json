@@ -1,0 +1,353 @@
+{
+ "summary": {
+  "date": "2026-11-04",
+  "symbols": 7,
+  "scored_compared": 6,
+  "within_0.01_and_same_signal": 0,
+  "mismatches": [
+   {
+    "symbol": "TCS",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   },
+   {
+    "symbol": "ICICIBANK",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   },
+   {
+    "symbol": "COFORGE",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   },
+   {
+    "symbol": "BALRAMCHIN",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   },
+   {
+    "symbol": "VEDPOWER",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   },
+   {
+    "symbol": "HEGAM",
+    "diff": {
+     "msi": 0.02
+    },
+    "signal": [
+     "HOLD",
+     "HOLD"
+    ],
+    "components": {}
+   }
+  ],
+  "no_indicator_rows": [
+   "ICICILIFE"
+  ],
+  "no_indicator_but_scored": [
+   "ICICILIFE"
+  ],
+  "news_score_taken_from_components": [],
+  "msi": {
+   "mine": 62.18,
+   "components": {
+    "News": 60.381781647689216,
+    "FII": 100.0,
+    "DII": 0.0,
+    "Sector": 100.0,
+    "Global": 41.81,
+    "VIX": 73.37
+   }
+  },
+  "indicator_match_share": {
+   "rsi_14": 1.0,
+   "ema_9": 1.0,
+   "ema_21": 1.0,
+   "sma_200": 1.0,
+   "atr_pct": 1.0,
+   "adx_14": 1.0,
+   "volume_ratio": 1.0,
+   "macd_hist_pct": 1.0
+  },
+  "indicator_mismatch_examples": {
+   "rsi_14": [],
+   "ema_9": [],
+   "ema_21": [],
+   "sma_200": [],
+   "atr_pct": [],
+   "adx_14": [],
+   "volume_ratio": [],
+   "macd_hist_pct": []
+  },
+  "max_abs_diff": {
+   "vpi": 0.0,
+   "mri": 0.0,
+   "rri": 0.0,
+   "zpi": 0.0,
+   "cri": 0.0,
+   "acs": 0.0,
+   "atip_score": 0.01,
+   "msi": 0.02
+  }
+ },
+ "rows": [
+  {
+   "symbol": "TCS",
+   "mine": {
+    "vpi": 56.05,
+    "mri": 52.55,
+    "rri": 52.81,
+    "zpi": 66.18,
+    "cri": 23.5,
+    "acs": 54.93,
+    "atip_score": 61.39,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 56.05,
+    "mri": 52.55,
+    "rri": 52.81,
+    "zpi": 66.18,
+    "cri": 23.5,
+    "acs": 54.93,
+    "atip_score": 61.39,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.0,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "ICICIBANK",
+   "mine": {
+    "vpi": 45.77,
+    "mri": 50.1,
+    "rri": 55.71,
+    "zpi": 58.7,
+    "cri": 17.54,
+    "acs": 56.56,
+    "atip_score": 59.68,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 45.77,
+    "mri": 50.1,
+    "rri": 55.71,
+    "zpi": 58.7,
+    "cri": 17.54,
+    "acs": 56.56,
+    "atip_score": 59.68,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.0,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "COFORGE",
+   "mine": {
+    "vpi": 47.15,
+    "mri": 43.32,
+    "rri": 72.5,
+    "zpi": 54.47,
+    "cri": 25.93,
+    "acs": 55.8,
+    "atip_score": 58.6,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 47.15,
+    "mri": 43.32,
+    "rri": 72.5,
+    "zpi": 54.47,
+    "cri": 25.93,
+    "acs": 55.8,
+    "atip_score": 58.6,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.0,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "BALRAMCHIN",
+   "mine": {
+    "vpi": 54.43,
+    "mri": 63.73,
+    "rri": 81.76,
+    "zpi": 57.31,
+    "cri": 34.84,
+    "acs": 57.85,
+    "atip_score": 62.16,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 54.43,
+    "mri": 63.73,
+    "rri": 81.76,
+    "zpi": 57.31,
+    "cri": 34.84,
+    "acs": 57.85,
+    "atip_score": 62.15,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.01,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "VEDPOWER",
+   "mine": {
+    "vpi": 59.63,
+    "mri": 46.35,
+    "rri": 65.37,
+    "zpi": 42.59,
+    "cri": 43.69,
+    "acs": 49.1,
+    "atip_score": 56.78,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 59.63,
+    "mri": 46.35,
+    "rri": 65.37,
+    "zpi": 42.59,
+    "cri": 43.69,
+    "acs": 49.1,
+    "atip_score": 56.78,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.0,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "HEGAM",
+   "mine": {
+    "vpi": 57.77,
+    "mri": 55.71,
+    "rri": 87.14,
+    "zpi": 45.17,
+    "cri": 55.81,
+    "acs": 45.2,
+    "atip_score": 56.41,
+    "msi": 62.18
+   },
+   "stored": {
+    "vpi": 57.77,
+    "mri": 55.71,
+    "rri": 87.14,
+    "zpi": 45.17,
+    "cri": 55.81,
+    "acs": 45.2,
+    "atip_score": 56.41,
+    "msi": 62.16
+   },
+   "diff": {
+    "vpi": 0.0,
+    "mri": 0.0,
+    "rri": 0.0,
+    "zpi": 0.0,
+    "cri": 0.0,
+    "acs": 0.0,
+    "atip_score": 0.0,
+    "msi": 0.02
+   },
+   "signal_mine": "HOLD",
+   "signal_stored": "HOLD",
+   "component_diffs": {},
+   "ok": false
+  },
+  {
+   "symbol": "ICICILIFE",
+   "no_indicators": true,
+   "stored": true
+  }
+ ]
+}

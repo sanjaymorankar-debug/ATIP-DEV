@@ -1,0 +1,7 @@
+now {'atip': 'BROKEN', 'mri': 'WEAK', 'zpi': 'WEAK'}
+old_mri {'atip': 'BROKEN', 'mri': 'INVERTED', 'zpi': 'WEAK'}
+old_zpi {'atip': 'BROKEN', 'mri': 'WEAK', 'zpi': 'BROKEN'}
+atip_without_safety {'atip': 'BROKEN', 'mri': 'WEAK', 'zpi': 'WEAK'}
+mri {"h1": [-0.0019, 0.0046, -0.0152, 0.007], "h5": [-0.0171, 0.014, -0.0321, 0.0179], "h20": [-0.0164, 0.0205, -0.0366, 0.0329]} OOS better at 1/5/20: True
+zpi {"h1": [0.0051, 0.0206, -0.0057, 0.0167], "h5": [0.0098, 0.0301, -0.0131, 0.0203], "h20": [0.0023, 0.0205, -0.0203, 0.0266]} OOS better at 1/5/20: True
+atip {"h1": [-0.0014, 0.0188, -0.0061, 0.0083], "h5": [0.0131, 0.028, 0.007, 0.0172], "h20": [0.0248, 0.0372, 0.029, 0.0304]} OOS better at 1/5/20: True
