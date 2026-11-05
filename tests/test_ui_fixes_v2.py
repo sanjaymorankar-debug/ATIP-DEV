@@ -359,7 +359,9 @@ def test_order_paths_are_untouched():
     # failed exit legs, expired confirmations) and broker.py (a LIVE buy valued at Rs 0).
     # The 4 Nov verification changes autopick.py (no buy queued once max_orders_per_day is used) and rules.py (order
     # estimates shared by "/" and Command Center) on purpose.
-    allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py"}
+    # The 5 Nov profit audit changes sessions.py (a trade sold in parts books each part on its day), rules.py (a partial
+    # fill records what filled) and broker.py (the LIVE book's cash is the real account's) on purpose.
+    allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 

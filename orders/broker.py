@@ -97,13 +97,16 @@ def _log_order(conn, symbol, ttype, qty, order_type, product_type, price,
 #  FUNDS
 # ═════════════════════════════════════════════════════════════════════════
 
-def get_fund_limits() -> dict:
-    """Raw fund-limit payload from Dhan. Returns {} on any failure."""
+def get_fund_limits(account: bool = False) -> dict:
+    """Raw fund-limit payload from Dhan. Returns {} on any failure. account=True asks the real
+    Dhan account whatever broker_env says (the LIVE book's cash, portfolio/pnl.py)."""
     try:
         # Ask the broker that would actually receive the order. Checking live
         # funds before a PAPER order would block on the real account's balance,
         # which is both wrong and, at Rs.0.18 available, permanently blocking.
-        dhan, _ = get_execution_client()
+        # Profit audit 5 Nov 2026 (PA-01): the LIVE book's cash is the opposite case -- it read
+        # this too, so under PAPER the real account's equity carried the paper balance.
+        dhan, _ = get_dhan_client() if account else get_execution_client()
     except RuntimeError as e:
         log.error(str(e)); return {}
     try:
@@ -115,15 +118,16 @@ def get_fund_limits() -> dict:
         log.error(f"  Fund limits failed: {e}"); return {}
 
 
-def available_balance() -> float:
+def available_balance(account: bool = False) -> float:
     """
     Best-effort extraction of a usable balance figure. Dhan's fund-limit
     response field names have varied across SDK versions/docs
     (availabelBalance — yes, with that typo, in some versions —
     availableBalance, withdrawableBalance, sodLimit). Tries each in order
     and returns the first that parses as a number; 0.0 if none do.
+    account=True: the real Dhan account's, not the execution broker's (get_fund_limits).
     """
-    data = get_fund_limits()
+    data = get_fund_limits(account)
     for key in ("availabelBalance", "availableBalance", "withdrawableBalance", "sodLimit"):
         if key in data and data[key] is not None:
             try:

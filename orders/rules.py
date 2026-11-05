@@ -1017,9 +1017,16 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
         # The bracket legs below are measured from the ACTUAL fill (see _create_bracket_legs).
         # Use the broker's average traded price when it reports one -- the paper broker does;
         # Dhan's place_order response does not, and then the trigger price stays the anchor.
-        filled_at = ((result.get("response") or {}).get("data") or {}).get("averageTradedPrice")
+        data = (result.get("response") or {}).get("data") or {}
+        filled_at = data.get("averageTradedPrice")
         if filled_at:
             exec_price = float(filled_at)
+        # Profit audit 5 Nov 2026 (PA-02): a partial fill books, and protects, only what filled. The paper broker
+        # reports filledQty; the rule recorded the quantity asked for, so the session P&L counted shares never
+        # bought and the exit legs were sized to sell them (refused: "cannot sell", leaving the fill without a stop).
+        filled_q = data.get("filledQty")
+        if filled_q is not None and 0 < int(filled_q) < quantity:
+            quantity = int(filled_q)
 
     conn = get_connection()
     try:
