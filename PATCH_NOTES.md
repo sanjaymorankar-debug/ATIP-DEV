@@ -588,3 +588,6 @@ picks are left waiting would have repeated it.
 
 Tests: `tests/test_rca13_monitor_lock.py` (new, 6) and one new case in `tests/test_autopick.py`; the new auto-pick case fails
 on master with `database is locked` raised from `cancel_stale` → `rules.cancel_rule`, as in production.
+
+**Test results (6 Nov, 22:04–22:22 IST, outside market hours):** master `ea4f2a0` 2,559 passed, 65 skipped, 3 failed; this
+branch 2,566 passed, 65 skipped, the same 3 failed (`test_w39_perf_budget`: real sockets, refused by the sandbox).
