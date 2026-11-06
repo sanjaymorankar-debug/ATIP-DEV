@@ -3,7 +3,7 @@
 Owner prompt: 6 Nov 2026, 05:28 PM IST. Tested 17:30–18:20 IST on 6 Nov 2026. **Every time here is IST.**
 
 Build under test: branch `claude/rca-2026-11-06` (from master `ea4f2a0`), worktree `.claude/worktrees/rca-2026-11-06`.
-**Not merged, not committed, not live.** The Mac's running ATIP (launchd `com.atip.platform`, port 8000) was not
+**Committed on the branch as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** The Mac's running ATIP (launchd `com.atip.platform`, port 8000) was not
 restarted or written to; the live `atip.db` was only read (one SQLite backup at 17:30:16 IST).
 
 ## 1. Environments
@@ -33,6 +33,7 @@ from Dhan through `data/dhan.py` at 17:31–17:52 IST (read-only data calls; tim
 | New + touched areas: test_post_market_rca, test_autopick, test_session_pools, test_ux_shell, test_ux_audit_fix_2026_11_03, test_dhan_realtime_feeds (final code) | 18:04:21–18:05:36 | **223 passed** |
 | Full suite on the branch | 17:54:36–18:03:43 | **2,572 passed, 65 skipped, 4 failed** |
 | `test_ui_fixes_v2::test_order_paths_are_untouched` in a committed scratch clone | 18:04 | 1 passed |
+| After the commit (`1966119`): test_ui_fixes_v2, test_post_market_rca, test_autopick, test_session_pools, test_ux_shell | 21:46–21:47 | **173 passed**, test_order_paths_are_untouched included |
 
 The 4 failures in the full run:
 
@@ -134,7 +135,7 @@ poll missing stop wicks; SPI / fund_score NULL for every stock; the global feed'
 
 ## 8. Pending
 
-* Commit, merge and restart (owner's go-ahead). Then the first live run is **Mon 9 Nov 2026 at 16:00 IST** (7 and 8 Nov
+* Merge and restart (owner's go-ahead; committed on the branch 21:44 IST). Then the first live run is **Mon 9 Nov 2026 at 16:00 IST** (7 and 8 Nov
   are not market days; 10 Nov is a holiday in ATIP's calendar). Check `/rca` on the Mac after it.
 * Guards stay OFF until the owner turns them on.
 * Build and install the apps.

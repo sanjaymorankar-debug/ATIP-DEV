@@ -563,7 +563,7 @@ session card's P&L vs the table's realised (PA-06); before LIVE, settle rules fr
 
 Report: `docs/reports/2026-11-06-post-market-rca/POST_MARKET_RCA_2026-11-06.html` (+ `.pdf`). Testing:
 `docs/testing/ATIP_PostMarket_RCA_Test_Report_2026-11-06.md`. Branch `claude/rca-2026-11-06` from master `ea4f2a0`;
-**not committed, not merged, not live.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
+**committed as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
 
 The day (all PAPER, IST): realised net −₹1,107.85 (4 sold: 1 won, 3 lost; charges ₹282.17), day P&L marked −₹763.12,
 while Nifty closed +2.01 %. BHEL (S10), LODHA (S9) and ADANIENT (S2) were stopped by the 2 % stop, which sat at
