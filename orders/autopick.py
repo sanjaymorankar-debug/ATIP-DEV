@@ -270,7 +270,7 @@ def cancel_stale(conn, today: date | None = None) -> list:
 def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dict]:
     """One pass over the auto-pick sessions: [{session, type PICKED | WAITING, ...}]. dry_run queues
     nothing and cancels nothing -- it is what the P&L page shows."""
-    from orders import rules, sessions
+    from orders import entry_guards, rules, sessions
     from orders.environment import PAPER, broker_env
     from orders.risk import halted
     own = conn is None
@@ -312,6 +312,8 @@ def run(conn=None, dry_run: bool = False, today: date | None = None) -> list[dic
                     passed.append(f"{c['symbol']} has no price")
                 elif c["gap_pct"] is not None and c["gap_pct"] > GAP_PCT:
                     passed.append(f"{c['symbol']} is {c['gap_pct']:+.1f}% above its signal close")
+                elif guard := entry_guards.check_entry(conn, c, busy):   # 6 Nov 2026 RCA guards: each OFF until set
+                    passed.append(guard)
                 else:
                     q = sessions.pool_quantity(conn, s["id"], c["price"])["quantity"]
                     fl = float(s["pool"].get("floor", s.get("min_buy_value")) or 0)

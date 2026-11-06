@@ -4,7 +4,18 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.04.1** (Android `versionCode` 8 / `versionName` 2026.11.04.1; iOS `CFBundleShortVersionString`
+**Version 2026.11.06.1** (Android `versionCode` 9 / `versionName` 2026.11.06.1; iOS `CFBundleShortVersionString`
+2026.11.06.1 / `CFBundleVersion` 9), 6 Nov 2026 evening (post-market RCA). No native change beyond the version: the
+new screen is the server's, so the apps show it as soon as the Mac runs this code.
+
+* **Post-market RCA** (More → Reports → Post-market RCA, `/rca`): the day's session summary (realised and marked
+  P&L, max drawdown), the intraday path of every stock a session held (low and high after entry, the recovery,
+  whether the stop fired before it), each losing trade's root causes with its 5-minute chart, and the what-if
+  rules with their 42-session study. Built at 16:00 IST on market days. All times IST.
+* **The proposed entry guards** (orders/entry_guards.py, all OFF) are on the same page with the same switches as
+  the web (parity): each switch asks first in ATIP's own dialog and is logged as a session event.
+
+Earlier, **2026.11.04.1** (Android `versionCode` 8 / `versionName` 2026.11.04.1; iOS `CFBundleShortVersionString`
 2026.11.04.1 / `CFBundleVersion` 8), 4 Nov 2026 evening (verification pass). No native change: the fixes are on the
 server, so the apps show them as soon as the Mac runs this code.
 

@@ -361,7 +361,10 @@ def test_order_paths_are_untouched():
     # estimates shared by "/" and Command Center) on purpose.
     # The 5 Nov profit audit changes sessions.py (a trade sold in parts books each part on its day), rules.py (a partial
     # fill records what filled) and broker.py (the LIVE book's cash is the real account's) on purpose.
-    allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py"}
+    # The 6 Nov post-market RCA adds orders/entry_guards.py (every guard OFF until the owner sets it) and its one call in
+    # autopick.py on purpose.
+    allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
+               "orders/entry_guards.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 
