@@ -2258,6 +2258,33 @@ if HAS_FASTAPI:
             out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg, "prev_close": prev}
         return out
 
+    # RCA-13 (6 Nov 2026): a pass that lost to a database lock runs again after MONITOR_LOCK_RETRY_S, not after the
+    # full MONITOR_EVERY_S. Every connection already waits up to 60 s for a writer (db.schema.BUSY_TIMEOUT_MS), so a
+    # pass that still fails has lost that minute; another 30 s on top leaves exit legs unwatched for 90 s.
+    MONITOR_EVERY_S = 30
+    MONITOR_LOCK_RETRY_S = 5
+
+    def _is_db_lock(e) -> bool:
+        return "database is locked" in str(e) or "database table is locked" in str(e)
+
+    def _order_monitor_pass() -> bool:
+        """One pass: auto-pick, then check_triggers. True when either lost to a database lock."""
+        locked = False
+        try:                    # free cash-pool sessions queue their next occurrence first
+            from orders.autopick import run as autopick
+            autopick()
+        except Exception as e:
+            log.error(f"  auto-pick error: {e}")
+            locked = _is_db_lock(e)
+        try:
+            events = oe.check_triggers()
+            if events:
+                log.info(f"  order_rules: {events}")
+        except Exception as e:
+            log.error(f"  order_rules monitor error: {e}")
+            locked = locked or _is_db_lock(e)
+        return locked
+
     def _order_monitor_loop():
         """
         Runs only while the dashboard process is up — deliberately NOT part
@@ -2269,20 +2296,16 @@ if HAS_FASTAPI:
         from pipeline.scheduler import is_market_hours
         from pipeline.operating_schedule import is_stopped
         while True:
+            wait = MONITOR_EVERY_S
             try:
                 # Task 2: nothing is triggered while ATIP is stopped (21:00-06:00 IST / manual stop)
                 if is_market_hours() and not is_stopped():
-                    try:                    # free cash-pool sessions queue their next occurrence first
-                        from orders.autopick import run as autopick
-                        autopick()
-                    except Exception as e:
-                        log.error(f"  auto-pick error: {e}")
-                    events = oe.check_triggers()
-                    if events:
-                        log.info(f"  order_rules: {events}")
+                    if _order_monitor_pass():
+                        wait = MONITOR_LOCK_RETRY_S
+                        log.warning(f"  order monitor: pass lost to a database lock, running again in {wait}s")
             except Exception as e:
                 log.error(f"  order_rules monitor error: {e}")
-            time.sleep(30)
+            time.sleep(wait)
 
     @app.on_event("startup")
     async def _start_order_monitor():

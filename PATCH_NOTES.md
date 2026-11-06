@@ -558,3 +558,33 @@ should be: the sessions trade on paper. No orphan, duplicate or mis-tagged fill.
 **Owner decisions (not changed):** Home's headline is after a per-trade tax estimate without same-day set-off (PA-05); the
 session card's P&L vs the table's realised (PA-06); before LIVE, settle rules from Dhan's trade book (PA-07); S7's
 −₹15.70 cash from a stale sizing price (PA-08); the DP charge rate (PA-09); unpriced open trades (PA-10).
+
+# 6 Nov 2026: the order monitor's 09:15 pass lost a minute to "database is locked" (RCA-13)
+
+Branch `claude/amazing-cray-703f0e` (from master `ea4f2a0`), not merged, not live. Found by the 6 Nov post-market RCA.
+
+**What happened (IST, `atip_data/atip.log` / `atip.jsonl`, `order_rules`, `session_events`).** S9 (LODHA) and S1
+(AUROPHARMA) each had an auto-pick still waiting from 5 Nov. The order monitor's first market-hours pass began about
+09:15:07. Auto-pick's `cancel_stale` cancelled LODHA at 09:15:07.80 (`rules.cancel_rule`, on its own connection, committed)
+and wrote S9's AUTO_PICK_CANCELLED event on the pass's connection without committing it. The next `cancel_rule`, on a new
+connection, then waited the whole busy timeout (60 s) behind that event and logged `auto-pick error: database is locked`
+at 09:16:09.689; closing the pass's connection rolled S9's event back (it is missing from `session_events`). check_triggers
+ran only after that, and the pass after it cancelled AUROPHARMA at 09:16:39.81 and sold S10's BHEL at 408.20 at 09:16:46 on
+its 410.78 stop (59 shares, ₹152 under the stop). BHEL had already traded at 410.00 by 09:15:03 (`live_quotes` low); there
+are no BHEL ticks to say where it was at 09:15:08 or 09:15:38, when the two passes the lock swallowed would have checked it.
+
+**Not the cause:** the 09:15:03 live-quote refresh and the 09:15:05 `session_reports` tick had both finished (09:15:03.53,
+09:15:05.27) before the first cancel; no index-feed flush failure is logged. The lock was auto-pick's own connection.
+
+**Earlier days:** this is the only `auto-pick error` and the only order-monitor lock in the log (from 24 Sep). 5 Nov had one
+stale pick (RADICO, cancelled with its event at 09:15:24); 6 Nov was the first day with two. Any morning after two or more
+picks are left waiting would have repeated it.
+
+**Fixed**
+- `orders/autopick.py` `cancel_stale` commits each cancellation's event before the next `cancel_rule` opens its connection.
+- `dashboard/server.py`: the monitor's pass is `_order_monitor_pass()` (auto-pick, then check_triggers, as before). A pass that
+  loses to a database lock, whoever holds it, runs again after 5 s (`MONITOR_LOCK_RETRY_S`) instead of 30 s, with a warning
+  in the log. The 30 s cadence, the order of the two steps, the 60 s busy timeout and every trading rule are unchanged.
+
+Tests: `tests/test_rca13_monitor_lock.py` (new, 6) and one new case in `tests/test_autopick.py`; the new auto-pick case fails
+on master with `database is locked` raised from `cancel_stale` → `rules.cancel_rule`, as in production.

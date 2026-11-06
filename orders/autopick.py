@@ -263,7 +263,11 @@ def cancel_stale(conn, today: date | None = None) -> list:
         sid = sessions.session_of_rule(conn, r)
         sessions._event(conn, sid, "AUTO_PICK_CANCELLED", {"rule_id": r["id"], "symbol": r["symbol"],
                                                            "picked": str(r["created_at"])[:10]})
-    conn.commit()
+        # RCA-13 (6 Nov 2026): commit each event before the next cancel_rule, which writes on its own connection.
+        # With the commit after the loop, two picks left from 5 Nov made the second cancel_rule wait the whole busy
+        # timeout (60 s) behind this connection's uncommitted event and raise 'database is locked': the order
+        # monitor's 09:15 pass lost a minute, check_triggers with it, and the first event was rolled back.
+        conn.commit()
     return [r["id"] for r in rows]
 
 
