@@ -13,7 +13,7 @@ targets:
       path: ATIP/Info.plist
       properties:
         CFBundleDisplayName: ATIP
-        CFBundleShortVersionString: "2026.11.05.1"
+        CFBundleShortVersionString: "2026.11.06.1"
         CFBundleVersion: "9"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]

@@ -363,8 +363,10 @@ def test_order_paths_are_untouched():
     # fill records what filled) and broker.py (the LIVE book's cash is the real account's) on purpose.
     # The 5 Nov verification changes rules.py (a stop fill also cancels a target pending confirmation, VF5-06) and the
     # documented example in risk.py (max_orders_per_day 20, the owner's decision) on purpose.
+    # The 6 Nov post-market RCA adds orders/entry_guards.py (every guard OFF until the owner sets it) and its one call in
+    # autopick.py on purpose.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
-               "orders/risk.py"}
+               "orders/risk.py", "orders/entry_guards.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 

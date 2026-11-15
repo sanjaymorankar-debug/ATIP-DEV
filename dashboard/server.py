@@ -2004,6 +2004,8 @@ if HAS_FASTAPI:
     _register_command_more(app, _guard, _Req, get_connection, json_safe)
     from dashboard.ux_routes import register as _register_ux_routes                    # UXD/SES/ACC/RPT (2 Nov 2026): the shell
     _register_ux_routes(app, _guard, _Req, get_connection, json_safe)                  # on every page, new pages, /api/v2
+    from dashboard.rca_routes import register as _register_rca_routes                  # 6 Nov 2026: post-market RCA (/rca)
+    _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
     _register_global_asia(app, _guard, _Req, get_connection, json_safe)
     from dashboard.news_impact_view import register as _register_news_impact            # NI-05: news impact

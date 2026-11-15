@@ -583,3 +583,47 @@ for tests and QA copies (the suite was flaky in market hours); dead `FILL_TARGET
 **Not changed:** RRI (its in-sample redesign failed the out-of-sample rule; still BROKEN, owner); hard-coded colours in legacy
 pages (822); session names; VF-34 / VF-35 (another session). **To do at deploy:** `max_orders_per_day: 20` in the live
 `atip_data/config.json`.
+
+# 6 Nov 2026: post-market RCA of the ten sessions, and a daily RCA at 16:00 IST (prompt 05:28 PM IST)
+
+Report: `docs/reports/2026-11-06-post-market-rca/POST_MARKET_RCA_2026-11-06.html` (+ `.pdf`). Testing:
+`docs/testing/ATIP_PostMarket_RCA_Test_Report_2026-11-06.md`. Branch `claude/rca-2026-11-06` from master `ea4f2a0`;
+**committed as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
+
+The day (all PAPER, IST): realised net −₹1,107.85 (4 sold: 1 won, 3 lost; charges ₹282.17), day P&L marked −₹763.12,
+while Nifty closed +2.01 %. BHEL (S10), LODHA (S9) and ADANIENT (S2) were stopped by the 2 % stop, which sat at
+0.55 / 0.53 / 0.67 of each stock's 14-day ATR; each was sold within minutes of its low and closed at or above its entry
+(−0.09 %, +1.93 %, +0.39 %). None was a BUY signal (rank-fill HOLD picks), and LODHA was bought at 09:16 into a −1.00 %
+gap. Not market-wide, not news.
+
+The tempting fix fails: a 1.5 × ATR stop turns today into +₹1,641, but over 42 sessions (420 auto-pick trades,
+`tools/rca_validate_rules.py`) it loses 2.4 times more than the 2 % stop. The rules that held up: buy only on a break of
+the first 30 minutes' high (−0.31 % a trade vs −0.64 %, better on 30 of 42 days), skip rank-fill stocks under 63
+(−0.45 %), no buys while Nifty is weak (−0.44 %). None of them makes the picks profitable alone.
+
+## Added
+
+| File | What |
+|---|---|
+| `portfolio/post_market_rca.py` | The daily RCA: session summary (realised, day MTM, max drawdown), intraday path of every stock held (low / high after entry, recovery start on a stated 5-minute rule, back to entry, stopped before recovery), root causes a–h with evidence, 15 what-if rules replayed on 1-minute candles, chart data. Read-only; one row a day in `post_market_rca`. `python -m portfolio.post_market_rca [--date] [--no-fetch] [--json]` |
+| `pipeline/w39_jobs.py` | `post_market_rca` at 16:00 IST on market days (config `"post_market_rca": {"enabled": true, "time": "16:00"}`); a no-op on the view-only server |
+| `dashboard/rca_routes.py` | `/rca` (Reports → Post-market RCA; the apps get it under More), `/api/rca`, `/api/rca/guards`, POST `/api/rca/run`, POST `/api/rca/guards` (token; viewer refused) |
+| `orders/entry_guards.py` | Five auto-pick guards, **all OFF**: `guard_orb_minutes`, `guard_min_score`, `guard_nifty_weak`, `guard_entry_not_before`, `guard_sector_cap`. Turning one on needs ack (the page's dialog or `--ack`) and is logged as a session event `GUARD`. One call in `orders/autopick.py` |
+| `tools/rca_validate_rules.py` | Re-runs the 42-session study on any dates (Dhan 5-minute candles, cached) |
+| `tests/test_post_market_rca.py` | 14 tests |
+
+Mobile apps 2026.11.06.1 (Android versionCode 9, iOS build 9). Tracker: sheet "Post-market RCA 2026-11-06", rows
+RCA-REP, RCA-01 … RCA-19 (master Seq 544–563, CSV Seq 571–590, phase 24).
+
+## Found, not changed (owner's call)
+
+* Rank-fill HOLD picks lose 0.66 % a trade (384 study trades): keep, restrict (guards) or pause (VF-01).
+* 09:16:09 IST "auto-pick error: database is locked": the open's first monitor pass failed; BHEL filled ₹152 under its stop.
+* The 30-second price poll misses stop wicks (ADANIENT: touched 10:54, sold 12:03 at the same price).
+* SPI and fund_score are NULL for every stock on every day; the global feed's S&P −4.36 % stayed unchanged all day;
+  TRAIL_MOVED is logged every 30 s without a move.
+
+## Test results
+
+Full suite on the branch (17:54–18:03 IST): 2,572 passed, 65 skipped, 4 failed — the 3 sandbox-socket tests that fail on
+master too, and `test_order_paths_are_untouched`, which needs the work committed (passes in a committed clone).

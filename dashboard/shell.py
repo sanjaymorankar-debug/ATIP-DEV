@@ -111,6 +111,7 @@ NAV = [
         ("Generate", "/reports", "Make any report now in HTML, CSV, Excel or PDF"),
         ("Schedules", "/reports?tab=schedules", "When each report runs, in IST"),
         ("Archive", "/reports?tab=archive", "Every report generated, to download again"),
+        ("Post-market RCA", "/rca", "Why each losing trade lost and which rule would have helped (built 16:00 IST)"),
         ("Custom report", "/reports?tab=custom", "Pick sections, sessions and dates")]),
     ("lab", "Strategy Lab", "lab", "/lab", [
         ("Run → compare → promote", "/lab", "Backtest, compare, then promote a strategy"),

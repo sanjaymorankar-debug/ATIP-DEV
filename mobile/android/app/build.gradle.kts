@@ -11,7 +11,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 9
-        versionName = "2026.11.05.1"
+        versionName = "2026.11.06.1"
         // The ATIP server the app opens first; changeable in the app (long-press the banner).
         buildConfigField("String", "DEFAULT_SERVER", "\"http://192.168.1.10:8000\"")
     }

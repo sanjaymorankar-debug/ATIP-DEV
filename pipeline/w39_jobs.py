@@ -22,8 +22,13 @@ versions were dropped so there is one of each.)
                          then the report schedules that are due run (enterprise/session_reports.py).
                          Off with config "reports": {"enabled": false}. A no-op on the view-only server.
 
+    post_market_rca      6 Nov 2026  at 16:00 IST on market days: the day's post-market RCA of the sessions' trades
+                         (portfolio/post_market_rca.py; stored in post_market_rca, shown at /rca). Read-only; a no-op
+                         on the view-only server. Off with config "post_market_rca": {"enabled": false}.
+
 Switches (atip_data/config.json):
     "sip_enabled": true, "sip_time": "09:30"
+    "post_market_rca": {"enabled": true, "time": "16:00"}
     "risk_model": {"enabled": true, "time": "21:45", ...}   (quant/risk_model.py DEFAULTS)
 """
 
@@ -110,7 +115,18 @@ def schedule_jobs(schedule, run_job) -> list:
             for mm in (0, 15, 30, 45):
                 schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_job, "session_reports", session_reports_tick)
         out.append("session_reports every 15 min 06:00-20:45 (cycle book + due report schedules)")
+    rca = cfg.get("post_market_rca") or {}
+    if rca.get("enabled", True):
+        # 6 Nov 2026 (owner): the daily post-market RCA of the sessions' trades, after the close (portfolio/post_market_rca.py)
+        t = _hhmm(rca.get("time"), "16:00")
+        schedule.every().day.at(t).do(run_job, "post_market_rca", post_market_rca_run)
+        out.append(f"post_market_rca daily {t} IST (market days; session trades' RCA, what-if rules)")
     return out
+
+
+def post_market_rca_run() -> dict:
+    from portfolio.post_market_rca import run_scheduled
+    return run_scheduled()
 
 
 def session_reports_tick() -> dict:
