@@ -1,0 +1,94 @@
+Mon Nov 16 00:00:48 IST 2026
+universe 529
+daily rows 615384 series {'EQ': 615055, 'BE': 329}
+bars 238050
+done 2.0 s
+== week
+OPEN at backup time: session_id     symbol  execution_price  execution_quantity                     opened
+        S1    PVRINOX          1649.62                15.0 2026-11-13 09:26:47.175347
+       S10        PNB           143.98               170.0 2026-11-13 12:04:27.976960
+        S2   INDHOTEL           885.44                27.0 2026-11-13 12:16:07.520631
+        S3 AUROPHARMA          1818.91                15.0 2026-11-13 11:59:20.793871
+        S4        M&M          3396.10                 7.0 2026-11-12 12:06:36.526027
+        S5  KOTAKBANK           488.64                50.0 2026-11-13 09:22:34.017439
+        S6 KALYANKJIL           698.85                35.0 2026-11-13 09:46:05.164029
+        S7  ICICIBANK          1580.39                16.0 2026-11-12 12:04:59.950644
+        S8 ATHERENERG          1931.27                12.0 2026-11-13 09:31:55.670495
+        S9    SAILIFE          1921.16                13.0 2026-11-12 09:15:09.062856
+nifty50: 25030.35 -> 25144.3  +0.46%
+midcap150: 22271.15 -> 22681.25  +1.84%
+smallcap250: 17386.15 -> 17940.55  +3.19%
+session  closed_in_week  wins  losses  realized_net  opened_in_week  week_mtm_net
+     S1               2     2       0       1267.39               2       1370.72
+     S2               2     1       1       -189.25               3        -86.38
+     S3               2     2       0       1643.53               2       1368.17
+     S4               2     2       0       1385.57               2        649.57
+     S5               2     0       2      -1194.79               2      -1131.86
+     S6               2     0       2      -1189.73               2      -1306.46
+     S7               1     1       0        684.00               1        267.83
+     S8               3     1       2       -569.61               3      -1270.78
+     S9               2     1       1         42.10               2        238.03
+    S10               2     1       1        419.69               2       -427.14
+TOTAL closed 20 wins 11 losses 9 realized 2298.9 MTM -328.3
+            n  wins      net     tax   actual
+session_id                                   
+S1          5     3  1085.52  502.70   582.82
+S10         5     2  -384.11  337.86  -721.97
+S2          4     2  -177.42  225.65  -403.07
+S3          3     3  2787.93  610.27  2177.66
+S4          2     2  1385.57  308.85  1076.72
+S5          3     1  -178.61  221.96  -400.57
+S6          4     2   158.99  301.18  -142.19
+S7          1     1   684.00  152.82   531.18
+S8          3     1  -569.61  140.84  -710.45
+S9          4     2     8.29  263.16  -254.87
+ALL cycles: 34 wins 19 net 4800.55 actual(after tax est) 1735.26
+avg win net % 3.037 avg loss net % -2.419 avg charges 70.63
+avg win ₹ 726.26 avg loss ₹ -599.89
+== calib
+sid        sym    entry  act_exit act_reason  act_net  sim_exit sim_reason  sim_net           closed           sim_ts
+ S1 PNBHOUSING  1091.95   1068.27       Stop  -589.74   1069.58       Stop  -561.04 2026-10-30T14:47 2026-10-30 14:45
+ S3      LODHA  1048.52   1099.25      Trail  1144.40   1100.82      Trail  1182.15 2026-11-04T10:17 2026-11-04 10:15
+ S6 ENGINERSIN   290.65    298.00      Trail   559.96    298.14      Trail   571.81 2026-11-04T10:38 2026-11-04 10:30
+S10  REDINGTON   333.97    342.48      Trail   558.23    343.95      Trail   667.04 2026-11-04T12:15 2026-11-04 11:15
+ S2 BALRAMCHIN   653.58    671.01      Trail   590.53    666.53      Trail   420.48 2026-11-04T14:46 2026-11-04 10:00
+ S5   ANGELONE   307.80    321.24      Trail  1016.18    321.34      Trail  1024.20 2026-11-05T09:22 2026-11-05 09:30
+ S9      DIXON 12080.04  12398.80      Trail   567.23  12430.16      Trail   629.89 2026-11-05T09:25 2026-11-05 09:30
+ S1    PVRINOX  1538.57   1605.70      Trail  1002.33   1611.90      Trail  1101.48 2026-11-05T10:09 2026-11-05 10:00
+S10  REDINGTON   367.98    359.67       Stop  -645.16    360.44       Stop  -592.07 2026-11-05T10:34 2026-11-05 10:30
+ S1    PVRINOX  1584.69   1552.02       Stop  -594.46   1552.22       Stop  -591.27 2026-11-05T12:06 2026-11-05 12:00
+S10       BHEL   419.16    408.20       Stop  -716.87    410.57       Stop  -577.09 2026-11-06T09:16 2026-11-06 09:15
+ S6      TITAN  4775.99   4947.72      Trail   788.76   4951.38      Trail   807.06 2026-11-06T11:28 2026-11-06 11:15
+ S9      LODHA  1156.68   1132.63       Stop  -601.04   1132.98       Stop  -593.35 2026-11-06T11:24 2026-11-06 11:15
+ S2   ADANIENT  2735.17   2678.66       Stop  -578.70   2679.13       Stop  -574.51 2026-11-06T12:03 2026-11-06 10:45
+ S1    PVRINOX  1580.99   1625.09      Trail   592.18   1627.83      Trail   633.31 2026-11-09T09:28 2026-11-09 09:30
+ S9        TCS  2509.55   2454.87       Stop  -557.73   2458.13       Stop  -528.43 2026-11-09T09:15 2026-11-09 09:15
+ S4 LAURUSLABS  2310.65   2401.20      Trail   837.28   2403.31      Trail   858.35 2026-11-09T09:41 2026-11-09 09:45
+ S8  KOTAKBANK   463.63    476.81      Trail   627.27    478.13      Trail   697.10 2026-11-09T09:40 2026-11-09 09:30
+ S3 NEULANDLAB 19369.68  20622.68      Trail  1192.72  19744.58      Trail   315.54 2026-11-09T10:44 2026-11-08 14:35
+ S6    HCLTECH  1437.02   1407.70       Stop  -600.63   1407.58       Stop  -602.87 2026-11-09T10:41 2026-11-09 10:30
+S10 ATHERENERG  1771.99   1851.77      Trail   968.93   1839.49      Trail   809.46 2026-11-09T13:17 2026-11-08 15:05
+ S5 BALRAMCHIN   672.04    657.72       Stop  -616.28    658.27       Stop  -595.41 2026-11-09T14:00 2026-11-09 13:45
+ S9  MOTHERSON   159.45    163.86      Trail   599.83    162.77      Trail   434.11 2026-11-11T09:19 2026-11-11 09:30
+ S2   INDHOTEL   889.54    871.21       Stop  -584.00    871.31       Stop  -581.10 2026-11-11T13:33 2026-11-11 13:30
+ S8 ZENSARTECH   563.98    552.17       Stop  -603.24    552.42       Stop  -591.81 2026-11-11T15:29 2026-11-11 15:15
+ S7       GAIL   182.38    187.90      Trail   684.00    185.67      Trail   378.41 2026-11-12T10:04 2026-11-05 09:30
+ S4  KOTAKBANK   476.79    488.31      Trail   548.29    488.86      Trail   578.22 2026-11-12T12:06 2026-11-12 11:30
+ S1    PVRINOX  1598.30   1647.98      Trail   675.21   1648.28      Trail   679.64 2026-11-13T09:26 2026-11-13 09:30
+ S5        TCS  2461.63   2410.79       Stop  -578.51   2411.19       Stop  -574.50 2026-11-13T09:22 2026-11-13 09:15
+ S8   ASHOKLEY   173.50    169.87       Stop  -593.64    169.94       Stop  -582.85 2026-11-13T09:31 2026-11-13 09:30
+ S6      TITAN  4964.28   4860.57       Stop  -589.10   4862.56       Stop  -579.16 2026-11-13T09:45 2026-11-13 09:45
+ S3       IGIL   428.71    437.08      Trail   450.81    438.05      Trail   512.10 2026-11-13T11:58 2026-11-13 11:30
+ S2   INDHOTEL   870.94    887.56      Trail   394.75    889.56      Trail   450.83 2026-11-13T12:13 2026-11-13 11:45
+S10    HCLTECH  1399.60   1371.31       Stop  -549.24   1370.92       Stop  -555.83 2026-11-13T12:03 2026-11-13 12:00
+reason match: 1.0  sum actual net 4800.55  sum sim net 4069.89
+corr 0.968
+== pop2 hyb
+/Users/agtci/ATIP/.ux_build/kite-fix-2026-11-16/repro/scripts/pop2.py:8: Pandas4Warning: Series.dt.dayofweek is deprecated and will be removed in a future version. Use Series.dt.day_of_week instead.
+  cal = sorted(d[(d.date >= START) & (d.date.dt.dayofweek < 5)].date.unique())
+Traceback (most recent call last):
+  File "/Users/agtci/ATIP/.ux_build/kite-fix-2026-11-16/repro/scripts/pop2.py", line 51, in <module>
+    exec(open(os.path.expanduser("~/work/exits.py")).read())
+         ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/agtci/work/exits.py'
+Mon Nov 16 00:00:53 IST 2026

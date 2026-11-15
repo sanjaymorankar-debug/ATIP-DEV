@@ -1,0 +1,495 @@
+{
+ "started": "2026-11-16T00:32:03",
+ "steps": [
+  {
+   "step": "arms",
+   "data": [
+    {
+     "id": "S1",
+     "name": "Momentum",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S2",
+     "name": "Buy zones (retest K2)",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S3",
+     "name": "Breakouts (retest K1)",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S4",
+     "name": "Swing (retest K4)",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S5",
+     "name": "Control",
+     "gate": {
+      "open": true,
+      "metric": null,
+      "value": null
+     }
+    },
+    {
+     "id": "S6",
+     "name": "Recovery (ATR)",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S7",
+     "name": "Wide-stop",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S8",
+     "name": "Sector",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S9",
+     "name": "Bracket 3/6",
+     "gate": {
+      "open": true,
+      "metric": "breadth50",
+      "value": 56.79
+     }
+    },
+    {
+     "id": "S10",
+     "name": "Retest fast-gate",
+     "gate": {
+      "open": true,
+      "metric": "breadth20",
+      "value": 80.69
+     }
+    }
+   ]
+  },
+  {
+   "step": "held at the start",
+   "data": {
+    "S1": [
+     "PVRINOX"
+    ],
+    "S2": [
+     "INDHOTEL"
+    ],
+    "S3": [
+     "AUROPHARMA"
+    ],
+    "S4": [
+     "M&M"
+    ],
+    "S5": [
+     "KOTAKBANK"
+    ],
+    "S6": [
+     "KALYANKJIL"
+    ],
+    "S7": [
+     "ICICIBANK"
+    ],
+    "S8": [
+     "ATHERENERG"
+    ],
+    "S9": [
+     "SAILIFE"
+    ],
+    "S10": [
+     "PNB"
+    ]
+   }
+  },
+  {
+   "step": "09:16 check_triggers (stops)",
+   "data": [
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    },
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    },
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    }
+   ]
+  },
+  {
+   "step": "09:20 auto-pick",
+   "data": [
+    {
+     "session": "S1",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #6 holds PVRINOX",
+     "dummy_id": null
+    },
+    {
+     "session": "S2",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #5 holds INDHOTEL",
+     "dummy_id": null
+    },
+    {
+     "session": "S3",
+     "type": "PICKED",
+     "status": null,
+     "symbol": "KALYANKJIL",
+     "source": "KITE-RETEST",
+     "trigger": 669.0,
+     "stoploss": 635.55,
+     "price": 697.0,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": 18,
+     "stop_pct": null,
+     "reason": null,
+     "dummy_id": "DUMMY-A6D2A4BF87634F4A"
+    },
+    {
+     "session": "S4",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #3 holds M&M",
+     "dummy_id": null
+    },
+    {
+     "session": "S5",
+     "type": "PICKED",
+     "status": null,
+     "symbol": "IGIL",
+     "source": "RANK-FILL",
+     "trigger": 441.05,
+     "stoploss": null,
+     "price": 438.9,
+     "signal_close": 438.9,
+     "ltp_fresh": true,
+     "quantity_est": 54,
+     "stop_pct": 2.0,
+     "reason": null,
+     "dummy_id": null
+    },
+    {
+     "session": "S6",
+     "type": "PICKED",
+     "status": null,
+     "symbol": "GRASIM",
+     "source": "RANK-FILL",
+     "trigger": 3049.1,
+     "stoploss": null,
+     "price": 3034.0,
+     "signal_close": 3034.0,
+     "ltp_fresh": true,
+     "quantity_est": 4,
+     "stop_pct": 4.8442,
+     "reason": null,
+     "dummy_id": null
+    },
+    {
+     "session": "S7",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #2 holds ICICIBANK",
+     "dummy_id": null
+    },
+    {
+     "session": "S8",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #4 holds ATHERENERG",
+     "dummy_id": null
+    },
+    {
+     "session": "S9",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #5 holds SAILIFE",
+     "dummy_id": null
+    },
+    {
+     "session": "S10",
+     "type": "WAITING",
+     "status": null,
+     "symbol": null,
+     "source": null,
+     "trigger": null,
+     "stoploss": null,
+     "price": null,
+     "signal_close": null,
+     "ltp_fresh": null,
+     "quantity_est": null,
+     "stop_pct": null,
+     "reason": "occurrence #6 holds PNB",
+     "dummy_id": null
+    }
+   ]
+  },
+  {
+   "step": "DUMMY records",
+   "data": [
+    {
+     "id": "DUMMY-A6D2A4BF87634F4A",
+     "kind": "BUY",
+     "symbol": "KALYANKJIL",
+     "trigger_price": 669.0,
+     "stop_trigger": 635.55,
+     "status": "ACTIVE",
+     "valid_until": "2026-12-01",
+     "session_id": "S3"
+    }
+   ]
+  },
+  {
+   "step": "10:05 check_triggers (entries)",
+   "data": [
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    },
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    },
+    {
+     "type": "PLACED",
+     "symbol": null,
+     "status": "PLACED"
+    }
+   ]
+  },
+  {
+   "step": "fills and legs",
+   "data": [
+    {
+     "session": "S3",
+     "symbol": "KALYANKJIL",
+     "status": "EXECUTED",
+     "limit": 669.0,
+     "fill": 668.0,
+     "qty": 18.0,
+     "value": 12024.0,
+     "legs": [
+      [
+       "STOP",
+       634.6,
+       null,
+       null,
+       null
+      ],
+      [
+       "TARGET",
+       734.8,
+       null,
+       null,
+       null
+      ]
+     ],
+     "max_hold_days": 20.0
+    },
+    {
+     "session": "S5",
+     "symbol": "IGIL",
+     "status": "EXECUTED",
+     "limit": 441.05,
+     "fill": 440.4,
+     "qty": 54.0,
+     "value": 23781.6,
+     "legs": [
+      [
+       "STOP",
+       431.55,
+       1.0,
+       453.61,
+       null
+      ],
+      [
+       "TARGET",
+       453.65,
+       null,
+       null,
+       "2026-12-01T00:32:05"
+      ]
+     ],
+     "max_hold_days": null
+    },
+    {
+     "session": "S6",
+     "symbol": "GRASIM",
+     "status": "EXECUTED",
+     "limit": 3049.1,
+     "fill": 3044.6,
+     "qty": 4.0,
+     "value": 12178.4,
+     "legs": [
+      [
+       "STOP",
+       2897.1,
+       2.4221,
+       3192.09,
+       null
+      ],
+      [
+       "TARGET",
+       3192.1,
+       null,
+       null,
+       "2026-12-01T00:32:05"
+      ]
+     ],
+     "max_hold_days": null
+    }
+   ]
+  },
+  {
+   "step": "algo sync",
+   "data": [
+    {
+     "id": "DUMMY-A6D2A4BF87634F4A",
+     "event": "TRIGGERED",
+     "symbol": "KALYANKJIL"
+    },
+    {
+     "id": "DUMMY-83951693CBEA46A2",
+     "event": "OCO_PLANNED",
+     "symbol": "KALYANKJIL"
+    }
+   ]
+  },
+  {
+   "step": "DUMMY records after the fills",
+   "data": [
+    {
+     "id": "DUMMY-83951693CBEA46A2",
+     "kind": "OCO",
+     "symbol": "KALYANKJIL",
+     "trigger_price": null,
+     "stop_trigger": 634.6,
+     "target_trigger": 734.8,
+     "status": "ACTIVE",
+     "fill_price": null
+    },
+    {
+     "id": "DUMMY-A6D2A4BF87634F4A",
+     "kind": "BUY",
+     "symbol": "KALYANKJIL",
+     "trigger_price": 669.0,
+     "stop_trigger": 635.55,
+     "target_trigger": null,
+     "status": "TRIGGERED",
+     "fill_price": 668.0
+    }
+   ]
+  },
+  {
+   "step": "off-tick prices on new rules",
+   "data": []
+  },
+  {
+   "step": "broker calls",
+   "data": {
+    "calls": [
+     "get_forever",
+     "get_holdings",
+     "get_order_list",
+     "get_positions"
+    ],
+    "order_changing": []
+   }
+  }
+ ],
+ "finished": "2026-11-16T00:32:05"
+}
