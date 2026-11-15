@@ -660,3 +660,84 @@ on master with `database is locked` raised from `cancel_stale` → `rules.cancel
 
 **Test results (6 Nov, 22:04–22:22 IST, outside market hours):** master `ea4f2a0` 2,559 passed, 65 skipped, 3 failed; this
 branch 2,566 passed, 65 skipped, the same 3 failed (`test_w39_perf_budget`: real sockets, refused by the sandbox).
+
+# 16 Nov 2026: the 9–13 Nov session review and the Kite breakout-retest port (KGF-01..KGF-21, PAPER only)
+
+Owner prompt 15 Nov 2026 11:52 PM IST. Branch `claude/kite-formula-fix-2026-11-16` from master `7244fd0`. Report:
+`docs/testing/ATIP_KiteFix_Test_Report_2026-11-16.md`; tracker rows KGF-01..KGF-21 (sheet "Kite formula fix 2026-11-16").
+Evidence reproduced first (`.ux_build/kite-fix-2026-11-16/repro/`): week MTM −₹328.30 = `pnl_daily` PAPER equity change,
+calibration 34/34 exit reasons (corr 0.968), K1 2,349 trades at +0.67 %, K1 with breadth50 ≥ 50 +0.97 %.
+
+**Merged first (KGF-01):** `claude/verify-2026-11-05` (VF5-01..16: VPI calm volatility, BUY gate, VF5-06 a stop fill cancels a
+target pending confirmation, PCR, order monitor off in tests), `claude/rca-2026-11-06` (daily 16:00 IST RCA, `/rca`, entry
+guards all OFF), `claude/amazing-cray-703f0e` (RCA-13: auto-pick no longer locks its own 09:15 pass; a locked pass retries
+in 5 s). Conflicts were docs, the tracker and the apps' build 9 (one kept, 2026.11.06.1).
+
+**Order path (PAPER; nothing here can place a real order)**
+- **Fresh price, LIMIT entry (KGF-02).** A pick needs an LTP under 60 s old (`waiting_for_ltp` otherwise, nothing queued);
+  it buys with a LIMIT at min(LTP, signal close) × 1.005, tick-rounded down; `signal_close`, `pick_ltp`, `pick_ltp_ts` are
+  stored on the rule; a stock more than 1.5 % under its signal close is skipped (`skipped_falling`, logged once a day).
+- **14:45 IST cut-off (KGF-03)** for new swing entries, per session (`no_entry_after`).
+- **Tick rounding (KGF-04)**, `orders/ticks.py`, Decimal only: BUY limit/trigger and a long's stop round down, a long's
+  target rounds up; on create, on bracket legs, on trailing moves and on paper fills.
+- **Regime gate (KGF-09)**: `scores/breadth.py` (`market_breadth`, breadth20/50 of the scored universe); a gated arm takes no
+  new entry under its gate; exits always run. Banner on Sessions, `/ab` and the apps.
+- **Arms (KGF-13)**, `orders/arms.py` (`session_settings arm:S1..S10`): S1 Momentum (ATR stop, gate), S2/S3/S4 Kite
+  retest K2/K1/K4, **S5 Control** (today's rules, no gate), S6 Recovery (ATR), S7 Wide-stop, S8 Sector (≤ 2 per industry),
+  S9 Bracket 3/6, S10 Retest fast-gate (breadth20). Risk-budget arms buy min(cash, max(₹10,000, ₹625 ÷ stop %)). Open
+  trades keep their legs. Weekly A/B report Sundays 18:00 IST (`portfolio/ab_report.py`, `/ab`).
+- **Kite breakout-retest (KGF-10/11/12):** `strategy/breakout_retest.py` (exact parameters), `/api/scanner-data`, the
+  "Algo Signals" page; the retest arms rest a **DUMMY-** buy at the breakout low (`orders/algo_gtt.py`, table
+  `algo_dummy_gtt`), stop 5 % below, created only after the buy; valid 10 trading days; one active per symbol (BEGIN
+  IMMEDIATE + partial unique index); `POST /api/algo-orders/gtt-state` (read-only) and `/live-gtt` (dummy only, needs the
+  JSON boolean `confirm_live: true`). Broker reads are read-only through `ReadOnlyBroker`.
+- **Time exit** (`max_hold_days`, 20 / 40 trading days) through the entry's own STOP leg; **stop exits slip 15 bps** in
+  paper (KGF-17, `paper_stop_slippage_bps`, default 3 × `paper_slippage_bps`); **re-entry cooldown** (KGF-19) default off.
+
+**Data and operations**
+- **Instrument master (KGF-05):** `data/instruments.py`, Dhan scrip master daily at 08:00 IST (`instrument_master`, tick in
+  rupees); ZOMATO→ETERNAL, TATAMOTORS→TMPV, MOFSL→MOTILALOFS; REITs (series RR) dropped from the equity universe. A
+  simulated full day of lookups: 0 `security_id not found` warnings (was 121–151 a day).
+- **Pre-open health gate (KGF-06):** `ops/preopen_health.py` at 08:45 IST (retries 08:50 / 09:00 / 09:10): Dhan token
+  (DH-901), quote feed, today's scrip master, yesterday's scores. Failing → auto-pick waits, a banner says why, the token
+  renewal is retried and one Telegram alert is sent; Telegram delivery itself now retries with backoff.
+- **Bhavcopy (KGF-07):** retries with backoff, then the day's bars from Dhan (whose daily-history end date is exclusive —
+  why the 16:45 run never got the same day's bar), both sources logged (`eod_price_source`).
+- **Intraday completeness (KGF-18):** 16:15 IST check, alert under 95 % of the universe; `tools/backfill_intraday_bars.py`
+  for the 13 sessions of 6–23 Oct with no 15-minute bars.
+- **Kite Connect (KGF-21):** `brokers/connectors.py` stays read-only, plus GTT list and instruments reads.
+
+**Accounting**
+- **LIVE cash flows (KGF-08), found first:** the LIVE "cash" fall ₹5,04,275 → ₹2,62,861 and the 41.8 % drawdown are PA-01
+  (the paper balance stored as the real account's cash) still running — the Mac was not restarted after the 5 Nov merge —
+  not withdrawals; real LIVE P&L 2–13 Nov +₹515.34. Under PAPER nothing was blocked. Built: `portfolio/cash_flows.py`
+  (deposits / withdrawals / transfers, PENDING until confirmed), day P&L and drawdown net of confirmed flows in
+  `portfolio/pnl.py` and `orders/risk.py`, so a withdrawal never trips `max_drawdown_pct` while a real loss still does;
+  `tools/repair_live_pnl_daily.py --paper-match`. **The LIVE history repair writes the live DB: owner's yes needed.**
+- **Tax (KGF-14):** FY short-term capital gains after set-off, 20 % + 4 % cess: FY 2026-27 ₹1,346.74 on the 34 cycles
+  (net STCG ₹6,474.72 with STT added back) against the per-cycle ₹3,065.29, which is now labelled "Tax reserve (per-cycle,
+  cash set aside)". "Estimate only — confirm the treatment with a CA; not tax advice."
+
+**Research (KGF-17):** `research/session_ab_replay.py`, `research/kite_retest_study.py` reproduce the 15 Nov evidence
+exactly; with 15 bps stop slippage the calibration stays 34/34 (corr 0.968).
+
+**Apps:** 2026.11.16.1 (build 10): native regime-gate strip; the rest are server screens. Not compiled on this Mac (no
+Xcode, no Java / Android SDK).
+
+**Tests:** full suite 00:41:42–00:51:20 IST 2,754 passed, 65 skipped, 4 failed (pre-existing: 3 sandbox sockets, 1 time-of-day
+feeds test; 0 regressions); 166 new tests. Pages: Test + Prod 88/88 clean, live 20/20.
+
+## Merge report (16 Nov 2026, IST)
+
+- 00:20 branch `claude/kite-formula-fix-2026-11-16` merged the three fix branches (`98597f0`, `2885582`, `c865ae2`).
+- 00:42–00:49 committed `e1f9fe2` (code + tests), `38d91a7` (apps build 10), `2b8a3f4` (session board for retest entries).
+- CI 00:41:42–00:51:20 (suite above) → staging 00:30–00:47 (Test / Prod local servers, replay, sweep) → prod:
+  rollback branch `claude/live-running-2026-11-16` = `424ae48`; backup `atip-pre-release-20261116-004836.db` (00:48:36);
+  **merged into master `2e407e6` at 00:51:59**; restart 00:52:23 (pid 55822 → 14211); arms, breadth, instrument master,
+  scan and the 6–23 Oct intraday backfill (168,194 bars) run on the live DB 00:52:58–00:56:05. Not pushed.
+- 16 untracked screenshots under `docs/testing/screenshots/full-review-2026-11-03/` were identical to the copies the
+  5 Nov verification branch committed; moved aside for the merge and recreated identically. All other untracked files in
+  the folder (125 entries: tracker backups, prompts, `.ux_build/`, `UI_UX/`, `deliverables/`, `design/`, screenshots)
+  were left untouched; list in `.ux_build/kite-fix-2026-11-16/untracked_before_merge.txt`.
+- **Owner, still open:** `max_orders_per_day` 20 (VF-04) not applied (the session's permission check refused the live
+  config edit); the LIVE `pnl_daily` repair (`tools/repair_live_pnl_daily.py --paper-match`); PA-05.
