@@ -1213,7 +1213,10 @@ def _evening_data(td):
     from db.schema import get_connection
     conn = get_connection()
     try:
-        flows = bool(conn.execute("SELECT 1 FROM fii_dii_market WHERE date=?", (str(td),)).fetchone())
+        # VF5-05 (5 Nov 2026): the flows themselves, not just a row -- data/derivatives.store writes a PCR-only row for a
+        # session whose FII/DII NSE has not published, and that row used to count as "flows stored".
+        flows = bool(conn.execute("SELECT 1 FROM fii_dii_market WHERE date=? AND fii_net_cr IS NOT NULL",
+                                  (str(td),)).fetchone())
         deliv = bool(conn.execute("SELECT 1 FROM prices_daily WHERE date=? AND delivery_pct IS NOT NULL "
                                   "LIMIT 1", (str(td),)).fetchone())
         return flows, deliv
@@ -1281,6 +1284,14 @@ def settle_session_flows(td, final=False) -> dict:
         log.info(f"  ✓ NSE's evening data for {td} is in ({now_ist()}"
                  + (f"; still missing {missing[0]} at the deadline" if missing else "")
                  + ") — re-scoring the session on it")
+        # VF5-04 (5 Nov 2026): the session's own NIFTY PCR for MSI's Options component. The 16:45 F&O job finds only the
+        # previous session's file (NSE publishes the day's later), so no live score ever had it, while every later re-score
+        # and the point-in-time validation did. Best effort: an unpublished file leaves Options out, as before.
+        try:
+            from data.derivatives import run_fo_pipeline
+            run_job("fo_bhavcopy", run_fo_pipeline, td, 1)
+        except Exception as e:
+            log.warning(f"  F&O bhavcopy for {td}: {e}")
         from scores.engine import run_scoring_pipeline
         run_job("ai_scoring_engine", run_scoring_pipeline, td)
         try:

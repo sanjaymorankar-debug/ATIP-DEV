@@ -22,7 +22,7 @@ def client(temp_db, tmp_path, monkeypatch):
     return TestClient(srv.app)
 
 
-EXISTING_TABS = ["ATIP Scores", "Portfolio", "Top VPI", "Buy Zones", "Recovery (RRI)", "Momentum (MRI)", "CRI Risk",
+EXISTING_TABS = ["ATIP Scores", "Portfolio", "Top VPI", "Buy Zones", "Recovery (RRI)", "Momentum-reversal (MRI)", "CRI Risk",
                  "FII / DII", "News", "Signal History", "Orders"]
 
 

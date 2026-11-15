@@ -115,7 +115,8 @@ def components(t: dict, ctx: dict) -> dict:
     e9, e21 = t.get("ema_9"), t.get("ema_21")
     a200 = None if t.get("sma_200") is None else bool(t.get("above_200dma"))
     ns = ctx["ns"]
-    vpi = {"V": min(atr * 12, 100) if atr else None, "TS": scale(adx, 0, 60) if adx else None, "RS": ctx["rs"],
+    vpi = {"V": round(100 - min(atr * 12, 100), 2) if atr else None,  # VF-01 (5 Nov 2026): calm = high
+           "TS": scale(adx, 0, 60) if adx else None, "RS": ctx["rs"],
            "LQ": ctx["lq"], "VOL": min(vr / 3 * 100, 100) if vr else None,
            "MR": rsi_room(rsi) if known(rsi) else None, "NS": ns}
     mri = {"MACD": macd_reversal(t.get("macd_hist_pct")),

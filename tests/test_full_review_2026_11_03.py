@@ -207,7 +207,7 @@ def test_autopick_waits_a_day_after_an_entry_fails(paper):
 
 def test_a_market_health_of_zero_is_the_weakest_market_not_a_neutral_50():
     from scores import engine as E
-    s = {"atip_score": 70, "vpi": 65, "zpi": 60, "cri": 30, "acs": 50, "mri": None}
+    s = {"atip_score": 70, "vpi": 70, "zpi": 60, "cri": 30, "acs": 50, "mri": None}     # VPI over the 66.5 loose gate (VF-01)
     assert E.determine_signal(s, {"mh_score": 50, "regime": "NEUTRAL"}) == "BUY"       # loose gate, MH >= 40
     assert E.determine_signal(s, {"mh_score": 0, "regime": "NEUTRAL"}) != "BUY"        # 0 was read as 50
     assert E.determine_signal({**s, "cri": 65}, {"mh_score": 50}) in ("HOLD", "SELL")  # mri None no longer raises

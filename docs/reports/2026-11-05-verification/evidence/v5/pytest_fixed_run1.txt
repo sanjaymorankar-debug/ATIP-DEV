@@ -1,0 +1,130 @@
+start 05 Nov 2026 13:52:03 IST at 8bbc735
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+....................sssss..ssssss..ssssss.....ss...s...s...s............ [ 19%]
+........................................................................ [ 22%]
+...........................................ss.ssssss.................... [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+......................................................sss............... [ 35%]
+........................................................................ [ 38%]
+..........................................sss........................... [ 41%]
+........................................ss.............................. [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 49%]
+............ss................................................ssssssss.. [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 68%]
+...F...FF............................................................... [ 71%]
+........................................................................ [ 74%]
+........................................................................ [ 77%]
+...................................sssssssssssss........................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+.................................s...................................... [ 88%]
+........................................s.s............................. [ 90%]
+........................................................................ [ 93%]
+..............................................................s......... [ 96%]
+........................................................................ [ 99%]
+...................                                                      [100%]
+=================================== FAILURES ===================================
+_________ test_block_network_refuses_outside_hosts_and_keeps_loopback __________
+tests/test_w39_perf_budget.py:150: in test_block_network_refuses_outside_hosts_and_keeps_loopback
+    srv.bind(("127.0.0.1", 0))
+E   PermissionError: [Errno 1] Operation not permitted
+_______________________ test_server_mode_over_real_http ________________________
+/Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/tests/test_w39_perf_budget.py:228: in test_server_mode_over_real_http
+    with LT.serve(server.app) as base:
+         ^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.15/lib/python3.15/contextlib.py:203: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+/Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/tools/load_test.py:430: in serve
+    port = port or free_port(host)
+                   ^^^^^^^^^^^^^^^
+/Users/agtci/ATIP/.claude/worktrees/verify-2026-11-05/tools/load_test.py:420: in free_port
+    s.bind((host, 0))
+E   PermissionError: [Errno 1] Operation not permitted
+------------------------------ Captured log setup ------------------------------
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_it_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_auto_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_fmcg_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_metal_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_realty_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_psubank_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_energy_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped nifty_pharma_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped india_vix_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1613   index_levels migration skipped gift_nifty_chg: no such table: index_levels
+WARNING  db.schema:schema.py:1586   ai_scores migration skipped beta_1y: no such table: ai_scores
+_____________________________ test_cli_exit_codes ______________________________
+tests/test_w39_perf_budget.py:250: in test_cli_exit_codes
+    port = LT.free_port()                                       # nothing listens there
+           ^^^^^^^^^^^^^^
+tools/load_test.py:420: in free_port
+    s.bind((host, 0))
+E   PermissionError: [Errno 1] Operation not permitted
+=========================== short test summary info ============================
+FAILED tests/test_w39_perf_budget.py::test_block_network_refuses_outside_hosts_and_keeps_loopback
+FAILED tests/test_w39_perf_budget.py::test_server_mode_over_real_http - Permi...
+FAILED tests/test_w39_perf_budget.py::test_cli_exit_codes - PermissionError: ...
+SKIPPED [1] tests/test_mysql_backend.py:258: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:272: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:293: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:307: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:320: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:370: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:393: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:418: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:435: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:454: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:468: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:557: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:574: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:589: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:613: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:641: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:679: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:831: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:864: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:928: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:998: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_mysql_backend.py:1094: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_postgres_backend.py:39: could not import 'psycopg': No module named 'psycopg'
+SKIPPED [1] tests/test_postgres_backend.py:59: could not import 'psycopg': No module named 'psycopg'
+SKIPPED [1] tests/test_postgres_backend.py:94: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_postgres_backend.py:107: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_postgres_backend.py:130: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_postgres_backend.py:145: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_postgres_backend.py:164: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_postgres_backend.py:185: set ATIP_TEST_POSTGRES_URL to run live PostgreSQL tests
+SKIPPED [1] tests/test_sqlite_to_mysql.py:176: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_sqlite_to_mysql.py:225: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_sqlite_to_mysql.py:261: set ATIP_TEST_MYSQL_URL to run live MySQL tests
+SKIPPED [1] tests/test_ui_fixes_v2_browser.py:39: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_ui_fixes_v2_browser.py:67: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_ui_fixes_v2_browser.py:90: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [2] tests/test_ux_audit_fix_2026_11_03_browser.py:14: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [2] tests/test_ux_command_browser.py:21: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [8] tests/test_ux_console_browser.py:13: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39_ui_smoke.py:101: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39_ui_smoke.py:122: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [5] tests/test_w39_ui_smoke.py:155: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39_ui_smoke.py:168: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [4] tests/test_w39_ui_smoke.py:188: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39_ui_smoke.py:209: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39b_patterns_more.py:361: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w39b_tf75_signals.py:210: node is not installed
+SKIPPED [1] tests/test_w39b_tf75_signals.py:267: could not import 'playwright.sync_api': No module named 'playwright'
+SKIPPED [1] tests/test_w40_stock_chart.py:333: could not import 'playwright.sync_api': No module named 'playwright'
+3 failed, 2543 passed, 65 skipped in 573.32s (0:09:33)
+end 05 Nov 2026 14:01:38 IST

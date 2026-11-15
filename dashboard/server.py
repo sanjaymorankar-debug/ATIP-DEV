@@ -1116,7 +1116,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">{sector_tiles}</div>
   </details>
   <div class="tgroups" role="group" aria-label="Views"><button type="button" data-g="scores" aria-pressed="true">Scores</button><button type="button" data-g="lists" aria-pressed="false">Lists</button><button type="button" data-g="flows" aria-pressed="false">Flows &amp; News</button><button type="button" data-g="activity" aria-pressed="false">Activity</button></div>
-  <div class="tabs" role="tablist" aria-label="Tables"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
+  <div class="tabs" role="tablist" aria-label="Tables"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum-reversal (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
     {score_legend}
     <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" aria-label="Search symbol or company" oninput="ft()"><select id="sf" aria-label="Signal" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" aria-label="Rows to show" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history · hover a column name for its meaning</span></div>
@@ -2290,6 +2290,13 @@ if HAS_FASTAPI:
         from ops.role import is_viewer
         if is_viewer():
             log.info("  Order-rules monitor not started: this copy is a VIEWER, orders run on the Mac")
+            return
+        # Verification 5 Nov 2026 (VF5-07): ATIP_ORDER_MONITOR=off for a process that must not trade on its own -- the test
+        # suite (a TestClient's monitor thread outlived its test and, in market hours, auto-picked into later tests'
+        # databases: two different auto-pick tests failed in two runs at 13:14 and 13:25 IST) and QA copies of the DB.
+        import os
+        if os.environ.get("ATIP_ORDER_MONITOR", "").strip().lower() in ("off", "0", "false", "no"):
+            log.info("  Order-rules monitor not started: ATIP_ORDER_MONITOR is off")
             return
         threading.Thread(target=_order_monitor_loop, name="atip-order-monitor", daemon=True).start()
         log.info("  ✓ Order-rules monitor started (flags triggers every 30s during market hours)")

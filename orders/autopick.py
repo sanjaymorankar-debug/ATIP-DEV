@@ -56,7 +56,6 @@ HOLD_SETTING = "autopick_hold_min_score"   # session_settings: the HOLD fallback
 # Every such pick is labelled RANK-FILL in its rule note and on the board; the board says "N of 10 sessions
 # filled" and why. Off with session_settings autopick_rank_fill = OFF.
 FILL_SETTING = "autopick_rank_fill"
-FILL_TARGET = 10
 FILL_MIN_PRICE = 20.0
 FILL_MIN_TURNOVER = 2e7             # Rs 2 crore a day (20-day average close x volume)
 SOURCE_BUY, SOURCE_HOLD, SOURCE_FILL = "BUY", "HOLD-CUT", "RANK-FILL"

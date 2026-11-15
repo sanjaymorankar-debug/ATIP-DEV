@@ -20,7 +20,8 @@ when it is set, so an install that sets none behaves exactly as before:
 
     "risk_limits": {
       "max_order_value":          100000,   # rupees, one order
-      "max_orders_per_day":       10,       # BUY orders actually placed today
+      "max_orders_per_day":       20,       # BUY orders actually placed today (owner 5 Nov 2026: 20, so a
+                                            # session can buy again the day it sells; 10 = one per session)
       "max_open_positions":       8,
       "max_symbol_exposure_value": 50000    # held + this order, per symbol
     }

@@ -1,0 +1,94 @@
+
+================ test  (axe 4.13.0, 84 runs)
+non-200: []
+errors: []
+theme problems: []
+hscroll: 0 []
+axe:
+contrast distinct: []
+tabular (light):
+  /sessions@1440 tables=1 visible 0/0 fail (all 10/10; noTabular 0 notRight 10; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(11) '0/0' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(11) '0/0' tabular-nums/start
+  /sessions@375 tables=1 visible 0/0 fail (all 0/10; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /trading@1440 tables=2 visible 0/34 fail (all 0/34; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /trading@375 tables=2 visible 0/34 fail (all 0/34; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@1440 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@375 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /settings@1440 tables=1 visible 0/0 fail (all 9/20; noTabular 0 notRight 9; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' tabular-nums/start
+  /settings@375 tables=1 visible 0/0 fail (all 9/20; noTabular 0 notRight 9; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' tabular-nums/start
+colour-blind:
+  /market@light_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@dark_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /wealth@light_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /m@light_1440 fail 3/3 legacy 0/0 {"(token pos)":1,"(token neg)":2} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@light_375 fail 3/3 legacy 0/0 {"(token pos)":1,"(token neg)":2} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@dark_1440 fail 3/3 legacy 0/0 {"(token pos)":1,"(token neg)":2} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@dark_375 fail 3/3 legacy 0/0 {"(token pos)":1,"(token neg)":2} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '—' (neg) ctx 'Dhan market data—' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m?tab=live@light_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@dark_1440 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+
+================ prod  (axe 4.13.0, 84 runs)
+non-200: []
+errors: []
+theme problems: []
+hscroll: 0 []
+axe:
+contrast distinct: []
+tabular (light):
+  /home@1440 tables=1 visible 0/20 fail (all 0/40; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /home@375 tables=1 visible 0/20 fail (all 0/40; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /sessions@1440 tables=1 visible 0/0 fail (all 10/50; noTabular 0 notRight 10; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(11) '1/3' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(11) '1/1' tabular-nums/start
+  /sessions@375 tables=1 visible 0/0 fail (all 0/50; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /sessions/S1@1440 tables=1 visible 0/81 fail (all 0/81; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /sessions/S1@375 tables=1 visible 0/81 fail (all 0/81; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /@1440 tables=15 visible 0/500 fail (all 36/6143; noTabular 0 notRight 36; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(12) '72% (54/75)' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(12) '64% (48/75)' tabular-nums/start
+  /@375 tables=15 visible 0/450 fail (all 36/6143; noTabular 0 notRight 36; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(12) '72% (54/75)' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(12) '64% (48/75)' tabular-nums/start
+  /command@1440 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /command@375 tables=1 visible 0/2 fail (all 0/2; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /trading@1440 tables=15 visible 0/485 fail (all 0/485; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /trading@375 tables=15 visible 0/485 fail (all 0/485; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /market@1440 tables=3 visible 0/509 fail (all 0/509; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /market@375 tables=3 visible 0/508 fail (all 0/509; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@1440 tables=1 visible 0/320 fail (all 0/320; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /accounting@375 tables=1 visible 0/320 fail (all 0/320; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /settings@1440 tables=1 visible 0/0 fail (all 9/20; noTabular 0 notRight 9; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' tabular-nums/start
+  /settings@375 tables=1 visible 0/0 fail (all 9/20; noTabular 0 notRight 9; effectiveTabularFail 0) ex: tr:nth-of-type(1)>td:nth-of-type(2) '₹0 – ₹4,00,000' tabular-nums/start ; tr:nth-of-type(2)>td:nth-of-type(2) '₹4,00,000 – ₹8,00,000' tabular-nums/start
+  /wealth@1440 tables=3 visible 0/1 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /wealth@375 tables=3 visible 0/1 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /global-asia@1440 tables=4 visible 0/56 fail (all 0/56; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /global-asia@375 tables=4 visible 0/56 fail (all 0/56; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /m?tab=live@1440 tables=1 visible 0/1 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /m?tab=live@375 tables=1 visible 0/0 fail (all 0/1; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /command/signals@1440 tables=1 visible 0/486 fail (all 0/486; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+  /command/signals@375 tables=1 visible 0/486 fail (all 0/486; noTabular 0 notRight 0; effectiveTabularFail 0) ex: 
+colour-blind:
+  /@light_1440 fail 3/238 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@light_375 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@dark_1440 fail 3/238 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /@dark_375 fail 3/237 legacy 0/0 {"(token neg)":1,"(token pos)":2} ex: '₹1,494.88' (neg) ctx 'Stop Loss₹1,494.88' ; '₹1,624.62' (pos) ctx 'Target 1₹1,624.62' ; '₹1,671.94' (pos) ctx 'Target 2₹1,671.94'
+  /trading@light_1440 fail 2/60 legacy 0/0 {"neg":2} ex: '1.4' (neg) ctx 'BHELCapital Goods12.9%18.1%1.438.6%1.126' ; '1.4' (neg) ctx 'ADANIENTMetals & Mining12.9%18.1%1.437.9'
+  /trading@light_375 fail 2/57 legacy 0/0 {"neg":2} ex: '1.4' (neg) ctx 'BHELCapital Goods12.9%18.1%1.438.6%1.126' ; '1.4' (neg) ctx 'ADANIENTMetals & Mining12.9%18.1%1.437.9'
+  /trading@dark_1440 fail 2/60 legacy 0/0 {"neg":2} ex: '1.4' (neg) ctx 'BHELCapital Goods12.9%18.1%1.438.6%1.126' ; '1.4' (neg) ctx 'ADANIENTMetals & Mining12.9%18.1%1.437.9'
+  /trading@dark_375 fail 2/57 legacy 0/0 {"neg":2} ex: '1.4' (neg) ctx 'BHELCapital Goods12.9%18.1%1.438.6%1.126' ; '1.4' (neg) ctx 'ADANIENTMetals & Mining12.9%18.1%1.437.9'
+  /market@light_1440 fail 1/26 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@light_375 fail 1/25 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@dark_1440 fail 1/26 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /market@dark_375 fail 1/25 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /wealth@light_1440 fail 1/2 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_1440 fail 1/2 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /wealth@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: 'INCOMPLETE' (neg) ctx 'State INCOMPLETE · scheduled daily cycle'
+  /m@light_1440 fail 2/10 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@light_375 fail 2/9 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@dark_1440 fail 2/10 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m@dark_375 fail 2/9 legacy 0/0 {"(token pos)":1,"(token neg)":1} ex: 'all monitored jobs ran' (pos) ctx '🩺 Pipelineall monitored jobs ran' ; '1 need attention' (neg) ctx '1 on · 1 need attention'
+  /m?tab=live@light_1440 fail 1/2 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@light_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@dark_1440 fail 1/2 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
+  /m?tab=live@dark_375 fail 1/1 legacy 0/0 {"(token neg)":1} ex: '1 feed(s) need attention' (neg) ctx 'Feed window open (09:00–15:45 IST) · 1 f'
