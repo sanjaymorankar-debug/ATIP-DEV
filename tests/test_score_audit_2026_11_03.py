@@ -5,7 +5,7 @@ Weights are the seeded ones (db/schema.py weight_config) -- the values in the co
 
 import math
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -185,6 +185,9 @@ def _eligible(n, prefix="FILL", score0=64.0, on=None):
                   (sym, on, score0 - i * 0.1))
         c.execute("INSERT INTO prices_daily (symbol, date, open, high, low, close, volume, series) "
                   "VALUES (?, ?, 100, 100, 100, 100, 1000000, 'EQ')", (sym, on))
+        # KGF-02 (16 Nov 2026): a pick is priced on an LTP under 60 s old; the stocks trade at their close now
+        c.execute("INSERT OR REPLACE INTO live_quotes (symbol, ltp, timestamp, source) VALUES (?, 100, ?, 'test')",
+                  (sym, (datetime.now() - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")))
     c.commit(); c.close()
 
 

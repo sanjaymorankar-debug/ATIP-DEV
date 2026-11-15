@@ -123,6 +123,14 @@ def _extract_symbols(df: pd.DataFrame) -> list:
     # ("Dummy HEG Ltd.,Metals & Mining,DUMMYHEG,EQ,DUM545A01024"). They are not
     # tradeable and have no Dhan security_id, so DUMMYHEG was scored every day
     # on empty inputs and logged "security_id not found" on every quote fetch.
+    # 16 Nov 2026 (owner item 5): the list now carries REITs too -- EMBASSY, BIRET,
+    # BAGMANE, series RR. Units, not shares: no EQ row in NSE's Bhavcopy (so never
+    # a price or a score), outside Dhan's equity map (535 "security_id not found"
+    # a day each). The equity universe drops series RR (REIT) and IV (InvIT); a
+    # direct lookup still resolves them (data/instruments.py).
+    ser = next((c for c in ("Series", "SERIES", "series") if c in df.columns), None)
+    if ser:
+        df = df[~df[ser].astype(str).str.strip().str.upper().isin(("RR", "IV"))]
     for col in ("Symbol", "SYMBOL", "symbol"):
         if col in df.columns:
             return sorted({str(s).strip().upper() for s in df[col].dropna()

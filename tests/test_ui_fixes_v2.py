@@ -365,8 +365,13 @@ def test_order_paths_are_untouched():
     # documented example in risk.py (max_orders_per_day 20, the owner's decision) on purpose.
     # The 6 Nov post-market RCA adds orders/entry_guards.py (every guard OFF until the owner sets it) and its one call in
     # autopick.py on purpose.
+    # The 16 Nov Kite-formula fix (KGF) changes the order path on purpose: tick rounding (orders/ticks.py, rules.py,
+    # paper.py fills), the LIMIT auto-pick on a fresh LTP and the arms (autopick.py, sessions.py, arms.py), the DUMMY-
+    # broker-side records that never reach a broker (algo_gtt.py) and reference_price on a buy (broker.py).
+    # Owner item 8 (16 Nov) changes risk.py on purpose: the loss limits name an unrecorded cash move when they bind.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
-               "orders/risk.py", "orders/entry_guards.py"}
+               "orders/risk.py", "orders/entry_guards.py", "orders/ticks.py", "orders/arms.py", "orders/algo_gtt.py",
+               "orders/paper.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 

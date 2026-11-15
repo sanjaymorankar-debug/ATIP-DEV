@@ -19,6 +19,9 @@ Pages (GET, rendered in the shell): /home /sessions /sessions/{sid} /accounting 
     POST /api/v2/accounting/transfer {from, to, amount, reason}   /adjust {account, amount, reason}
     POST /api/v2/accounting/recon/import (CSV text)   /recon/cash   /recon/{id} {status, note}
     GET/POST /api/v2/tax/config                  the tax settings; a save re-estimates the stored cycles
+    GET  /api/v2/tax/fy-estimate?fy=             FY STCG tax after set-off per env, beside the per-cycle reserve (16 Nov)
+    GET  /api/v2/cash-flows?env=&status=         external cash flows + each book's flow-adjusted series (16 Nov)
+    POST /api/v2/cash-flows {env, kind, amount, date, note}   /cash-flows/{id} {status: CONFIRMED|VOID, note, kind}
     GET  /api/v2/reports/kinds | schedules | archive | archive/{id}/download
     POST /api/v2/reports/generate {kind, params, formats}   /schedules   /schedules/{id}   /schedules/{id}/delete   /run-due
 
@@ -391,6 +394,40 @@ def register(app, guard, Req, get_connection, json_safe):
             out = TX.save(b)
             return {**out, "retaxed": C.sync(c)["retaxed"]}      # stored cycles re-estimated at the new rates
         return await run_in_threadpool(call, save)
+
+    @app.get("/api/v2/tax/fy-estimate")
+    async def api_v2_tax_fy_estimate(fy: str = None):
+        """Owner item 14 (16 Nov 2026): the FY STCG estimate after set-off per env, beside the per-cycle reserve."""
+        from accounting.ledger import fy_tax_estimate
+        return await run_in_threadpool(call, lambda c: fy_tax_estimate(c, fy))
+
+    # ── external cash flows (owner item 8, 16 Nov 2026; portfolio/cash_flows.py) ─────────────
+    @app.get("/api/v2/cash-flows")
+    async def api_v2_cash_flows(env: str = None, status: str = None):
+        """The flows on record, and per book the flow-adjusted equity series (day P&L net of flows, peak, drawdown)."""
+        def go(c):
+            from portfolio import cash_flows as CF
+            from portfolio.pnl import ENVS, flow_adjusted
+            envs = [str(env).upper()] if env else list(ENVS)
+            return {"flows": CF.listing(c, env, status), "settings": CF.settings(),
+                    "flow_adjusted": {x: flow_adjusted(c, x) for x in envs if x in ENVS}}
+        return await run_in_threadpool(call, go)
+
+    @app.post("/api/v2/cash-flows", dependencies=guard)
+    async def api_v2_cash_flow_add(request: Req):
+        """{env, kind: DEPOSIT|WITHDRAWAL|TRANSFER_IN|TRANSFER_OUT|ADJUSTMENT, amount, date?, note?} -> the stored flow."""
+        b = await body(request)
+        from portfolio import cash_flows as CF
+        return await run_in_threadpool(call, lambda c: CF.record(c, b.get("env") or "LIVE", b.get("kind"), b.get("amount"),
+                                                                 b.get("date"), b.get("note") or "", source="api"))
+
+    @app.post("/api/v2/cash-flows/{flow_id}", dependencies=guard)
+    async def api_v2_cash_flow_status(flow_id: int, request: Req):
+        """{status: CONFIRMED|VOID, note?, kind?}: confirm a detected flow, or void a wrong one (never deleted)."""
+        b = await body(request)
+        from portfolio import cash_flows as CF
+        return await run_in_threadpool(call, lambda c: CF.set_status(c, flow_id, str(b.get("status") or "").upper(),
+                                                                     b.get("note") or "", b.get("kind")))
 
     # ── reports ───────────────────────────────────────────────────────────────────────────
     @app.get("/api/v2/reports/kinds")

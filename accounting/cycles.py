@@ -14,7 +14,9 @@ For every closed cycle (and every total) the figures are kept apart, never blend
                   used (backtest/costs.py); "other" is the difference to what the fill really recorded, so the
                   total always equals the charges the books paid
     net P&L       gross - charges (orders/sessions.py's pnl)
-    tax (est.)    accounting/tax.py, provisional per cycle; the FY statement does the set-off
+    tax (est.)    accounting/tax.py, provisional per cycle; the FY statement does the set-off. Owner item 14
+                  (16 Nov 2026): shown as "Tax reserve (per-cycle, cash set aside)" -- the FY figure after set-off
+                  is accounting/tax.py fy_stcg_estimate
     actual P&L    net - estimated tax ("Net after charges & tax")
 
 FLOOR RULES (per session): the minimum a cycle needs to start (trading_sessions.min_buy_value is the base floor)
@@ -476,7 +478,8 @@ def book(conn, sid: str, do_sync: bool = True) -> dict:
     waterfall = [{"label": "Gross P&L", "value": t["gross_pnl"], "kind": "total"}]
     waterfall += [{"label": CHARGE_LABEL[k], "value": -v, "kind": "charge"}
                   for k, v in t["charges_by_type"].items() if v]
-    waterfall += [{"label": "Tax (est.)", "value": -t["tax_est"], "kind": "tax"},
+    # owner item 14 (16 Nov 2026): the per-cycle figure is a cash reserve, not the tax due (accounting/tax.py)
+    waterfall += [{"label": TX.RESERVE_SHORT, "value": -t["tax_est"], "kind": "tax"},
                   {"label": "Actual P&L", "value": t["actual_pnl"], "kind": "total"}]
     return {"session": s, "pool": L, "cycles": rows, "open": open_cycles, "totals": t, "tiles": tiles,
             "charts": {"equity": series, "waterfall": waterfall,

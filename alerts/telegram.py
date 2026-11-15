@@ -102,13 +102,46 @@ def _deliver_telegram(message, parse_mode="HTML"):
         log.warning("[TELEGRAM NOT CONFIGURED — set telegram_token + telegram_chat_id in "
                     f"atip_data/config.json; shown on the dashboard instead] {_title_of(message)[:80]}")
         return False,"not configured"
-    try:
-        r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                        json={"chat_id":chat,"text":message,"parse_mode":parse_mode},timeout=10)
-        r.raise_for_status(); log.info("  ✓ Telegram sent"); return True,None
-    except Exception as e:
-        err=str(e).replace(token,"<token>") if token else str(e)
-        log.error(f"  Telegram failed: {err}"); return False,err[:300]
+    attempt=0
+    while True:
+        attempt+=1
+        try:
+            r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                            json={"chat_id":chat,"text":message,"parse_mode":parse_mode},timeout=10)
+            r.raise_for_status()
+            log.info("  ✓ Telegram sent"+(f" (attempt {attempt})" if attempt>1 else "")); return True,None
+        except Exception as e:
+            err=str(e).replace(token,"<token>") if token else str(e)
+            wait=_telegram_retry_wait(e,attempt)
+            if wait is None:
+                log.error(f"  Telegram failed: {err}"+(f" (after {attempt} attempts)" if attempt>1 else ""))
+                return False,err[:300]
+            log.warning(f"  Telegram attempt {attempt} failed ({err[:160]}); retrying in {wait:g}s")
+            _telegram_sleep(wait)
+
+# 16 Nov 2026 (owner item 6): a send that failed on the network is tried again, with backoff, before it is
+# given up -- 12 Nov 12:06 "Connection reset by peer" and 13 Nov 07:00 "Read timed out" each lost an alert to
+# one blip (and 2, 4 and 7 Nov to DNS). Retried: connection errors, timeouts, HTTP 429 (after Telegram's own
+# retry_after, at most 30 s) and 5xx. Not retried: any other 4xx -- a wrong token or chat id stays wrong.
+# Three attempts at most (10 s timeout each), so a dead network costs a caller ~37 s, not minutes.
+TELEGRAM_RETRY_DELAYS=(2.0,5.0)
+_telegram_sleep=__import__("time").sleep            # tests replace it
+
+def _telegram_retry_wait(e, attempt):
+    """Seconds to wait before attempt+1, or None to give up."""
+    if attempt>len(TELEGRAM_RETRY_DELAYS): return None
+    wait=TELEGRAM_RETRY_DELAYS[attempt-1]
+    resp=getattr(e,"response",None); code=getattr(resp,"status_code",None)
+    if code is None and isinstance(e,requests.HTTPError):
+        import re
+        m=re.match(r"\s*(\d{3})\s",str(e)); code=int(m.group(1)) if m else None
+    if code is not None:
+        if code==429:
+            try: wait=max(wait,min(30.0,float(((resp.json() or {}).get("parameters") or {}).get("retry_after") or 0)))
+            except Exception: pass
+            return wait
+        return wait if code>=500 else None
+    return wait if isinstance(e,(requests.ConnectionError,requests.Timeout)) else None
 
 def send_telegram(message, parse_mode="HTML", category="alert", severity="info", key=None):
     """Record + deliver (see notify); True when Telegram delivered it."""

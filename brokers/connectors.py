@@ -2,7 +2,8 @@
 The broker connectors (W37: BR-07). Read-only account access + payload mapping; see brokers/base.py.
 
     dhan     dhanhq SDK (already used by ATIP): holdings, positions, fund limits, trade book
-    zerodha  kiteconnect SDK (installed): profile, holdings, positions, margins, trades
+    zerodha  kiteconnect SDK (installed): profile, holdings, positions, margins, trades; GTT list, instruments,
+             quote, historical candles (16 Nov 2026, read-only like the rest)
     upstox   REST v2 (https://api.upstox.com/v2), bearer access token; no SDK needed
     angel    Angel One SmartAPI REST (https://apiconnect.angelone.in): login by client code + PIN + TOTP
              (generated here from the stored TOTP secret) -> JWT for the session's calls
@@ -115,6 +116,50 @@ class ZerodhaConnector(BrokerConnector):
                       str(t.get("fill_timestamp") or t.get("exchange_timestamp") or ""), str(t.get("order_id")),
                       t.get("exchange"), t.get("product"))
                 for t in self._kite().trades() or []]
+
+    # 16 Nov 2026 (owner item 21): more READ-ONLY Kite v3 reads. Still no method here places, modifies, cancels or
+    # deletes an order or a GTT (tests/test_instruments_preopen_bhav.py asserts it); the SDK's place_gtt /
+    # modify_gtt / delete_gtt / place_order ... are never called. Kite's limits: quote 1 request a second,
+    # historical candles 3 a second -- paced per process below.
+    def gtts(self) -> list:
+        """GET /gtt/triggers: the active GTTs plus those triggered, cancelled or expired in the last 7 days."""
+        return list(self._kite().get_gtts() or [])
+
+    def instruments(self, exchange: str = "NSE") -> list:
+        """GET /instruments/<exchange>: Kite's instrument list (fetch it once a day: it is rebuilt each morning).
+        Rows keyed on exchange + tradingsymbol, with tick_size (rupees) and lot_size; data/instruments.py stores it."""
+        out = []
+        for r in self._kite().instruments(exchange) or []:
+            out.append({"exchange": r.get("exchange"), "tradingsymbol": r.get("tradingsymbol"),
+                        "instrument_token": r.get("instrument_token"), "exchange_token": r.get("exchange_token"),
+                        "name": r.get("name"), "tick_size": f(r.get("tick_size")), "lot_size": f(r.get("lot_size")),
+                        "instrument_type": r.get("instrument_type"), "segment": r.get("segment"),
+                        "expiry": r.get("expiry"), "strike": f(r.get("strike"))})
+        return out
+
+    def quote(self, instruments) -> dict:
+        """GET /quote for ["NSE:INFY", ...] (up to 500), at most one call a second."""
+        _kite_pace("quote", 1.0)
+        return self._kite().quote(*list(instruments)) or {}
+
+    def historical(self, instrument_token, from_date, to_date, interval="day") -> list:
+        """GET /instruments/historical/<token>/<interval>, at most three calls a second."""
+        _kite_pace("historical", 1 / 3)
+        return list(self._kite().historical_data(instrument_token, from_date, to_date, interval) or [])
+
+
+_kite_next = {}
+_kite_lock = __import__("threading").Lock()
+
+
+def _kite_pace(family: str, gap: float):
+    """Wait for this call's turn under Kite's per-second limit (booked under the lock, slept outside it)."""
+    with _kite_lock:
+        now = time.monotonic()
+        turn = max(now, _kite_next.get(family, 0.0))
+        _kite_next[family] = turn + gap
+    if turn > now:
+        time.sleep(turn - now)
 
 
 # ── Upstox (REST v2) ──────────────────────────────────────────────────────

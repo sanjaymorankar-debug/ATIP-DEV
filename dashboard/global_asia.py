@@ -70,6 +70,7 @@ def asia_payload(conn) -> dict:
 # ── the banner ─────────────────────────────────────────────────────────────
 BANNER = r"""<div id="atipRoleBanner" role="status" style="display:none;padding:7px 18px;background:#1e293b;color:#e2e8f0;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <div id="atipTokenBanner" role="alert" style="display:none;padding:9px 18px;font:600 13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
+<div id="atipGateBanner" role="alert" style="display:none;padding:9px 18px;font:600 13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <div id="atipOpBanner" role="status" aria-live="polite" style="display:none;padding:7px 18px;font:600 12.5px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif"></div>
 <script>
 (function(){
@@ -86,7 +87,15 @@ BANNER = r"""<div id="atipRoleBanner" role="status" style="display:none;padding:
  function role(d){if(!d||d.role!=='VIEWER'){rb.style.display='none';return;}var v=d.viewer||{};
   rb.innerHTML='👁 View only — trading, orders and changes run on the Mac · '+(v.data_from?'data from the Mac at '+esc(String(v.data_from).replace('T',' ').slice(0,16))+' IST':'no data from the Mac yet');
   rb.style.display='block';document.documentElement.setAttribute('data-atip-role','VIEWER');}
- function show(d){role(d);token(d&&d.dhan_token);if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
+ /* owner item 6 (16 Nov 2026): the 08:45 pre-open gate (ops/preopen_health.py) -- why auto-pick is waiting */
+ var gb=document.getElementById('atipGateBanner');
+ function gate(g){if(!gb)return;if(!g||!g.message){gb.style.display='none';return;}
+  gb.style.background='#7f1d1d';gb.style.color='#fee2e2';
+  var steps=(g.fix||[]).map(function(f){return '<div style="font-weight:400;margin-top:3px">'+esc(f.text)+
+   (f.cmd?' <code style="background:rgba(0,0,0,.35);padding:1px 6px;border-radius:4px;user-select:all">'+esc(f.cmd)+'</code>':'')+'</div>'}).join('');
+  gb.innerHTML='⛔ '+esc(g.message)+(steps?'<details class="ax-tech ax-onbanner" style="margin-top:4px;color:inherit"><summary style="cursor:pointer;font-weight:600;color:inherit;text-decoration:underline">How to fix</summary>'+steps+'</details>':'');
+  gb.style.display='block';gb.setAttribute('data-state',g.state||'BLOCKED');}
+ function show(d){role(d);token(d&&d.dhan_token);gate(d&&d.preopen_gate);if(!d||!d.status)return;var c=C[d.status]||C.RUNNING;el.style.background=c[0];el.style.color=c[1];
   var t=c[2]+' '+esc(d.banner),lu=' · last updated '+esc(d.last_updated||'—');
   if(d.status==='STOPPED'){t+=' · read-only, no orders can be placed or triggered'+lu;}
   else if(d.status==='RESUMING'){var s=d.resume_steps||[];t+=' · step '+s.length+'/6'+(s.length?' ('+esc(s[s.length-1].name)+' '+esc(s[s.length-1].status)+')':'')+lu;}
@@ -130,6 +139,11 @@ def status_payload() -> dict:
     try:
         from ops.dhan_token import status as token_status
         out["dhan_token"] = token_status()
+    except Exception:
+        pass
+    try:                                        # owner item 6 (16 Nov 2026): the pre-open gate, stored rows only
+        from ops.preopen_health import banner as gate_banner
+        out["preopen_gate"] = gate_banner()
     except Exception:
         pass
     try:                                        # UI fixes v2 (H10): the kill switch itself, for the banner

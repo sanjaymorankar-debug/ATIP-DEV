@@ -4,7 +4,7 @@ IST and an archive. It follows enterprise/reports.py's design -- build the rows 
 store, run_due on a schedule -- for the owner's own sessions, without needing enterprise sign-in.
 
     kind                    content                                                         default schedule (IST)
-    daily_session_summary   per session: cycles opened / closed, gross, charges, tax (est.),  trading days 17:30, after
+    daily_session_summary   per session: cycles opened / closed, gross, charges, tax reserve,  trading days 17:30, after
                             actual, floor, cash, open trade                                   the 16:45 post-market run
     weekly_performance      sessions compared: win rate, gross vs actual, best / worst cycle, Monday 08:00 (last week)
                             equity curves
@@ -62,22 +62,23 @@ MIME = {"html": "text/html; charset=utf-8", "csv": "text/csv; charset=utf-8", "j
         "pdf": "application/pdf", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 KINDS = {
     "daily_session_summary": {"label": "Daily session summary", "about": "Per session today: cycles opened and closed, "
-                              "gross, charges, tax (est.), actual P&L, floor, cash and the open trade.",
+                              "gross, charges, tax reserve (per-cycle), actual P&L, floor, cash and the open trade.",
                               "schedule": {"freq": "daily", "time_ist": "17:30"}},
     "weekly_performance": {"label": "Weekly performance", "about": "All sessions compared over the week: win rate, "
                            "gross vs actual P&L, best and worst cycles, equity curves.",
                            "schedule": {"freq": "weekly", "weekday": 0, "time_ist": "08:00"}},
-    "monthly_pnl": {"label": "Monthly P&L statement", "about": "Gross P&L, then each charge, then estimated tax, to "
-                    "actual P&L, by session and in total; the month's charges register.",
+    "monthly_pnl": {"label": "Monthly P&L statement", "about": "Gross P&L, then each charge, then the per-cycle tax "
+                    "reserve, to actual P&L, by session and in total; the month's charges register.",
                     "schedule": {"freq": "monthly", "day": 1, "time_ist": "08:00"}},
     "quarterly_review": {"label": "Quarterly review", "about": "Each session's performance and drawdown over the FY "
                          "quarter, and every rule change made in it.",
                          "schedule": {"freq": "quarterly", "time_ist": "08:00"}},
     "fy_tax_statement": {"label": "FY tax statement", "about": "Realised gains by tax head, set-offs, the LTCG "
-                         "exemption and the estimated liability for Apr-Mar, with every cycle listed for your CA.",
+                         "exemption, the FY STCG estimate after set-off and the estimated liability for Apr-Mar, with every "
+                         "cycle listed for your CA.",
                          "schedule": {"freq": "fy", "time_ist": "08:00"}},
     "session_cycle_book": {"label": "Session cycle book", "about": "Every cycle of a session with gross P&L, each "
-                           "charge, estimated tax and actual P&L.", "schedule": None},
+                           "charge, the per-cycle tax reserve and actual P&L.", "schedule": None},
     "custom": {"label": "Custom report", "about": "The sections, sessions and dates you choose.", "schedule": None},
 }
 CUSTOM_SECTIONS = {"summary": "Session summary", "performance": "Performance", "pnl": "P&L statement",
@@ -275,11 +276,12 @@ def _summary_section(conn, ov, per, sids) -> dict:
                      "waiting": t.get("waiting") or "", "env": (mine[0]["env"] if mine else _env_now())})
     cols = [col("session", "Session"), col("state", "Status"), col("opened", "Cycles opened", "int"),
             col("closed", "Cycles closed", "int"), col("gross_pnl", "Gross P&L", "pnl"),
-            col("charges", "Charges", "money"), col("tax_est", "Tax (est.)", "money"),
+            col("charges", "Charges", "money"), col("tax_est", TX.RESERVE_SHORT, "money"),
             col("actual_pnl", "Actual P&L", "pnl"), col("floor", "Floor", "money"), col("cash", "Cash", "money"),
             col("open_trade", "Open trade"), col("waiting", "Note"), col("env", "Env")]
     return section(f"Sessions · {per['label']}", cols, rows, _env_totals(rows, MONEY + ["cash"], "session"),
-                   note="Gross P&L is before any cost; actual P&L is after charges and estimated tax.")
+                   note="Gross P&L is before any cost; actual P&L is after charges and the per-cycle tax reserve (cash set aside, "
+                        "not the tax due: the FY tax statement sets losses off).")
 
 
 def _performance_section(conn, ov, per, sids, charts=True) -> list:
@@ -302,7 +304,7 @@ def _performance_section(conn, ov, per, sids, charts=True) -> list:
             b = C.book(conn, s["id"], do_sync=False)
             series.append({"id": s["id"], "name": s["name"], "points": b["charts"]["equity"]})
     cols = [col("session", "Session"), col("cycles", "Cycles closed", "int"), col("win_rate", "Win rate", "rate"),
-            col("gross_pnl", "Gross P&L", "pnl"), col("charges", "Charges", "money"), col("tax_est", "Tax (est.)", "money"),
+            col("gross_pnl", "Gross P&L", "pnl"), col("charges", "Charges", "money"), col("tax_est", TX.RESERVE_SHORT, "money"),
             col("actual_pnl", "Actual P&L", "pnl"), col("since_start", "Actual since start", "pnl"),
             col("best", "Best cycle"), col("worst", "Worst cycle"), col("env", "Env")]
     out = [section(f"Performance · {per['label']}", cols, rows, _env_totals(rows, MONEY + ["since_start"], "session"))]
@@ -327,14 +329,15 @@ def _pnl_sections(conn, per, sids) -> list:
     cols = [col("session", "Session"), col("cycles", "Cycles", "int"), col("gross_pnl", "Gross P&L", "pnl"),
             *(col(k, C.CHARGE_LABEL[k], "money") for k in (*C.CHARGE_TYPES, "other")),
             col("charges", "Charges", "money"), col("net_pnl", "Net before tax", "pnl"),
-            col("tax_est", "Tax (est.)", "money"), col("actual_pnl", "Actual P&L", "pnl"), col("env", "Env")]
+            col("tax_est", TX.RESERVE_SHORT, "money"), col("actual_pnl", "Actual P&L", "pnl"), col("env", "Env")]
     totals = _env_totals(rows, keys + ["cycles"], "session")
     out = [section(f"P&L statement · {per['label']}", cols, rows, totals,
-                   note="Each row: gross P&L, less each charge, is net before tax; less estimated tax, actual P&L.")]
+                   note="Each row: gross P&L, less each charge, is net before tax; less the per-cycle tax reserve (cash set "
+                        "aside, not the tax due), actual P&L.")]
     for t in totals:
         kv = [("Gross P&L (Total P&L)", inr(t["gross_pnl"], True))]
         kv += [(f"  − {C.CHARGE_LABEL[k]}", inr(t[k])) for k in (*C.CHARGE_TYPES, "other") if t.get(k)]
-        kv += [("Net P&L before tax", inr(t["net_pnl"], True)), ("  − Tax (est.)", inr(t["tax_est"])),
+        kv += [("Net P&L before tax", inr(t["net_pnl"], True)), (f"  − {TX.RESERVE_LABEL}", inr(t["tax_est"])),
                ("Actual P&L (net after charges & tax)", inr(t["actual_pnl"], True))]
         out.append({"heading": f"From gross to actual · {t['env']}", "columns": [], "rows": [], "totals": [],
                     "note": "", "chart": {"type": "waterfall", "steps": _waterfall(t)}, "kv": kv})
@@ -345,7 +348,7 @@ def _waterfall(t: dict) -> list:
     steps = [{"label": "Gross", "value": t["gross_pnl"], "kind": "total"}]
     steps += [{"label": C.CHARGE_LABEL[k], "value": -t[k], "kind": "charge"} for k in (*C.CHARGE_TYPES, "other")
               if t.get(k)]
-    steps += [{"label": "Tax (est.)", "value": -t["tax_est"], "kind": "tax"},
+    steps += [{"label": TX.RESERVE_SHORT, "value": -t["tax_est"], "kind": "tax"},
               {"label": "Actual", "value": t["actual_pnl"], "kind": "total"}]
     return steps
 
@@ -372,7 +375,7 @@ def _cycle_columns() -> list:
             col("sell_value", "Sell value", "money"), col("gross_pnl", "Gross P&L", "pnl"),
             *(col(f"ch_{k}", C.CHARGE_LABEL[k], "money") for k in (*C.CHARGE_TYPES, "other")),
             col("charges", "Charges", "money"), col("net_pnl", "Net before tax", "pnl"),
-            col("tax_est", "Tax (est.)", "money"), col("tax_head", "Head"), col("actual_pnl", "Actual P&L", "pnl"),
+            col("tax_est", TX.RESERVE_SHORT, "money"), col("tax_head", "Head"), col("actual_pnl", "Actual P&L", "pnl"),
             col("end_amount", "End amount", "money"), col("gross_pct", "Gross %", "pct"),
             col("actual_pct", "Actual %", "pct"), col("exit_reason", "Exit"), col("floor_at_start", "Floor", "money"),
             col("env", "Env")]
@@ -398,7 +401,7 @@ def _cycles_sections(conn, per, sids) -> list:
         mine = _cycle_rows([r for r in rows if r["session_id"] == sid])
         out.append(section(f"Cycle book · session {sid}", _cycle_columns(), mine,
                            _env_totals(mine, keys, "session_id"),
-                           note="Tax per cycle is provisional (est.); the FY tax statement sets losses off."))
+                           note="The per-cycle tax reserve is cash set aside, not the tax due; the FY tax statement sets losses off."))
     if not out:
         out.append(section("Cycle book", _cycle_columns(), [], note="No cycle closed in this period."))
     return out
@@ -410,7 +413,7 @@ def _tax_sections(conn, fy: str, sids) -> list:
     heads = [{**h, "env": "VIRTUAL+ACTUAL" if False else _env_of(rows)} for h in st["heads"]]
     cols = [col("label", "Head"), col("gains", "Gains", "money"), col("losses", "Losses", "money"),
             col("net", "Net", "pnl"), col("after_set_off", "After set-off", "pnl"), col("taxable", "Taxable", "money"),
-            col("rate_pct", "Rate", "rate"), col("tax", "Tax (est.)", "money"), col("env", "Env")]
+            col("rate_pct", "Rate", "rate"), col("tax", "Tax (FY est.)", "money"), col("env", "Env")]
     out = [section(f"Gains by tax head · {fy} ({st['from']} to {st['to']})", cols, heads,
                    note=f"{st['cycles']} closed cycles. Rates from config.json \"tax\" "
                         f"(effective {st['rates']['effective_from']}). {TX.DISCLAIMER}")]
@@ -428,8 +431,8 @@ def _tax_sections(conn, fy: str, sids) -> list:
            (f"Health & education cess ({st['rates']['cess_pct']:g}%)", inr(st["cess"])),
            ("Surcharge and cess in the liability", "yes" if st["addons_applied"] else "no (turn on in Settings → Tax)"),
            ("Estimated liability", inr(st["liability"])),
-           ("Set aside per cycle during the year (provisional)", inr(st["provisional_set_aside"])),
-           ("Provisional minus liability", inr(st["difference"], True))]
+           (f"{TX.RESERVE_LABEL} during the year", inr(st["provisional_set_aside"])),
+           ("Reserve minus liability", inr(st["difference"], True))]
     kv += [(f"Carried forward: {h} loss", inr(v)) for h, v in st["carried_forward"].items()]
     out.append({"heading": "Set-offs and liability", "columns": [], "rows": [], "totals": [], "note": "", "chart": None,
                 "kv": kv})
@@ -438,9 +441,26 @@ def _tax_sections(conn, fy: str, sids) -> list:
     ca = [col("session_id", "Session"), col("symbol", "Symbol"), col("qty", "Qty", "int"), col("opened", "Bought on"),
           col("closed", "Sold on"), col("holding_days", "Days held", "int"), col("buy_value", "Buy value", "money"),
           col("sell_value", "Sell value", "money"), col("charges", "Charges", "money"), col("ch_stt", "of which STT", "money"),
-          col("net_pnl", "Net P&L", "pnl"), col("tax_head", "Head"), col("tax_est", "Tax (est.)", "money"), col("env", "Env")]
+          col("net_pnl", "Net P&L", "pnl"), col("tax_head", "Head"), col("tax_est", TX.RESERVE_SHORT, "money"), col("env", "Env")]
     out.append(section("Every cycle of the year (for your CA)", ca, cyc,
                        _env_totals(cyc, ["buy_value", "sell_value", "charges", "ch_stt", "net_pnl", "tax_est"], "session_id")))
+    # owner item 14 (16 Nov 2026): the FY STCG estimate after set-off, beside the per-cycle reserve, per env (last, so
+    # the sections before keep their places)
+    for env in sorted({str(r.get("env") or C.VIRTUAL) for r in rows} or {C.VIRTUAL}):
+        est = TX.fy_stcg_estimate(rows, fy, env=env)
+        if not est["cycles"]:
+            continue
+        out.append({"heading": f"{TX.FY_LABEL} · {env}", "columns": [], "rows": [], "totals": [],
+                    "note": f"{est['assumption']} {TX.FY_NOTE}", "chart": None, "kv": [
+                        ("STCG cycles (winning)", f"{est['cycles']} ({est['winning_cycles']})"),
+                        ("Net P&L after charges", inr(est["net_pnl"], True)),
+                        ("+ STT added back (not deductible)", inr(est["stt_added_back"])),
+                        ("Gains less losses set off", f"{inr(est['gains'])} − {inr(est['losses'])}"),
+                        ("Net STCG", inr(est["net_stcg"], True)),
+                        (f"Tax {est['rate_pct']:g}% + cess {est['cess_pct']:g}% ({est['effective_pct']:g}%)",
+                         inr(est["estimate"])),
+                        (TX.RESERVE_LABEL, inr(est["per_cycle_reserve"])),
+                        ("Reserve minus FY estimate", inr(est["reserve_over_estimate"], True))]})
     return out
 
 
@@ -484,7 +504,7 @@ def _review_sections(conn, ov, per, sids) -> list:
                      "env": mine[0]["env"] if mine else _env_now()})
     cols = [col("session", "Session"), col("strategy", "Strategy"), col("cycles", "Cycles", "int"),
             col("win_rate", "Win rate", "rate"), col("gross_pnl", "Gross P&L", "pnl"), col("charges", "Charges", "money"),
-            col("tax_est", "Tax (est.)", "money"), col("actual_pnl", "Actual P&L", "pnl"),
+            col("tax_est", TX.RESERVE_SHORT, "money"), col("actual_pnl", "Actual P&L", "pnl"),
             col("max_dd", "Max drawdown", "pct"), col("env", "Env")]
     return [section(f"Strategy performance · {per['label']}", cols, rows, _env_totals(rows, MONEY, "session")),
             _events_section(conn, per, sids)]

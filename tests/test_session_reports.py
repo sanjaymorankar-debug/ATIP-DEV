@@ -78,7 +78,7 @@ def test_figures_carry_env_and_gross_and_actual_stay_apart(traded):
     doc = _do(R.build, "monthly_pnl")
     st = doc["sections"][0]
     labels = [c["label"] for c in st["columns"]]
-    assert {"Gross P&L", "Charges", "Tax (est.)", "Actual P&L", "Env"} <= set(labels)
+    assert {"Gross P&L", "Charges", TX.RESERVE_SHORT, "Actual P&L", "Env"} <= set(labels)
     row = st["rows"][0]
     c = _do(C.stored, "S1")[0]
     assert (row["gross_pnl"], row["charges"], row["tax_est"], row["actual_pnl"], row["env"]) == \

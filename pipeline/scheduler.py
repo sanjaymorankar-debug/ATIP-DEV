@@ -914,8 +914,10 @@ def _run_postmarket(force=False, target_date=None, backfill=False):
         _run_dhan_quotes(td, label="market_close")
 
     # 4:05 PM — NSE Bhavcopy (official EOD prices + delivery data)
-    from data.bhavcopy import run_bhavcopy_pipeline, run_bulk_deals_pipeline
-    run_job("bhavcopy_eod", run_bhavcopy_pipeline, td)
+    from data.bhavcopy import run_eod_prices, run_bulk_deals_pipeline
+    # 16 Nov 2026 (owner item 7): NSE retried with backoff until 16:52, then Dhan's EOD candles, so the session
+    # is scored by 17:00 (12 Nov waited for the 18:30 catch-up); which source filled it is in eod_price_source
+    run_job("bhavcopy_eod", run_eod_prices, td)
 
     # 4:10 PM — NSE bulk & block deals (feeds compute_ins()'s BulkDeals
     # component -- see scores/engine.py). Best-effort: NSE only

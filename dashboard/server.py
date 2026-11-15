@@ -2006,6 +2006,10 @@ if HAS_FASTAPI:
     _register_ux_routes(app, _guard, _Req, get_connection, json_safe)                  # on every page, new pages, /api/v2
     from dashboard.rca_routes import register as _register_rca_routes                  # 6 Nov 2026: post-market RCA (/rca)
     _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.arms_routes import register as _register_arms_routes                # 16 Nov 2026: arms, gate, DUMMY GTTs (/ab)
+    _register_arms_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.algo_routes import register as _register_algo_routes                # KGF-10 (16 Nov 2026): Algo Signals
+    _register_algo_routes(app, _guard, _Req, get_connection, json_safe)                # (/algo-signals, /api/scanner-data)
     from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
     _register_global_asia(app, _guard, _Req, get_connection, json_safe)
     from dashboard.news_impact_view import register as _register_news_impact            # NI-05: news impact
@@ -2284,6 +2288,20 @@ if HAS_FASTAPI:
                 log.info(f"  order_rules: {events}")
         except Exception as e:
             log.error(f"  order_rules monitor error: {e}")
+            locked = locked or _is_db_lock(e)
+        try:                    # KGF-11/13 (16 Nov 2026): DUMMY- records follow their rules; the arms' time exits
+            from orders import algo_gtt
+            c = get_connection()
+            try:
+                algo_gtt.maintain(c)
+                ev = algo_gtt.sync(c, algo_gtt.record_prices(c))
+            finally:
+                c.close()
+            ev += oe.run_time_exits()
+            if ev:
+                log.info(f"  algo / time exits: {ev}")
+        except Exception as e:
+            log.error(f"  algo dummy-GTT / time-exit pass error: {e}")
             locked = locked or _is_db_lock(e)
         return locked
 

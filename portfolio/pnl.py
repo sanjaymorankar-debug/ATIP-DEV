@@ -17,6 +17,15 @@ unrealised P&L existed only as a live quote.
 Marks: the latest live quote on the day itself, otherwise the session close in
 prices_daily; a holding with neither is valued at its broker-reported price.
 
+External cash flows (owner item 8, 16 Nov 2026; portfolio/cash_flows.py): a deposit, withdrawal or transfer is
+not P&L. Day P&L = equity - previous equity - the net CONFIRMED flows since the previous row, and a flow scales
+the running peak by (equity before + flow) / equity before, so a withdrawal never reads as a loss nor a drawdown
+(and a deposit never hides one). With flows on record, risk_state's peak and drawdown are recomputed from the
+stored equity series and the flows (so a flow entered later corrects the view without rewriting history); a book
+with no confirmed flow keeps the exact arithmetic it had (MAX(peak_equity)) -- PAPER today. A LIVE cash change
+that trades cannot explain is stored as a PENDING flow at the 16:49 IST job and counts as P&L until the owner
+confirms it (a manual loss at Dhan outside ATIP must not be hidden as a withdrawal).
+
     python -m portfolio.pnl                   # both environments, now
     python -m portfolio.pnl --record          # store today's pnl_daily rows
 """
@@ -152,38 +161,91 @@ def _previous_row(conn, env: str, before: date) -> dict | None:
     return dict(r) if r else None
 
 
-def _day_pnl(s: dict, prev: dict | None) -> float | None:
+def _day_pnl(s: dict, prev: dict | None, flow: float = 0.0) -> float | None:
     """Day P&L against the previous stored row, like for like: the change in equity when both rows
     have one, else the change in unrealised + realised. Profit audit 5 Nov 2026 (PA-01): a row with
     equity used to be set against a previous row's unrealised P&L alone, so the first day a cash
-    figure appeared read the whole cash balance as that day's profit."""
+    figure appeared read the whole cash balance as that day's profit.
+    `flow` (owner item 8, 16 Nov 2026): the net external cash flow since `prev` (+ deposit, - withdrawal) is
+    taken out of the equity change -- it is money moved, not made or lost. The unrealised basis has no cash in it,
+    so a flow does not touch it."""
     if not prev:
         return None
     if s.get("equity") is not None and prev.get("equity") is not None:
-        return round(s["equity"] - prev["equity"], 2)
+        return round(s["equity"] - prev["equity"] - float(flow or 0), 2)
     now = (s.get("unrealised") or 0) + (s.get("realised_cum") or 0)
     return round(now - ((prev.get("unrealised") or 0) + (prev.get("realised_cum") or 0)), 2)
+
+
+def _flows(conn, env: str, through: date) -> list:
+    """The confirmed external flows of `env` on or before `through` [(date, amount)]; [] when none are recorded or
+    the record cannot be read (then the book is measured exactly as before flows existed -- a withdrawal still
+    reads as a loss, which blocks a BUY rather than hiding one)."""
+    try:
+        from portfolio.cash_flows import confirmed
+        return confirmed(conn, env, through)
+    except Exception as e:
+        log.debug(f"  cash flows unavailable: {e}")
+        return []
+
+
+def _flow_since(flows: list, prev: dict | None) -> float:
+    """Net flow dated after the previous row's date (the window that row's equity does not yet carry)."""
+    if not prev:
+        return 0.0
+    after = str(prev["date"])[:10]
+    return round(sum(a for d, a in flows if d > after), 2)
+
+
+def flow_adjusted(conn, env: str, on: date | None = None, equity_now: float | None = None) -> dict:
+    """The flow-adjusted equity series of `env` (portfolio/cash_flows.py adjusted_series) from the stored pnl_daily
+    equity before `on` and the confirmed flows: per row the flow, the day P&L net of it, the peak and drawdown; with
+    `equity_now`, the peak and drawdown as of `on`. Read-only (a recomputed view; stored rows are not rewritten)."""
+    from portfolio.cash_flows import adjusted_series
+    on = on or date.today()
+    rows = [dict(r) for r in conn.execute("SELECT date, equity FROM pnl_daily WHERE env=? AND date<? ORDER BY date",
+                                          (env, str(on))).fetchall()] if _table_exists(conn, "pnl_daily") else []
+    return adjusted_series(rows, _flows(conn, env, on), equity_now, on)
 
 
 def risk_state(conn, env: str, cash: float | None = None, ask_broker: bool = False) -> dict:
     """
     Today's P&L and drawdown measured now, for the pre-trade limits:
-    {equity, day_pnl, peak_equity, drawdown_pct, prev_date, measurable}.
-    Day P&L is against the last stored pnl_daily row before today; the peak is
-    the highest stored equity, or today's equity if higher.
+    {equity, day_pnl, peak_equity, drawdown_pct, prev_date, measurable, external_flow, flow_adjusted,
+     pending_flows, unexplained_cash}.
+    Day P&L is against the last stored pnl_daily row before today, net of the confirmed external flows since it;
+    the peak is the highest stored equity, or today's equity if higher -- scaled by every confirmed flow when the
+    book has any (flow_adjusted True), so a withdrawal is never a drawdown. pending_flows (detected, not confirmed)
+    and unexplained_cash (a LIVE cash change since the last row that trades cannot explain, measured now) are
+    reported, never applied: orders/risk.py names them when a loss limit blocks.
     """
     s = portfolio_summary(conn, env, cash=cash, ask_broker=ask_broker)
-    prev = _previous_row(conn, env, date.today()) if _table_exists(conn, "pnl_daily") else None
-    day_pnl = _day_pnl(s, prev)
-    peak = None
-    if s["equity"] is not None:
+    today = date.today()
+    prev = _previous_row(conn, env, today) if _table_exists(conn, "pnl_daily") else None
+    flows = _flows(conn, env, today)
+    flow = _flow_since(flows, prev)
+    day_pnl = _day_pnl(s, prev, flow)
+    peak = dd = None
+    if s["equity"] is not None and flows:
+        adj = flow_adjusted(conn, env, today, s["equity"])
+        peak, dd = adj["peak"], adj["drawdown_pct"]
+    elif s["equity"] is not None:
         stored = conn.execute("SELECT MAX(peak_equity) FROM pnl_daily WHERE env=?", (env,)).fetchone()[0] \
             if _table_exists(conn, "pnl_daily") else None
         peak = max(s["equity"], stored or s["equity"])
-    dd = round((peak - s["equity"]) / peak * 100, 2) if peak and s["equity"] is not None else None
+        dd = round((peak - s["equity"]) / peak * 100, 2) if peak else None
+    pend, unexplained = [], None
+    try:
+        from portfolio import cash_flows as CF
+        pend = CF.pending(conn, env, prev["date"] if prev else None, today)
+        unexplained = CF.detect(conn, env, prev, s["cash"], today, flow)
+    except Exception as e:
+        log.debug(f"  cash-flow detection unavailable: {e}")
     return {"env": env, "equity": s["equity"], "day_pnl": day_pnl, "peak_equity": peak,
             "drawdown_pct": dd, "prev_date": prev["date"] if prev else None,
-            "measurable": {"day_pnl": day_pnl is not None, "drawdown_pct": dd is not None}}
+            "measurable": {"day_pnl": day_pnl is not None, "drawdown_pct": dd is not None},
+            "external_flow": flow, "flow_adjusted": bool(flows), "pending_flows": pend,
+            "unexplained_cash": unexplained}
 
 
 def record_daily_pnl(trade_date: date | str | None = None, envs=ENVS) -> dict:
@@ -192,6 +254,9 @@ def record_daily_pnl(trade_date: date | str | None = None, envs=ENVS) -> dict:
     anything to record. Re-running a date replaces its row. LIVE asks Dhan for
     available funds only when the date is today; otherwise its equity is None
     and day P&L falls back to the change in unrealised P&L.
+    Owner item 8 (16 Nov 2026): day_pnl is net of the confirmed external flows since the previous row and
+    peak_equity is scaled by them (portfolio/cash_flows.py); a LIVE cash change that trades cannot explain is
+    stored as a PENDING flow (counted only once confirmed, or at once with cash_flows.auto_confirm_detected).
     """
     td = date.fromisoformat(str(trade_date)) if trade_date else date.today()
     conn = get_connection()
@@ -202,10 +267,34 @@ def record_daily_pnl(trade_date: date | str | None = None, envs=ENVS) -> dict:
             prev = _previous_row(conn, env, td)
             if not s["positions"] and s["cash"] is None and not prev:
                 continue                                   # nothing in this environment, ever
-            day_pnl = _day_pnl(s, prev)
-            peak = max(x for x in (s["equity"], prev["peak_equity"] if prev else None) if x is not None) \
-                if (s["equity"] is not None or (prev and prev["peak_equity"] is not None)) else None
-            dd = round((peak - s["equity"]) / peak * 100, 2) if peak and s["equity"] is not None else None
+            flows = _flows(conn, env, td)
+            flow = _flow_since(flows, prev)
+            if env == LIVE:
+                try:
+                    from portfolio import cash_flows as CF
+                    cand = CF.detect(conn, env, prev, s["cash"], td, flow)
+                    if cand:
+                        rec = CF.record_detected(conn, cand)
+                        log.warning(f"  P&L {env} {td}: cash moved {cand['amount']:+,.2f} since {cand['from']} with no "
+                                    f"trade -- {rec['status']} external flow #{rec['id']} "
+                                    f"(python -m portfolio.cash_flows list --status PENDING)")
+                        if rec["status"] == CF.CONFIRMED and not rec.get("_existing"):
+                            flows = _flows(conn, env, td)
+                            flow = _flow_since(flows, prev)
+                except Exception as e:
+                    log.warning(f"  P&L {env} {td}: cash-flow detection failed: {e}")
+            day_pnl = _day_pnl(s, prev, flow)
+            if flows and s["equity"] is not None:
+                adj = flow_adjusted(conn, env, td, s["equity"])
+                peak, dd = adj["peak"], adj["drawdown_pct"]
+            else:
+                prev_peak = prev["peak_equity"] if prev else None
+                if flow and prev_peak is not None:
+                    from portfolio.cash_flows import scale_peak
+                    prev_peak = scale_peak(prev_peak, prev.get("equity"), flow)
+                peak = max(x for x in (s["equity"], prev_peak) if x is not None) \
+                    if (s["equity"] is not None or prev_peak is not None) else None
+                dd = round((peak - s["equity"]) / peak * 100, 2) if peak and s["equity"] is not None else None
             conn.execute(
                 "INSERT INTO pnl_daily (date,env,n_positions,positions_value,cost,unrealised,realised_cum,cash,"
                 "equity,day_pnl,peak_equity,drawdown_pct,recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "

@@ -33,6 +33,10 @@ def _signals(on=TODAY, **rows):
                   (sym, str(on), score, sig))
         c.execute("INSERT INTO prices_daily (symbol, date, open, high, low, close, volume, series) "
                   "VALUES (?, ?, ?, ?, ?, ?, 1000, 'EQ')", (sym, str(on), close, close, close, close))
+        # KGF-02 (16 Nov 2026): a pick is priced on an LTP under 60 s old, never on the close. The stocks trade at their
+        # signal close now, as the tests assumed before.
+        c.execute("INSERT OR REPLACE INTO live_quotes (symbol, ltp, timestamp, source) VALUES (?, ?, ?, 'test')",
+                  (sym, close, (datetime.now() - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")))
     c.commit(); c.close()
 
 

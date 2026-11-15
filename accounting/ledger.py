@@ -373,14 +373,31 @@ def charges_register(conn, by: str = "type", fy: str | None = None, env: str | N
 
 
 def tax_register(conn, fy: str | None = None) -> dict:
-    """Closed cycles by tax head for an FY, with the FY statement (set-offs, exemption, liability)."""
+    """Closed cycles by tax head for an FY, with the FY statement (set-offs, exemption, liability) and, owner item 14
+    (16 Nov 2026), the FY STCG estimate after set-off per env beside the per-cycle reserve (fy_tax_estimate)."""
     fy = fy or TX.fy_of(date.today())
     rows = C.stored(conn)
     st = TX.fy_statement(rows, fy)
     lo, hi = TX.fy_bounds(fy)
-    cyc = [r for r in rows if r.get("closed_at") and lo.isoformat() <= str(r["closed_at"])[:10] <= hi.isoformat()]
-    return {"fy": fy, "statement": st, "cycles": cyc,
+    cyc = [r for r in rows if (d := TX._d(r.get("closed_at"))) and lo <= d <= hi]
+    return {"fy": fy, "statement": st, "cycles": cyc, "estimate": fy_tax_estimate(conn, fy, rows),
             "fys": sorted({r.get("fy") for r in rows if r.get("fy")} | {fy}, reverse=True)}
+
+
+def fy_tax_estimate(conn, fy: str | None = None, rows: list | None = None) -> dict:
+    """Owner item 14 (16 Nov 2026): accounting/tax.py fy_stcg_estimate over every stored cycle of the FY, one per env
+    (VIRTUAL = paper, ACTUAL = broker -- never added together). {"fy", "by_env": {env: estimate}, "main": the env the
+    pages headline (ACTUAL when it has cycles, else VIRTUAL), "label", "reserve_label", "assumption", "note"}.
+    Read-only (GET /api/v2/tax/fy-estimate, the Home and Accounting pages)."""
+    fy = fy or TX.fy_of(date.today())
+    rows = C.stored(conn) if rows is None else rows
+    lo, hi = TX.fy_bounds(fy)
+    envs = sorted({str(r.get("env") or C.VIRTUAL).upper() for r in rows
+                   if (d := TX._d(r.get("closed_at"))) and lo <= d <= hi}) or [C.VIRTUAL]
+    by_env = {e: TX.fy_stcg_estimate(rows, fy, env=e) for e in envs}
+    main = C.ACTUAL if by_env.get(C.ACTUAL, {}).get("cycles") else (C.VIRTUAL if C.VIRTUAL in by_env else envs[0])
+    return {"fy": fy, "by_env": by_env, "main": main, "label": TX.FY_LABEL, "reserve_label": TX.RESERVE_LABEL,
+            "assumption": TX.STCG_ASSUMPTION, "note": TX.FY_NOTE}
 
 
 def funds(conn) -> dict:

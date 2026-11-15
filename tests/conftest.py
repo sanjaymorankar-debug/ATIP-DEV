@@ -39,6 +39,9 @@ def _isolated(tmp_path, monkeypatch):
     # market hours -- into whichever test's database is current (VF5-07, 5 Nov 2026). Never start it in a test;
     # tests/test_viewer_role.py switches it back on where it checks that a trader starts one.
     monkeypatch.setenv("ATIP_ORDER_MONITOR", "off")
+    # The 08:45 pre-open gate (ops/preopen_health.py) would run its real checks from 08:45 IST -- Dhan unreachable
+    # in a test -- and hold every auto-pick pass. Off for every test; tests/test_instruments_preopen_bhav.py turns it on.
+    monkeypatch.setenv("ATIP_PREOPEN_GATE", "off")
     # The dashboard's state file is relative to the working directory: a test that rebuilds the
     # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
     # with its fixture rows (2026-10-26).

@@ -3,9 +3,9 @@ import sqlite3, json, sys, os
 db = sys.argv[1]
 c = sqlite3.connect(db)
 for d in ["2026-11-04", "2026-10-30", "2026-10-27", "2026-10-14"]:
-    buy = [r[0] for r in c.execute("SELECT symbol FROM ai_scores WHERE date=? AND signal='BUY' AND atip_score IS NOT NULL ORDER BY atip_score DESC", (d,))]
+    buy = [r[0] for r in c.execute("SELECT symbol FROM ai_scores WHERE date=? AND `signal`='BUY' AND atip_score IS NOT NULL ORDER BY atip_score DESC", (d,))]
     hold = []
-    for sym, atip, cri in c.execute("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND signal='HOLD' AND atip_score IS NOT NULL ORDER BY atip_score DESC, cri IS NULL, cri, symbol", (d,)):
+    for sym, atip, cri in c.execute("SELECT symbol, atip_score, cri FROM ai_scores WHERE date=? AND `signal`='HOLD' AND atip_score IS NOT NULL ORDER BY atip_score DESC, cri IS NULL, cri, symbol", (d,)):
         if cri is not None and cri >= 75: continue
         px = c.execute("SELECT close FROM prices_daily WHERE symbol=? AND date=? AND series='EQ'", (sym, d)).fetchone()
         if not px or px[0] < 20: continue

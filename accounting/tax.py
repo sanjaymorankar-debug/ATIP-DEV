@@ -61,17 +61,40 @@ Not modelled: the s.156 rebate (was s.87A: it never covers the 20% and 12.5% gai
 intraday or F&O income when total income is Rs 12 lakh or less), marginal relief, grandfathering of pre-2018
 holdings, advance-tax dates. When a setting changes, cycles.sync re-estimates the stored cycles and the ledger
 posts the difference.
+
+FY STCG ESTIMATE vs the per-cycle RESERVE (owner item 14, 16 Nov 2026). The per-cycle figure (cycle_tax, stored as
+session_cycles.tax_est) taxes every winning cycle and gives a losing one nothing, so with no set-off it over-states
+the tax: since 29 Oct, 34 cycles netted Rs 4,800.55 and the per-cycle figure came to Rs 3,065.29 (63.9 %). The owner's
+rule: the per-cycle figure stays only as a labelled cash reserve -- RESERVE_LABEL, "Tax reserve (per-cycle, cash set
+aside)" -- and the tax figure is fy_stcg_estimate(): the FY's (1 Apr - 31 Mar, IST dates) short-term gains on
+listed equity NET of the same FY's short-term losses, at stcg_pct 20 % plus 4 % health and education cess = 20.8 %,
+on a positive net only (an all-loss FY owes nothing; the loss is carried forward, not modelled). Each cycle enters
+at its net P&L after brokerage, exchange, SEBI, stamp duty, GST and DP (costs of transfer, deductible) with STT added
+back (not deductible) -- STCG_ASSUMPTION says so wherever it is shown, with FY_NOTE. On the 15 Nov backup: net STCG
+Rs 6,474.72 (Rs 4,800.55 + STT Rs 1,674.17) x 20.8 % = Rs 1,346.74, against the Rs 3,065.29 per-cycle reserve.
 """
 
 from __future__ import annotations
 
 import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 CONFIG_PATH = Path("atip_data") / "config.json"
 DISCLAIMER = "Estimate, not tax advice. Check the rates and your figures with a chartered accountant."
+IST = timezone(timedelta(hours=5, minutes=30))
+# owner item 14 (16 Nov 2026): the words for the two figures, the same on every page and report
+RESERVE_LABEL = "Tax reserve (per-cycle, cash set aside)"
+RESERVE_SHORT = "Tax reserve (per-cycle)"
+FY_LABEL = "FY STCG tax estimate (after set-off)"
+FY_NOTE = "Estimate only — confirm the treatment with a CA; not tax advice."
+STCG_ASSUMPTION = ("Short-term capital gains on listed equity (STT paid, held 12 months or less; s.196, was s.111A): "
+                   "the financial year's gains less its losses (1 Apr – 31 Mar, IST), taxed at 20% plus 4% health and "
+                   "education cess (20.8%) when the net is positive; nothing when it is a loss. Brokerage, exchange, "
+                   "SEBI, stamp duty, GST and DP charges are deducted as costs of transfer; STT is not deductible. "
+                   "The per-cycle tax reserve is cash set aside, not the tax due. Not modelled: earlier years' "
+                   "carried-forward losses, the basic-exemption shortfall, surcharge above Rs 50 lakh, other heads.")
 HEADS = ("STCG", "LTCG", "SPECULATIVE", "BUSINESS")
 CAPITAL = ("STCG", "LTCG")
 HEAD_LABEL = {"STCG": "Short-term capital gain (s.196, was s.111A)", "LTCG": "Long-term capital gain (s.198, was s.112A)",
@@ -189,14 +212,24 @@ def save(fields: dict) -> dict:
 
 
 def _d(v) -> date | None:
+    """The IST calendar date of a date, datetime or ISO text. ATIP stores local (IST, the Mac's clock) timestamps
+    without a zone, read as they are; a timestamp that carries a zone (2027-03-31T19:00:00Z) is converted to IST first
+    (owner item 14, 16 Nov 2026: it is 1 Apr 00:30 IST, the next FY, not 31 Mar)."""
     if not v:
         return None
     if isinstance(v, datetime):
-        return v.date()
+        return (v.astimezone(IST) if v.tzinfo else v).date()
     if isinstance(v, date):
         return v
+    s = str(v).strip()
+    if len(s) > 10:
+        try:
+            dt = datetime.fromisoformat(s)
+            return (dt.astimezone(IST) if dt.tzinfo else dt).date()
+        except ValueError:
+            pass
     try:
-        return date.fromisoformat(str(v)[:10])
+        return date.fromisoformat(s[:10])
     except ValueError:
         return None
 
@@ -390,3 +423,53 @@ def fy_statement(cycles: list, fy: str, cfg: dict | None = None) -> dict:
         "by_session": sorted(({**v, "net_pnl": round(v["net_pnl"], 2), "provisional_tax": round(v["provisional_tax"], 2)}
                               for v in by_session.values()), key=lambda r: int(str(r["session_id"]).lstrip("S") or 0)),
         "disclaimer": DISCLAIMER}
+
+
+def fy_stcg_estimate(cycles: list, fy: str | None = None, cfg: dict | None = None, env: str | None = None) -> dict:
+    """Owner item 14 (16 Nov 2026): the FY's short-term capital gains tax AFTER intra-FY set-off, beside the
+    per-cycle reserve. `cycles` are session_cycles rows (net_pnl, ch_stt, tax_head, tax_est, closed_at, env); those
+    closed inside the FY (IST dates) with head STCG count, `env` (VIRTUAL / ACTUAL) keeps paper and broker apart.
+
+        each cycle's STCG base = net P&L (after every charge) + STT (not deductible), unless stt_deductible
+        net STCG             = sum of the bases (gains less losses: the set-off)
+        tax                  = max(0, net STCG) x stcg_pct; + surcharge (0 by default, capped at 15) and 4 % cess
+        reserve              = sum of the per-cycle tax_est -- cash set aside, not tax due
+
+    Pure: no database, no config write. STCG_ASSUMPTION and FY_NOTE travel with the figure."""
+    cfg = cfg or settings()
+    fy = fy or fy_of(date.today())
+    lo, hi = fy_bounds(fy)
+    rows = [c for c in cycles if (d := _d(c.get("closed_at"))) and lo <= d <= hi
+            and (env is None or str(c.get("env") or "VIRTUAL").upper() == str(env).upper())]
+    stcg = [c for c in rows if (c.get("tax_head") or "STCG") == "STCG"]
+    gains = losses = 0.0
+    for c in stcg:
+        base = taxable(c.get("net_pnl") or 0, "STCG", c.get("ch_stt") or 0, cfg)
+        if base >= 0:
+            gains += base
+        else:
+            losses += -base
+    net = gains - losses
+    base = max(0.0, net)
+    tax = base * cfg["stcg_pct"] / 100
+    sur_pct = surcharge_pct("STCG", cfg) if cfg["addons_enabled"] else 0.0
+    cess_pct = cfg["cess_pct"] if cfg["addons_enabled"] else 0.0
+    sur = tax * sur_pct / 100
+    cess = (tax + sur) * cess_pct / 100
+    estimate = round(tax + sur + cess + 1e-9, 2) if base else 0.0
+    reserve = round(sum(float(c.get("tax_est") or 0) for c in stcg), 2)
+    net_pnl = round(sum(float(c.get("net_pnl") or 0) for c in stcg), 2)
+    stt = round(sum(float(c.get("ch_stt") or 0) for c in stcg), 2) if not cfg["stt_deductible"] else 0.0
+    return {"fy": fy, "from": lo.isoformat(), "to": hi.isoformat(), "env": env, "cycles": len(stcg),
+            "winning_cycles": sum(1 for c in stcg if taxable(c.get("net_pnl") or 0, "STCG", c.get("ch_stt") or 0, cfg) > 0),
+            "other_head_cycles": len(rows) - len(stcg), "net_pnl": net_pnl, "stt_added_back": stt,
+            "gains": round(gains, 2), "losses": round(losses, 2), "net_stcg": round(net, 2),
+            "loss_to_carry_forward": round(-net, 2) if net < 0 else 0.0, "taxable": round(base, 2),
+            "rate_pct": cfg["stcg_pct"], "surcharge_pct": sur_pct, "cess_pct": cess_pct,
+            "effective_pct": round(cfg["stcg_pct"] * (1 + sur_pct / 100) * (1 + cess_pct / 100), 4),
+            "tax": round(tax, 2), "surcharge": round(sur, 2), "cess": round(cess, 2), "estimate": estimate,
+            "pct_of_net_pnl": round(estimate / net_pnl * 100, 2) if net_pnl > 0 else None,
+            "per_cycle_reserve": reserve,
+            "reserve_pct_of_net_pnl": round(reserve / net_pnl * 100, 2) if net_pnl > 0 else None,
+            "reserve_over_estimate": round(reserve - estimate, 2),
+            "label": FY_LABEL, "reserve_label": RESERVE_LABEL, "assumption": STCG_ASSUMPTION, "note": FY_NOTE}

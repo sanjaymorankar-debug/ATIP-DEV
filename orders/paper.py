@@ -78,6 +78,10 @@ CONFIG_PATH = Path("atip_data") / "config.json"
 DEFAULTS = {
     "paper_opening_balance": 500000.0,
     "paper_slippage_bps": 5.0,      # 0.05% — always against the order
+    # KGF-17 (16 Nov 2026): a protective stop fills worse than an ordinary order (BHEL 6 Nov: -2.61 % against a -2 %
+    # stop). None = three times paper_slippage_bps, 15 bps at the default; orders/rules.py applies the extra on a STOP
+    # leg's fill. A zero-slippage book (the tests) stays zero.
+    "paper_stop_slippage_bps": None,
     # P1-5: every fill is charged through backtest/costs.py, the model backtests use
     # (backtest.cost_model + cost_overrides: statutory NSE delivery charges and the DP
     # charge by default). A preset name here (zero, flat, nse_delivery, nse_intraday)
@@ -318,9 +322,17 @@ class PaperBroker:
         return None
 
     def _slipped(self, price: float, transaction_type: str) -> float:
-        """Slippage always hurts: a buy fills higher, a sell fills lower."""
+        """Slippage always hurts: a buy fills higher, a sell fills lower. KGF-04 (16 Nov 2026): and on the exchange's
+        tick for the price (orders/ticks.py band table), rounded the hurting way -- NSE trades only on ticks, so a
+        paper fill of 2501.25 on a 0.10 tick was a price no counterparty could print."""
+        from orders.ticks import band_tick, round_down, round_up
         bps = float(self.cfg["paper_slippage_bps"]) / 10000.0
-        return round(price * (1 + bps) if transaction_type == "BUY" else price * (1 - bps), 2)
+        px = price * (1 + bps) if transaction_type == "BUY" else price * (1 - bps)
+        try:
+            t = band_tick(px)
+            return float(round_up(px, t) if transaction_type == "BUY" else round_down(px, t))
+        except Exception:
+            return round(px, 2)
 
     # ── dhanhq-compatible surface ─────────────────────────────────────────
     def get_fund_limits(self) -> dict:

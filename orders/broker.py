@@ -353,8 +353,11 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
         return {"status": "FAILED", "error": str(e)}
 
 
-def place_buy_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False, tag=None):
-    return _place_order(symbol, "BUY", quantity, order_type, product_type, price, confirm, tag)
+def place_buy_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False, tag=None,
+                    reference_price=None):
+    # KGF-02 (16 Nov 2026): reference_price, as place_sell_order has it -- the quote a LIMIT entry fired on, so the paper
+    # broker fills against the price the trigger saw (only a broker that accepts_symbol, i.e. paper, takes it)
+    return _place_order(symbol, "BUY", quantity, order_type, product_type, price, confirm, tag, reference_price)
 
 
 def place_sell_order(symbol, quantity, order_type="MARKET", product_type="CNC", price=0, confirm=False, tag=None, reference_price=None):
