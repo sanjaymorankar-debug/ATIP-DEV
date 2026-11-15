@@ -13,7 +13,7 @@ struct WebScreen: UIViewRepresentable {
     /// Appended to the default user agent (2026-11-02): the page shell hides its own left rail / bottom tab bar
     /// for "ATIPApp/", because the app has native tabs.
     static let userAgentTag = "ATIPApp/" +
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2026.11.06.1")
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2026.11.16.1")
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()

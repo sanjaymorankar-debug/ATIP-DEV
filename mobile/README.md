@@ -4,7 +4,24 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.06.1** (Android `versionCode` 9 / `versionName` 2026.11.06.1; iOS `CFBundleShortVersionString`
+**Version 2026.11.16.1** (Android `versionCode` 10 / `versionName` 2026.11.16.1; iOS `CFBundleShortVersionString`
+2026.11.16.1 / `CFBundleVersion` 10), 16 Nov 2026 (session review of 9–13 Nov + Kite breakout-retest port, PAPER).
+One native change: the banner. Everything else is the server's screens, so the apps show it as soon as the Mac runs
+this code. **Not compiled on 16 Nov:** this Mac has only the Xcode command-line tools (no Xcode) and no Java / Android
+SDK / Gradle, so neither app could be built here; build with Xcode (`xcodegen` then Archive) and Android Studio.
+
+* **Regime-gate banner (native).** `/api/v2/shell/state` carries `regime_gate`; while the breadth gate holds the gated
+  arms back, the strip reads "◐ Regime gate closed: breadth50 19.3% < 50% -- gated arms wait, exits run" in amber.
+  Open gate: no strip (the normal "● Running" pill).
+* **Session arms** (Sessions; More → Sessions → Arms (A/B), `/ab`): each session's new name and rules (S5 Control,
+  S7 Wide-stop, S9 Bracket 3/6, S10 Retest fast-gate, ...), the gate per arm, the weekly A/B report (Sundays 18:00 IST)
+  and the read-only DUMMY GTT / forever records ("No order sent to the broker").
+* **Algo Signals** (More → Reports → Algo Signals, `/algo-signals`): the high-volume breakout and retest setups, ranked
+  at each scan, live prices shared across tabs.
+* **Tax and P&L lines**: the FY short-term capital-gains estimate after set-off (20 % + cess), the per-cycle figure
+  shown as a cash reserve; "estimate only — confirm with a CA".
+
+Earlier, **Version 2026.11.06.1** (Android `versionCode` 9 / `versionName` 2026.11.06.1; iOS `CFBundleShortVersionString`
 2026.11.06.1 / `CFBundleVersion` 9), 6 Nov 2026 evening (post-market RCA; also carries the 5 Nov re-verification fixes, one build 9). No native change beyond the version: the
 new screen is the server's, so the apps show it as soon as the Mac runs this code.
 
