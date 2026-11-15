@@ -33,6 +33,10 @@ def _signals(on=TODAY, **rows):
                   (sym, str(on), score, sig))
         c.execute("INSERT INTO prices_daily (symbol, date, open, high, low, close, volume, series) "
                   "VALUES (?, ?, ?, ?, ?, ?, 1000, 'EQ')", (sym, str(on), close, close, close, close))
+        # KGF-02 (16 Nov 2026): a pick is priced on an LTP under 60 s old, never on the close. The stocks trade at their
+        # signal close now, as the tests assumed before.
+        c.execute("INSERT OR REPLACE INTO live_quotes (symbol, ltp, timestamp, source) VALUES (?, ?, ?, 'test')",
+                  (sym, close, (datetime.now() - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")))
     c.commit(); c.close()
 
 
@@ -197,3 +201,31 @@ def test_the_fallback_setting_is_guarded_validated_and_logged(api):
     assert r == {"hold_min_score": 60.0, "was": None}
     assert client.get("/api/command/pnl").json()["autopick_hold_min_score"] == 60.0
     assert "AUTO_PICK_HOLD" in [e["event"] for e in client.get("/api/sessions/events").json()]
+
+
+# ── RCA-13 (6 Nov 2026): two picks still waiting from yesterday ───────────────────────────────
+
+def test_two_picks_left_from_yesterday_are_both_cancelled_without_a_lock(paper, monkeypatch):
+    """6 Nov 2026 09:15: S9 and S1 each had a pick from 5 Nov still waiting. cancel_stale cancelled the first
+    (rules.cancel_rule, on its own connection) and wrote its AUTO_PICK_CANCELLED event on the pass's connection
+    without committing it; the second cancel_rule then waited the whole busy timeout (60 s) behind that write and
+    raised 'database is locked' -- the order monitor's 09:15 pass, check_triggers included, ran a minute late and
+    the first event was rolled back. A 200 ms busy timeout makes a regression fail fast here."""
+    import db.schema as S
+    from orders import rules
+    monkeypatch.setattr(S, "BUSY_TIMEOUT_MS", 200)
+    _signals(ACME=(80, "BUY", 100.0), BETA=(70, "BUY", 50.0))
+    _sessions("S1", "S2")
+    first = _pick()
+    again = _pick(today=TODAY + timedelta(days=1))
+    for sid in ("S1", "S2"):
+        assert rules.get_rule(first[sid]["rule_id"])["status"] == rules.CANCELLED
+        assert again[sid]["type"] == "PICKED" and again[sid]["rule_id"] != first[sid]["rule_id"]
+    c = _conn()
+    try:
+        ev = [dict(r) for r in c.execute("SELECT session_id, detail FROM session_events "
+                                         "WHERE event = 'AUTO_PICK_CANCELLED' ORDER BY session_id")]
+    finally:
+        c.close()
+    assert [e["session_id"] for e in ev] == ["S1", "S2"]                 # neither event rolled back
+    assert all(first[e["session_id"]]["rule_id"] in e["detail"] for e in ev)

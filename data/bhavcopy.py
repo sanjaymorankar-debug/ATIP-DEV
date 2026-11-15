@@ -548,10 +548,246 @@ def run_bhavcopy_pipeline(trade_date=None):
         log.info(f"  ✓ {count} prices stored")
         log_job("bhavcopy","SUCCESS",count,run_date=trade_date)
     except Exception as e:
-        conn.rollback(); result["status"]="FAILED"; log.error(f"  ✗ {e}")
+        conn.rollback(); result["status"]="FAILED"; result["error"]=str(e); log.error(f"  ✗ {e}")
         log_job("bhavcopy","FAILED",0,error=e,run_date=trade_date)
     finally: conn.close()
     return result
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  EOD PRICES WITH A FALLBACK  (owner item 7, 16 Nov 2026)
+# ═════════════════════════════════════════════════════════════════════════
+# 12 Nov 2026: the 16:45 Bhavcopy download failed (three tries in 31 s, NSE had not published), the coverage guard
+# held scoring, and the day was scored at 18:30 by the catch-up. run_eod_prices -- what the post-market job's
+# "bhavcopy_eod" step runs -- keeps trying NSE with backoff until EOD_FALLBACK_BY, then fills the session from
+# Dhan's EOD candles so scores exist by 17:00 IST:
+#
+#   1. run_bhavcopy_pipeline(td), again after each of EOD_RETRY_DELAYS while the next attempt still ends before
+#      EOD_FALLBACK_BY (on td's own day only: a catch-up or backfill run, already late, falls back at once)
+#   2. dhan_eod_fallback(td): Dhan's daily candle for td, for the tracked universe (rows source='dhan', on the
+#      stored corporate-action basis, data/dhan.store_daily_bars). Dhan's toDate is EXCLUSIVE -- every cached
+#      window in atip_data/raw/dhan that ends on a trading day lacks that day (TATASTEEL ..._2023-03-03 written in
+#      2026 has no 3 Mar 2023), which is why the 16:45 run, asking up to td, never got td's bar -- so the window
+#      runs to td + 1. A symbol Dhan has no candle for yet gets the session from Dhan's closing quote (open, high,
+#      low, last price, volume), only after 15:30 on td's own day.
+#   3. a later run upgrades a Dhan-filled session to NSE's Bhavcopy once the archive has it (upgrade_dhan_days):
+#      official closes and volumes replace Dhan's; the scores already computed stay.
+#
+# Both sources are logged: pipeline_log ("bhavcopy" per attempt, "dhan_eod_fallback"), atip.log, and the table
+# eod_price_source (one row per attempt: trade_date, source, attempt, status, rows, detail). day_source(td) says
+# which source filled a session. Config (atip_data/config.json):
+#     "eod_prices": {"retry_delays": [60, 120, 180], "fallback_by": "16:52", "dhan_fallback": true}
+EOD_RETRY_DELAYS = (60, 120, 180)       # seconds before attempts 2, 3, 4 (each attempt makes its own 3 tries)
+EOD_FALLBACK_BY = "16:52"               # stop waiting for NSE: Dhan's ~2.5 min + scoring end before 17:00
+EOD_ATTEMPT_SECONDS = 45                # one attempt at worst: NSE warm-up + 3 tries
+EOD_UPGRADE_LOOKBACK_DAYS = 10
+_eod_sleep = time.sleep                 # tests replace these two
+_eod_now = datetime.now
+OK_SOURCE_STATUS = ("SUCCESS", "SKIPPED", "PARTIAL")
+
+
+def eod_settings() -> dict:
+    import json
+    try:
+        c = (json.loads(Path("atip_data/config.json").read_text(encoding="utf-8")) or {}).get("eod_prices") or {}
+    except Exception:
+        c = {}
+    try:
+        delays = tuple(float(x) for x in c.get("retry_delays", EOD_RETRY_DELAYS))
+    except (TypeError, ValueError):
+        delays = EOD_RETRY_DELAYS
+    try:
+        by = datetime.strptime(str(c.get("fallback_by") or EOD_FALLBACK_BY), "%H:%M").time()
+    except ValueError:
+        by = datetime.strptime(EOD_FALLBACK_BY, "%H:%M").time()
+    return {"retry_delays": delays, "fallback_by": by, "dhan_fallback": c.get("dhan_fallback", True) is not False}
+
+
+def ensure_eod_source_table(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS eod_price_source (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, trade_date TEXT NOT NULL, source TEXT NOT NULL, attempt INTEGER,
+        status TEXT NOT NULL, `rows` INTEGER, detail TEXT, at TEXT NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_eod_price_source_date ON eod_price_source (trade_date)")
+
+
+def record_eod_source(trade_date, source, status, rows=None, attempt=None, detail=None):
+    conn = get_connection()
+    try:
+        ensure_eod_source_table(conn)
+        conn.execute("INSERT INTO eod_price_source (trade_date, source, attempt, status, `rows`, detail, at) "
+                     "VALUES (?,?,?,?,?,?,?)", (str(trade_date), source, attempt, status, rows,
+                                               (str(detail)[:500] if detail else None),
+                                               datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+    except Exception as e:
+        log.warning(f"  eod_price_source: could not record {source} {status} for {trade_date}: {e}")
+    finally:
+        conn.close()
+
+
+def day_source(trade_date, conn=None):
+    """'bhavcopy' or 'dhan': the source of the last successful fill of the session, None if none is recorded."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        ensure_eod_source_table(conn)
+        r = conn.execute(f"SELECT source FROM eod_price_source WHERE trade_date=? AND status IN "
+                         f"({','.join('?' * len(OK_SOURCE_STATUS))}) ORDER BY id DESC LIMIT 1",
+                         (str(trade_date), *OK_SOURCE_STATUS)).fetchone()
+        return r[0] if r else None
+    finally:
+        if own:
+            conn.close()
+
+
+def dhan_eod_fallback(trade_date, symbols=None) -> dict:
+    """Fill trade_date's bars for the tracked universe from Dhan: the daily candle, else (after 15:30 on the day
+    itself) the closing quote. Read-only market-data calls; rows source='dhan'. Never raises."""
+    from datetime import time as dtime
+    td = trade_date
+    try:
+        from data import dhan as D
+        if not D.HAS_DHAN:
+            return {"status": "FAILED", "rows": 0, "detail": "dhanhq not installed"}
+        client, _ = D.get_dhan_client()
+    except Exception as e:
+        return {"status": "FAILED", "rows": 0, "detail": f"no Dhan client: {type(e).__name__}: {e}"}
+    conn = get_connection()
+    try:
+        symbols = list(symbols or D.get_tracked_symbols(conn))
+        try:
+            from data.corporate_actions import basis_events
+            basis = basis_events(conn)
+        except Exception:
+            basis = {}
+        daily, missing, codes = 0, [], {}
+        for i, sym in enumerate(symbols):
+            df = D.fetch_historical_daily(sym, td - timedelta(days=7), td + timedelta(days=1), client)
+            day = df[pd.to_datetime(df["date"]).dt.date == td] if df is not None and not df.empty else None
+            if day is None or day.empty:
+                if df is not None and df.attrs.get("dhan_error"):
+                    codes[df.attrs["dhan_error"]] = codes.get(df.attrs["dhan_error"], 0) + 1
+                missing.append(sym)
+                continue
+            n, _, _ = D.store_daily_bars(conn, sym, day, td, td, basis.get(sym), basis_date=td)
+            daily += n
+            if (i + 1) % 50 == 0:
+                conn.commit()
+        conn.commit()
+        quoted, now = 0, _eod_now()
+        if missing and td == now.date() and now.time() >= dtime(15, 30):
+            q = D.fetch_live_quotes(missing, client)
+            for r in ([] if q is None or q.empty else q.to_dict("records")):
+                ltp = r.get("ltp")
+                try:
+                    ltp = float(ltp)
+                except (TypeError, ValueError):
+                    continue
+                if not ltp > 0 or r.get("symbol") not in missing:
+                    continue
+                o, h, l = (float(r[k]) if r.get(k) not in (None, "") and float(r[k]) > 0 else ltp
+                           for k in ("open", "high", "low"))
+                conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                             "VALUES (?,?,?,?,?,?,?,'dhan') ON CONFLICT(symbol,date) DO UPDATE SET open=excluded.open,"
+                             " high=excluded.high, low=excluded.low, close=excluded.close, volume=excluded.volume",
+                             (r["symbol"], str(td), o, max(h, ltp), min(l, ltp), ltp, int(float(r.get("volume") or 0))))
+                quoted += 1
+            conn.commit()
+        have, n = daily + quoted, len(symbols)
+        status = "FAILED" if have == 0 else "SUCCESS" if have >= 0.9 * n else "PARTIAL"
+        detail = f"{daily} daily candles + {quoted} closing quotes for {n} tracked symbols"
+        if codes:
+            detail += f"; refused {', '.join(f'{c}x{k}' for k, c in sorted(codes.items(), key=lambda kv: -kv[1])[:3])}"
+        log_job("dhan_eod_fallback", status, have, error=None if status == "SUCCESS" else detail, run_date=td)
+        (log.info if status == "SUCCESS" else log.warning)(f"  {'✓' if status == 'SUCCESS' else '!'} Dhan EOD for {td}: {detail}")
+        return {"status": status, "rows": have, "daily": daily, "quoted": quoted, "universe": n, "detail": detail}
+    except Exception as e:
+        conn.rollback()
+        log.error(f"  ✗ Dhan EOD fallback for {td}: {e}")
+        log_job("dhan_eod_fallback", "FAILED", 0, error=e, run_date=td)
+        return {"status": "FAILED", "rows": 0, "detail": f"{type(e).__name__}: {e}"}
+    finally:
+        conn.close()
+
+
+def upgrade_dhan_days(before, lookback_days=EOD_UPGRADE_LOOKBACK_DAYS) -> list:
+    """Sessions before `before` that Dhan filled get NSE's Bhavcopy now that the archive has it. Returns the dates
+    upgraded."""
+    conn = get_connection()
+    try:
+        ensure_eod_source_table(conn)
+        days = [r[0] for r in conn.execute(
+            "SELECT DISTINCT trade_date FROM eod_price_source WHERE trade_date < ? AND trade_date >= ? ORDER BY 1",
+            (str(before), str(before - timedelta(days=lookback_days))))]
+        days = [d for d in days if day_source(d, conn) == "dhan"]
+    finally:
+        conn.close()
+    out = []
+    for d in days:
+        res = run_bhavcopy_pipeline(date.fromisoformat(d))
+        if res.get("status") in ("SUCCESS", "SKIPPED"):
+            record_eod_source(d, "bhavcopy", res["status"], res.get("rows"), None, "replaced Dhan's EOD bars")
+            log.info(f"  ✓ {d}: NSE Bhavcopy replaced Dhan's EOD bars ({res.get('rows')} rows)")
+            out.append(d)
+    return out
+
+
+def run_eod_prices(trade_date=None) -> dict:
+    """The post-market "bhavcopy_eod" step: NSE's Bhavcopy with retries and backoff, then Dhan's EOD (see above)."""
+    now = _eod_now()
+    if trade_date is None:
+        td = postmarket_target_date(now)
+    elif not is_trading_day(trade_date):
+        td = last_trading_day(trade_date)
+    else:
+        td = trade_date
+    st = eod_settings()
+    try:
+        upgraded = upgrade_dhan_days(td)
+    except Exception as e:
+        log.warning(f"  Upgrade of Dhan-filled sessions: {e}")
+        upgraded = []
+    deadline = datetime.combine(td, st["fallback_by"]) if td == now.date() else None
+    attempt, last = 0, {}
+    while True:
+        attempt += 1
+        last = run_bhavcopy_pipeline(td) or {}
+        status = last.get("status") or "FAILED"
+        record_eod_source(td, "bhavcopy", status, last.get("rows"), attempt, last.get("error"))
+        if status in ("SUCCESS", "SKIPPED"):
+            out = dict(last, source="bhavcopy", attempts=attempt)
+            if upgraded:
+                out["upgraded"] = upgraded
+            return out
+        delays = st["retry_delays"]
+        if attempt > len(delays) or deadline is None:
+            break
+        wait = delays[attempt - 1]
+        if _eod_now() + timedelta(seconds=wait + EOD_ATTEMPT_SECONDS) > deadline:
+            log.warning(f"  Bhavcopy {td}: no time for attempt {attempt + 1} before {st['fallback_by']:%H:%M}")
+            break
+        log.warning(f"  Bhavcopy {td}: attempt {attempt} failed ({last.get('error') or 'no file'}) — "
+                    f"retrying in {wait:g}s")
+        _eod_sleep(wait)
+    why = f"NSE Bhavcopy for {td} unavailable after {attempt} attempt(s): {last.get('error') or 'download failed'}"
+    if not st["dhan_fallback"]:
+        return {"date": str(td), "status": "FAILED", "rows": 0, "source": None, "attempts": attempt, "error": why}
+    log.warning(f"  {why} — filling the session from Dhan's EOD candles")
+    fb = dhan_eod_fallback(td)
+    record_eod_source(td, "dhan", fb["status"], fb.get("rows"), None, fb.get("detail"))
+    ok = fb["status"] in ("SUCCESS", "PARTIAL")
+    try:
+        from alerts.telegram import fmt, notify
+        body = (f"{why}.\n\n" + (f"Filled from Dhan instead: {fb.get('detail')}. Scoring goes ahead on these; NSE's "
+                                 f"official closes replace them when its archive has the file." if ok else
+                                 f"Dhan could not fill it either ({fb.get('detail')}). Scoring waits for the 18:30 "
+                                 f"catch-up."))
+        notify(fmt("⚠️" if ok else "❌", "EOD prices: Bhavcopy late", body), category="job_health",
+               severity="warning" if ok else "error", key=f"eod_prices:{td}")
+    except Exception as e:
+        log.warning(f"  EOD fallback alert: {e}")
+    return {"date": str(td), "status": fb["status"] if ok else "FAILED", "rows": fb.get("rows", 0), "source": "dhan",
+            "attempts": attempt, "error": f"{why}; Dhan EOD: {fb.get('detail')}", "dhan": fb}
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

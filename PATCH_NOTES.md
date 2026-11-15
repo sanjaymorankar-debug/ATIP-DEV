@@ -558,3 +558,105 @@ should be: the sessions trade on paper. No orphan, duplicate or mis-tagged fill.
 **Owner decisions (not changed):** Home's headline is after a per-trade tax estimate without same-day set-off (PA-05); the
 session card's P&L vs the table's realised (PA-06); before LIVE, settle rules from Dhan's trade book (PA-07); S7's
 −₹15.70 cash from a stale sizing price (PA-08); the DP charge rate (PA-09); unpriced open trades (PA-10).
+
+---
+
+# 5 Nov 2026: independent re-verification and the owner's decisions (branch claude/verify-2026-11-05; merged 16 Nov 2026 on claude/kite-formula-fix-2026-11-16)
+
+Owner prompt (4 Nov 06:00 PM IST) run again on 5 Nov from 01:05 PM IST as a fresh full pass; owner decisions the same
+afternoon: VF-01 fix only if out of sample proves it and re-gate BUY, VF-08 keep the ATIP rank, VF-04 raise
+`max_orders_per_day` to 20. Report: `docs/reports/2026-11-05-verification/VERIFICATION_REPORT.md`; testing report
+`docs/testing/ATIP_Verification_Test_Report_2026-11-05.md`; delta zip
+`deliverables/2026-11-05/ATIP_verification_delta_2026-11-05.zip`. Not merged and not deployed: the live Mac still runs `0ab3de9`.
+
+**Verified as claimed:** the code-review fixes (24 of 26 High/Medium; Q-H1 and P-H1 partial); ten sessions on four more dates and
+the live board; the seven scores for all 498 stocks within 0.01 by an independent script, with the indicators recomputed from
+OHLCV; no look-ahead (extended corruption); the backtest to the last digit; the 3 Nov reweights better in and out of sample;
+the UI sweep (168 runs, 0 axe violations); the order dialog.
+
+**Changed:** VPI's V reads ATR as calm = high (VPI BROKEN → WORKING out of sample; ATIP BROKEN → WEAK) with the VPI BUY gates
+re-set in-sample to 76.5 / 66.5; MRI labelled "Momentum-reversal"; the evening re-score fetches the session's F&O file (MSI's
+PCR); a PCR-only FII/DII row is not "flows in"; a stop fill also cancels a target pending confirmation; `ATIP_ORDER_MONITOR=off`
+for tests and QA copies (the suite was flaky in market hours); dead `FILL_TARGET` removed; DESIGN.md screenshots in git; apps
+2026.11.05.1 (build 9).
+
+**Not changed:** RRI (its in-sample redesign failed the out-of-sample rule; still BROKEN, owner); hard-coded colours in legacy
+pages (822); session names; VF-34 / VF-35 (another session). **To do at deploy:** `max_orders_per_day: 20` in the live
+`atip_data/config.json`.
+
+# 6 Nov 2026: post-market RCA of the ten sessions, and a daily RCA at 16:00 IST (prompt 05:28 PM IST)
+
+Report: `docs/reports/2026-11-06-post-market-rca/POST_MARKET_RCA_2026-11-06.html` (+ `.pdf`). Testing:
+`docs/testing/ATIP_PostMarket_RCA_Test_Report_2026-11-06.md`. Branch `claude/rca-2026-11-06` from master `ea4f2a0`;
+**committed as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
+
+The day (all PAPER, IST): realised net −₹1,107.85 (4 sold: 1 won, 3 lost; charges ₹282.17), day P&L marked −₹763.12,
+while Nifty closed +2.01 %. BHEL (S10), LODHA (S9) and ADANIENT (S2) were stopped by the 2 % stop, which sat at
+0.55 / 0.53 / 0.67 of each stock's 14-day ATR; each was sold within minutes of its low and closed at or above its entry
+(−0.09 %, +1.93 %, +0.39 %). None was a BUY signal (rank-fill HOLD picks), and LODHA was bought at 09:16 into a −1.00 %
+gap. Not market-wide, not news.
+
+The tempting fix fails: a 1.5 × ATR stop turns today into +₹1,641, but over 42 sessions (420 auto-pick trades,
+`tools/rca_validate_rules.py`) it loses 2.4 times more than the 2 % stop. The rules that held up: buy only on a break of
+the first 30 minutes' high (−0.31 % a trade vs −0.64 %, better on 30 of 42 days), skip rank-fill stocks under 63
+(−0.45 %), no buys while Nifty is weak (−0.44 %). None of them makes the picks profitable alone.
+
+## Added
+
+| File | What |
+|---|---|
+| `portfolio/post_market_rca.py` | The daily RCA: session summary (realised, day MTM, max drawdown), intraday path of every stock held (low / high after entry, recovery start on a stated 5-minute rule, back to entry, stopped before recovery), root causes a–h with evidence, 15 what-if rules replayed on 1-minute candles, chart data. Read-only; one row a day in `post_market_rca`. `python -m portfolio.post_market_rca [--date] [--no-fetch] [--json]` |
+| `pipeline/w39_jobs.py` | `post_market_rca` at 16:00 IST on market days (config `"post_market_rca": {"enabled": true, "time": "16:00"}`); a no-op on the view-only server |
+| `dashboard/rca_routes.py` | `/rca` (Reports → Post-market RCA; the apps get it under More), `/api/rca`, `/api/rca/guards`, POST `/api/rca/run`, POST `/api/rca/guards` (token; viewer refused) |
+| `orders/entry_guards.py` | Five auto-pick guards, **all OFF**: `guard_orb_minutes`, `guard_min_score`, `guard_nifty_weak`, `guard_entry_not_before`, `guard_sector_cap`. Turning one on needs ack (the page's dialog or `--ack`) and is logged as a session event `GUARD`. One call in `orders/autopick.py` |
+| `tools/rca_validate_rules.py` | Re-runs the 42-session study on any dates (Dhan 5-minute candles, cached) |
+| `tests/test_post_market_rca.py` | 14 tests |
+
+Mobile apps 2026.11.06.1 (Android versionCode 9, iOS build 9). Tracker: sheet "Post-market RCA 2026-11-06", rows
+RCA-REP, RCA-01 … RCA-19 (master Seq 544–563, CSV Seq 571–590, phase 24).
+
+## Found, not changed (owner's call)
+
+* Rank-fill HOLD picks lose 0.66 % a trade (384 study trades): keep, restrict (guards) or pause (VF-01).
+* 09:16:09 IST "auto-pick error: database is locked": the open's first monitor pass failed; BHEL filled ₹152 under its stop.
+* The 30-second price poll misses stop wicks (ADANIENT: touched 10:54, sold 12:03 at the same price).
+* SPI and fund_score are NULL for every stock on every day; the global feed's S&P −4.36 % stayed unchanged all day;
+  TRAIL_MOVED is logged every 30 s without a move.
+
+## Test results
+
+Full suite on the branch (17:54–18:03 IST): 2,572 passed, 65 skipped, 4 failed — the 3 sandbox-socket tests that fail on
+master too, and `test_order_paths_are_untouched`, which needs the work committed (passes in a committed clone).
+
+# 6 Nov 2026: the order monitor's 09:15 pass lost a minute to "database is locked" (RCA-13)
+
+Branch `claude/amazing-cray-703f0e` (from master `ea4f2a0`), not merged, not live. Found by the 6 Nov post-market RCA.
+
+**What happened (IST, `atip_data/atip.log` / `atip.jsonl`, `order_rules`, `session_events`).** S9 (LODHA) and S1
+(AUROPHARMA) each had an auto-pick still waiting from 5 Nov. The order monitor's first market-hours pass began about
+09:15:07. Auto-pick's `cancel_stale` cancelled LODHA at 09:15:07.80 (`rules.cancel_rule`, on its own connection, committed)
+and wrote S9's AUTO_PICK_CANCELLED event on the pass's connection without committing it. The next `cancel_rule`, on a new
+connection, then waited the whole busy timeout (60 s) behind that event and logged `auto-pick error: database is locked`
+at 09:16:09.689; closing the pass's connection rolled S9's event back (it is missing from `session_events`). check_triggers
+ran only after that, and the pass after it cancelled AUROPHARMA at 09:16:39.81 and sold S10's BHEL at 408.20 at 09:16:46 on
+its 410.78 stop (59 shares, ₹152 under the stop). BHEL had already traded at 410.00 by 09:15:03 (`live_quotes` low); there
+are no BHEL ticks to say where it was at 09:15:08 or 09:15:38, when the two passes the lock swallowed would have checked it.
+
+**Not the cause:** the 09:15:03 live-quote refresh and the 09:15:05 `session_reports` tick had both finished (09:15:03.53,
+09:15:05.27) before the first cancel; no index-feed flush failure is logged. The lock was auto-pick's own connection.
+
+**Earlier days:** this is the only `auto-pick error` and the only order-monitor lock in the log (from 24 Sep). 5 Nov had one
+stale pick (RADICO, cancelled with its event at 09:15:24); 6 Nov was the first day with two. Any morning after two or more
+picks are left waiting would have repeated it.
+
+**Fixed**
+- `orders/autopick.py` `cancel_stale` commits each cancellation's event before the next `cancel_rule` opens its connection.
+- `dashboard/server.py`: the monitor's pass is `_order_monitor_pass()` (auto-pick, then check_triggers, as before). A pass that
+  loses to a database lock, whoever holds it, runs again after 5 s (`MONITOR_LOCK_RETRY_S`) instead of 30 s, with a warning
+  in the log. The 30 s cadence, the order of the two steps, the 60 s busy timeout and every trading rule are unchanged.
+
+Tests: `tests/test_rca13_monitor_lock.py` (new, 6) and one new case in `tests/test_autopick.py`; the new auto-pick case fails
+on master with `database is locked` raised from `cancel_stale` → `rules.cancel_rule`, as in production.
+
+**Test results (6 Nov, 22:04–22:22 IST, outside market hours):** master `ea4f2a0` 2,559 passed, 65 skipped, 3 failed; this
+branch 2,566 passed, 65 skipped, the same 3 failed (`test_w39_perf_budget`: real sockets, refused by the sandbox).

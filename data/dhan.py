@@ -261,8 +261,26 @@ def get_security_id(symbol: str) -> dict:
     for suffix in ["-EQ", "&", ""]:
         if sym + suffix in _SECURITY_MAP:
             return _SECURITY_MAP[sym + suffix]
-    log.warning(f"  {symbol}: security_id not found")
+    # 16 Nov 2026 (owner item 5): a renamed or demerged ticker resolves through data/instruments.py (ZOMATO ->
+    # ETERNAL, TATAMOTORS -> TMPV, MOFSL -> MOTILALOFS), and a listed unit this equity map leaves out (a REIT such
+    # as EMBASSY, series RR) through the 08:00 instrument master. 121-151 warnings a day before; what neither
+    # knows is still warned about, once a day per symbol.
+    try:
+        from data.instruments import resolve_security
+        sec = resolve_security(sym, _SECURITY_MAP)
+        if sec:
+            return sec
+    except Exception as e:
+        log.debug(f"  {symbol}: instrument master unavailable ({e})")
+    if _NOT_FOUND_WARNED.get(sym) != date.today():
+        _NOT_FOUND_WARNED[sym] = date.today()
+        log.warning(f"  {symbol}: security_id not found")
+    else:
+        log.debug(f"  {symbol}: security_id not found")
     return {}
+
+
+_NOT_FOUND_WARNED: dict = {}     # symbol -> the day its "not found" was last warned
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1026,15 +1044,18 @@ class DhanLiveFeed:
 def _default_symbols() -> list:
     """Nifty High Beta ~50 — emergency fallback only, used when the Nifty
     500 constituent list can't be fetched AND no local cache exists yet
-    (e.g. very first run with no internet access)."""
+    (e.g. very first run with no internet access).
+    Also the universe of the 15-minute quote refresh and the live feed. 16 Nov 2026 (owner item 5): NSE's current
+    tickers -- MOTILALOFS (not MOFSL), TMPV (Tata Motors after the demerger, the old security 3456) and ETERNAL
+    (was ZOMATO); the old names warned "security_id not found" 643 times each in atip.log."""
     return [
         "ADANIGREEN","ADANIENT","ADANIENSOL","ANGELONE","RPOWER",
-        "BSE","MOFSL","LODHA","HINDCOPPER","WOCKPHARMA",
-        "TATAMOTORS","TATASTEEL","JSWSTEEL","SAIL","BHEL",
+        "BSE","MOTILALOFS","LODHA","HINDCOPPER","WOCKPHARMA",
+        "TMPV","TATASTEEL","JSWSTEEL","SAIL","BHEL",
         "VEDL","BEL","HAL","RECLTD","PFC","IRFC","IREDA",
         "DLF","NHPC","SJVN","RVNL","HUDCO","INOXWIND",
         "SUZLON","ADANIPOWER","GODREJPROP","PRESTIGE","OBEROIRLTY",
-        "NMDC","NATIONALUM","IRCTC","ZOMATO","JIOFIN",
+        "NMDC","NATIONALUM","IRCTC","ETERNAL","JIOFIN",
         "PNB","CANBK","BANKBARODA","YESBANK","PAYTM","IDEA",
         "MAZDOCK","HDFCAMC","COALINDIA","HINDALCO","NYKAA","TATAPOWER",
     ]

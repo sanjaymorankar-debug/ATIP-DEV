@@ -1,0 +1,265 @@
+{
+ "score_day": "2026-10-27",
+ "run_day": "2026-10-28",
+ "filters": {
+  "min_turnover": null,
+  "min_price": null,
+  "rank_fill_off": true
+ },
+ "picked": 4,
+ "distinct_picked": 4,
+ "picks_in_session_order": [
+  "ATHERENERG",
+  "ACUTAAS",
+  "DATAPATTNS",
+  "RADICO"
+ ],
+ "waiting": [
+  {
+   "session": "S5",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  },
+  {
+   "session": "S6",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  },
+  {
+   "session": "S7",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  },
+  {
+   "session": "S8",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  },
+  {
+   "session": "S9",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  },
+  {
+   "session": "S10",
+   "reason": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)"
+  }
+ ],
+ "sql_entry_rules": 4,
+ "sql_distinct_symbols": 4,
+ "board_filled": 4,
+ "board_rows": 10,
+ "board_message": "4 of 10 sessions filled (4 on BUY signals) \u2014 S5, S6, S7, S8, S9, S10: no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+ "board_rows_detail": [
+  {
+   "session": "S1",
+   "symbol": "ATHERENERG",
+   "status": "QUEUED",
+   "rank": 1,
+   "rank_of": 499,
+   "rationale": "ATIP BUY signal on 2026-10-27, score 70.8",
+   "entry": 1682.37,
+   "target": 1749.66,
+   "stoploss": 1648.72,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-10-27",
+    "atip": 70.8,
+    "vpi": 65.65,
+    "mri": 74.36,
+    "rri": 86.85,
+    "zpi": 60.08,
+    "cri": 42.15,
+    "acs": 67.05,
+    "signal": "BUY",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S2",
+   "symbol": "ACUTAAS",
+   "status": "QUEUED",
+   "rank": 2,
+   "rank_of": 499,
+   "rationale": "ATIP BUY signal on 2026-10-27, score 70.06",
+   "entry": 3812.27,
+   "target": 3926.64,
+   "stoploss": 3736.02,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-10-27",
+    "atip": 70.06,
+    "vpi": 63.65,
+    "mri": 69.89,
+    "rri": 88.35,
+    "zpi": 58.37,
+    "cri": 40.57,
+    "acs": 67.09,
+    "signal": "BUY",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S3",
+   "symbol": "DATAPATTNS",
+   "status": "QUEUED",
+   "rank": 3,
+   "rank_of": 499,
+   "rationale": "ATIP BUY signal on 2026-10-27, score 67.44",
+   "entry": 4140.0,
+   "target": 4264.2,
+   "stoploss": 4057.2,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-10-27",
+    "atip": 67.44,
+    "vpi": 62.66,
+    "mri": 63.69,
+    "rri": 80.35,
+    "zpi": 62.42,
+    "cri": 39.06,
+    "acs": 67.05,
+    "signal": "BUY",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S4",
+   "symbol": "RADICO",
+   "status": "QUEUED",
+   "rank": 7,
+   "rank_of": 499,
+   "rationale": "ATIP BUY signal on 2026-10-27, score 65.55",
+   "entry": 4311.45,
+   "target": 4440.79,
+   "stoploss": 4225.22,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": {
+    "date": "2026-10-27",
+    "atip": 65.55,
+    "vpi": 60.59,
+    "mri": 60.42,
+    "rri": 78.5,
+    "zpi": 57.01,
+    "cri": 37.45,
+    "acs": 67.09,
+    "signal": "BUY",
+    "cri_note": "lower is better"
+   }
+  },
+  {
+   "session": "S5",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S6",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S7",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S8",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S9",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  },
+  {
+   "session": "S10",
+   "symbol": null,
+   "status": "WAITING",
+   "rank": null,
+   "rank_of": null,
+   "rationale": "no free BUY signal (ATHERENERG is taken; ACUTAAS is taken; DATAPATTNS is taken; 1 more)",
+   "entry": null,
+   "target": null,
+   "stoploss": null,
+   "pnl": 0.0,
+   "closed_trades": 0,
+   "successful_trades": 0,
+   "scores": null
+  }
+ ],
+ "independent_top10": [
+  "ATHERENERG",
+  "ACUTAAS",
+  "DATAPATTNS",
+  "RADICO"
+ ],
+ "independent_eligible": 4,
+ "order_matches_independent": true,
+ "momentum20_top10": [
+  "LTTS",
+  "SUNTV",
+  "TTML",
+  "TCS",
+  "IGIL",
+  "CUPID",
+  "MPHASIS",
+  "TECHM",
+  "TATAELXSI",
+  "ZENSARTECH"
+ ],
+ "overlap_with_momentum20": []
+}

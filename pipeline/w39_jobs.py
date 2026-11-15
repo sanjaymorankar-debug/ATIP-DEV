@@ -22,8 +22,21 @@ versions were dropped so there is one of each.)
                          then the report schedules that are due run (enterprise/session_reports.py).
                          Off with config "reports": {"enabled": false}. A no-op on the view-only server.
 
+    post_market_rca      6 Nov 2026  at 16:00 IST on market days: the day's post-market RCA of the sessions' trades
+                         (portfolio/post_market_rca.py; stored in post_market_rca, shown at /rca). Read-only; a no-op
+                         on the view-only server. Off with config "post_market_rca": {"enabled": false}.
+
+    instrument_master    16 Nov 2026 (owner item 5)  08:00 IST daily: Dhan's scrip master into instrument_master
+                         (renames, REITs, tick and lot sizes; data/instruments.py)
+    preopen_health       16 Nov 2026 (owner item 6)  08:45 IST on market days, retried 08:50 / 09:00 / 09:10 while
+                         failing: Dhan token (DH-901, TOTP renewal), quote feed, today's scrip master, the previous
+                         session's scores. Auto-pick waits on gate_status(); the reason is a banner on every page.
+    intraday_completeness 16 Nov 2026 (owner item 18)  16:15 IST on market days: alert when fewer than 95% of the
+                         universe have 15-minute bars for a session (data/completeness.py)
+
 Switches (atip_data/config.json):
     "sip_enabled": true, "sip_time": "09:30"
+    "post_market_rca": {"enabled": true, "time": "16:00"}
     "risk_model": {"enabled": true, "time": "21:45", ...}   (quant/risk_model.py DEFAULTS)
 """
 
@@ -110,7 +123,78 @@ def schedule_jobs(schedule, run_job) -> list:
             for mm in (0, 15, 30, 45):
                 schedule.every().day.at(f"{hh:02d}:{mm:02d}").do(run_job, "session_reports", session_reports_tick)
         out.append("session_reports every 15 min 06:00-20:45 (cycle book + due report schedules)")
+    rca = cfg.get("post_market_rca") or {}
+    if rca.get("enabled", True):
+        # 6 Nov 2026 (owner): the daily post-market RCA of the sessions' trades, after the close (portfolio/post_market_rca.py)
+        t = _hhmm(rca.get("time"), "16:00")
+        schedule.every().day.at(t).do(run_job, "post_market_rca", post_market_rca_run)
+        out.append(f"post_market_rca daily {t} IST (market days; session trades' RCA, what-if rules)")
+    # KGF-09/10/13 (16 Nov 2026): the regime gate's breadth and the breakout-retest scan after the day's scores (the
+    # evening re-score is done by ~21:00 IST; the 07:30 run catches a late one before the next open), and the weekly
+    # A/B report of the session arms on Sunday 18:00 IST.
+    for t in ("21:20", "07:30"):
+        schedule.every().day.at(t).do(run_job, "breadth_and_scan", breadth_and_scan_run)
+    out.append("breadth_and_scan daily 21:20 + 07:30 IST (breadth20/50, breakout-retest scan)")
+    schedule.every().day.at("18:00").do(run_job, "ab_weekly_report", ab_report_run)      # runs on Sundays only
+    out.append("ab_weekly_report Sunday 18:00 IST (session arms, PAPER A/B)")
+    # 16 Nov 2026 (owner items 5, 6, 18): Dhan's scrip master at 08:00 IST (data/instruments.py), the pre-open health
+    # gate at 08:45 with retries at 08:50 / 09:00 / 09:10 (ops/preopen_health.py; auto-pick waits on it), and the
+    # 15-minute-bar completeness check at 16:15 on market days (data/completeness.py). Each is a no-op on the viewer.
+    try:
+        from data.instruments import settings as im_settings
+        im = im_settings()
+        if im["enabled"]:
+            t = _hhmm(im["time"], "08:00")
+            schedule.every().day.at(t).do(run_job, "instrument_master", instrument_master_run)
+            out.append(f"instrument_master daily {t} IST (Dhan scrip master, renames, tick sizes)")
+        from ops.preopen_health import schedule_jobs as preopen_jobs
+        out += preopen_jobs(schedule, run_job)
+        from data.completeness import settings as dc_settings
+        dc = dc_settings()
+        if dc["enabled"]:
+            t = _hhmm(dc["time"], "16:15")
+            schedule.every().day.at(t).do(run_job, "intraday_completeness", intraday_completeness_run)
+            out.append(f"intraday_completeness daily {t} IST (market days; alert under {dc['min_share']:.0%})")
+    except Exception as e:
+        log.warning(f"  instrument master / pre-open gate / completeness jobs not scheduled: {e}")
     return out
+
+
+def instrument_master_run() -> dict:
+    from data.instruments import run_scheduled
+    return run_scheduled()
+
+
+def intraday_completeness_run() -> dict:
+    from data.completeness import run_scheduled
+    return run_scheduled()
+
+
+def breadth_and_scan_run() -> dict:
+    from scores.breadth import run_scheduled
+    out = {"breadth": run_scheduled()}
+    try:
+        from db.schema import get_connection
+        from strategy.breakout_retest import run_scan
+        conn = get_connection()
+        try:
+            r = run_scan(conn, source="schedule")
+            out["scan"] = {"as_of": r.get("as_of"), "setups": len(r.get("rows") or []), "scanned": r.get("scanned")}
+        finally:
+            conn.close()
+    except Exception as e:
+        out["scan_error"] = str(e)
+    return out
+
+
+def ab_report_run() -> dict:
+    from portfolio.ab_report import run_scheduled
+    return run_scheduled()
+
+
+def post_market_rca_run() -> dict:
+    from portfolio.post_market_rca import run_scheduled
+    return run_scheduled()
 
 
 def session_reports_tick() -> dict:

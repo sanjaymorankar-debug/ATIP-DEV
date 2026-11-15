@@ -246,7 +246,55 @@ def home_data(conn) -> dict:
         out["dhan_token"] = token_status()
     except Exception:
         out["dhan_token"] = None
+    try:                                     # owner item 14 (16 Nov 2026): FY STCG tax after set-off, not per cycle
+        from accounting.ledger import fy_tax_estimate
+        out["fy_tax"] = fy_tax_estimate(conn)
+    except Exception:
+        out["fy_tax"] = None
     return out
+
+
+def _fy_tax_line(ft: dict | None) -> str:
+    """Owner item 14 (16 Nov 2026): the FY STCG estimate after set-off beside the per-cycle reserve, with its
+    assumption and the CA line. '' when there is nothing to show."""
+    from accounting import tax as TX
+    from dashboard import fmt as F
+    est = (ft or {}).get("by_env", {}).get((ft or {}).get("main")) if ft else None
+    if not est or not est.get("cycles"):
+        return ""
+    env = "paper" if est.get("env") == "VIRTUAL" else "broker"
+    return (f'<p class="ax-small" data-ax-fytax><b>{e(est["fy"])} {e(TX.FY_LABEL.lower())}</b> ({env}): '
+            f'{e(F.fmt_inr(est["estimate"]))} on net STCG {F.inr_html(est["net_stcg"], True)} '
+            f'({est["cycles"]} cycles, losses set off, STT added back, {est["effective_pct"]:g}%) · '
+            f'{e(TX.RESERVE_LABEL.lower())}: {e(F.fmt_inr(est["per_cycle_reserve"]))} · '
+            f'<span class="ax-muted" title="{e(est["assumption"])}">{e(TX.FY_NOTE)}</span> '
+            f'<a href="/accounting?tab=tax">Tax →</a></p>')
+
+
+def _fy_estimate_card(ft: dict | None) -> str:
+    """Accounting › Tax (owner item 14, 16 Nov 2026): the FY STCG estimate after set-off per env, beside the per-cycle
+    reserve, with the assumption and the CA line."""
+    from accounting import tax as TX
+    if not ft:
+        return ""
+    out = []
+    for env, est in (ft.get("by_env") or {}).items():
+        out.append(f'<div class="ax-card" style="margin-top:12px" data-ax-fytax="{e(env)}"><h2>{e(est["fy"])} · '
+                   f'{e(TX.FY_LABEL)} · {e("paper" if env == "VIRTUAL" else "broker")}</h2>' + K.kv([
+                       ("STCG cycles (winning)", f'{est["cycles"]} ({est["winning_cycles"]})'),
+                       ("Net P&L after charges", K.money(est["net_pnl"], True)),
+                       ("+ STT added back (not deductible)", K.money(est["stt_added_back"])),
+                       ("Gains − losses set off", f'{K.money(est["gains"])} − {K.money(est["losses"])}'),
+                       ("Net STCG (taxable when positive)", K.money(est["net_stcg"], True)),
+                       (f'Tax {est["rate_pct"]:g}% + cess {est["cess_pct"]:g}% ({est["effective_pct"]:g}%)',
+                        f'{K.money(est["tax"])} + {K.money(est["cess"])}' +
+                        (f' + surcharge {K.money(est["surcharge"])}' if est["surcharge"] else "")),
+                       ("FY estimate", f'<b>{K.money(est["estimate"])}</b>'),
+                       (TX.RESERVE_LABEL, K.money(est["per_cycle_reserve"])),
+                       ("Reserve − FY estimate", K.money(est["reserve_over_estimate"], True))]) +
+                   f'<p class="ax-small ax-muted">{e(est["assumption"])}</p>'
+                   f'<p class="ax-small"><b>{e(TX.FY_NOTE)}</b></p></div>')
+    return "".join(out)
 
 
 def _answer(q: str, word: str, value: str, sub: str, tone: str, sym: str) -> str:
@@ -434,7 +482,7 @@ def home(conn, root="", app=False) -> str:
           '<th class="n ax-p-since_start" scope="col" hidden>Since start realised</th><th class="n ax-p-since_start" scope="col" hidden>Open now</th>'
           '<th data-nosort scope="col">Trend</th></tr></thead>')
     foot = (f'<p class="ax-small ax-muted ax-p-today">All sessions · <b>Today</b>: realised {F.inr_html(td["realised"], True)} '
-            f'(gross {F.inr_html(td["gross"], True)} − charges {e(F.fmt_inr(td["charges"]))} − tax est. {e(F.fmt_inr(td["tax_est"]))}) '
+            f'(gross {F.inr_html(td["gross"], True)} − charges {e(F.fmt_inr(td["charges"]))} − tax reserve (per-cycle, cash set aside) {e(F.fmt_inr(td["tax_est"]))}) '
             f'· open {F.inr_html(td["open"], True)} · {td["cycles"]} cycle(s) closed today</p>'
             f'<p class="ax-small ax-muted ax-p-since_start" hidden>All sessions · <b>Since start</b>: realised {F.inr_html(ss["realised"], True)} '
             f'(gross {F.inr_html(ss["gross"], True)}) · open {F.inr_html(ss["open"], True)} · {ss["cycles"]} cycle(s) · '
@@ -442,7 +490,9 @@ def home(conn, root="", app=False) -> str:
     w_sessions = (f'<div class="ax-card" data-widget="sessions" data-period="today"><div class="ax-cardhead"><h2>Sessions</h2>{toggle}</div>' + (
         f'<div class="ax-tablewrap" style="max-height:none"><table class="ax-table ax-home-sessions">{th}<tbody>{srows}</tbody></table></div>'
         if srows else '<div class="ax-empty">No session has money yet. <a href="/sessions">Give one a starting amount</a>.</div>') +
-        foot + '<p class="ax-small ax-muted">Realised = after charges and estimated tax. <a href="/accounting?tab=pnl">Reconcile in Accounting →</a></p></div>')
+        foot + _fy_tax_line(d.get("fy_tax")) +
+        '<p class="ax-small ax-muted">Realised = after charges and the per-cycle tax reserve (cash set aside, not the '
+        'tax due — the FY estimate above sets losses off against gains). <a href="/accounting?tab=pnl">Reconcile in Accounting →</a></p></div>')
     sev = {"critical": "bad", "error": "bad", "warning": "warn", "warn": "warn"}
     sev_word = {"critical": "Critical", "error": "Error", "warning": "Warning", "warn": "Warning", "info": "Info"}
 
@@ -483,6 +533,11 @@ def home(conn, root="", app=False) -> str:
               + "</div></details>")
     figures = {"today": td, "since_start": ss, "month": pr["month"]}
     kpis, grid = _home_kpis(conn, d, idx, mk, td)
+    try:                                                              # KGF-09 (16 Nov 2026): the regime gate, per arm
+        from dashboard.arms_routes import gate_banner
+        banners += gate_banner(conn)
+    except Exception:
+        pass
     body = (banners + kpis + f'<div class="ax-five ax-answers" data-ax-figures="{e(_json(figures))}">{safe}{running}{money}</div>' +
             grid + '<div class="ax-grid-2" id="ax-widgets">' + "".join(w for _, _, w in widgets) + "</div>" + custom +
             """<script>(function(){var k='atip-home-hidden',h=[];try{h=JSON.parse(localStorage.getItem(k)||'[]')}catch(e){}
@@ -539,7 +594,7 @@ SETUP_DRAWER = """
    <div class="ax-field" id="f-every-wrap"><label for="f-every">Every N profitable cycles</label><input class="ax-input" id="f-every" name="floor_step_every" inputmode="numeric"><div class="ax-err" data-err="floor_step_every"></div></div></div>
   <div class="ax-field"><span class="ax-label" id="l-basis">What the next cycle starts with</span><div class="ax-choice" role="radiogroup" aria-labelledby="l-basis">
    <label><input type="radio" name="compound_basis" value="CASH_AFTER_CHARGES"><span>Cash after charges (all of it)</span></label>
-   <label><input type="radio" name="compound_basis" value="AFTER_TAX_RESERVE"><span>After setting aside the estimated tax</span></label></div></div>
+   <label><input type="radio" name="compound_basis" value="AFTER_TAX_RESERVE"><span>After setting aside the per-cycle tax reserve</span></label></div></div>
  </fieldset>
  <fieldset class="ax-group"><legend>Exits</legend>
   <div class="ax-row"><div class="ax-field"><label for="f-tgt">Target %</label><input class="ax-input" id="f-tgt" name="target_pct" inputmode="decimal"><div class="ax-err" data-err="target_pct"></div></div>
@@ -608,7 +663,7 @@ def _scard(s: dict) -> str:
     waiting = f'<div class="ax-banner warn ax-small" style="margin:0">{e(ti["waiting"])}</div>' if ti.get("waiting") else ""
     return (f'<div class="ax-card ax-scard{" ax-attn" if ti.get("waiting") else ""}">{head}'
             f'<div class="ax-gva"><div><div class="ax-lbl">Gross P&amp;L</div><div class="ax-val">{K.money(ti["gross_pnl"], True)}</div></div>'
-            f'<div><div class="ax-lbl">Actual P&amp;L <span title="after charges and estimated tax">ⓘ</span></div>'
+            f'<div><div class="ax-lbl">Actual P&amp;L <span title="after charges and the per-cycle tax reserve (cash set aside, not the tax due)">ⓘ</span></div>'
             f'<div class="ax-val">{K.money(ti["actual_pnl"], True)}</div></div></div>'
             f'<div class="ax-small ax-muted">Equity {K.money(ti["equity"])} · started {K.money(ti["start_capital"])} · '
             f'cycles {ti["cycles_done"]}/{ti["max_cycles"]} · floor {K.money(ti["floor"])}</div>'
@@ -711,7 +766,7 @@ def sessions(conn, root="", app=False) -> str:
     tiles = '<div class="ax-tiles">' + "".join([
         K.tile("Starting amounts", K.money(t["start_capital"])), K.tile("Equity now", K.money(t["equity"])),
         K.tile("Gross P&L", K.money(t["gross_pnl"], True), "before any cost", True),
-        K.tile("Charges", K.money(t["charges"])), K.tile("Tax (est.)", K.money(t["tax_est"]), "provisional"),
+        K.tile("Charges", K.money(t["charges"])), K.tile("Tax reserve (per-cycle)", K.money(t["tax_est"]), "cash set aside, not tax due"),
         K.tile("Actual P&L", K.money(t["actual_pnl"], True), "after charges and tax", True),
         K.tile("Cycles closed", f'<span class="ax-num">{t["cycles_done"]}</span>'),
         K.tile("Waiting", f'<span class="ax-num">{t["waiting"]}</span>', "below their minimum")]) + "</div>"
@@ -726,7 +781,7 @@ def sessions(conn, root="", app=False) -> str:
             figs.append(f'<figure><figcaption><span>{e(s["id"])} {e(s["name"])}</span>{K.money(s["tiles"]["actual_pnl"], True)}'
                         f'</figcaption>{K.spark(s["spark"], s["id"] + " actual equity, last 30 cycles") or "<div class=ax-small>one point so far</div>"}</figure>')
         mult = ('<h2 class="ax-h2">All sessions side by side</h2><p class="ax-small ax-muted">Each small chart is that '
-                'session\'s actual equity (after charges and estimated tax), on its own scale.</p>'
+                'session\'s actual equity (after charges and the per-cycle tax reserve), on its own scale.</p>'
                 f'<div class="ax-mult">{"".join(figs)}</div>')
     split = ('<dialog class="ax-dialog" id="ax-split" aria-labelledby="ax-split-h"><form><div class="ax-dhead" id="ax-split-h">'
              'Split a total across sessions</div><div class="ax-dbody"><p class="ax-small ax-muted">This only fills in a '
@@ -738,12 +793,13 @@ def sessions(conn, root="", app=False) -> str:
              '</div></fieldset><div class="ax-err"></div></div><div class="ax-dfoot"><button class="ax-btn" type="button" '
              'data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">Fill in amounts</button></div></form></dialog>')
     help_ = _worked_example()
-    body = (_closed_banner() + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
+    from dashboard.arms_routes import gate_banner                    # KGF-09 (16 Nov 2026): the regime gate, per arm
+    body = (_closed_banner() + gate_banner(conn) + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
             "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split +
             f'<div id="ax-sdata" hidden data-json="{e(json.dumps(data, default=str))}"></div>' + SETUP_JS)
     return page("Sessions", body, "/sessions", root=root, app=app,
                 job="Ten independent mini-funds. Set each one's money and rules, and see what it really earned: gross "
-                    "P&L before any cost, actual P&L after charges and estimated tax.",
+                    "P&L before any cost, actual P&L after charges and the per-cycle tax reserve.",
                 actions='<button class="ax-btn" type="button" onclick="document.getElementById(\'ax-split\').showModal()">'
                         'Split a total…</button><a class="ax-btn" href="/reports">Session reports</a>',
                 mar=[("Manage", "/sessions", True), ("Accounting", "/accounting?tab=session", False),
@@ -755,11 +811,11 @@ def _worked_example() -> str:
 <p>S1 starts with ₹25,000. Cycle 1 buys ₹25,000 of stock and sells it at +3 % for ₹25,750.</p>
 <dl class="ax-kv"><dt>Gross P&amp;L (Total P&amp;L)</dt><dd>+₹750.00</dd>
 <dt>Charges (delivery)</dt><dd>₹72.27 = STT ₹50.75 + exchange ₹1.51 + SEBI ₹0.05 + stamp ₹3.75 + GST ₹0.28 + DP ₹15.93</dd>
-<dt>Net P&amp;L before tax</dt><dd>+₹677.73</dd><dt>Tax (est.) — STCG 20 %</dt><dd>₹135.55</dd>
+<dt>Net P&amp;L before tax</dt><dd>+₹677.73</dd><dt>Tax reserve (per-cycle, cash set aside) — STCG 20 %</dt><dd>₹135.55</dd>
 <dt>Actual P&amp;L (net after charges &amp; tax)</dt><dd>+₹542.18</dd>
 <dt>Cycle 2 starts with</dt><dd>₹25,677.73 (cash after charges) or ₹25,542.18 (after setting aside the tax)</dd></dl>
-<p class="ax-small ax-muted">Tax is an estimate, not tax advice. Per cycle it is provisional; the FY view on Accounting › Tax
-sets losses off against gains and applies the LTCG exemption once a year. Rates are on Settings › Tax.</p></details>""")
+<p class="ax-small ax-muted">Tax is an estimate, not tax advice. Per cycle it is only a reserve (cash set aside, not the tax due);
+the FY estimate on Accounting › Tax sets losses off against gains and applies the LTCG exemption once a year. Rates are on Settings › Tax.</p></details>""")
 
 
 EVENT_LABEL = {"LINK": "Order linked", "EDIT": "Settings changed", "MODE": "Mode", "STATUS": "Status", "POOL": "Starting amount",
@@ -798,7 +854,7 @@ CYCLE_COLS = [("n", "#", "int"), ("symbol", "Symbol", "text"), ("opened", "Opene
               ("sell_value", "Sell value", "money"), ("gross_pnl", "Gross P&L", "pnl"), ("ch_brokerage", "Brokerage", "money"),
               ("ch_stt", "STT", "money"), ("ch_exchange", "Exchange", "money"), ("ch_sebi", "SEBI", "money"),
               ("ch_stamp", "Stamp", "money"), ("ch_gst", "GST", "money"), ("ch_dp", "DP", "money"), ("ch_other", "Other", "money"),
-              ("charges", "Charges", "money"), ("net_pnl", "Net before tax", "pnl"), ("tax_est", "Tax (est.)", "money"),
+              ("charges", "Charges", "money"), ("net_pnl", "Net before tax", "pnl"), ("tax_est", "Tax reserve (per-cycle)", "money"),
               ("actual_pnl", "Actual P&L", "pnl"), ("end_amount", "End amount", "money"), ("gross_pct", "Gross %", "pct"),
               ("actual_pct", "Actual %", "pct"), ("exit_reason", "Exit", "text"), ("floor_at_start", "Floor", "money"),
               ("env", "Env", "text")]
@@ -813,7 +869,7 @@ def _cycle_drawer(r: dict) -> dict:
         *[[f"− {lab}", K.inr(r[f'ch_{k}'])] for k, lab in (("brokerage", "Brokerage"), ("stt", "STT"), ("exchange", "Exchange txn"),
                                                            ("sebi", "SEBI fee"), ("stamp", "Stamp duty"), ("gst", "GST"),
                                                            ("dp", "DP charge"), ("other", "Other (fill vs model)")) if r.get(f"ch_{k}")],
-        ["Net P&L before tax", K.inr(r["net_pnl"], True)], [f"− Tax (est., {r['tax_head']})", K.inr(r["tax_est"])],
+        ["Net P&L before tax", K.inr(r["net_pnl"], True)], [f"− Tax reserve (per-cycle, cash set aside, {r['tax_head']})", K.inr(r["tax_est"])],
         ["Actual P&L", K.inr(r["actual_pnl"], True)], ["End amount", f"{K.inr(r['end_amount'])} ({r['compound_basis']})"],
         ["Cash left idle this cycle", K.inr(r["idle_cash"])], ["Floor at the start", K.inr(r["floor_at_start"])],
         ["Exit", r.get("exit_reason") or "—"], ["Env · FY", f"{r['env']} · {r['fy']}"]]}
@@ -858,7 +914,7 @@ AX.api('/api/v2/reports/generate',{body:{kind:'session_cycle_book',params:{sessi
     if tab == "reports":
         arch = [a for a in R.archive(conn, "session_cycle_book")][:30]
         body = ('<div class="ax-card"><h2>This session\'s cycle book</h2><p class="ax-small ax-muted">Every cycle with '
-                'gross P&amp;L, each charge, estimated tax and actual P&amp;L.</p><div class="ax-row">' +
+                'gross P&amp;L, each charge, the per-cycle tax reserve and actual P&amp;L.</p><div class="ax-row">' +
                 "".join(f'<button class="ax-btn" type="button" data-fmt="{f}">{f.upper()}</button>' for f in ("pdf", "xlsx", "csv", "html")) +
                 '</div></div><h2 class="ax-h2">Generated before</h2>' +
                 K.table("t-arch", [("created_at", "Generated", "text"), ("period_label", "Period", "text"), ("format", "Format", "text"),
@@ -874,7 +930,7 @@ AX.api('/api/v2/reports/generate',{{body:{{kind:'session_cycle_book',params:{{se
     tl = '<div class="ax-tiles">' + "".join([
         K.tile("Starting amount", K.money(ti["start_capital"])), K.tile("Equity now", K.money(ti["equity"]), f'cash {K.money(ti["cash"])}'),
         K.tile("Gross P&L", K.money(ti["gross_pnl"], True), "before any cost", True),
-        K.tile("Charges", K.money(ti["charges"])), K.tile("Tax (est.)", K.money(ti["tax_est"]), "provisional"),
+        K.tile("Charges", K.money(ti["charges"])), K.tile("Tax reserve (per-cycle)", K.money(ti["tax_est"]), "cash set aside, not tax due"),
         K.tile("Actual P&L", K.money(ti["actual_pnl"], True), "after charges and tax", True),
         K.tile("Return", f'{K.pct(ti["abs_return_gross_pct"])} / {K.pct(ti["abs_return_actual_pct"])}', "gross / actual"),
         K.tile("CAGR", f'{K.pct(ti["cagr_gross_pct"])} / {K.pct(ti["cagr_actual_pct"])}', "gross / actual (after 30 days)"),
@@ -948,7 +1004,7 @@ def accounting(conn, q: dict, root="", app=False) -> str:
         rc = reconcile(conn)
         ok = (f'<div class="ax-banner {"good" if rc["ok"] else "bad"}" role="status">'
               f'{"✓ Home and the general ledger agree" if rc["ok"] else "✗ Home and the general ledger disagree"} '
-              f'for Today, This month and Since start (realised, after charges and estimated tax).</div>')
+              f'for Today, This month and Since start (realised, after charges and the per-cycle tax reserve).</div>')
         rows = "".join(
             f'<tr data-period="{e(r["key"])}"><th scope="row">{e(r["period"])}</th>'
             f'<td class="n" data-v="{r["gross"]}">{F.inr_html(r["gross"], True)}</td>'
@@ -960,11 +1016,11 @@ def accounting(conn, q: dict, root="", app=False) -> str:
             f'<td class="n" data-v="{r["ledger"]}">{F.inr_html(r["ledger"], True)} {"✓" if r["match"] else "✗"}</td>'
             f'<td class="n">{r["cycles"]}</td></tr>' for r in rc["rows"])
         body = (ok + '<div class="ax-tablewrap"><table class="ax-table" id="t-pnl"><thead><tr><th scope="col">Period</th>'
-                '<th class="n" scope="col">Gross</th><th class="n" scope="col">Charges</th><th class="n" scope="col">Tax (est.)</th>'
+                '<th class="n" scope="col">Gross</th><th class="n" scope="col">Charges</th><th class="n" scope="col">Tax reserve (per-cycle)</th>'
                 '<th class="n" scope="col">Realised</th><th class="n" scope="col">Open now</th><th class="n" scope="col">Total</th>'
                 '<th class="n" scope="col">Ledger realised</th><th class="n" scope="col">Cycles</th></tr></thead>'
                 f'<tbody>{rows}</tbody></table></div>'
-                '<p class="ax-small ax-muted">Realised = cycles closed in the period, after charges and estimated tax. '
+                '<p class="ax-small ax-muted">Realised = cycles closed in the period, after charges and the per-cycle tax reserve (cash set aside, not the tax due; the FY estimate is on the Tax tab). '
                 'Open now = the trades still open, at their current price; it is the same in every period. '
                 'Today is the calendar day in IST; Since start is each session\'s current books.</p>')
     elif tab == "ledger":
@@ -1018,7 +1074,7 @@ def accounting(conn, q: dict, root="", app=False) -> str:
         st = tr["statement"]
         heads = K.table("t-heads", [("label", "Head", "text"), ("gains", "Gains", "money"), ("losses", "Losses", "money"),
                                     ("net", "Net", "pnl"), ("after_set_off", "After set-off", "pnl"), ("taxable", "Taxable", "money"),
-                                    ("rate_pct", "Rate", "rate"), ("tax", "Tax (est.)", "money")], st["heads"], tools=False)
+                                    ("rate_pct", "Rate", "rate"), ("tax", "Tax (FY est.)", "money")], st["heads"], tools=False)
         kvs = [(f'Set-off: {x["from"]} loss against {x["against"]}', f'{K.money(x["amount"])} <span class="ax-muted">{e(x["rule"])}</span>')
                for x in st["set_offs"]]
         kvs += [("LTCG exemption used", K.money(st["ltcg_exemption_used"]))]
@@ -1029,8 +1085,8 @@ def accounting(conn, q: dict, root="", app=False) -> str:
                 (f'Surcharge {st["rates"]["surcharge_pct"]:g}% · cess {st["rates"]["cess_pct"]:g}%',
                  f'{K.money(st["surcharge"])} · {K.money(st["cess"])} ({"in" if st["addons_applied"] else "not in"} the liability)'),
                 ("Estimated liability", f'<b>{K.money(st["liability"])}</b>'),
-                ("Set aside per cycle (provisional)", K.money(st["provisional_set_aside"])),
-                ("Provisional − liability", K.money(st["difference"], True))]
+                (TX.RESERVE_LABEL, K.money(st["provisional_set_aside"])),
+                ("Reserve − liability", K.money(st["difference"], True))]
         kvs += [(f"Carried forward: {h} loss", K.money(v)) for h, v in st["carried_forward"].items()]
         cyc = [{**c, "opened": str(c["opened_at"])[:10], "closed": str(c["closed_at"])[:10]} for c in tr["cycles"]]
         body = (f'<div class="ax-banner warn" role="note">{e(TX.DISCLAIMER)} Rates effective {e(st["rates"]["effective_from"])}: '
@@ -1041,11 +1097,12 @@ def accounting(conn, q: dict, root="", app=False) -> str:
                 '<form class="ax-row" method="get"><input type="hidden" name="tab" value="tax">' +
                 _select("fy", "Financial year (Apr–Mar)", [(f, f) for f in tr["fys"]], fy, False) +
                 '<div class="ax-field" style="justify-content:flex-end"><button class="ax-btn" type="submit">Show</button></div></form>' +
+                _fy_estimate_card(tr.get("estimate")) +
                 heads + '<div class="ax-card" style="margin-top:12px"><h2>Set-offs and liability</h2>' + K.kv(kvs) + "</div>" +
                 '<h2 class="ax-h2">Cycles of the year</h2>' +
                 K.table("t-taxc", [("session_id", "Session", "text"), ("symbol", "Symbol", "text"), ("opened", "Bought", "text"),
                                    ("closed", "Sold", "text"), ("holding_days", "Days", "int"), ("net_pnl", "Net P&L", "pnl"),
-                                   ("tax_head", "Head", "text"), ("tax_est", "Tax (est.)", "money"), ("env", "Env", "text")], cyc,
+                                   ("tax_head", "Head", "text"), ("tax_est", "Tax reserve (per-cycle)", "money"), ("env", "Env", "text")], cyc,
                         name=f"tax_{fy}", empty="No cycle closed in this financial year.") +
                 f'<p><a class="ax-btn" href="/reports?kind=fy_tax_statement&fy={e(fy)}">FY tax statement for your CA →</a></p>')
     elif tab == "funds":
@@ -1139,7 +1196,7 @@ var a=document.getElementById('adj');a.addEventListener('submit',function(ev){ev
                                  ("balance", "Balance (Dr − Cr)", "pnl")], tb["rows"],
                         totals=[{"account": "Total", "debit": tb["debit"], "credit": tb["credit"]}], name="trial_balance"))
     return page("Accounting", tabs + body, "/accounting", f"tab={tab}", root=root, app=app,
-                job="The money every session touched: a double-entry ledger, every charge, estimated tax, virtual and actual "
+                job="The money every session touched: a double-entry ledger, every charge, the tax reserve and FY tax estimate, virtual and actual "
                     "funds kept apart, and reconciliation against the broker.",
                 actions='<a class="ax-btn" href="/reports?kind=monthly_pnl">Monthly P&amp;L statement</a>')
 

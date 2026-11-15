@@ -4,8 +4,10 @@ two pages reconcile by construction.
 
     periods(conn) -> {"today": P, "month": P, "since_start": P, "sessions": {sid: {"today": .., "since_start": ..}},
                       "as_of": ISO time}
-        P = {"realised": actual P&L of the cycles CLOSED in the period (after charges and estimated tax),
-             "gross": their gross P&L, "charges", "tax_est", "cycles": how many closed,
+        P = {"realised": actual P&L of the cycles CLOSED in the period (after charges and the per-cycle tax
+                         reserve -- cash set aside, not the tax due: accounting/tax.py fy_stcg_estimate, 16 Nov 2026),
+             "gross": their gross P&L, "charges", "tax_est" (the reserve), "net": after charges, before the reserve,
+             "cycles": how many closed,
              "open": the unrealised P&L of the trades open now (mark to market),
              "total": realised + open}
 
@@ -33,6 +35,8 @@ def _bucket(rows: list, unrealised: float) -> dict:
            "gross": _r2(sum(float(r.get("gross_pnl") or 0) for r in rows)),
            "charges": _r2(sum(float(r.get("charges") or 0) for r in rows)),
            "tax_est": _r2(sum(float(r.get("tax_est") or 0) for r in rows)),
+           # owner item 14 (16 Nov 2026): net of charges, before the per-cycle tax reserve
+           "net": _r2(sum(float(r.get("net_pnl") or 0) for r in rows)),
            "cycles": len(rows), "open": _r2(unrealised)}
     out["total"] = _r2(out["realised"] + out["open"])
     return out

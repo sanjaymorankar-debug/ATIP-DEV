@@ -97,7 +97,8 @@ NAV = [
         ("Baskets & SIP", "/baskets", "Baskets and stock SIPs (paper)"),
         ("Execution lab", "/execution-lab", "Slippage, TCA and order-type experiments")]),
     ("sessions", "Sessions", "sessions", "/sessions", [
-        ("All sessions", "/sessions", "The ten sessions as mini-funds: gross vs actual P&L, cycles, floors")]),
+        ("All sessions", "/sessions", "The ten sessions as mini-funds: gross vs actual P&L, cycles, floors"),
+        ("Arms (A/B)", "/ab", "Each session's entry / exit arm, the breadth gate and the DUMMY broker-side orders")]),
     ("accounting", "Accounting", "accounting", "/accounting", [
         ("P&L by period", "/accounting?tab=pnl", "Today, this month and since start, checked against the ledger"),
         ("General ledger", "/accounting?tab=ledger", "Every rupee every session touched, double-entry"),
@@ -111,6 +112,8 @@ NAV = [
         ("Generate", "/reports", "Make any report now in HTML, CSV, Excel or PDF"),
         ("Schedules", "/reports?tab=schedules", "When each report runs, in IST"),
         ("Archive", "/reports?tab=archive", "Every report generated, to download again"),
+        ("Post-market RCA", "/rca", "Why each losing trade lost and which rule would have helped (built 16:00 IST)"),
+        ("Algo Signals", "/algo-signals", "High-volume breakout and retest setups (Kite scanner), ranked at each run"),
         ("Custom report", "/reports?tab=custom", "Pick sections, sessions and dates")]),
     ("lab", "Strategy Lab", "lab", "/lab", [
         ("Run → compare → promote", "/lab", "Backtest, compare, then promote a strategy"),
@@ -391,6 +394,22 @@ def state(conn) -> dict:
         out["open_value"] = round(sum(float(h["value"]) for h in opens), 2)
     except Exception as e:
         log.debug(f"  shell sessions: {e}")
+    try:                                   # KGF-09 (16 Nov 2026): the regime gate for the apps' native banner
+        from orders import arms
+        from scores.breadth import latest
+        al = arms.all_arms(conn)
+        gates = {(a["regime_gate"]["metric"], float(a["regime_gate"].get("min", 50))) for a in al.values()
+                 if a.get("regime_gate")}
+        if gates:
+            b = latest(conn) or {}
+            closed = sorted(f"{m} {float(b.get(m) or 0):.1f}% < {lo:g}%" for m, lo in gates
+                            if b.get(m) is None or float(b[m]) < lo)
+            out["regime_gate"] = {"open": not closed, "date": b.get("date"), "breadth20": b.get("breadth20"),
+                                  "breadth50": b.get("breadth50"),
+                                  "text": ("Regime gate closed: " + ", ".join(closed) + " -- gated arms wait, exits run")
+                                  if closed else None}
+    except Exception as e:
+        log.debug(f"  shell regime gate: {e}")
     try:
         r = conn.execute("SELECT COUNT(*) FROM alert_log WHERE created_at >= datetime('now', '-1 day') "
                          "AND severity IN ('warning', 'critical', 'error')").fetchone()

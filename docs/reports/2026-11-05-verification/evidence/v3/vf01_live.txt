@@ -1,0 +1,32 @@
+start 13:28:13
+IS 2025-06-03 2026-06-02 247 OOS 2026-06-03 2026-11-04 107
+  RRI.Recovery     IS t-sum +0.8 -> drop  h1: IS -0.004(-0.5) OOS -0.014(-1.2)  h5: IS +0.006(+0.5) OOS +0.001(+0.0)  h20: IS +0.021(+0.9) OOS +0.021(+0.3)
+  RRI.RSIRecovery  IS t-sum +0.9 -> drop  h1: IS +0.003(+0.4) OOS -0.022(-2.1)  h5: IS +0.001(+0.1) OOS -0.021(-0.9)  h20: IS +0.015(+0.5) OOS -0.013(-0.5)
+  RRI.Volume       IS t-sum +0.3 -> drop  h1: IS -0.002(-0.4) OOS -0.009(-1.7)  h5: IS -0.000(-0.0) OOS -0.000(-0.0)  h20: IS +0.013(+0.7) OOS +0.016(+0.5)
+  RRI.Support      IS t-sum +5.4 -> keep  h1: IS +0.025(+2.1) OOS -0.004(-0.4)  h5: IS +0.049(+1.9) OOS -0.001(-0.0)  h20: IS +0.055(+1.4) OOS +0.005(+0.1)
+now {'atip': 'BROKEN', 'vpi': 'BROKEN', 'rri': 'BROKEN', 'acs': 'WEAK'}
+   atip h1: IS +0.0188(+2.6) OOS +0.0083(+0.7)  h5: IS +0.0280(+2.0) OOS +0.0172(+0.6)  h20: IS +0.0372(+1.2) OOS +0.0304(+0.5)
+   vpi  h1: IS -0.0099(-1.6) OOS -0.0035(-0.4)  h5: IS -0.0010(-0.1) OOS +0.0062(+0.3)  h20: IS +0.0053(+0.2) OOS +0.0324(+0.8)
+   rri  h1: IS -0.0007(-0.1) OOS -0.0174(-1.5)  h5: IS +0.0085(+0.6) OOS -0.0044(-0.1)  h20: IS +0.0261(+1.0) OOS +0.0136(+0.2)
+vpi_flip {'atip': 'WEAK', 'vpi': 'WORKING', 'rri': 'BROKEN', 'acs': 'WEAK'}
+   atip h1: IS +0.0366(+4.9) OOS +0.0200(+1.7)  h5: IS +0.0403(+2.5) OOS +0.0244(+0.8)  h20: IS +0.0501(+1.3) OOS +0.0330(+0.6)
+   vpi  h1: IS +0.0260(+4.0) OOS +0.0274(+2.8)  h5: IS +0.0213(+1.5) OOS +0.0215(+1.1)  h20: IS +0.0207(+0.6) OOS +0.0330(+0.8)
+   rri  h1: IS -0.0007(-0.1) OOS -0.0174(-1.5)  h5: IS +0.0085(+0.6) OOS -0.0044(-0.1)  h20: IS +0.0261(+1.0) OOS +0.0136(+0.2)
+rri_new {'atip': 'WEAK', 'vpi': 'BROKEN', 'rri': 'BROKEN', 'acs': 'WEAK'}
+   atip h1: IS +0.0324(+4.9) OOS +0.0167(+1.5)  h5: IS +0.0416(+3.2) OOS +0.0198(+0.7)  h20: IS +0.0406(+1.4) OOS +0.0285(+0.5)
+   vpi  h1: IS -0.0099(-1.6) OOS -0.0035(-0.4)  h5: IS -0.0010(-0.1) OOS +0.0062(+0.3)  h20: IS +0.0053(+0.2) OOS +0.0324(+0.8)
+   rri  h1: IS +0.0245(+2.1) OOS -0.0045(-0.4)  h5: IS +0.0497(+2.0) OOS -0.0010(-0.0)  h20: IS +0.0581(+1.4) OOS +0.0054(+0.1)
+both {'atip': 'WORKING', 'vpi': 'WORKING', 'rri': 'BROKEN', 'acs': 'WEAK'}
+   atip h1: IS +0.0501(+7.0) OOS +0.0281(+2.4)  h5: IS +0.0530(+3.3) OOS +0.0269(+0.9)  h20: IS +0.0550(+1.5) OOS +0.0308(+0.6)
+   vpi  h1: IS +0.0260(+4.0) OOS +0.0274(+2.8)  h5: IS +0.0213(+1.5) OOS +0.0215(+1.1)  h20: IS +0.0207(+0.6) OOS +0.0330(+0.8)
+   rri  h1: IS +0.0245(+2.1) OOS -0.0045(-0.4)  h5: IS +0.0497(+2.0) OOS -0.0010(-0.0)  h20: IS +0.0581(+1.4) OOS +0.0054(+0.1)
+decision {"vpi_flip": {"own_oos_better_1_5_20": true, "own_is_5d_not_lower": true, "atip_oos_not_lower": true, "adopt": true}, "rri_new": {"own_oos_better_1_5_20": false, "own_is_5d_not_lower": true, "atip_oos_not_lower": false, "adopt": false}, "both (ATIP)": {"own_oos_better_1_5_20": true, "own_is_5d_not_lower": true, "atip_oos_not_lower": true, "adopt": true}}
+  BUY now (70/60)                  IS {'rows_per_day': 2.42, 'net_5d_mean_pct': -0.113, 'hit_pct': 46.7, 'n': 597}  OOS {'rows_per_day': 6.93, 'net_5d_mean_pct': -0.047, 'hit_pct': 46.6, 'n': 736}
+  BUY vpi_flip, old gate (70/60)   IS {'rows_per_day': 14.0, 'net_5d_mean_pct': -0.639, 'hit_pct': 42.9, 'n': 3457}  OOS {'rows_per_day': 24.74, 'net_5d_mean_pct': -0.374, 'hit_pct': 43.3, 'n': 2629}
+  BUY vpi_flip, re-set gate        IS {'rows_per_day': 2.53, 'net_5d_mean_pct': 0.075, 'hit_pct': 49.8, 'n': 626}  OOS {'rows_per_day': 3.58, 'net_5d_mean_pct': -0.301, 'hit_pct': 44.5, 'n': 382}
+  BUY both, re-set gate            IS {'rows_per_day': 2.27, 'net_5d_mean_pct': -0.085, 'hit_pct': 45.9, 'n': 560}  OOS {'rows_per_day': 3.89, 'net_5d_mean_pct': -0.43, 'hit_pct': 41.5, 'n': 405}
+  top-10 ATIP now       5d net IS +0.044%  OOS -0.382%
+  top-10 ATIP vpi_flip  5d net IS -0.174%  OOS -0.141%
+  top-10 ATIP rri_new   5d net IS -0.120%  OOS -0.216%
+  top-10 ATIP both      5d net IS -0.164%  OOS -0.160%
+end 13:31:16

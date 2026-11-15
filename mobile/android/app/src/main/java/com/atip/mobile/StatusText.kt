@@ -31,7 +31,9 @@ object StatusText {
         val halted = js.optBoolean("halted", false)
         val manual = js.optJSONObject("override")?.let { str(it, "mode") ?: "override" }   // null: no override
         val viewer = str(js, "role") == "VIEWER"
-        if (status == "RUNNING" && !halted && env != "LIVE" && manual == null)
+        // KGF-09 (16 Nov 2026): the breadth regime gate; text only while it holds a session's new entries back
+        val gate = js.optJSONObject("regime_gate")?.let { str(it, "text") }?.takeIf { it.isNotBlank() }
+        if (status == "RUNNING" && !halted && env != "LIVE" && manual == null && gate == null)
             return Shown("● Running" + (if (viewer) " · view only" else ""), "#064E3B", "#D1FAE5", env, strip = false)
 
         // the strip always carries a symbol (● running, ⏸ stopped, ↻ resuming, ⛔ halted), never colour alone
@@ -54,6 +56,7 @@ object StatusText {
         // the live price feed in the web pages' own words (dashboard/ux_kit.feed_label, UX audit H1, 3 Nov 2026):
         // "Market closed · last tick 15:29 IST" outside market hours, never "live"
         js.optJSONObject("feed")?.let { f -> str(f, "text")?.takeIf { it.isNotBlank() }?.let { parts.add(minOf(1, parts.size), it) } }
+        if (gate != null) parts.add(minOf(1, parts.size), "◐ $gate")
         if (manual != null) parts += "manual $manual"
         if (viewer) parts += "view only"
         if (js.has("last_updated"))
@@ -62,6 +65,7 @@ object StatusText {
             halted || liveRun -> "#7F1D1D" to "#FEE2E2"
             status == "STOPPED" -> "#7C2D12" to "#FFEDD5"
             status == "RESUMING" -> "#1E3A8A" to "#DBEAFE"
+            status == "RUNNING" && gate != null -> "#78350F" to "#FDE68A"
             status == "RUNNING" -> "#064E3B" to "#D1FAE5"
             else -> "#334155" to "#FFFFFF"
         }

@@ -474,7 +474,12 @@ def above_200(tech):
 
 def compute_vpi(tech,prices,fund,inst,ns,weights,rs=None,liquidity=None):
     c={}
-    if tech.get("atr_pct"): c["V"]=min(tech["atr_pct"]*12,100)
+    # VF-01 (owner decision 5 Nov 2026, "fix if out of sample proves it"): V reads volatility as CALM = high, as ZPI's ATR
+    # already does. ATR% x 12 ranked returns the wrong way (the low-volatility effect). Point in time, 3 Jun 2025 - 4 Nov
+    # 2026: VPI's rank IC goes from -0.004 to +0.027 (t 2.8) at 1 day out of sample, +0.006 -> +0.022 at 5 and up at 20,
+    # and in-sample too; ATIP's out-of-sample IC rises at 1, 5 and 20 days. The rule was set before the run
+    # (tests/verification/vf01_variants.py; docs/reports/2026-11-05-verification). BUY_STRICT / BUY_LOOSE re-set below.
+    if tech.get("atr_pct"): c["V"]=round(100-min(tech["atr_pct"]*12,100),2)
     if tech.get("adx_14"):  c["TS"]=minmax(tech["adx_14"],0,60)
     if rs is not None: c["RS"]=rs
     lq=liquidity if liquidity is not None else compute_liquidity(prices)
@@ -835,8 +840,11 @@ def compute_acs(sym,td,all_scores,mh,conn,weights,liquidity=None,news_conf=None)
 #   Do NOT just lower these until a BUY appears. That manufactures signals
 #   without any evidence they are profitable — and the measured base rates for
 #   fixed 3%/6% targets on this universe are already negative after costs.
-BUY_STRICT = {"atip": 75, "vpi": 70, "zpi": 65, "acs": 60, "mh": 50}
-BUY_LOOSE  = {"atip": 65, "vpi": 60, "zpi": 55, "mh": 40}
+# VF-01 (5 Nov 2026): with VPI's V read as calm, the old VPI gates (70 / 60) let six times as many stocks through
+# (2.4 -> 14 BUY-gate rows a day in-sample). The two VPI gates are re-set, on the in-sample period only, to keep the
+# in-sample BUY rate (2.42 a day -> 2.53): 76.5 / 66.5. Nothing else in the gates changes.
+BUY_STRICT = {"atip": 75, "vpi": 76.5, "zpi": 65, "acs": 60, "mh": 50}
+BUY_LOOSE  = {"atip": 65, "vpi": 66.5, "zpi": 55, "mh": 40}
 SELL_CRI_DANGER = 75      # above this, exit/avoid regardless of other scores
 BUY_MAX_CRI = 60          # SV-04: a BUY needs a CRI below this -- CRI is lower-is-better and the BUY gates had no cap on it
 SELL_ATIP_FLOOR = 30      # below this, treat as a sell candidate

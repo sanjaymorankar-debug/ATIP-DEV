@@ -20,7 +20,8 @@ when it is set, so an install that sets none behaves exactly as before:
 
     "risk_limits": {
       "max_order_value":          100000,   # rupees, one order
-      "max_orders_per_day":       10,       # BUY orders actually placed today
+      "max_orders_per_day":       20,       # BUY orders actually placed today (owner 5 Nov 2026: 20, so a
+                                            # session can buy again the day it sells; 10 = one per session)
       "max_open_positions":       8,
       "max_symbol_exposure_value": 50000    # held + this order, per symbol
     }
@@ -57,7 +58,10 @@ pretrade_check(gateway=False).
 
 The two loss limits are measured by portfolio/pnl.py (risk_state): today's P&L
 against the last pnl_daily row, the drawdown against the highest stored
-equity, both marked to the latest prices. They block new BUYs only -- a SELL
+equity, both marked to the latest prices and both net of the external cash
+flows on record (portfolio/cash_flows.py, owner item 8, 16 Nov 2026): a
+recorded deposit, withdrawal or transfer is not P&L and cannot trip either.
+They block new BUYs only -- a SELL
 reduces exposure, and refusing it in a drawdown would lock the loss in; the
 kill switch is the tool that stops everything. A loss limit that is set but
 cannot be measured (no P&L history yet, LIVE funds unreachable) blocks the
@@ -320,7 +324,9 @@ def pretrade_check(conn, symbol, transaction_type, quantity, est_value, env=None
                 blocked = (unmeasured[0]["limit"], unmeasured[0]["reason"])
 
     if blocked:
-        return {"ok": False, "blocked_by": blocked[0], "message": blocked[1], "checks": checks, "gateway": gate}
+        note = next((c["note"] for c in checks if c.get("note") and c["limit"] == blocked[0]), "")
+        return {"ok": False, "blocked_by": blocked[0], "message": blocked[1] + (f" ({note})" if note else ""),
+                "checks": checks, "gateway": gate}
     return {"ok": True, "blocked_by": None,
             "message": f"{len(checks)} limit(s) checked, none breached" + _gate_note(gate),
             "checks": checks, "gateway": gate}
@@ -514,14 +520,33 @@ def _pnl_env(env) -> str:
     return LIVE if env == LIVE else PAPER
 
 
+def _flow_note(st: dict) -> str:
+    """Owner item 8 (16 Nov 2026): when a loss limit binds, name the cash moves that are not yet counted as external
+    flows -- a withdrawal the owner has not recorded (or a detected one not confirmed) still reads as a loss."""
+    bits = [f"pending external flow #{p['id']} {float(p['amount']):+,.0f} on {p['date']}"
+            for p in (st.get("pending_flows") or [])]
+    u = st.get("unexplained_cash")
+    if u and not bits:
+        bits.append(f"cash moved {float(u['amount']):+,.0f} since {u['from']} with no trade")
+    if not bits:
+        return ""
+    return ("; ".join(bits) + " - if that was a deposit, withdrawal or transfer, record or confirm it "
+            "(python -m portfolio.cash_flows) and it stops counting as P&L")
+
+
 def _loss_checks(conn, env, lim, checks, check):
     """RK-07 / RK-08 against portfolio.pnl.risk_state(). A limit that cannot
-    be measured is recorded as unmeasured -- pretrade_check then blocks."""
+    be measured is recorded as unmeasured -- pretrade_check then blocks.
+    Both figures are net of the confirmed external cash flows (owner item 8, 16 Nov 2026: day P&L excludes a
+    deposit or withdrawal, the drawdown peak is scaled by it), so a recorded withdrawal never trips
+    max_daily_loss_value or max_drawdown_pct while a real loss still does. A breached check carries "note" naming
+    any unrecorded / unconfirmed cash move, and pretrade_check adds it to the refusal."""
     try:
         from portfolio.pnl import risk_state
         st = risk_state(conn, _pnl_env(env), ask_broker=(env == LIVE))
     except Exception as e:
         st = {"day_pnl": None, "drawdown_pct": None, "error": str(e)}
+    note = _flow_note(st)
     cap = lim.get("max_daily_loss_value")
     if cap is not None:
         if st.get("day_pnl") is None:
@@ -531,6 +556,8 @@ def _loss_checks(conn, env, lim, checks, check):
                                      "(no pnl_daily row before today, or no prices/funds) - BUY refused"})
         else:
             check("max_daily_loss_value", max(0.0, -st["day_pnl"]), cap, " Rs lost today")
+            if checks[-1]["breached"] and note:
+                checks[-1]["note"] = note
     cap = lim.get("max_drawdown_pct")
     if cap is not None:
         if st.get("drawdown_pct") is None:
@@ -540,6 +567,8 @@ def _loss_checks(conn, env, lim, checks, check):
                                      "(equity unknown) - BUY refused"})
         else:
             check("max_drawdown_pct", st["drawdown_pct"], cap, "% drawdown")
+            if checks[-1]["breached"] and note:
+                checks[-1]["note"] = note
 
 
 # -- Position sizing (RK-13) ------------------------------------------------
@@ -644,6 +673,9 @@ def describe_state(conn=None) -> str:
             st = risk_state(conn, _pnl_env(env))
             lines.append(f"today's P&L     : {st['day_pnl']}  drawdown: {st['drawdown_pct']}%  "
                          f"(equity {st['equity']}, peak {st['peak_equity']})")
+            lines.append(f"external flows  : {st.get('external_flow') or 0:+,.2f} since the last row"
+                         f"{' (flow-adjusted)' if st.get('flow_adjusted') else ''}"
+                         f"{'; ' + _flow_note(st) if _flow_note(st) else ''}")
         except Exception as e:
             lines.append(f"today's P&L     : unavailable ({e})")
         return "\n".join(lines)

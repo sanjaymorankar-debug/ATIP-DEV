@@ -161,7 +161,7 @@ def run_checks(conn, td: date, universe: list[str]) -> list[dict]:
                        "(SELECT COUNT(*) FROM index_levels WHERE date>?)", (today, today)).fetchone()[0]
     out.append(_result("future_dates", fut, max(fut, 1)))
 
-    fii = conn.execute("SELECT 1 FROM fii_dii_market WHERE date=?", (d,)).fetchone()
+    fii = conn.execute("SELECT 1 FROM fii_dii_market WHERE date=? AND fii_net_cr IS NOT NULL", (d,)).fetchone()  # VF5-05
     out.append(_result("market_inputs", 0 if fii else 1, 1,
                        note=None if fii else "no FII/DII row for the session yet (NSE publishes it in the evening)"))
     return out

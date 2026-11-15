@@ -156,6 +156,12 @@ def _migrate_bracket_columns(conn):
         # ── broker-side placement (Dhan GTT / bracket / super order) ──
         "broker_leg_type": "TEXT",         # which broker mechanism holds this leg, if any
         "broker_leg_id": "TEXT",           # Dhan's id for it
+        # ── KGF-02 / KGF-13 (16 Nov 2026): what an auto-pick was priced on, and the arm's time exit ──
+        "signal_close": "REAL",            # the signal day's close the pick was ranked on
+        "pick_ltp": "REAL",                # the live LTP (<= 60 s old) the pick was priced on
+        "pick_ltp_ts": "TEXT",             # that LTP's timestamp
+        "max_hold_days": "REAL",           # on an ENTRY: sell what is held at the close of the Nth trading day
+        "algo_ref": "TEXT",                # the DUMMY- record (orders/algo_gtt.py) this entry mirrors
     }
     added = []
     for col, typ in additions.items():
@@ -191,6 +197,21 @@ def _resolve_trigger_price(trigger_type, trigger_value, trigger_percent, referen
     if trigger_type == "PRICE":
         return round(float(trigger_value), 2)
     return round(reference_price * (1 + float(trigger_percent) / 100), 2)
+
+
+def _on_tick(symbol, price, direction):
+    """KGF-04 (16 Nov 2026): a trigger or limit on the exchange tick (orders/ticks.py), rounded the way that never
+    trades worse than asked: a level the price must FALL to (a BUY limit, a long's stop) rounds down, one it must RISE
+    to (a long's target, a buy-stop) rounds up. 892.44 (INDHOTEL, tick 0.05) was accepted by paper and would have been
+    rejected by NSE."""
+    if price is None:
+        return None
+    from orders.ticks import to_tick
+    try:
+        return to_tick(price, "BUY" if direction == DIR_BELOW else "SELL", "ENTRY", symbol=symbol)
+    except Exception as e:                 # never lose a rule to the rounding: keep the 2-dp price and say so
+        log.warning(f"  {symbol}: tick rounding of {price} failed ({e}); kept as is")
+        return round(float(price), 2)
 
 
 def _resolve_stoploss_price(stoploss_type, stoploss_value, trigger_price):
@@ -242,6 +263,12 @@ def create_rule(payload: dict) -> dict:
         # Direction defaults to the historical side-implied behaviour so
         # existing callers are unchanged; bracket legs pass it explicitly.
         direction = payload.get("trigger_direction") or (DIR_BELOW if side == "BUY" else DIR_ABOVE)
+        trigger_price = _on_tick(symbol, trigger_price, direction)
+        if stoploss_price is not None:          # an entry's stop sits on the far side: a long's below, rounded down
+            stoploss_price = _on_tick(symbol, stoploss_price, DIR_BELOW if side == "BUY" else DIR_ABOVE)
+        limit_price = payload.get("limit_price")
+        if limit_price:
+            limit_price = _on_tick(symbol, float(limit_price), DIR_BELOW if side == "BUY" else DIR_ABOVE)
 
         conn.execute("""
             INSERT INTO order_rules (
@@ -254,8 +281,9 @@ def create_rule(payload: dict) -> dict:
                 bracket_target_pct, bracket_target2_pct, bracket_stop_pct, bracket_auto_exit,
                 bracket_target_split, trail_enabled, trail_type, trail_value, trail_jump,
                 trail_high_water, trail_moves, trail_after_pct, trail_activate_price,
-                bracket_target_after_days, not_before
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                bracket_target_after_days, not_before,
+                signal_close, pick_ltp, pick_ltp_ts, max_hold_days, algo_ref
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             rule_id, symbol, side, payload["trigger_type"],
             payload.get("trigger_value"), payload.get("trigger_percent"),
@@ -263,7 +291,7 @@ def create_rule(payload: dict) -> dict:
             payload["quantity_type"], payload["quantity_value"],
             stoploss.get("type"), stoploss.get("value"), stoploss_price,
             payload.get("product_type", "CNC"), payload.get("order_type", "MARKET"),
-            payload.get("limit_price"),
+            limit_price,
             1 if payload.get("require_confirmation", True) else 0,
             ACTIVE, payload.get("notes", ""), now, now,
             direction, role, payload.get("parent_rule_id"), payload.get("oco_group_id"),
@@ -276,6 +304,8 @@ def create_rule(payload: dict) -> dict:
             payload.get("trail_high_water"), 0,
             payload.get("trail_after_pct"), payload.get("trail_activate_price"),
             payload.get("bracket_target_after_days"), payload.get("not_before"),
+            payload.get("signal_close"), payload.get("pick_ltp"), payload.get("pick_ltp_ts"),
+            payload.get("max_hold_days"), payload.get("algo_ref"),
         ))
         conn.commit()
         return get_rule(rule_id)
@@ -407,9 +437,12 @@ def settle_oco_group(rule: dict, filled_qty: float) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
     try:
+        # Verification 5 Nov 2026 (VF5-06): a leg waiting for its confirmation tap (bracket_auto_exit off) is live too. Only
+        # ACTIVE siblings were settled, so after a stop filled a target already PENDING_CONFIRMATION survived, and tapping
+        # Confirm sent a second SELL of a position that was already flat (in LIVE, any other demat shares of the symbol).
         siblings = [dict(r) for r in conn.execute(
-            "SELECT * FROM order_rules WHERE oco_group_id=? AND id!=? AND status=?",
-            (group, rule["id"], ACTIVE)).fetchall()]
+            "SELECT * FROM order_rules WHERE oco_group_id=? AND id!=? AND status IN (?, ?)",
+            (group, rule["id"], ACTIVE, PENDING_CONFIRMATION)).fetchall()]
 
         if role == ROLE_STOP:
             ids = [s["id"] for s in siblings]
@@ -496,6 +529,7 @@ def update_trailing_stops(price_by_symbol: dict) -> list[dict]:
                     if (leg.get("trail_type") or "PERCENT") == "PERCENT"
                     else float(leg["trail_value"]))
             candidate = (new_hw - dist) if long_pos else (new_hw + dist)
+            candidate = _on_tick(leg["symbol"], candidate, DIR_BELOW if long_pos else DIR_ABOVE)   # KGF-04
             current = float(leg["resolved_trigger_price"])
             jump = float(leg.get("trail_jump") or 0)
             improves = (candidate > current) if long_pos else (candidate < current)
@@ -922,7 +956,8 @@ def _session_sized(rule: dict, price: float) -> dict:
         sid = session_of_rule(conn, rule)
         if not sid:
             return {"quantity": 0, "reason": "quantity SESSION needs the rule linked to a session with a cash pool"}
-        return {"session": sid, **pool_quantity(conn, sid, price, float(rule["quantity_value"]))}
+        return {"session": sid, **pool_quantity(conn, sid, price, float(rule["quantity_value"]),
+                                                stop_pct=rule.get("bracket_stop_pct"))}
     finally:
         conn.close()
 
@@ -950,6 +985,90 @@ def _risk_sized(rule: dict, price: float) -> dict:
                                 risk_per_trade_pct=float(rule["quantity_value"]))
     finally:
         conn.close()
+
+
+def _stop_extra_bps() -> float:
+    """KGF-17: the slippage a PAPER stop exit takes on top of the broker's own -- paper_stop_slippage_bps (default three
+    times paper_slippage_bps: 15 bps at the default 5) less the paper_slippage_bps the broker already applies."""
+    try:
+        from orders.paper import settings
+        cfg = settings()
+        base = float(cfg.get("paper_slippage_bps") or 0)
+        stop = cfg.get("paper_stop_slippage_bps")
+        stop = 3 * base if stop in (None, "") else float(stop)
+        return max(0.0, stop - base)
+    except Exception:
+        return 0.0
+
+
+def _paper_reference(rule: dict, price: float | None) -> float | None:
+    """The price a PAPER fill is made against, when it should not be the broker's own fresh quote (16 Nov 2026):
+    a LIMIT entry fills against the quote that fired its trigger (min(LTP, limit), never above the limit -- the Kite
+    rule and KGF-02's LIMIT); a STOP leg fills the extra stop slippage under the quote that fired it (KGF-17: stops
+    filled 5 bps off while BHEL's real gap cost 0.6 %; _stop_extra_bps). Anything else, or outside PAPER: None."""
+    if not price:
+        return None
+    try:
+        from orders.environment import PAPER, broker_env
+        if broker_env() != PAPER:
+            return None
+    except Exception:
+        return None
+    role = rule.get("role") or ROLE_ENTRY
+    if role == ROLE_ENTRY and str(rule.get("order_type") or "").upper() == "LIMIT":
+        return float(price)
+    if role == ROLE_STOP and rule.get("side") == "SELL":
+        extra = _stop_extra_bps()
+        return round(float(price) * (1 - extra / 10000), 2) if extra else None
+    return None
+
+
+def run_time_exits(now: datetime | None = None, at: str = "15:15") -> list[dict]:
+    """KGF-13 (16 Nov 2026): the arms' time exit. An entry with max_hold_days (the Kite K1/K2 20 days, K4 40) sells what
+    is still held on its Nth trading day after the fill, from `at` IST, through its own STOP leg -- the leg covers the
+    whole position and settle_oco_group cancels the target with it. Called by the order monitor after check_triggers."""
+    now = now or datetime.now()
+    if now.strftime("%H:%M") < at:
+        return []
+    from utils.trading_calendar import sessions_until
+    conn = get_connection()
+    try:
+        _ensure_table(conn)
+        due = []
+        for e in [dict(r) for r in conn.execute(
+                "SELECT * FROM order_rules WHERE status = ? AND COALESCE(role, 'ENTRY') = 'ENTRY' "
+                "AND max_hold_days IS NOT NULL", (EXECUTED,)).fetchall()]:
+            stop = conn.execute("SELECT * FROM order_rules WHERE parent_rule_id = ? AND role = ? AND status = ?",
+                                (e["id"], ROLE_STOP, ACTIVE)).fetchone()
+            if not stop:
+                continue
+            stop = dict(stop)
+            filled = str(stop.get("created_at") or e.get("updated_at"))[:10]
+            if sessions_until(filled, now.date()) >= float(e["max_hold_days"]):
+                due.append((e, stop))
+    finally:
+        conn.close()
+    out = []
+    for e, stop in due:
+        try:
+            q = fetch_live_quotes([e["symbol"]])
+            ltp = next((float(r["ltp"]) for _, r in q.iterrows() if r.get("ltp")), None)
+        except Exception as ex:
+            log.warning(f"  time exit {e['symbol']}: no quote ({ex}); tried again on the next pass")
+            continue
+        if not ltp:
+            continue
+        log.info(f"  time exit: {e['symbol']} held {int(e['max_hold_days'])} trading days -- selling at ~{ltp}")
+        res = execute_rule(stop["id"], ltp)
+        c2 = get_connection()
+        try:
+            c2.execute("UPDATE order_rules SET notes = COALESCE(notes,'') || ? WHERE id = ?",
+                       (f" [time exit after {int(e['max_hold_days'])} trading days]", stop["id"]))
+            c2.commit()
+        finally:
+            c2.close()
+        out.append({"type": "TIME_EXIT", "rule_id": stop["id"], "symbol": e["symbol"], "status": res.get("status")})
+    return out
 
 
 def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dict:
@@ -1008,10 +1127,12 @@ def execute_rule(rule_id: str, price: float = None, confirm: bool = True) -> dic
     retry = False
     placer = place_buy_order if rule["side"] == "BUY" else place_sell_order
     tag = _order_tag(rule)
+    ref = _paper_reference(rule, price)
     result = placer(
         rule["symbol"], quantity,
         order_type=rule["order_type"], product_type=rule["product_type"],
         price=rule.get("limit_price") or 0, confirm=confirm, **({"tag": tag} if tag else {}),
+        **({"reference_price": ref} if ref else {}),
     )
     if result.get("status") == "PLACED":
         # The bracket legs below are measured from the ACTUAL fill (see _create_bracket_legs).

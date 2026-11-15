@@ -20,7 +20,7 @@ import json
 from datetime import datetime
 
 FORMULA_NOTES = {
-    "VPI": "Volatility-Potential: V, TS (trend strength / ADX), RS, LQ, VOL, MR (mean reversion), FG, IS, NS",
+    "VPI": "Volatility-Potential: V (100 - ATR% x 12, calm = high, VF-01), TS (trend strength / ADX), RS, LQ, VOL, MR (mean reversion), FG, IS, NS",
     "MRI": "Momentum-Reversal: MACD (reversal: falling histogram scores high, SV-03), RSI, ADX (trend strength, "
            "read straight since SV-03), Volume, EMA, News",
     "RRI": "Recovery: Recovery (from 52-week low), RSIRecovery, Volume, Institutional, Support, News",

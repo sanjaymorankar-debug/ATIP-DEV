@@ -81,7 +81,15 @@ def corrupt_after(db, d, seed=7):
                 "UPDATE bulk_deals SET net_value_cr = net_value_cr * junk() * 50 WHERE date > ?",
                 "UPDATE index_levels SET india_vix = india_vix * junk() WHERE date > ?",
                 "UPDATE news_articles SET news_score = news_score * junk() WHERE fetched_at >= date(?, '+1 day')",
-                "UPDATE global_markets SET global_score = global_score * junk() WHERE date > ?"):
+                "UPDATE global_markets SET global_score = global_score * junk() WHERE date > ?",
+                # 5 Nov 2026 QA pass: the other inputs the engine reads, so nothing dated after D is left clean
+                "UPDATE news_articles SET confidence = confidence * junk() WHERE fetched_at >= date(?, '+1 day')",
+                "UPDATE fo_underlying_daily SET pcr_oi = pcr_oi * junk() WHERE date > ?",
+                "UPDATE fii_dii_market SET pcr = pcr * junk() WHERE date > ?",
+                "UPDATE institutional_data SET fii_net_cr = fii_net_cr * junk() * 9, dii_net_cr = dii_net_cr * junk() * 9 "
+                "WHERE date > ?",
+                "UPDATE index_levels SET nifty50_chg = -nifty50_chg * junk(), banknifty_chg = -banknifty_chg * junk(), "
+                "midcap150_chg = -midcap150_chg * junk(), smallcap250_chg = -smallcap250_chg * junk() WHERE date > ?"):
         try:
             c.execute(sql, (d,))
         except sqlite3.OperationalError as e:

@@ -399,6 +399,10 @@ def _apply_pool_rules(conn, s: dict, rule: dict) -> dict:
         raise ValueError(f"rule {rule['id'][:8]} is {rule['status']}: only an entry still watching can join a pool")
     from orders.rules import _migrate_bracket_columns
     _migrate_bracket_columns(conn)                      # the trailing / time-bound columns
+    from orders import arms
+    arm = arms.get(conn, s["id"])
+    if arm:                                             # KGF-13 (16 Nov 2026): the session's A/B arm sets the exit
+        return _apply_arm_rules(conn, s, rule, arm)
     tgt = float(s.get("target_pct") or POOL_DEFAULTS["target_pct"])
     stop = s.get("stop_pct")
     trail, days = s.get("trail_pct"), s.get("hold_days")
@@ -419,6 +423,29 @@ def _apply_pool_rules(conn, s: dict, rule: dict) -> dict:
     return {"quantity": "whole session cash", "target_pct": tgt, "stop_pct": float(stop) if stop else None,
             "trail_pct": float(trail) if trail else None, "hold_days": float(days) if trail and days else None,
             "exit": exit_rule(s)}
+
+
+def _apply_arm_rules(conn, s: dict, rule: dict, arm: dict) -> dict:
+    """_apply_pool_rules for a session with an arm (orders/arms.py): the stop, trail, target and time exit the arm
+    gives this stock -- an ATR arm reads the stock's ATR14 -- on the same columns the pool's own rules use."""
+    from orders import arms
+    ex = arms.exit_params(conn, arm, rule["symbol"])
+    trail = bool(ex["trail_pct"])
+    conn.execute("UPDATE order_rules SET quantity_type = 'SESSION', quantity_value = 100, product_type = 'CNC', "
+                 "bracket_target_pct = ?, bracket_target2_pct = NULL, bracket_target_split = NULL, "
+                 "bracket_auto_exit = 1, trail_enabled = ?, trail_type = ?, trail_value = ?, trail_jump = ?, "
+                 "trail_after_pct = ?, bracket_target_after_days = ?, max_hold_days = ?, updated_at = ? WHERE id = ?",
+                 (ex["target_pct"], 1 if trail else 0, "PERCENT" if trail else None, ex["trail_pct"] if trail else None,
+                  0 if trail else None, ex["trail_after_pct"] if trail else None, ex["target_after_days"],
+                  ex["max_days"], _now(), rule["id"]))
+    if ex["stop_pct"]:
+        trig = float(rule["resolved_trigger_price"])
+        conn.execute("UPDATE order_rules SET bracket_stop_pct = ?, stoploss_type = 'PERCENT', stoploss_value = ?, "
+                     "resolved_stoploss_price = ? WHERE id = ?",
+                     (float(ex["stop_pct"]), -float(ex["stop_pct"]), round(trig * (1 - float(ex["stop_pct"]) / 100), 2),
+                      rule["id"]))
+    return {"quantity": "whole session cash" + (", risk-capped" if arm.get("risk_budget") else ""),
+            "arm": arm.get("label"), **ex, "exit": arms.describe(arm)}
 
 
 def events(conn, sid: str | None = None, limit: int = 50) -> list:
@@ -651,21 +678,37 @@ def ledger(conn, sid: str, s: dict | None = None, history: bool = False) -> dict
             "latest": occ[-1] if occ else None, **({"occurrences": occ} if history else {}),
             "target_pct": s.get("target_pct"), "stop_pct": s.get("stop_pct"),
             "trail_pct": s.get("trail_pct"), "hold_days": s.get("hold_days"), "exit_rule": exit_rule(s),
-            "min_buy_value": s.get("min_buy_value"),
+            "min_buy_value": s.get("min_buy_value"), "arm": _arm_words(conn, sid),
             "transfers": round(sum(m["amount"] for m in moved), 2), "floor": round(float(extras["floor"]), 2),
             "floor_rule": extras["floor_rule"], "compound_basis": extras["compound_basis"],
             "tax_reserve": round(float(extras["tax_reserve"] or 0), 2), "investable_cash": round(investable, 2),
             "waiting": waiting}
 
 
-def pool_quantity(conn, sid: str, price: float, pct: float = 100.0) -> dict:
+def _arm_words(conn, sid: str) -> str | None:
+    try:
+        from orders import arms
+        return arms.describe(arms.get(conn, sid))
+    except Exception:
+        return None
+
+
+def pool_quantity(conn, sid: str, price: float, pct: float = 100.0, stop_pct: float | None = None) -> dict:
     """Shares a pool session's next buy gets at `price`: as many as pct % of its cash pays for,
-    slippage and the buy's charges included, so the session never spends money it does not have."""
+    slippage and the buy's charges included, so the session never spends money it does not have.
+    KGF-13 (16 Nov 2026): a risk-budget arm (orders/arms.py) buys at most max(floor, budget / stop%) -- a 5 % stop
+    risks about Rs 625, as a 2 % stop on the whole Rs 25,000 does today."""
     L = ledger(conn, sid)
     if not L:
         return {"quantity": 0, "cash": None, "budget": None, "reason": f"session {sid} has no starting capital"}
     # Under AFTER_TAX_RESERVE the cycles' estimated tax is not reinvested (investable_cash = cash - tax_reserve)
     budget = max(0.0, L.get("investable_cash", L["cash"])) * min(100.0, max(0.0, float(pct))) / 100
+    capped = None
+    if stop_pct:
+        from orders import arms
+        capped = arms.value_cap(arms.get(conn, sid), float(stop_pct), float(L.get("floor") or 0))
+        if capped is not None:
+            budget = min(budget, capped)
     if _paper():
         from orders.paper import paper_cost_model, settings
         model, bps = paper_cost_model(), float(settings().get("paper_slippage_bps") or 0)
@@ -676,7 +719,7 @@ def pool_quantity(conn, sid: str, price: float, pct: float = 100.0) -> dict:
     q = int(budget // px) if px > 0 else 0
     while q > 0 and q * px + model.total("BUY", q * px) > budget:
         q -= 1
-    return {"quantity": q, "cash": L["cash"], "budget": round(budget, 2),
+    return {"quantity": q, "cash": L["cash"], "budget": round(budget, 2), "risk_capped": capped is not None,
             "reason": None if q else f"session {sid}'s Rs {budget:,.0f} buys no share at Rs {float(price):,.2f}"}
 
 
@@ -808,6 +851,14 @@ def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
             return f"session {sid} is {s['status']}"
         if s["mode"] == "MANUAL":
             return f"session {sid} is MANUAL -- place this order yourself"
+        # KGF-03 (16 Nov 2026): no new swing (CNC) entry from an auto-pick after the session's cut-off (14:45 IST by
+        # default). Picks re-queued whenever a session freed up, up to ASHOKLEY at 15:29 on 11 Nov; the study assumed
+        # an entry at the next open. The resting Kite retest buy is a broker-side order by design and is not held.
+        if str(rule.get("notes") or "").startswith("Auto-pick") and (rule.get("product_type") or "CNC") == "CNC":
+            from orders import arms
+            cut = str(arms.setting(arms.get(conn, sid), "no_entry_after"))
+            if datetime.now().strftime("%H:%M") >= cut:
+                return f"session {sid}: no new swing entry after {cut} IST"
         u = usage(conn, sid)
         if s.get("max_trades") and u["trades_today"] >= int(s["max_trades"]):
             return f"session {sid} has used its {s['max_trades']} trades today"

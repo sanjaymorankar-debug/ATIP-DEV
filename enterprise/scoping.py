@@ -81,6 +81,7 @@ _O += " ml_meta_label_run ml_meta_label_score"  # W40: the owner's meta-label mo
 _G += " quant_risk_exposure quant_risk_factor_return quant_risk_regression quant_risk_covariance quant_risk_state"
 _G += " preopen_snapshot"                      # NSE pre-open auction per stock (market data)
 _O += " research_screen"                       # the owner's saved screens
+_O += " portfolio_cash_flows"                  # owner item 8 (16 Nov 2026): deposits / withdrawals of the owner's books
 # W40 (ENT-15): option-overlay strategies' paper option positions -- the owner's book, like the futures legs
 _O += (" paper_option_strategy_position paper_option_strategy_leg paper_option_strategy_trade "
        "paper_option_strategy_mark")

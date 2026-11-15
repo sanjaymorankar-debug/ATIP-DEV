@@ -1116,7 +1116,7 @@ ssLayout(); document.getElementById('ssMore').addEventListener('click',function(
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">{sector_tiles}</div>
   </details>
   <div class="tgroups" role="group" aria-label="Views"><button type="button" data-g="scores" aria-pressed="true">Scores</button><button type="button" data-g="lists" aria-pressed="false">Lists</button><button type="button" data-g="flows" aria-pressed="false">Flows &amp; News</button><button type="button" data-g="activity" aria-pressed="false">Activity</button></div>
-  <div class="tabs" role="tablist" aria-label="Tables"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
+  <div class="tabs" role="tablist" aria-label="Tables"><div class="tab active" onclick="showTab('scores',this)">ATIP Scores</div><div class="tab" onclick="showTab('port',this)">Portfolio</div><div class="tab" onclick="showTab('vpi',this)">Top VPI</div><div class="tab" onclick="showTab('zpi',this)">Buy Zones</div><div class="tab" onclick="showTab('rri',this)">Recovery (RRI)</div><div class="tab" onclick="showTab('mri',this)">Momentum-reversal (MRI)</div><div class="tab" onclick="showTab('cri',this)">CRI Risk</div><div class="tab" onclick="showTab('fiidii',this)">FII / DII</div><div class="tab" onclick="showTab('news',this);atipLoadNewsImpact('niNewsBox')">News</div><div class="tab" onclick="showTab('hist',this)">Signal History</div><div class="tab" onclick="showTab('orders',this)">Orders</div><div class="tab" onclick="showTab('livefeeds',this);atipLoadFeeds('lfBox')">Live</div><div class="tab" onclick="showTab('asia',this);atipLoadAsia('gaBox');atipLoadNewsImpact('niAsiaBox')">Global &amp; Asia</div></div>
   <div id="scores" class="tc active section">
     {score_legend}
     <div class="tfilter"><input id="srch" placeholder="Search symbol or company…" aria-label="Search symbol or company" oninput="ft()"><select id="sf" aria-label="Signal" onchange="ft()"><option value="">All signals</option><option>BUY</option><option>SELL</option><option>HOLD</option><option>WAIT</option></select><select id="slim" aria-label="Rows to show" onchange="ft()" title="Rows to show, in the current sort order"><option value="50">Show 50</option><option value="100">Show 100</option><option value="250">Show 250</option><option value="0">Show all</option></select><span class="cnt" id="scnt"></span><span class="cnt">· click a column to sort · click a stock for its history · hover a column name for its meaning</span></div>
@@ -2004,6 +2004,12 @@ if HAS_FASTAPI:
     _register_command_more(app, _guard, _Req, get_connection, json_safe)
     from dashboard.ux_routes import register as _register_ux_routes                    # UXD/SES/ACC/RPT (2 Nov 2026): the shell
     _register_ux_routes(app, _guard, _Req, get_connection, json_safe)                  # on every page, new pages, /api/v2
+    from dashboard.rca_routes import register as _register_rca_routes                  # 6 Nov 2026: post-market RCA (/rca)
+    _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.arms_routes import register as _register_arms_routes                # 16 Nov 2026: arms, gate, DUMMY GTTs (/ab)
+    _register_arms_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.algo_routes import register as _register_algo_routes                # KGF-10 (16 Nov 2026): Algo Signals
+    _register_algo_routes(app, _guard, _Req, get_connection, json_safe)                # (/algo-signals, /api/scanner-data)
     from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
     _register_global_asia(app, _guard, _Req, get_connection, json_safe)
     from dashboard.news_impact_view import register as _register_news_impact            # NI-05: news impact
@@ -2258,6 +2264,47 @@ if HAS_FASTAPI:
             out[row["symbol"]] = {"ltp": ltp, "chg_pct": chg, "prev_close": prev}
         return out
 
+    # RCA-13 (6 Nov 2026): a pass that lost to a database lock runs again after MONITOR_LOCK_RETRY_S, not after the
+    # full MONITOR_EVERY_S. Every connection already waits up to 60 s for a writer (db.schema.BUSY_TIMEOUT_MS), so a
+    # pass that still fails has lost that minute; another 30 s on top leaves exit legs unwatched for 90 s.
+    MONITOR_EVERY_S = 30
+    MONITOR_LOCK_RETRY_S = 5
+
+    def _is_db_lock(e) -> bool:
+        return "database is locked" in str(e) or "database table is locked" in str(e)
+
+    def _order_monitor_pass() -> bool:
+        """One pass: auto-pick, then check_triggers. True when either lost to a database lock."""
+        locked = False
+        try:                    # free cash-pool sessions queue their next occurrence first
+            from orders.autopick import run as autopick
+            autopick()
+        except Exception as e:
+            log.error(f"  auto-pick error: {e}")
+            locked = _is_db_lock(e)
+        try:
+            events = oe.check_triggers()
+            if events:
+                log.info(f"  order_rules: {events}")
+        except Exception as e:
+            log.error(f"  order_rules monitor error: {e}")
+            locked = locked or _is_db_lock(e)
+        try:                    # KGF-11/13 (16 Nov 2026): DUMMY- records follow their rules; the arms' time exits
+            from orders import algo_gtt
+            c = get_connection()
+            try:
+                algo_gtt.maintain(c)
+                ev = algo_gtt.sync(c, algo_gtt.record_prices(c))
+            finally:
+                c.close()
+            ev += oe.run_time_exits()
+            if ev:
+                log.info(f"  algo / time exits: {ev}")
+        except Exception as e:
+            log.error(f"  algo dummy-GTT / time-exit pass error: {e}")
+            locked = locked or _is_db_lock(e)
+        return locked
+
     def _order_monitor_loop():
         """
         Runs only while the dashboard process is up — deliberately NOT part
@@ -2269,20 +2316,16 @@ if HAS_FASTAPI:
         from pipeline.scheduler import is_market_hours
         from pipeline.operating_schedule import is_stopped
         while True:
+            wait = MONITOR_EVERY_S
             try:
                 # Task 2: nothing is triggered while ATIP is stopped (21:00-06:00 IST / manual stop)
                 if is_market_hours() and not is_stopped():
-                    try:                    # free cash-pool sessions queue their next occurrence first
-                        from orders.autopick import run as autopick
-                        autopick()
-                    except Exception as e:
-                        log.error(f"  auto-pick error: {e}")
-                    events = oe.check_triggers()
-                    if events:
-                        log.info(f"  order_rules: {events}")
+                    if _order_monitor_pass():
+                        wait = MONITOR_LOCK_RETRY_S
+                        log.warning(f"  order monitor: pass lost to a database lock, running again in {wait}s")
             except Exception as e:
                 log.error(f"  order_rules monitor error: {e}")
-            time.sleep(30)
+            time.sleep(wait)
 
     @app.on_event("startup")
     async def _start_order_monitor():
@@ -2290,6 +2333,13 @@ if HAS_FASTAPI:
         from ops.role import is_viewer
         if is_viewer():
             log.info("  Order-rules monitor not started: this copy is a VIEWER, orders run on the Mac")
+            return
+        # Verification 5 Nov 2026 (VF5-07): ATIP_ORDER_MONITOR=off for a process that must not trade on its own -- the test
+        # suite (a TestClient's monitor thread outlived its test and, in market hours, auto-picked into later tests'
+        # databases: two different auto-pick tests failed in two runs at 13:14 and 13:25 IST) and QA copies of the DB.
+        import os
+        if os.environ.get("ATIP_ORDER_MONITOR", "").strip().lower() in ("off", "0", "false", "no"):
+            log.info("  Order-rules monitor not started: ATIP_ORDER_MONITOR is off")
             return
         threading.Thread(target=_order_monitor_loop, name="atip-order-monitor", daemon=True).start()
         log.info("  ✓ Order-rules monitor started (flags triggers every 30s during market hours)")

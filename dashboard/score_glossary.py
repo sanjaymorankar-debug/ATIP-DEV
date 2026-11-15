@@ -20,8 +20,8 @@ STRONG, NEUTRAL = 70, 45          # pill colour bands: >= 70 strong, 45-69 neutr
 DEFS = {
     "ATIP": ("ATIP score", "The master score: VPI, safety (100 − CRI), recovery, momentum, buy zone, trend, fundamentals "
                            "and institutional flow combined into one 0-100 number.", "higher"),
-    "VPI": ("Volatility-Potential Index", "Room to move: volatility, trend strength, relative strength, liquidity "
-                                          "and volume.", "higher"),
+    "VPI": ("Volatility-Potential Index", "Energy to move without the noise: calm (low) volatility, trend strength, "
+                                          "relative strength, liquidity and volume.", "higher"),
     "MRI": ("Momentum-Reversal Index", "A dip that is turning: a falling MACD histogram, RSI 40-55, trend strength "
                                        "(ADX), volume, EMA 9 over 21 and news.", "higher"),
     "RRI": ("Recovery Index", "How strongly the stock is bouncing off its 52-week low: RSI recovery, volume, "
@@ -40,7 +40,7 @@ DEFS = {
 FORMULAS = {
     "ATIP": "Weighted mean of the parts present: VPI .20 · SAFETY (100 − CRI) .20 · SPI .15 · RRI .10 · MRI .10 · "
             "MSI .10 · ZPI .10 · technical .10 · fundamental .10 · institutional .05",
-    "VPI": "ATR % ×12 .18 · ADX .15 · 20-day return vs Nifty 50 .12 · liquidity .10 · volume ratio .10 · RSI room .10 · "
+    "VPI": "100 − ATR % ×12 (calm) .18 · ADX .15 · 20-day return vs Nifty 50 .12 · liquidity .10 · volume ratio .10 · RSI room .10 · "
            "EPS growth .10 · FII+DII flow .08 · news .07",
     "MRI": "100 − MACD histogram .25 · RSI 40-55 band .20 · ADX .15 · volume ratio .15 · EMA 9 > 21 .15 · news .10",
     "RRI": "Rise off the 52-week low .25 · above the 200-day average .20 · RSI − 30 .15 · volume .15 · DII flow .15 · news .10",

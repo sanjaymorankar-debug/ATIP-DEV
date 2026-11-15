@@ -1,0 +1,747 @@
+{
+ "date": "2026-11-04",
+ "symbols": 499,
+ "scored_compared": 498,
+ "within_0.01_and_same_signal": 0,
+ "mismatches": [
+  {
+   "symbol": "360ONE",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AADHARHFC",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AARTIIND",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AAVAS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABB",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABBOTINDIA",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABCAPITAL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABDL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABREL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ABSLAMC",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "WAIT",
+    "WAIT"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ACC",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "WAIT",
+    "WAIT"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ACE",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ACMESOLAR",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ACUTAAS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ADANIENSOL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ADANIENT",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ADANIGREEN",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ADANIPORTS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ADANIPOWER",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AEGISLOG",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AEGISVOPAK",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AETHER",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AFCONS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "WAIT",
+    "WAIT"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AFFLE",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AIAENG",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AIIL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AJANTPHARM",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ALKEM",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "WAIT",
+    "WAIT"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AMBER",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "AMBUJACEM",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANANDRATHI",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANANTRAJ",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANGELONE",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANMOL",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANTHEM",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "ANURAS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "APARINDS",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "APLAPOLLO",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "APOLLOHOSP",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "HOLD",
+    "HOLD"
+   ],
+   "components": {}
+  },
+  {
+   "symbol": "APOLLOTYRE",
+   "diff": {
+    "msi": 0.02
+   },
+   "signal": [
+    "WAIT",
+    "WAIT"
+   ],
+   "components": {}
+  }
+ ],
+ "no_indicator_rows": [
+  "ICICILIFE"
+ ],
+ "no_indicator_but_scored": [
+  "ICICILIFE"
+ ],
+ "news_score_taken_from_components": [
+  "360ONE",
+  "AADHARHFC",
+  "AAVAS",
+  "ABB",
+  "ABBOTINDIA",
+  "ABDL",
+  "ABSLAMC",
+  "ACC",
+  "ACE",
+  "ADANIENSOL",
+  "ADANIPORTS",
+  "AEGISLOG",
+  "AEGISVOPAK",
+  "AFCONS",
+  "AFFLE",
+  "AIIL",
+  "AJANTPHARM",
+  "ALKEM",
+  "ANANDRATHI",
+  "ANMOL",
+  "ANTHEM",
+  "ANURAS",
+  "APLAPOLLO",
+  "APTUS",
+  "ARE&M",
+  "ASAHIINDIA",
+  "ASTRAL",
+  "ATGL",
+  "AVANTIFEED",
+  "AZAD",
+  "BAJAJHLDNG",
+  "BALKRISIND",
+  "BANKINDIA",
+  "BBOX",
+  "BDL",
+  "BEML",
+  "BERGEPAINT",
+  "BHARATCOAL",
+  "BHARATFORG",
+  "BHARTIHEXA",
+  "BLS",
+  "BSE",
+  "CANFINHOME",
+  "CANHLIFE",
+  "CAPLIPOINT",
+  "CARBORUNIV",
+  "CASTROLIND",
+  "CCL",
+  "CEATLTD",
+  "CEMPRO",
+  "CGCL",
+  "CGPOWER",
+  "CHAMBLFERT",
+  "CIEINDIA",
+  "CLEAN",
+  "CLEANMAX",
+  "CMPDI",
+  "COHANCE",
+  "COROMANDEL",
+  "CPPLUS",
+  "CRAFTSMAN",
+  "CREDITACC",
+  "CRISIL",
+  "CYIENT",
+  "DALBHARAT",
+  "DATAPATTNS",
+  "DEEPAKFERT",
+  "DMART",
+  "EIDPARRY",
+  "EIHOTEL",
+  "ELECON",
+  "ELGIEQUIP",
+  "EMMVEE",
+  "ENDURANCE",
+  "FACT",
+  "FINCABLES",
+  "FIRSTCRY",
+  "FIVESTAR",
+  "FLUOROCHEM",
+  "FSL",
+  "GALLANTT",
+  "GESHIP",
+  "GICRE",
+  "GILLETTE",
+  "GLAXO",
+  "GLENMARK",
+  "GMDCLTD",
+  "GMRAIRPORT",
+  "GODFRYPHLP",
+  "GODREJPROP",
+  "GPIL",
+  "GRAPHITE",
+  "GRSE",
+  "GVT&D",
+  "HAVELLS",
+  "HCLTECH",
+  "HDBFS",
+  "HDFCLIFE",
+  "HEXT",
+  "HINDCOPPER",
+  "HINDPETRO",
+  "HONASA",
+  "HONAUT",
+  "HSCL",
+  "HUDCO",
+  "ICICIAMC",
+  "ICICIGI",
+  "IDFCFIRSTB",
+  "IFCI",
+  "IGIL",
+  "IIFL",
+  "IKS",
+  "INDIAMART",
+  "INDIANB",
+  "INDUSTOWER",
+  "INTELLECT",
+  "IOC",
+  "IPCALAB",
+  "IRB",
+  "IRCTC",
+  "IREDA",
+  "IRFC",
+  "ITC",
+  "ITCHOTELS",
+  "ITI",
+  "J&KBANK",
+  "JAINREC",
+  "JBMA",
+  "JINDALSAW",
+  "JIOFIN",
+  "JKCEMENT",
+  "JKTYRE",
+  "JMFINANCIL",
+  "JPPOWER",
+  "JSL",
+  "JSWCEMENT",
+  "JSWENERGY",
+  "JSWINFRA",
+  "JSWSTEEL",
+  "JUBLFOOD",
+  "JUBLINGREA",
+  "JYOTICNC",
+  "KAJARIACER",
+  "KAYNES",
+  "KEC",
+  "KEI",
+  "KIMS",
+  "KIRLOSBROS",
+  "KIRLOSENG",
+  "KPIL",
+  "KSB",
+  "LALPATHLAB",
+  "LEMONTREE",
+  "LENSKART",
+  "LICI",
+  "LLOYDSME",
+  "LT",
+  "LTF",
+  "LTM",
+  "LTTS",
+  "M&M",
+  "M&MFIN",
+  "MANAPPURAM",
+  "MAXHEALTH",
+  "MCX",
+  "MEDANTA",
+  "MFSL",
+  "MGL",
+  "MRF",
+  "MRPL",
+  "NAM-INDIA",
+  "NATCOPHARM",
+  "NAVINFLUOR",
+  "NCC",
+  "NETWEB",
+  "NEULANDLAB",
+  "NH",
+  "NLCINDIA",
+  "NUVAMA",
+  "NUVOCO",
+  "OBEROIRLTY",
+  "OFSS",
+  "OIL",
+  "ONESOURCE",
+  "ONGC",
+  "PATANJALI",
+  "PCBL",
+  "PGEL",
+  "PHOENIXLTD",
+  "PIIND",
+  "POLYMED",
+  "PRESTIGE",
+  "PTCIL",
+  "RAILTEL",
+  "RAMCOCEM",
+  "RBLBANK",
+  "RECLTD",
+  "RHIM",
+  "RRKABEL",
+  "RTNPOWER",
+  "RUBICON",
+  "RVNL",
+  "SAILIFE",
+  "SAMMAANCAP",
+  "SANSERA",
+  "SARDAEN",
+  "SCHAEFFLER",
+  "SCHNEIDER",
+  "SHREECEM",
+  "SHRIPISTON",
+  "SIGNATURE",
+  "SOBHA",
+  "SRF",
+  "STARHEALTH",
+  "SUMICHEM",
+  "SUNTV",
+  "SWANCORP",
+  "TARIL",
+  "TATACOMM",
+  "TATAELXSI",
+  "TATAINVEST",
+  "TBOTEK",
+  "TDPOWERSYS",
+  "TEGA",
+  "TEJASNET",
+  "TENNIND",
+  "THANGAMAYL",
+  "THERMAX",
+  "TIINDIA",
+  "TIMKEN",
+  "TITAGARH",
+  "TMPV",
+  "TRITURBINE",
+  "TTML",
+  "TVSMOTOR",
+  "UCOBANK",
+  "UNOMINDA",
+  "UPL",
+  "USHAMART",
+  "UTIAMC",
+  "VAML",
+  "VIJAYA",
+  "VMM",
+  "VOGL",
+  "VOLTAS",
+  "VTL",
+  "YESBANK",
+  "ZENTEC",
+  "ZFCVINDIA",
+  "ZYDUSLIFE"
+ ],
+ "msi": {
+  "mine": 62.18,
+  "components": {
+   "News": 60.381781647689216,
+   "FII": 100.0,
+   "DII": 0.0,
+   "Sector": 100.0,
+   "Global": 41.81,
+   "VIX": 73.37
+  }
+ },
+ "indicator_match_share": {
+  "rsi_14": 1.0,
+  "ema_9": 1.0,
+  "ema_21": 1.0,
+  "sma_200": 1.0,
+  "atr_pct": 1.0,
+  "adx_14": 1.0,
+  "volume_ratio": 1.0,
+  "macd_hist_pct": 1.0
+ },
+ "indicator_mismatch_examples": {
+  "rsi_14": [],
+  "ema_9": [],
+  "ema_21": [],
+  "sma_200": [],
+  "atr_pct": [],
+  "adx_14": [],
+  "volume_ratio": [],
+  "macd_hist_pct": []
+ },
+ "max_abs_diff": {
+  "vpi": 0.01,
+  "mri": 0.01,
+  "rri": 0.0,
+  "zpi": 0.01,
+  "cri": 0.01,
+  "acs": 0.01,
+  "atip_score": 0.01,
+  "msi": 0.02
+ }
+}
