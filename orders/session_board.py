@@ -44,7 +44,16 @@ def _snapshot(conn, symbol, on) -> dict | None:
             "cri_note": "lower is better"}
 
 
+_RETEST = re.compile(r"breakout (\d{4}-\d{2}-\d{2}) \S+, buy ([\d.]+), stop ([\d.]+)")
+
+
 def _rationale(note: str | None, snap: dict | None) -> str:
+    # KGF-11 (16 Nov 2026): a Kite-retest arm's entry rests at the breakout candle's low (orders/algo_gtt.py)
+    r = _RETEST.search(note or "")
+    if r:
+        d, buy, stop = r.groups()
+        return (f"Kite breakout-retest of the {d} breakout: DUMMY resting buy at the breakout low ₹{buy}, "
+                f"stop ₹{stop} placed after the buy (no order sent to the broker)")
     m = _NOTE.search(note or "")
     if m:
         sig, d, score, source = m.groups()
@@ -112,6 +121,10 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
             row.update(symbol=queued["symbol"], status="QUEUED" if queued["status"] == "ACTIVE" else "AWAITING CONFIRMATION",
                        entry=e0, target=round(e0 * (1 + tp / 100), 2) if e0 else None,
                        stoploss=round(e0 * (1 - sp / 100), 2) if e0 else None)
+        elif pick and pick.get("type") == "PICKED" and pick.get("source") == "KITE-RETEST":
+            e0 = float(pick["trigger"])
+            note = (f"breakout {pick['signal_date']} {pick['symbol']}, buy {pick['trigger']}, "
+                    f"stop {pick.get('stoploss')} after the buy")
         elif pick and pick.get("type") == "PICKED":
             e0 = float(pick["price"])
             note = f"ATIP {pick['signal']} {pick['signal_date']}, score {pick['score']}, {pick.get('source')}"
@@ -129,7 +142,8 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
         row["rank_of"] = n_ranked if row["rank"] else None
         row["rationale"] = _rationale(note, row["score_snapshot"]) if row.get("symbol") else row.get("reason", "")
         m = _NOTE.search(note or "")
-        src = (m.group(4) if m and m.group(4) else ("BUY" if m and m.group(1) == "BUY" else "HOLD-CUT")) if m else None
+        src = (m.group(4) if m and m.group(4) else ("BUY" if m and m.group(1) == "BUY" else "HOLD-CUT")) if m else (
+            "KITE-RETEST" if _RETEST.search(note or "") else None)
         row["source"] = src
         if row.get("symbol") and src in sources:
             sources[src] += 1
