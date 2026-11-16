@@ -1,8 +1,8 @@
 """
 The weekly A/B report of the session arms (KGF-13, 16 Nov 2026): every Sunday at 18:00 IST, per arm, from the day its
 arm was set (the ARM session event) -- trades closed, win %, average net in rupees and in %, profit factor, maximum
-drawdown of its closed-trade equity, the days its regime gate held it out, and the picks it skipped (falling, no fresh
-LTP). Stored in ab_weekly_report (week_end PRIMARY KEY, built_at, payload JSON) and shown on /ab and in the apps.
+drawdown of its closed-trade equity, the days its regime gate held it out, the picks it skipped (falling, no fresh
+LTP, sector cap, re-entry cooldown) and its re-entries within an hour of a stop. Stored in ab_weekly_report (week_end PRIMARY KEY, built_at, payload JSON) and shown on /ab and in the apps.
 
 The owner's rule (prompt 15 Nov 2026): run on paper for at least MIN_TRADES closed trades per arm or MIN_WEEKS weeks,
 whichever is later, before promoting or retiring any arm. Each row says how far the arm is from that.
@@ -22,6 +22,7 @@ log = logging.getLogger("atip.ab_report")
 MIN_TRADES = 30
 MIN_WEEKS = 6
 CONTROL = "S5"
+REENTRY_WINDOW_MIN = 60          # a buy this soon after a stop on the same symbol counts as a re-entry (KGF-19)
 
 
 def _row(r):
@@ -67,8 +68,27 @@ def arm_stats(conn, sid: str, since: str, until: str) -> dict:
             "avg_pct": round(sum(t["pnl"] / t["value"] * 100 for t in tr if t["value"]) / n, 3) if n else None,
             "pf": (round(gross_w / gross_l, 2) if gross_l else ("∞" if gross_w else None)),
             "max_dd": round(dd, 2), "gate_days": len(gate_days), "skipped": len(skipped),
-            "skipped_falling": sum(1 for e in skipped if "skipped_falling" in (e.get("detail") or "")),
+            **{f"skipped_{k}": sum(1 for e in skipped if f"skipped_{k}" in (e.get("detail") or ""))
+               for k in ("falling", "sector", "cooldown")},
+            **_reentries(conn, tr),
             "open": sum(1 for t in sessions._trades(rules, since=since) if not t["closed"])}
+
+
+def _reentries(conn, trades: list) -> dict:
+    """KGF-19, measured: the closed trades bought within REENTRY_WINDOW_MIN of a stop on the same symbol (in any
+    session), and their net -- what a re-entry cooldown would have kept out. The cooldown itself is off by default."""
+    hits = []
+    for t in trades:
+        try:
+            at = datetime.fromisoformat(t["at"])
+        except (TypeError, ValueError):
+            continue
+        r = conn.execute("SELECT 1 FROM order_rules WHERE symbol = ? AND role = 'STOP' AND status = 'EXECUTED' "
+                         "AND updated_at >= ? AND updated_at < ? LIMIT 1",
+                         (t["symbol"], (at - timedelta(minutes=REENTRY_WINDOW_MIN)).isoformat(), t["at"])).fetchone()
+        if r:
+            hits.append(t)
+    return {"reentries": len(hits), "reentry_net": round(sum(t["pnl"] for t in hits), 2)}
 
 
 def build(conn, week_end: str | None = None) -> dict:
@@ -149,6 +169,7 @@ if __name__ == "__main__":
         print(f"week to {rep['week_end']} (arms since {rep['since']}, next review {rep['next_review']})")
         for r in rep["arms"]:
             print(f"  {r['session']:<4} {r['arm']:<22} closed {r['trades']:>3}  win {r['win_pct']}%  avg {r['avg_pct']}%  "
-                  f"PF {r['pf']}  max DD {r['max_dd']}  gate days {r['gate_days']}  skipped {r['skipped']}  {r['verdict']}")
+                  f"PF {r['pf']}  max DD {r['max_dd']}  gate days {r['gate_days']}  skipped {r['skipped']}  "
+                  f"re-entries {r['reentries']}  {r['verdict']}")
     finally:
         c.close()

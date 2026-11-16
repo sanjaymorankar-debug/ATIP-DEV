@@ -27,6 +27,15 @@ TODAY = date.today()
 YDAY = TODAY - timedelta(days=1)
 
 
+@pytest.fixture(autouse=True)
+def _no_dhan(monkeypatch):
+    """No test here reaches Dhan (16 Nov 2026: the retest test made 4 read-only calls to api.dhan.co): no quote call for
+    a missing LTP and no read-only account for the dummy-GTT checks, unless a test sets its own broker."""
+    import data.dhan
+    monkeypatch.setattr(data.dhan, "fetch_live_quotes", lambda *a, **k: None)
+    monkeypatch.setattr("orders.algo_gtt.default_broker", lambda: None)
+
+
 def _conn():
     from db.schema import get_connection
     return get_connection()

@@ -256,6 +256,14 @@ def _note_once(conn, sid, event: str, key: str, detail: dict) -> None:
         conn.commit()
 
 
+def _note_skip(conn, sid, kind: str, symbol: str, why: str, dry_run: bool) -> None:
+    """A sector-cap or cooldown skip, once a day per (session, symbol), so the weekly A/B report counts it with the
+    falling and no-LTP skips (16 Nov 2026: these two were only in the WAITING reason)."""
+    if not dry_run:
+        _note_once(conn, sid, "AUTO_PICK_SKIP", f"{kind}:{symbol}",
+                   {"status": f"skipped_{kind}", "symbol": symbol, "reason": why})
+
+
 def _cooled(conn, symbol: str, minutes) -> str | None:
     """KGF-19: the symbol's stop that fired less than `minutes` ago (INDHOTEL was bought again 31 s after its stop on
     11 Nov). Off unless the session's arm sets reentry_cooldown_min."""
@@ -476,9 +484,11 @@ def run(conn=None, dry_run: bool = False, today: date | None = None, now=None) -
                     continue
                 if (why_s := _sector_full(c["symbol"], busy, (arm or {}).get("sector_cap"))):
                     passed.append(why_s)
+                    _note_skip(conn, sid, "sector", c["symbol"], why_s, dry_run)
                     continue
                 if (why_c := _cooled(conn, c["symbol"], arms.setting(arm, "reentry_cooldown_min"))):
                     passed.append(why_c)
+                    _note_skip(conn, sid, "cooldown", c["symbol"], why_c, dry_run)
                     continue
                 looked += 1
                 c = _priced(conn, dict(c), ltps, stale_ok=dry_run)
@@ -599,9 +609,11 @@ def _pick_retest(conn, s: dict, arm: dict, busy: set, dry_run: bool, g: dict) ->
             continue
         if (why_s := _sector_full(sym, busy, arm.get("sector_cap"))):
             passed.append(why_s)
+            _note_skip(conn, sid, "sector", sym, why_s, dry_run)
             continue
         if (why_c := _cooled(conn, sym, arms.setting(arm, "reentry_cooldown_min"))):
             passed.append(why_c)
+            _note_skip(conn, sid, "cooldown", sym, why_c, dry_run)
             continue
         buy, stop = r.get("buy_price"), r.get("stop_price")
         if not buy or not stop:

@@ -10,8 +10,8 @@ the Kite spec; it never enables placement.
 
     buy_price   breakout-candle low, tick-rounded DOWN (never the LTP)
     stoploss    buy_price x 0.95, tick-rounded DOWN (risk per share = buy - stop; no ATR)
-    valid       10 trading days (VALID_SESSIONS); cancelled earlier when the setup is superseded or a close falls under
-                the stop before a fill
+    valid       10 trading sessions (VALID_SESSIONS), the day it is made counting when made before the close;
+                cancelled earlier when the setup is superseded or a close falls under the stop before a fill
     fill        in PAPER, when the LTP is at or under the trigger, at min(LTP, trigger): the session's entry rule
                 (orders/rules.py, a LIMIT at the buy price) does it through the paper broker; a record made from the API
                 without a session fills on the record only
@@ -354,10 +354,14 @@ def setup_for(conn, symbol: str) -> dict | None:
     return None
 
 
-def _valid_until(start: date, sessions: int = VALID_SESSIONS) -> str:
+def _valid_until(start: date, sessions: int = VALID_SESSIONS, now: datetime | None = None) -> str:
+    """The last of `sessions` trading sessions the dummy rests for. The day it is made counts as the first when that is a
+    trading day and the market has not closed (`now` before 15:30 IST); otherwise the next trading day is the first.
+    (Until 16 Nov 2026 the day it was made was not counted, so a dummy made in market hours rested 11 sessions.)"""
     from utils.trading_calendar import is_trading_day
-    from datetime import timedelta
-    d, n = start, 0
+    from datetime import time, timedelta
+    d = start
+    n = 1 if is_trading_day(d) and (now is None or now.time() < time(15, 30)) else 0
     while n < sessions:
         d += timedelta(days=1)
         if is_trading_day(d):
@@ -434,7 +438,7 @@ def place_dummy_buy(conn, symbol: str, quantity, buy_price, stoploss=None, *, co
             "stop_trigger, tick_size, status, session_id, rule_id, setup, valid_until, last_price, message, created_at, "
             "updated_at) VALUES (?, 'BUY', ?, 'BUY', ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?)",
             (gid, sym, q, b, b, s, tick, session_id, rule_id, json.dumps(setup, default=str) if setup else None,
-             _valid_until(date.today(), valid_sessions), ltp, MSG["created"], now, now))
+             _valid_until(date.today(), valid_sessions, datetime.now()), ltp, MSG["created"], now, now))
         conn.commit()
     except sqlite3.IntegrityError:
         # The partial unique index: another request created the active dummy between our read and our insert.
