@@ -880,3 +880,38 @@ bars after the archive's first day, so a bar missing on exactly that day (8 Nov,
 never reported. It now uses each stock's whole stored span. The live fill used the code as deployed, with one more
 session (6 Nov) archived first so 8 Nov was inside; the fix is for the weekly check. Test:
 `test_a_bar_missing_on_the_first_archived_day_is_found` (fails without the fix).
+
+# 16 Nov 2026 (day): the KGF audit's gaps, and a new PAPER session from the spare paper cash (owner)
+
+At 08:35–08:50 IST three read-only checkers and the parent session audited KGF-01..21 and the morning's changes
+against the running build (master `1c0f2a2`): all live, 252 tests passing, four small gaps and five behaviour choices
+left to the owner. The owner said "Ok" to fixing the gaps and asked to "keep the option open to start new session for
+remaining amount in funds, paper only". Branch `claude/kgf-gaps-2026-11-16` (`dd65cd0`, `b083b5d`).
+
+**Gaps closed**
+- **A/B skips (KGF-13/19):** a sector-cap or cooldown skip is now a once-a-day `AUTO_PICK_SKIP` event
+  (`skipped_sector`, `skipped_cooldown`) like the falling and no-LTP skips; the weekly report and `/ab` count them.
+  The report also measures re-entries: closed trades bought within 60 min of a stop on the same symbol, and their net
+  (the cooldown itself stays OFF).
+- **Resting Kite buy (KGF-11):** a `DUMMY-` buy made before the 15:30 close counts that day as the first of its 10
+  trading sessions; it rested 11.
+- **Tests:** `tests/test_kgf_gaps_2026_11_16.py` — the sector cap, the cooldown, the report's skip and re-entry counts,
+  a stop leg firing while the breadth gate is closed, the stop slippage, the 10-session validity. The KGF tests no
+  longer reach `api.dhan.co` (four read-only calls from the retest test; the quote call and the read-only account are
+  stubbed).
+- **Docs:** the KGF test report records the Android debug APK built 06:04 IST (iOS still needs Xcode); the SEBI
+  checklist quotes `max_orders_per_day` 50; the scanner's docstring explains JKCEMENT's live 0.10-tick bid.
+
+**New PAPER session from the spare cash** (`orders/sessions.py` `spare_paper_cash` / `add_session`)
+- Spare = the paper balance less each pool session's own cash: **₹2,54,865.24** on the live book this morning
+  (balance ₹2,62,860.94, the ten sessions' cash ₹7,995.70; their holdings were paid out of the balance already).
+- `add_session` makes S11, S12, … with its own pool out of it — all of it (rounded down to the rupee) unless an amount
+  is given, never more — copying a session's exits, floor, limits (the daily loss limit scaled to the new capital) and
+  arm, default **S5, the control** (the owner's own rules: stop 2 %, trail 1 % from +3 %, sale after 15 days). It is
+  made **PAUSED in CONFIRM mode with auto-pick off**, so creating it trades nothing; "start it now" (run + ack) makes
+  it RUNNING in AUTO with auto-pick on. PAPER only; S1–S10 are not touched.
+- `GET /api/v2/sessions/spare`, `POST /api/v2/sessions/new`, and a **New paper session…** button on `/sessions`. The
+  board, its headings and Home's "N of M sessions running" count every session, not ten.
+- Tests: `tests/test_spare_cash_session_2026_11_16.py` (the spare figure, defaults, a part amount and another arm,
+  every refusal incl. LIVE, a running S11 picking with its whole cash, the API and page).
+- Nothing was created on the live book: the option is there for the owner to use.
