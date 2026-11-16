@@ -391,6 +391,25 @@ def test_arm_exits_atr_and_risk_budget_sizing(paper):
     assert (names["S3"], names["S5"]) == ("Breakouts (retest K1)", "Control")
 
 
+def test_risk_budget_grows_with_the_session(paper, monkeypatch):
+    """Owner 16 Nov 2026: the budget is 2.5 % of the session's cash, so a risk-budget arm compounds like the control."""
+    from orders import arms, sessions
+    assert arms.value_cap(arms.ARMS["S3"], 5.0, 10000.0, 25000.0) == 12500.0        # Rs 625 / 5 %, as on 16 Nov
+    assert arms.value_cap(arms.ARMS["S3"], 5.0, 10000.0, 100000.0) == 50000.0       # Rs 2,500 / 5 %
+    assert arms.value_cap(arms.ARMS["S3"], 5.0, 10000.0, 10000.0) == 10000.0        # never under the floor
+    assert arms.value_cap({"risk_budget": 625.0}, 5.0, 0.0, 100000.0) == 12500.0    # a fixed budget stays fixed
+    assert arms.value_cap(arms.ARMS["S5"], 2.0, 12000.0, 100000.0) is None          # the control: no cap
+    assert "~2.5% of the session's cash at risk" in arms.describe(arms.ARMS["S3"])
+    with pytest.raises(ValueError):
+        arms._validate({**arms.ARMS["S3"], "risk_budget_pct": 0})
+    _sessions("S3")
+    _do(arms.set_arm, "S3", arms.ARMS["S3"])
+    real = sessions.ledger
+    monkeypatch.setattr(sessions, "ledger", lambda c, s: {**real(c, s), "cash": 100000.0, "investable_cash": 100000.0})
+    q = _do(sessions.pool_quantity, "S3", 100.0, stop_pct=5.0)
+    assert q["risk_capped"] and q["budget"] == 50000.0 and 490 <= q["quantity"] <= 500
+
+
 def test_set_arm_refuses_outside_paper(paper, monkeypatch):
     import orders.environment as E
     from orders import arms

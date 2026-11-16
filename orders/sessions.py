@@ -444,7 +444,8 @@ def _apply_arm_rules(conn, s: dict, rule: dict, arm: dict) -> dict:
                      "resolved_stoploss_price = ? WHERE id = ?",
                      (float(ex["stop_pct"]), -float(ex["stop_pct"]), round(trig * (1 - float(ex["stop_pct"]) / 100), 2),
                       rule["id"]))
-    return {"quantity": "whole session cash" + (", risk-capped" if arm.get("risk_budget") else ""),
+    return {"quantity": "whole session cash" + (", risk-capped" if arm.get("risk_budget_pct") or arm.get("risk_budget")
+                                                else ""),
             "arm": arm.get("label"), **ex, "exit": arms.describe(arm)}
 
 
@@ -696,17 +697,19 @@ def _arm_words(conn, sid: str) -> str | None:
 def pool_quantity(conn, sid: str, price: float, pct: float = 100.0, stop_pct: float | None = None) -> dict:
     """Shares a pool session's next buy gets at `price`: as many as pct % of its cash pays for,
     slippage and the buy's charges included, so the session never spends money it does not have.
-    KGF-13 (16 Nov 2026): a risk-budget arm (orders/arms.py) buys at most max(floor, budget / stop%) -- a 5 % stop
-    risks about Rs 625, as a 2 % stop on the whole Rs 25,000 does today."""
+    KGF-13 (16 Nov 2026): a risk-budget arm (orders/arms.py) buys at most max(floor, budget / stop%), the budget being
+    2.5 % of the session's cash -- Rs 625 on Rs 25,000, so a 5 % stop buys Rs 12,500 -- and growing as the session
+    compounds (owner, 16 Nov 2026)."""
     L = ledger(conn, sid)
     if not L:
         return {"quantity": 0, "cash": None, "budget": None, "reason": f"session {sid} has no starting capital"}
     # Under AFTER_TAX_RESERVE the cycles' estimated tax is not reinvested (investable_cash = cash - tax_reserve)
-    budget = max(0.0, L.get("investable_cash", L["cash"])) * min(100.0, max(0.0, float(pct))) / 100
+    cash = max(0.0, L.get("investable_cash", L["cash"]))
+    budget = cash * min(100.0, max(0.0, float(pct))) / 100
     capped = None
     if stop_pct:
         from orders import arms
-        capped = arms.value_cap(arms.get(conn, sid), float(stop_pct), float(L.get("floor") or 0))
+        capped = arms.value_cap(arms.get(conn, sid), float(stop_pct), float(L.get("floor") or 0), cash)
         if capped is not None:
             budget = min(budget, capped)
     if _paper():
