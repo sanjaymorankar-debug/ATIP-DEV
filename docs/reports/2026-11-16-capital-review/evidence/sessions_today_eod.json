@@ -1,0 +1,365 @@
+{
+ "day": "2026-11-16",
+ "sessions": [
+  {
+   "id": "S1",
+   "name": "Momentum",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 1311.87,
+   "deployed_cost": 24773.65,
+   "open_value": 24591.0,
+   "unrealised": -182.65,
+   "booked_all": 1085.52,
+   "equity": 25902.87,
+   "open": [
+    [
+     "PVRINOX",
+     15.0,
+     1649.62,
+     1639.4,
+     "2026-11-13"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 5,
+   "wins_all": 3,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S2",
+   "name": "Buy zones (retest K2)",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 887.34,
+   "deployed_cost": 23935.24,
+   "open_value": 23922.0,
+   "unrealised": -13.24,
+   "booked_all": -177.42,
+   "equity": 24809.34,
+   "open": [
+    [
+     "INDHOTEL",
+     27.0,
+     885.44,
+     886.0,
+     "2026-11-13"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 4,
+   "wins_all": 2,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S3",
+   "name": "Breakouts (retest K1)",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 471.92,
+   "deployed_cost": 27316.01,
+   "open_value": 26910.0,
+   "unrealised": -406.01,
+   "booked_all": 2787.93,
+   "equity": 27381.92,
+   "open": [
+    [
+     "AUROPHARMA",
+     15.0,
+     1818.91,
+     1794.0,
+     "2026-11-13"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 3,
+   "wins_all": 3,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S4",
+   "name": "Swing (retest K4)",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 25795.15,
+   "deployed_cost": 0,
+   "open_value": 0,
+   "unrealised": 0,
+   "booked_all": 795.15,
+   "equity": 25795.15,
+   "open": [],
+   "entries_today": [],
+   "exits_today": [
+    [
+     "M&M",
+     3321.5,
+     -590.42
+    ]
+   ],
+   "realised_today": -590.42,
+   "closed_all": 3,
+   "wins_all": 2,
+   "closed_today": 1,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S5",
+   "name": "Control",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 360.41,
+   "deployed_cost": 24460.98,
+   "open_value": 24710.0,
+   "unrealised": 249.02,
+   "booked_all": -178.61,
+   "equity": 25070.41,
+   "open": [
+    [
+     "KOTAKBANK",
+     50.0,
+     488.64,
+     494.2,
+     "2026-11-13"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 3,
+   "wins_all": 1,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 12000.0
+  },
+  {
+   "id": "S6",
+   "name": "Recovery (ATR)",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 13597.59,
+   "deployed_cost": 12143.19,
+   "open_value": 12337.6,
+   "unrealised": 194.41,
+   "booked_all": 740.78,
+   "equity": 25935.19,
+   "open": [
+    [
+     "GRASIM",
+     4.0,
+     3032.2,
+     3084.4,
+     "2026-11-16"
+    ]
+   ],
+   "entries_today": [
+    [
+     "GRASIM",
+     4.0,
+     3032.2,
+     "2026-11-16T09:25:37.677415"
+    ]
+   ],
+   "exits_today": [
+    [
+     "KALYANKJIL",
+     717.5,
+     581.79
+    ]
+   ],
+   "realised_today": 581.79,
+   "closed_all": 5,
+   "wins_all": 3,
+   "closed_today": 1,
+   "wins_today": 1,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S7",
+   "name": "Wide-stop",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 367.76,
+   "deployed_cost": 25316.24,
+   "open_value": 25360.0,
+   "unrealised": 43.76,
+   "booked_all": 684.0,
+   "equity": 25727.76,
+   "open": [
+    [
+     "ICICIBANK",
+     16.0,
+     1580.39,
+     1585.0,
+     "2026-11-12"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 1,
+   "wins_all": 1,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S8",
+   "name": "Sector",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 24985.47,
+   "deployed_cost": 0,
+   "open_value": 0,
+   "unrealised": 0,
+   "booked_all": -14.53,
+   "equity": 24985.47,
+   "open": [],
+   "entries_today": [],
+   "exits_today": [
+    [
+     "ATHERENERG",
+     1983.2,
+     555.08
+    ]
+   ],
+   "realised_today": 555.08,
+   "closed_all": 4,
+   "wins_all": 2,
+   "closed_today": 1,
+   "wins_today": 1,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S9",
+   "name": "Bracket 3/6",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 4811.53,
+   "deployed_cost": 19584.3,
+   "open_value": 19623.5,
+   "unrealised": 39.2,
+   "booked_all": -604.17,
+   "equity": 24435.03,
+   "open": [
+    [
+     "DLF",
+     26.0,
+     752.35,
+     754.75,
+     "2026-11-16"
+    ]
+   ],
+   "entries_today": [
+    [
+     "DLF",
+     26.0,
+     752.35,
+     "2026-11-16T11:18:03.766713"
+    ]
+   ],
+   "exits_today": [
+    [
+     "SAILIFE",
+     1879.5,
+     -612.46
+    ]
+   ],
+   "realised_today": -612.46,
+   "closed_all": 5,
+   "wins_all": 2,
+   "closed_today": 1,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  },
+  {
+   "id": "S10",
+   "name": "Retest fast-gate",
+   "status": "RUNNING",
+   "mode": "AUTO",
+   "auto_pick": 1,
+   "allocated": 25000.0,
+   "cash": 110.26,
+   "deployed_cost": 24505.63,
+   "open_value": 24580.3,
+   "unrealised": 74.67,
+   "booked_all": -384.11,
+   "equity": 24690.56,
+   "open": [
+    [
+     "PNB",
+     170.0,
+     143.98,
+     144.59,
+     "2026-11-13"
+    ]
+   ],
+   "entries_today": [],
+   "exits_today": [],
+   "realised_today": 0.0,
+   "closed_all": 5,
+   "wins_all": 2,
+   "closed_today": 0,
+   "wins_today": 0,
+   "waiting": null,
+   "floor": 10000.0
+  }
+ ],
+ "spare": {
+  "paper_balance": 327564.54,
+  "sessions_cash": 72699.3,
+  "spare": 254865.24,
+  "over_allocated": 0.0,
+  "sessions": {
+   "S1": 1311.87,
+   "S2": 887.34,
+   "S3": 471.92,
+   "S4": 25795.15,
+   "S5": 360.41,
+   "S6": 13597.59,
+   "S7": 367.76,
+   "S8": 24985.47,
+   "S9": 4811.53,
+   "S10": 110.26
+  }
+ }
+}

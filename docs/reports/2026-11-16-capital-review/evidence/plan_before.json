@@ -1,0 +1,303 @@
+{
+ "paper": true,
+ "guard_active": true,
+ "config": {
+  "cash_buffer_pct": 10.0,
+  "max_session_pct": 10.0,
+  "sessions": "running",
+  "round_to": 1000.0,
+  "session_loss_limit_pct": 6.0,
+  "pool": "equity"
+ },
+ "as_of": "2026-11-16T16:52:27",
+ "pool": {
+  "basis": "equity",
+  "value": 509673.54,
+  "opening": 500000.0,
+  "cash": 327564.54,
+  "positions_value": 182109.0,
+  "positions_cost": 181819.57,
+  "equity": 509673.54
+ },
+ "spare_before": 254865.24,
+ "buffer": 50967.35,
+ "headroom": 203897.89,
+ "max_session": 50967.35,
+ "over_allocated": 0.0,
+ "sessions": 10,
+ "per_session": 20000.0,
+ "rows": [
+  {
+   "session": "S1",
+   "name": "Momentum",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 25929.87,
+   "cash_before": 1311.87,
+   "deployed_cost": 24773.65,
+   "open": [
+    "PVRINOX"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 21311.87,
+   "equity_after": 45929.87,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5556,
+   "next_buy_value_before": 14493.11,
+   "next_buy_value": 25605.11,
+   "next_buy_when": "after PVRINOX exits"
+  },
+  {
+   "session": "S2",
+   "name": "Buy zones (retest K2)",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 24925.44,
+   "cash_before": 887.34,
+   "deployed_cost": 23935.24,
+   "open": [
+    "INDHOTEL"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 20887.34,
+   "equity_after": 44925.44,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5,
+   "next_buy_value_before": 12411.29,
+   "next_buy_value": 22411.29,
+   "next_buy_when": "after INDHOTEL exits"
+  },
+  {
+   "session": "S3",
+   "name": "Breakouts (retest K1)",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 27819.92,
+   "cash_before": 471.92,
+   "deployed_cost": 27316.01,
+   "open": [
+    "AUROPHARMA"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 20471.92,
+   "equity_after": 47819.92,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5,
+   "next_buy_value_before": 13893.96,
+   "next_buy_value": 23893.96,
+   "next_buy_when": "after AUROPHARMA exits"
+  },
+  {
+   "session": "S4",
+   "name": "Swing (retest K4)",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 25795.15,
+   "cash_before": 25795.15,
+   "deployed_cost": 0,
+   "open": [],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 45795.15,
+   "equity_after": 45795.15,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5,
+   "next_buy_value_before": 12897.58,
+   "next_buy_value": 22897.58,
+   "next_buy_when": "now (no open trade)"
+  },
+  {
+   "session": "S5",
+   "name": "Control",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 24787.91,
+   "cash_before": 360.41,
+   "deployed_cost": 24460.98,
+   "open": [
+    "KOTAKBANK"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 20360.41,
+   "equity_after": 44787.91,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 1.0,
+   "next_buy_value_before": 24821.39,
+   "next_buy_value": 44821.39,
+   "next_buy_when": "after KOTAKBANK exits"
+  },
+  {
+   "session": "S6",
+   "name": "Recovery (ATR)",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 25733.59,
+   "cash_before": 13597.59,
+   "deployed_cost": 12143.19,
+   "open": [
+    "GRASIM"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 33597.59,
+   "equity_after": 45733.59,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5,
+   "next_buy_value_before": 12870.39,
+   "next_buy_value": 22870.39,
+   "next_buy_when": "after GRASIM exits"
+  },
+  {
+   "session": "S7",
+   "name": "Wide-stop",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 25705.36,
+   "cash_before": 367.76,
+   "deployed_cost": 25316.24,
+   "open": [
+    "ICICIBANK"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 20367.76,
+   "equity_after": 45705.36,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.625,
+   "next_buy_value_before": 16052.5,
+   "next_buy_value": 28552.5,
+   "next_buy_when": "after ICICIBANK exits"
+  },
+  {
+   "session": "S8",
+   "name": "Sector",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 24985.47,
+   "cash_before": 24985.47,
+   "deployed_cost": 0,
+   "open": [],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 44985.47,
+   "equity_after": 44985.47,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.8333,
+   "next_buy_value_before": 20820.39,
+   "next_buy_value": 37486.39,
+   "next_buy_when": "now (no open trade)"
+  },
+  {
+   "session": "S9",
+   "name": "Bracket 3/6",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 24435.03,
+   "cash_before": 4811.53,
+   "deployed_cost": 19584.3,
+   "open": [
+    "DLF"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 24811.53,
+   "equity_after": 44435.03,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.8333,
+   "next_buy_value_before": 20329.05,
+   "next_buy_value": 36995.05,
+   "next_buy_when": "after DLF exits"
+  },
+  {
+   "session": "S10",
+   "name": "Retest fast-gate",
+   "status": "RUNNING",
+   "capital_before": 25000.0,
+   "equity_before": 24690.56,
+   "cash_before": 110.26,
+   "deployed_cost": 24505.63,
+   "open": [
+    "PNB"
+   ],
+   "top_up": 20000.0,
+   "capital_after": 45000.0,
+   "cash_after": 20110.26,
+   "equity_after": 44690.56,
+   "loss_limit_before": 1500.0,
+   "loss_limit_after": 2700.0,
+   "next_buy_share": 0.5,
+   "next_buy_value_before": 12307.94,
+   "next_buy_value": 22307.94,
+   "next_buy_when": "after PNB exits"
+  }
+ ],
+ "total_top_up": 200000.0,
+ "spare_after": 54865.24,
+ "buffer_after_pct": 10.76,
+ "before": {
+  "sessions_capital": 250000.0,
+  "sessions_equity": 254808.3,
+  "allocated_pct": 49.99,
+  "deployed": 181819.57,
+  "deployed_pct": 35.67,
+  "full_occupancy_deployed": 160897.6,
+  "full_occupancy_pct": 31.57
+ },
+ "after": {
+  "sessions_capital": 450000.0,
+  "sessions_equity": 454808.3,
+  "allocated_pct": 89.24,
+  "deployed": 181819.57,
+  "deployed_pct": 35.67,
+  "full_occupancy_deployed": 287841.6,
+  "full_occupancy_pct": 56.48
+ },
+ "guardrails": {
+  "cash_buffer": {
+   "pct": 10.0,
+   "rupees": 50967.35
+  },
+  "max_per_session": {
+   "pct": 10.0,
+   "rupees": 50967.35
+  },
+  "max_per_trade": "the session's own cash: a risk-budget arm risks 2.5 % of it at the stop (orders/arms.py); session orders are exempt from max_order_value (Rs 100,000) but never exceed the session's cash",
+  "max_per_trade_rupees": 44821.39,
+  "max_open_positions": {
+   "per_session": 1,
+   "sessions": 10,
+   "account": 50
+  },
+  "daily_loss": {
+   "per_session_pct": 6.0,
+   "per_session_rupees": {
+    "S1": 2700.0,
+    "S2": 2700.0,
+    "S3": 2700.0,
+    "S4": 2700.0,
+    "S5": 2700.0,
+    "S6": 2700.0,
+    "S7": 2700.0,
+    "S8": 2700.0,
+    "S9": 2700.0,
+    "S10": 2700.0
+   },
+   "account_rupees": 10000,
+   "drawdown_pct": 10
+  },
+  "orders_per_day": 50
+ }
+}

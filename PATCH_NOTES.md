@@ -923,3 +923,55 @@ restart: `broker_env` PAPER, the ten arms at `risk_budget_pct` 2.5, `/api/v2/ses
 Home "10 of 10 sessions running", the RCA (16:00), A/B (Sunday 18:00) and Bhavcopy (19:50) jobs registered, the order
 monitor and index feed started, no traceback. The /ab skip and re-entry columns show from the first weekly report
 (Sunday 22 Nov 18:00 IST). Not pushed to GitHub.
+
+# 16 Nov 2026 (evening): capital review — idle paper cash to the sessions, the allocation guard, and four fixes (CAP-01..05)
+
+Owner prompt 16 Nov 2026 4:39 PM IST (post-market review: capital utilisation, formula and signal validation, trading
+report). PAPER only; no order was placed. Branch `claude/capital-plan-2026-11-16` (worktree
+`.claude/worktrees/capital-2026-11-16`), uncommitted until the owner says so. Report:
+`docs/reports/2026-11-16-capital-review/` (trading & validation report, issues register, testing report).
+
+**What the data said (16 Nov, 16:41 IST, read-only snapshot of atip.db).** The paper account opened with ₹5,00,000;
+S1–S10 were given ₹25,000 each on 29 Oct, so ₹2,54,865.24 belonged to no session. The book held ₹3,27,564.54 cash and
+₹1,82,035.24 of stock at cost: 35.7 % of its ₹5,09,673.54 equity at work, not the assumed 50 %. Under the arms' risk
+budget (2.5 % of a session's cash at the stop, live since 06:29 IST) a session buys only 50–83 % of its cash, so even
+with every session in a trade only ₹1.61 L (31.6 %) would be deployed.
+
+**CAP-04 — the paper capital plan (`orders/capital_plan.py`, new).** Every RUNNING pool session gets the SAME top-up
+out of the cash no session owns, by an SES-03 transfer from the unallocated pot (no books restart, no open trade
+changes; the next buy is sized from the larger cash). Config-driven, every figure a share (`config.json`
+`"paper_capital_plan"`: `cash_buffer_pct` 10, `max_session_pct` 10, `sessions` "running", `round_to` 1000,
+`session_loss_limit_pct` 6, `pool` "equity"). On 16 Nov: ₹20,000 × 10 = ₹2,00,000; each session ₹45,000; ₹54,865.24
+(10.8 %) stays as buffer; allocated 50 % → 89 % of the pool; all-sessions-in-a-trade deployment 31.6 % → 56.5 %;
+each daily loss limit 6 % of capital (₹1,500 → ₹2,700). `python -m orders.capital_plan` (plan, writes nothing),
+`--apply --ack`; `GET /api/v2/capital/plan`, `POST /api/v2/capital/apply {ack}`; "Top up sessions…" on /sessions.
+
+**CAP-01 — the sessions could over-allocate the paper account.** A transfer in from the unallocated pot was never
+checked, nor was a pool (re)start; `spare_paper_cash` clamped a negative spare to 0. Now a transfer in never takes
+more than the cash no session owns (always, PAPER), and with the plan block nothing (transfer, `start_pool` /
+`setup_pools`, `add_session`) goes into the buffer or above `max_session_pct`; `spare_paper_cash` returns
+`over_allocated`.
+
+**CAP-02 — a job lock lost to a host-name change (`ops/jobs.py`).** macOS renamed the host during the 09:47 IST
+network outage ("smoru.local" ↔ "smoru"); the 10:01 `dhan_15min_bars` lock could not be released under the new name,
+so the 10:30–15:30 runs (11) skipped as "already running elsewhere" and 16 Nov's 15-minute bars stop at 10:15 for all
+493 stocks. The scheduler lease was lost the same way at 09:47, 16:13 and 16:37 (two minutes with no scheduled jobs
+each time). The host is now read once per process, a lock row of this pid + thread is ours under any host name, and a
+failed release is retried and logged.
+
+**CAP-03 — a transfer counted as profit.** `orders/sessions.py ledger()` reported P&L as equity − start capital, so
+a ₹20,000 top-up showed S1 at +₹20,902.87 (+83.6 %) and the ten at +₹2,04,733.70 (measured with the live code on the
+Prod copy after the top-up). P&L and return are now on the session's capital (start + transfers); occurrences start
+from the amount after a transfer; the Sessions tiles say "+₹X moved in · capital ₹Y" and returns use the capital.
+**Do not run the top-up on the live Mac before this code is live**: the old pages would show the money as profit.
+
+**CAP-05 — the exit monitor went blind without a word (`orders/rules.py`).** From 09:47 to 10:16 IST every quote call
+timed out; `check_triggers` returned empty-handed each pass and nothing said the open stops were unwatched
+(ATHERENERG's trailing stop at ₹1,997.80 sold at 10:26:08 for ₹1,983.20). After 2 minutes without a price for any open
+stop / target, one error alert is recorded (alert panel; Telegram when reachable) and the return of prices is logged.
+No rule fires differently.
+
+**Tests:** `tests/test_capital_plan_2026_11_16.py` (14). `tests/test_ui_fixes_v2.py` allow-list adds
+`orders/capital_plan.py` (its "nothing dirty under orders/" check passes once the branch is committed).
+Full suite 17:19:14–17:29:11 IST: 2,779 passed, 32 failed, 65 skipped — the 31 failures of untouched master at the same hour (27 auto-pick tests that read the clock and wait after 14:45 IST, 1 feed-state, 3 sandbox sockets) plus the order-path guard until commit. Test server 21/21, Prod server 20/20 (`tests/verification/capital_acceptance.py`).
+**Mobile 2026.11.16.2 (build 11):** version only; the screens are the server's. Android APK built 17:10:53 IST; iOS not built (no Xcode).
