@@ -915,3 +915,11 @@ remaining amount in funds, paper only". Branch `claude/kgf-gaps-2026-11-16` (`dd
 - Tests: `tests/test_spare_cash_session_2026_11_16.py` (the spare figure, defaults, a part amount and another arm,
   every refusal incl. LIVE, a running S11 picking with its whole cash, the API and page).
 - Nothing was created on the live book: the option is there for the owner to use.
+
+**Live:** merged into master `b717db7` (fast-forward) after the close, behind the backup
+`atip-pre-release-20261116-153219.db`; ATIP restarted at 15:32:42 IST (pid 82833, was 52907). Checked after the
+restart: `broker_env` PAPER, the ten arms at `risk_budget_pct` 2.5, `/api/v2/sessions/spare` ₹2,54,865.24 (balance
+₹3,27,564.54, the sessions' cash ₹72,699.30 after today's exits), the **New paper session…** button on `/sessions`,
+Home "10 of 10 sessions running", the RCA (16:00), A/B (Sunday 18:00) and Bhavcopy (19:50) jobs registered, the order
+monitor and index feed started, no traceback. The /ab skip and re-entry columns show from the first weekly report
+(Sunday 22 Nov 18:00 IST). Not pushed to GitHub.
