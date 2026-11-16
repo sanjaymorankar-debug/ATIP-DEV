@@ -360,6 +360,9 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
     """
     Fetch daily OHLCV for a symbol from Dhan.
     Returns DataFrame with columns: date, open, high, low, close, volume.
+    to_date is passed to Dhan as is, and Dhan treats it as EXCLUSIVE: the bars
+    run from from_date to the day before to_date. fetch_daily_through() asks
+    for a window with both ends included.
     """
     if dhan is None:
         dhan, _ = get_dhan_client()
@@ -424,6 +427,23 @@ def fetch_historical_daily(symbol: str, from_date: date, to_date: date,
         bad = pd.DataFrame()
         bad.attrs["dhan_error"] = f"exception:{type(e).__name__}"
         return bad
+
+
+def fetch_daily_through(symbol: str, from_date: date, to_date: date, dhan=None) -> pd.DataFrame:
+    """
+    Daily bars from from_date THROUGH to_date. Dhan's toDate is exclusive, so
+    asking it for (start, end) never returned end's bar: the W39 backfill's
+    365-day windows each lost their last session, and the next (older) window
+    ends the day before, so nothing asked for it again (3 Mar 2020-2023 and the
+    Saturday session of 2 Mar 2024, ~300 symbols each, measured 16 Nov 2026).
+    This asks for to_date + 1 and drops anything after to_date, so back-to-back
+    windows never store a day twice.
+    A refusal comes back as fetch_historical_daily returns it (attrs dhan_error).
+    """
+    df = fetch_historical_daily(symbol, from_date, to_date + timedelta(days=1), dhan)
+    if df.empty or "date" not in df.columns:
+        return df
+    return df[pd.to_datetime(df["date"]).dt.date <= to_date].reset_index(drop=True)
 
 
 def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,

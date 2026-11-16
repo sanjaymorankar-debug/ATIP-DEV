@@ -133,8 +133,10 @@ def _save(conn, symbol, target, earliest, exhausted, failures, added, error):
 
 
 def backfill_symbol(conn, dhan, symbol, target, chunk_days, events=None, pause=0.0, prior_failures=0) -> dict:
-    """Walk one symbol back to `target`, a window at a time. Commits after each window."""
-    from data.dhan import fetch_historical_daily, store_daily_bars
+    """Walk one symbol back to `target`, a window at a time. Commits after each window.
+    Each window is start..end with both days included: Dhan's toDate is exclusive, and asking it for `end`
+    lost that day's bar at every window edge (fetch_daily_through, 16 Nov 2026)."""
+    from data.dhan import fetch_daily_through, store_daily_bars
     earliest = _earliest(conn, symbol)
     end = (earliest - timedelta(days=1)) if earliest else date.today()
     added = windows = 0
@@ -142,7 +144,7 @@ def backfill_symbol(conn, dhan, symbol, target, chunk_days, events=None, pause=0
     error = None
     while end >= target:
         start = max(target, end - timedelta(days=chunk_days - 1))
-        df = fetch_historical_daily(symbol, start, end, dhan)
+        df = fetch_daily_through(symbol, start, end, dhan)
         windows += 1
         if df.empty:
             if df.attrs.get("dhan_error"):

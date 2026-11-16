@@ -741,3 +741,48 @@ feeds test; 0 regressions); 166 new tests. Pages: Test + Prod 88/88 clean, live 
   were left untouched; list in `.ux_build/kite-fix-2026-11-16/untracked_before_merge.txt`.
 - **Owner, still open:** `max_orders_per_day` 20 (VF-04) not applied (the session's permission check refused the live
   config edit); the LIVE `pnl_daily` repair (`tools/repair_live_pnl_daily.py --paper-match`); PA-05.
+
+# 16 Nov 2026: the history backfill lost the last session of every window (Dhan's toDate is exclusive)
+
+Dhan's daily-history API returns bars from `fromDate` up to the day **before** `toDate`. `data/history_backfill.py`
+asked for each 365-day window as (start, end), so every window that ended on a session came back without it, and the
+next (older) window ends the day before, so nothing asked for that day again. The W39 tests stubbed the fetch with an
+inclusive fake, so they could not see it.
+
+**Measured** on the 15 Nov 2026 19:15 IST backup (`atip-scheduled-20261115-191511.db`, opened `mode=ro&immutable=1`,
+16 Nov 05:46 IST): **1,499 symbol-days missing at a window edge in 331 symbols**: 264–319 symbols each on 3 Mar 2020,
+2021, 2022 and 2023 and the Saturday session of 2 Mar 2024, plus 47 more on other edges. Of all the sessions missing
+before 3 Mar 2025 in the backfilled symbols (1,572 in 330 symbols), 1,486 are window edges. 13 fall in the last year:
+2025-11-13 for CUPID, INOXINDIA, KIRLOSBROS, KSB, MTARTECH, PRIVISCL, RUBICON, SANSERA, SHRIPISTON and STLTECH;
+ICICILIFE 2025-10-21 and 2026-10-21; HEGAM 2026-09-21. (8 more edges on 2023-11-14 are listed "unconfirmed": Diwali
+Balipratipada, a holiday.)
+
+**Fixed:** `data.dhan.fetch_daily_through(symbol, start, end)` asks Dhan for end + 1 and drops anything after `end`;
+the backfill uses it, so each window keeps its last session and back-to-back windows never store a day twice.
+`fetch_historical_daily` is unchanged (its docstring now says `to_date` is exclusive).
+
+**Repair tool:** `tools/dhan_boundary_days.py` lists the edge days from Dhan's window cache (`atip_data/raw/dhan`)
+that have no bar inside a symbol's stored history; `--apply` asks Dhan for each day on its own (read-only history call,
+never an order call) and stores it like the backfill. A dry run opens the database read-only (a `--db` copy immutable).
+
+    python -m tools.dhan_boundary_days                  # dry run on the live DB, nothing written
+    python -m tools.dhan_boundary_days --apply          # owner's yes, after `python -m ops backup --kind pre-release`
+
+**After**, on a scratch copy of the same backup, with a **simulated** Dhan (toDate exclusive, a session on every day
+some stored symbol traded; the real token is in the vault and was not used): `--apply` made 1,507 requests and added
+exactly 1,499 rows (744,688 → 746,187, no duplicate symbol-date); the edge gap is **0** (only the 8 holiday rows stay
+unconfirmed); all missing pre-2025 sessions 1,572 → 86 in 5 symbols, none at a window edge.
+
+**Not changed, checked:** `run_historical_pipeline` (16:30 IST, 5 days ending the session) and
+`sync_index_benchmark_history` also leave out their end day, but nothing is lost: NSE's Bhavcopy (16:45) or the Dhan
+fallback (`data/bhavcopy.py`, already asks day + 1) fills the session, and the next day's run covers it. Asking for
+end + 1 there would let Dhan's bar arrive before the Bhavcopy, whose upsert only refreshes close and volume, so
+the session's open, high, low and `source` would stay Dhan's: a change to the live EOD path, left for the owner.
+
+**Owner:** run `--apply` on the live DB (writes about 1,500 rows of 2019–2026 history); whether to re-score the 13
+symbol-days of the last year; merge and restart for the backfill fix (until then the nightly 22:20 IST run still asks the
+old windows for the symbols it has left). Tests: `tests/test_dhan_window_edges.py` (a fake Dhan client that answers as Dhan does: the old call loses
+Friday 3 Mar 2023, the new one keeps it; the backfill over 2022–2025 stores every session once; the tool's plan, apply,
+second run and read-only copy); two assertions in `tests/test_w39_history.py` follow the end + 1 window.
+Full suite 05:46–05:57 IST 16 Nov: 2,761 passed (7 new), 65 skipped, 4 failed: the same 4 fail on master `ea53a82`
+(3 sandbox sockets, 1 time-of-day feeds test); 0 regressions.

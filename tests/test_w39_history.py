@@ -123,8 +123,9 @@ def test_backfill_walks_back_to_the_listing_and_stops(hb, monkeypatch):
     assert out["status"] == "SUCCESS" and out["symbols"] == 1 and out["rows"] > 600
     r = out["results"][0]
     assert r["exhausted"] and r["error"] is None
-    assert all((end - start).days < 365 for _, start, end in calls), "one year per request"
-    assert calls[0][2] == today - dt.timedelta(days=31), "starts just before the earliest stored bar"
+    # Dhan's toDate is exclusive: each window is asked up to the day after its last day (16 Nov 2026)
+    assert all((end - start).days <= 365 for _, start, end in calls), "one year per request"
+    assert calls[0][2] == today - dt.timedelta(days=30), "ends just before the earliest stored bar"
     conn = get_connection()
     try:
         first = conn.execute("SELECT MIN(date) FROM prices_daily WHERE symbol='ACME'").fetchone()[0]
