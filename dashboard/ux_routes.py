@@ -18,6 +18,8 @@ Pages (GET, rendered in the shell): /home /sessions /sessions/{sid} /accounting 
     POST /api/v2/sessions/new      {name?, capital?, like?, run?, ack?}   PAPER only: a new session S11.. out of that
                                                  cash (all of it by default), copying `like`'s rules (default S5);
                                                  PAUSED / CONFIRM unless run and ack are both true
+    GET  /api/v2/capital/plan                    the paper capital plan: pool, buffer, each session's top-up, guardrails
+    POST /api/v2/capital/apply     {ack, reason?}   PAPER only: move the top-ups (orders/capital_plan.py, 16 Nov 2026)
     POST /api/v2/sessions/sync     {force?}      store closed cycles now (force: recompute them)
     GET  /api/v2/accounting/{ledger|trial-balance|session/{sid}|charges|tax|funds|recon}
     POST /api/v2/accounting/transfer {from, to, amount, reason}   /adjust {account, amount, reason}
@@ -314,6 +316,17 @@ def register(app, guard, Req, get_connection, json_safe):
         return await run_in_threadpool(call, lambda c: add_session(
             c, str(b.get("name") or ""), b.get("capital"), like, str(b.get("strategy") or ""),
             b.get("run") is True, b.get("ack") is True, **rules))
+
+    @app.get("/api/v2/capital/plan")
+    async def api_v2_capital_plan():
+        from orders.capital_plan import plan
+        return await run_in_threadpool(call, plan)
+
+    @app.post("/api/v2/capital/apply", dependencies=guard)
+    async def api_v2_capital_apply(request: Req):
+        b = await body(request)
+        from orders.capital_plan import apply
+        return await run_in_threadpool(call, lambda c: apply(c, b.get("ack") is True, str(b.get("reason") or "")))
 
     @app.post("/api/v2/sessions/sync", dependencies=guard)
     async def api_v2_sync(request: Req):

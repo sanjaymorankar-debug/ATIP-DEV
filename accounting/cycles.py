@@ -458,14 +458,17 @@ def book(conn, sid: str, do_sync: bool = True) -> dict:
                             "buy_value": _r2(h["cost"]), "value": h["value"], "unrealised": h["unrealised"],
                             "since": h["since"], "stop": h["stop"], "trailing": h["trailing"],
                             "sell_at": h["sell_at"], "progress": _progress(h, s)})
-    tiles = {"start_capital": start, "equity": L["equity"], "cash": L["cash"],
+    # CAP-03 (16 Nov 2026): money moved in or out (a transfer, the capital plan's top-up) is capital, not return: the
+    # returns are on start + transfers, and the tiles carry both so a page can say how the starting amount grew
+    base = float(L.get("capital") or start) or start
+    tiles = {"start_capital": start, "transfers": L.get("transfers", 0.0), "capital": base, "equity": L["equity"], "cash": L["cash"],
              "investable_cash": L.get("investable_cash", L["cash"]), "tax_reserve": L.get("tax_reserve", 0.0),
              "gross_pnl": t["gross_pnl"], "charges": t["charges"], "tax_est": t["tax_est"],
              "net_pnl": t["net_pnl"], "actual_pnl": t["actual_pnl"],
-             "abs_return_gross_pct": _r2(t["gross_pnl"] / start * 100) if start else None,
-             "abs_return_actual_pct": _r2(t["actual_pnl"] / start * 100) if start else None,
-             "cagr_gross_pct": _cagr(start, start + t["gross_pnl"], L["since"]),
-             "cagr_actual_pct": _cagr(start, start + t["actual_pnl"], L["since"]),
+             "abs_return_gross_pct": _r2(t["gross_pnl"] / base * 100) if base else None,
+             "abs_return_actual_pct": _r2(t["actual_pnl"] / base * 100) if base else None,
+             "cagr_gross_pct": _cagr(base, base + t["gross_pnl"], L["since"]),
+             "cagr_actual_pct": _cagr(base, base + t["actual_pnl"], L["since"]),
              "cycles_done": t["cycles"], "max_cycles": L["max_occurrences"],
              "win_rate_pct": _r2(t["wins"] / t["cycles"] * 100) if t["cycles"] else None,
              "avg_r": _r2(sum(rs) / len(rs)) if rs else None,
@@ -519,7 +522,8 @@ def overview(conn, do_sync: bool = True) -> dict:
                                                     "floor_step_every", "compound_basis", "target_pct", "stop_pct",
                                                     "trail_pct", "hold_days", "max_occurrences", "pool_started_at")}})
     pools = [x["tiles"] for x in out if x["tiles"]]
-    keys = ("start_capital", "equity", "cash", "gross_pnl", "charges", "tax_est", "net_pnl", "actual_pnl", "unrealised")
+    keys = ("start_capital", "transfers", "capital", "equity", "cash", "gross_pnl", "charges", "tax_est", "net_pnl",
+            "actual_pnl", "unrealised")
     total = {k: _r2(sum(float(p.get(k) or 0) for p in pools)) for k in keys}
     total["cycles_done"] = sum(p["cycles_done"] for p in pools)
     total["sessions_with_pool"] = len(pools)

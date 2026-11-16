@@ -8,6 +8,14 @@ the lock and SKIPS (pipeline_log status SKIPPED, reason "locked"). A lock expire
 after ttl seconds (default 6 h) or when its owner process is gone, so a crash never
 blocks a job forever. Owner = "<host>:<pid>:<thread>".
 
+16 Nov 2026 (capital review CAP-02): the host part is read ONCE, when this module loads. macOS changes
+socket.gethostname() when the network drops and comes back ("smoru.local" <-> "smoru"); on 16 Nov the 09:47 IST
+outage did that between the 10:01 dhan_15min_bars run taking its lock and releasing it, so release() matched no row,
+the lock stayed for its 6 h TTL and every later run (10:30-15:30) skipped as "already running elsewhere" -- today's
+15-minute bars stop at 10:15. The scheduler leader lease was lost the same way at 09:47, 16:13 and 16:37 (two
+minutes of no scheduled jobs each time). A lock row of this same process and thread is now ours whatever host name
+it was written under, and a failed release is logged instead of passed over in silence.
+
 Heartbeat (ops_heartbeat): the scheduler loop beats every 60 s ("scheduler");
 /health/scheduler and the monitor treat > 5 minutes without a beat as FAILED.
 """
@@ -22,10 +30,19 @@ from datetime import datetime, timedelta
 
 DEFAULT_TTL = 6 * 3600
 _last_beat = {}
+_HOST = socket.gethostname()        # CAP-02: fixed for the life of the process (macOS renames the host on a network change)
 
 
 def owner() -> str:
-    return f"{socket.gethostname()}:{os.getpid()}:{threading.get_ident()}"
+    return f"{_HOST}:{os.getpid()}:{threading.get_ident()}"
+
+
+def _is_mine(row_owner, row_pid) -> bool:
+    """CAP-02: a lock row this process and thread wrote, under any host name."""
+    try:
+        return int(row_pid or 0) == os.getpid() and str(row_owner or "").rsplit(":", 1)[-1] == str(threading.get_ident())
+    except (TypeError, ValueError):
+        return False
 
 
 def _pid_alive(pid) -> bool:
@@ -57,7 +74,7 @@ def acquire(conn, job, ttl=DEFAULT_TTL) -> bool:
         r = conn.execute("SELECT owner, pid, expires_at FROM ops_job_lock WHERE job=?", (job,)).fetchone()
         if r:
             exp = r[2] if isinstance(r[2], datetime) else datetime.fromisoformat(str(r[2])[:26])
-            if r[0] != me and exp > now and _pid_alive(r[1]):   # held by a live runner (any process / thread)
+            if r[0] != me and not _is_mine(r[0], r[1]) and exp > now and _pid_alive(r[1]):   # held by a live runner
                 conn.execute("ROLLBACK")
                 return False
         conn.execute("INSERT INTO ops_job_lock (job,owner,pid,acquired_at,heartbeat_at,expires_at) VALUES (?,?,?,?,?,?) "
@@ -72,7 +89,9 @@ def acquire(conn, job, ttl=DEFAULT_TTL) -> bool:
 
 
 def release(conn, job):
-    conn.execute("DELETE FROM ops_job_lock WHERE job=? AND owner=?", (job, owner()))
+    # CAP-02: by pid and thread too, so a lock taken before a host-name change is still released
+    conn.execute("DELETE FROM ops_job_lock WHERE job=? AND (owner=? OR (pid=? AND owner LIKE ?))",
+                 (job, owner(), os.getpid(), f"%:{os.getpid()}:{threading.get_ident()}"))
     conn.commit()
 
 
@@ -97,14 +116,22 @@ def job_lock(job, ttl=DEFAULT_TTL):
         yield held
     finally:
         if held and not failed:
-            try:
-                c = get_connection()
+            for attempt in range(3):            # CAP-02: a locked database at the release is retried, then logged
                 try:
-                    release(c, job)
-                finally:
-                    c.close()
-            except Exception:
-                pass
+                    c = get_connection()
+                    try:
+                        release(c, job)
+                    finally:
+                        c.close()
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        import logging
+                        logging.getLogger("atip.ops.jobs").warning(
+                            f"  job lock {job!r} not released ({e}): it blocks the job until it expires")
+                    else:
+                        import time
+                        time.sleep(1 + attempt)
 
 
 LEADER = "scheduler_leader"

@@ -253,6 +253,12 @@ def transfer(conn, from_sid: str | None, to_sid: str | None, amount, reason: str
         free = S.ledger(conn, from_sid)["investable_cash"]
         if amount > free + 0.005:
             raise ValueError(f"Session {from_sid} has ₹{free:,.2f} free; ₹{amount:,.2f} is more than that.")
+    elif to_sid:
+        # CAP-01 (16 Nov 2026): money from the unallocated pot must exist -- on PAPER never more than the paper cash that
+        # belongs to no session, and with the owner's paper_capital_plan never into the cash buffer or past the per-session
+        # cap. Before this, any amount was accepted and the sessions could together hold more than the paper account.
+        from orders.capital_plan import allocation_check
+        allocation_check(conn, to_sid, amount, "This transfer")
     at = _now()
     env = _env()
     cur = conn.execute("INSERT INTO session_transfers (at, from_sid, to_sid, amount, reason, env) "

@@ -791,6 +791,49 @@ def expire_stale_confirmations() -> list[str]:
         conn.close()
 
 
+# CAP-05 (16 Nov 2026): the exit monitor going blind. On 16 Nov the Dhan quote API timed out from 09:47 to 10:16 IST
+# (60 s read timeouts); every pass here got no prices and returned without a word, so the open stops were not watched
+# -- ATHERENERG's trailing stop at 1,997.80 sold at 10:26:08 for 1,983.20. Nothing here changes how a rule fires: after
+# EXIT_BLIND_ALERT_S without a price for any open stop / target, one alert is recorded (the dashboard's alert panel, and
+# Telegram when it is reachable) and logged; the return of prices is logged with how long the gap was.
+EXIT_BLIND_ALERT_S = 120
+_blind = {"since": None, "alerted": False}
+
+
+def _watch_blind(active: list, quotes, now: datetime | None = None) -> str | None:
+    """Track passes with no price for an open exit leg; returns "alerted" / "recovered" / None (for tests)."""
+    now = now or datetime.now()
+    legs = [r for r in active if (r.get("role") or "ENTRY") in ("STOP", "TARGET")]
+    priced = set()
+    if quotes is not None and not getattr(quotes, "empty", True):
+        priced = {row["symbol"] for _, row in quotes.iterrows() if row.get("ltp")}
+    unpriced = sorted({r["symbol"] for r in legs if r["symbol"] not in priced})
+    if not unpriced:
+        if _blind["since"] is not None:
+            gap = (now - _blind["since"]).total_seconds()
+            log.warning(f"  order_rules: prices are back for every open stop / target after {gap:.0f}s without them")
+            _blind.update(since=None, alerted=False)
+            return "recovered"
+        return None
+    if _blind["since"] is None:
+        _blind["since"] = now
+        return None
+    gap = (now - _blind["since"]).total_seconds()
+    if gap >= EXIT_BLIND_ALERT_S and not _blind["alerted"]:
+        _blind["alerted"] = True
+        what = (f"no price for {len(unpriced)} open stop/target stock(s) ({', '.join(unpriced[:8])}) since "
+                f"{_blind['since']:%H:%M:%S} IST: their exits are not being watched")
+        log.error(f"  order_rules: {what}")
+        try:
+            from alerts.telegram import _html, fmt, notify
+            notify(fmt("🙈", "Exit monitor has no prices", _html(what)), category="orders", severity="error",
+                   key=f"exit_blind:{_blind['since']:%Y-%m-%d %H:%M}")
+        except Exception as e:
+            log.warning(f"  exit-monitor alert not recorded: {e}")
+        return "alerted"
+    return None
+
+
 def check_triggers() -> list[dict]:
     """
     Read-only pass: fetches live quotes for symbols with ACTIVE rules,
@@ -818,10 +861,13 @@ def check_triggers() -> list[dict]:
         quotes = fetch_live_quotes(symbols)
     except Exception as e:
         log.warning(f"  order_rules: live quote fetch failed, skipping this check: {e}")
+        _watch_blind(active, None)
         return events
 
     if quotes.empty:
+        _watch_blind(active, None)
         return events
+    _watch_blind(active, quotes)
 
     price_by_symbol = {row["symbol"]: row["ltp"] for _, row in quotes.iterrows() if row.get("ltp")}
     # Freshness of this quote batch, for the auto-execution guard below.

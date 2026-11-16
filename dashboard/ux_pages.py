@@ -770,7 +770,9 @@ def sessions(conn, root="", app=False) -> str:
     ov = C.overview(conn)
     t = ov["total"]
     tiles = '<div class="ax-tiles">' + "".join([
-        K.tile("Starting amounts", K.money(t["start_capital"])), K.tile("Equity now", K.money(t["equity"])),
+        K.tile("Starting amounts", K.money(t["start_capital"]),
+               f'{"+" if t.get("transfers", 0) > 0 else "−"}{K.money(abs(t["transfers"]))} moved in · capital {K.money(t["capital"])}'
+               if t.get("transfers") else ""), K.tile("Equity now", K.money(t["equity"])),
         K.tile("Gross P&L", K.money(t["gross_pnl"], True), "before any cost", True),
         K.tile("Charges", K.money(t["charges"])), K.tile("Tax reserve (per-cycle)", K.money(t["tax_est"]), "cash set aside, not tax due"),
         K.tile("Actual P&L", K.money(t["actual_pnl"], True), "after charges and tax", True),
@@ -801,6 +803,8 @@ def sessions(conn, root="", app=False) -> str:
     help_ = _worked_example()
     from dashboard.arms_routes import gate_banner                    # KGF-09 (16 Nov 2026): the regime gate, per arm
     new_btn, new_dlg = _new_session(conn, ov["sessions"])
+    cap_btn, cap_dlg = _capital_plan(conn)
+    new_btn, new_dlg = new_btn + cap_btn, new_dlg + cap_dlg
     body = (_closed_banner() + gate_banner(conn) + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
             "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split + new_dlg +
             f'<div id="ax-sdata" hidden data-json="{e(json.dumps(data, default=str))}"></div>' + SETUP_JS)
@@ -855,6 +859,47 @@ f.addEventListener('submit',function(ev){ev.preventDefault();var run=f.elements.
     return btn, dlg
 
 
+def _capital_plan(conn) -> tuple:
+    """CAP-04 (16 Nov 2026): the "Top up sessions" button and dialog -- the paper capital plan (orders/capital_plan.py):
+    the same top-up to every running session out of the cash no session owns, keeping the cash buffer. PAPER only."""
+    from orders import capital_plan as CP
+    try:
+        p = CP.plan(conn)
+    except Exception as x:
+        import logging
+        logging.getLogger("atip.ux").warning(f"  capital plan unavailable: {x}")
+        return "", ""
+    if not p.get("paper"):
+        return "", ""
+    if not p["total_top_up"]:
+        return ('<button class="ax-btn" type="button" disabled title="No paper cash above the cash buffer is outside the '
+                'sessions">Top up sessions…</button>'), ""
+    b, a = p["before"], p["after"]
+    rows = "".join(f'<tr><td>{e(r["session"])}</td><td class="num">{K.money(r["capital_before"])}</td>'
+                   f'<td class="num">+{K.money(r["top_up"])}</td><td class="num">{K.money(r["capital_after"])}</td>'
+                   f'<td>{e(r["next_buy_when"])}</td></tr>' for r in p["rows"] if r["top_up"])
+    btn = ('<button class="ax-btn" type="button" onclick="document.getElementById(\'ax-cap\').showModal()">'
+           'Top up sessions…</button>')
+    dlg = ('<dialog class="ax-dialog" id="ax-cap" aria-labelledby="ax-cap-h"><form novalidate><div class="ax-dhead" '
+           'id="ax-cap-h">Top up the sessions (paper)</div><div class="ax-dbody">'
+           f'<p class="ax-small ax-muted">Paper pool {K.money(p["pool"]["value"])}. {K.money(p["spare_before"])} belongs to no '
+           f'session; {K.money(p["buffer"])} ({p["config"]["cash_buffer_pct"]:g} %) stays as a cash buffer. Each running session '
+           f'gets the same {K.money(p["per_session"])} by a transfer: no books restart, no open trade changes, the next buy is '
+           f'sized from the larger cash. Allocated {b["allocated_pct"]:g} % → {a["allocated_pct"]:g} % of the pool.</p>'
+           '<table class="ax-table"><thead><tr><th>Session</th><th class="num">Capital</th><th class="num">Top-up</th>'
+           f'<th class="num">After</th><th>Next buy</th></tr></thead><tbody>{rows}</tbody></table>'
+           '<label class="ax-check"><input type="checkbox" name="ack" required><span>Move '
+           f'{K.money(p["total_top_up"])} of paper cash into these sessions.</span></label>'
+           '<div class="ax-err" role="alert"></div></div><div class="ax-dfoot"><button class="ax-btn" type="button" '
+           'data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">Top up</button></div></form></dialog>'
+           """<script>(function(){var d=document.getElementById('ax-cap');if(!d)return;var f=d.querySelector('form');
+f.addEventListener('submit',function(ev){ev.preventDefault();if(!f.elements.ack.checked){d.querySelector('.ax-err').textContent='Tick the box to confirm.';return;}
+ var b=f.querySelector('button[type=submit]');b.disabled=true;
+ AX.api('/api/v2/capital/apply',{body:{ack:true}}).then(function(r){d.close();AX.toast('Moved '+AX.inr(r.moved)+' into '+r.sessions.length+' session(s).');
+  setTimeout(function(){location.reload();},900);}).catch(function(x){d.querySelector('.ax-err').textContent=x.message;}).finally(function(){b.disabled=false;});});})();</script>""")
+    return btn, dlg
+
+
 def _worked_example() -> str:
     return ("""<details class="ax-help"><summary>How the numbers work (worked example)</summary>
 <p>S1 starts with ₹25,000. Cycle 1 buys ₹25,000 of stock and sells it at +3 % for ₹25,750.</p>
@@ -869,7 +914,7 @@ the FY estimate on Accounting › Tax sets losses off against gains and applies 
 
 EVENT_LABEL = {"LINK": "Order linked", "EDIT": "Settings changed", "MODE": "Mode", "STATUS": "Status", "POOL": "Starting amount",
                "POOL_END": "Pool ended", "TRANSFER": "Transfer", "ADJUSTMENT": "Adjustment", "CREATED": "Created",
-               "AUTO_SEND": "Auto-send"}
+               "AUTO_SEND": "Auto-send", "CAPITAL_PLAN": "Capital plan top-up"}
 
 
 def event_text(x: dict) -> str:
@@ -977,7 +1022,10 @@ AX.api('/api/v2/reports/generate',{{body:{{kind:'session_cycle_book',params:{{se
         return page(title, body, path, "tab=reports", root=root, app=app, mar=mar)
     # manage
     tl = '<div class="ax-tiles">' + "".join([
-        K.tile("Starting amount", K.money(ti["start_capital"])), K.tile("Equity now", K.money(ti["equity"]), f'cash {K.money(ti["cash"])}'),
+        K.tile("Starting amount", K.money(ti["start_capital"]),
+               f'{"+" if ti.get("transfers", 0) > 0 else "−"}{K.money(abs(ti["transfers"]))} moved in · capital {K.money(ti["capital"])}'
+               if ti.get("transfers") else ""),
+        K.tile("Equity now", K.money(ti["equity"]), f'cash {K.money(ti["cash"])}'),
         K.tile("Gross P&L", K.money(ti["gross_pnl"], True), "before any cost", True),
         K.tile("Charges", K.money(ti["charges"])), K.tile("Tax reserve (per-cycle)", K.money(ti["tax_est"]), "cash set aside, not tax due"),
         K.tile("Actual P&L", K.money(ti["actual_pnl"], True), "after charges and tax", True),

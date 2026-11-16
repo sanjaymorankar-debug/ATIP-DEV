@@ -4,7 +4,18 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.16.1** (Android `versionCode` 10 / `versionName` 2026.11.16.1; iOS `CFBundleShortVersionString`
+**Version 2026.11.16.2** (Android `versionCode` 11 / `versionName` 2026.11.16.2; iOS `CFBundleShortVersionString`
+2026.11.16.2 / `CFBundleVersion` 11), 16 Nov 2026 evening (capital review, PAPER). No native change beyond the version:
+the new parts are the server's screens, so the apps show them as soon as the Mac runs this code.
+
+* **Top up sessions** (Sessions, beside "New paper session…"): the paper capital plan -- the same top-up to every
+  running session out of the paper cash no session owns, keeping a 10 % cash buffer; the dialog lists each session's
+  capital before and after and asks for a tick before moving the money (PAPER only).
+* **Starting amount tiles** say what was moved in ("+₹2,00,000 moved in · capital ₹4,50,000"), and a session's P&L
+  and return are on its capital (start + transfers): a top-up is never shown as profit.
+* **Alerts**: "Exit monitor has no prices" when open stops have had no price for 2 minutes (the 16 Nov 09:47 outage).
+
+Earlier, **Version 2026.11.16.1** (Android `versionCode` 10 / `versionName` 2026.11.16.1; iOS `CFBundleShortVersionString`
 2026.11.16.1 / `CFBundleVersion` 10), 16 Nov 2026 (session review of 9–13 Nov + Kite breakout-retest port, PAPER).
 One native change: the banner. Everything else is the server's screens, so the apps show it as soon as the Mac runs
 this code. **Android built on the owner's Mac on 16 Nov** (`./gradlew assembleDebug`, no warnings; the APK reads

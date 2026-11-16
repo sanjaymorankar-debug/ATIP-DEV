@@ -606,11 +606,18 @@ def usage(conn, sid: str, on: str | None = None) -> dict:
 # charges, compounding until the session has run max_occurrences (500) of them. Here an occurrence
 # is one trade of the pool: a buy with all of its cash and the sale that ends it.
 
-def _occurrences(start: float, trades: list) -> list:
+def _occurrences(start: float, trades: list, transfers: list = ()) -> list:
     """The pool's trades in order as occurrences: #, stock, the amount it started with, the amount it
-    ended with (cash after the sale, charges paid) and the change. An open one has no end yet."""
+    ended with (cash after the sale, charges paid) and the change. An open one has no end yet.
+    CAP-03 (16 Nov 2026): a transfer in or out (SES-03, the capital plan's top-ups) before an occurrence adds to the
+    amount it starts with, as accounting/cycles.py chain() does; it is not that occurrence's profit."""
     out, amount = [], float(start)
+    tf = sorted(transfers or [], key=lambda m: str(m["at"]))
+    ti = 0
     for n, t in enumerate(sorted(trades, key=lambda t: t["at"]), 1):
+        while ti < len(tf) and str(tf[ti]["at"]) <= str(t["at"]):
+            amount += float(tf[ti]["amount"])
+            ti += 1
         o = {"n": n, "symbol": t["symbol"], "started": t["date"], "start_amount": round(amount, 2),
              "entry": t["entry"], "qty": t["qty"], "exit_price": t["exit_price"], "closed": t["closed"],
              "ended": t["exit_date"] if t["closed"] else None, "end_amount": None, "pnl": None, "pct": None}
@@ -655,12 +662,16 @@ def ledger(conn, sid: str, s: dict | None = None, history: bool = False) -> dict
         extras = pool_extras(s, rules, tr, moved)
     except Exception as e:
         log.warning(f"  session {sid} floor / tax reserve unreadable, using min_buy_value: {e}")
-    cash = start + sum(t["cash_flow"] for t in tr) + sum(m["amount"] for m in moved)
+    transferred = sum(m["amount"] for m in moved)
+    cash = start + sum(t["cash_flow"] for t in tr) + transferred
     booked = sum(t["pnl"] for t in tr)
     closed = [t for t in tr if t["closed"]]
     wins = sum(1 for t in closed if t["pnl"] > 0)
     equity = cash + sum(h["value"] for h in held)
-    occ = _occurrences(start, tr)
+    occ = _occurrences(start, tr, moved)
+    # CAP-03 (16 Nov 2026): the session's capital is its start plus what was moved in (less out); P&L and return are
+    # measured against that, so a top-up from the unallocated pot is never shown as profit (equity - start was).
+    capital = start + transferred
     cap = int(s.get("max_occurrences") or POOL_DEFAULTS["max_occurrences"])
     investable = cash - float(extras["tax_reserve"] or 0)
     waiting = None
@@ -671,8 +682,8 @@ def ledger(conn, sid: str, s: dict | None = None, history: bool = False) -> dict
             "cash": round(cash, 2), "booked": round(booked, 2), "charges": round(sum(t["charges"] for t in tr), 2),
             "open": held, "open_value": round(sum(h["value"] for h in held), 2),
             "unrealised": round(sum(h["unrealised"] for h in held), 2),
-            "equity": round(equity, 2), "pnl": round(equity - start, 2),
-            "return_pct": round((equity - start) / start * 100, 2),
+            "equity": round(equity, 2), "capital": round(capital, 2), "pnl": round(equity - capital, 2),
+            "return_pct": round((equity - capital) / capital * 100, 2) if capital > 0 else None,
             "trades": len(tr), "closed": len(closed), "wins": wins,
             "win_rate_pct": round(wins / len(closed) * 100, 1) if closed else None,
             "occurrence": len(occ), "max_occurrences": cap, "finished": len(closed) >= cap and not held,
@@ -739,6 +750,18 @@ def start_pool(conn, sid: str, capital: float, target_pct: float = None, stop_pc
     capital, vals = _pool_values(capital, target_pct, stop_pct, min_buy_value, max_occurrences, trail_pct, hold_days)
     if s.get("start_capital") and _has_open_trade(conn, sid, s.get("pool_started_at")):
         raise ValueError(f"session {sid} holds an open trade: let it exit before restarting its pool")
+    # CAP-01 (16 Nov 2026): with the owner's paper_capital_plan in config.json, a (re)start may not take more paper cash
+    # than the headroom above the buffer -- the session's own cash, handed back by the restart, counts as freed
+    from orders import capital_plan
+    cp = capital_plan.configured()
+    if cp and _paper():
+        own = float((ledger(conn, sid, s=s) or {}).get("cash") or 0) if s.get("start_capital") else 0.0
+        if capital - own > 0.005:
+            capital_plan.allocation_check(conn, None, capital - own, f"session {sid}'s starting amount")
+        top = capital_plan.headroom(conn, cp)["max_session"]
+        if cp["max_session_pct"] and capital > top + 0.005:
+            raise ValueError(f"session {sid}'s starting amount: Rs {capital:,.2f} is more than {cp['max_session_pct']:g} % "
+                             f"of the paper pool (Rs {top:,.2f}, {capital_plan.KEY}.max_session_pct)")
     ts = _now()
     conn.execute("UPDATE trading_sessions SET start_capital = ?, target_pct = ?, stop_pct = ?, min_buy_value = ?, "
                  "max_occurrences = ?, trail_pct = ?, hold_days = ?, pool_started_at = ?, updated_at = ? WHERE id = ?",
@@ -855,8 +878,9 @@ def spare_paper_cash(conn) -> dict:
         balance = float(settings()["paper_opening_balance"])
     pools = {s["id"]: float(s["pool"]["cash"]) for s in list_sessions(conn)["sessions"] if s.get("pool")}
     held = round(sum(pools.values()), 2)
+    # CAP-01 (16 Nov 2026): the sessions holding more cash than the paper account is shown, not hidden behind spare 0
     return {"paper_balance": round(balance, 2), "sessions_cash": held, "spare": round(max(0.0, balance - held), 2),
-            "sessions": pools}
+            "over_allocated": round(max(0.0, held - balance), 2), "sessions": pools}
 
 
 NEW_SESSION_LIKE = "S5"             # a new session copies the control: the owner's own rules (stop 2 %, trail +3 % / 1 %)
@@ -881,16 +905,24 @@ def add_session(conn, name: str = "", capital=None, like: str | None = NEW_SESSI
         raise ValueError("run=true starts it in AUTO, which sends its entries without asking: confirm with ack=true")
     seed(conn)
     spare = spare_paper_cash(conn)["spare"]
+    # CAP-01 (16 Nov 2026): with the owner's paper_capital_plan in config.json, the default and the most a new session
+    # can take is the headroom above the cash buffer, and no more than max_session_pct of the pool
+    from orders import capital_plan
+    cp = capital_plan.configured()
+    if cp:
+        h = capital_plan.headroom(conn, cp)
+        spare = min(spare, h["headroom"], h["max_session"] if cp["max_session_pct"] else spare)
     if capital in (None, ""):
         if spare < 1:
-            raise ValueError("there is no paper cash outside the sessions")
+            raise ValueError("there is no paper cash outside the sessions" + (" above the cash buffer" if cp else ""))
         capital = float(int(spare))
     try:
         capital = float(str(capital).replace(",", ""))
     except (TypeError, ValueError):
         raise ValueError("capital must be a number")
     if capital > spare + 0.005:
-        raise ValueError(f"Rs {capital:,.2f} is more than the Rs {spare:,.2f} of paper cash outside the sessions")
+        raise ValueError(f"Rs {capital:,.2f} is more than the Rs {spare:,.2f} of paper cash outside the sessions"
+                         + (f" (above the {cp['cash_buffer_pct']:g} % cash buffer)" if cp else ""))
     src = get_session(conn, str(like).upper()) if like else {}
     vals = {k: src.get(k) for k in ("target_pct", "stop_pct", "min_buy_value", "max_occurrences", "trail_pct", "hold_days")}
     vals.update({k: v for k, v in rules.items() if k in vals and v not in (None, "")})

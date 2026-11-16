@@ -56,6 +56,17 @@
   },
   "_risk_limits_note": "Rupees except max_drawdown_pct (%). max_daily_loss_value and max_drawdown_pct block new BUYs, measured on pnl_daily (portfolio/pnl.py); a loss limit that is set but cannot be measured also blocks.",
 
+  "_SECTION_9b": "=== PAPER CAPITAL PLAN (orders/capital_plan.py, 16 Nov 2026) — shares, never rupee amounts ===",
+  "paper_capital_plan": {
+    "cash_buffer_pct":        10,
+    "max_session_pct":        10,
+    "sessions":               "running",
+    "round_to":               1000,
+    "session_loss_limit_pct": 6,
+    "pool":                   "equity"
+  },
+  "_paper_capital_plan_note": "With this block, nothing gives a session paper cash past the buffer (cash_buffer_pct of paper cash + open positions) or above max_session_pct of the pool: transfers in, pool (re)starts, new sessions. python -m orders.capital_plan shows the equal top-up per running session; --apply --ack moves it. Remove the block to switch the plan and its guard off (a transfer in still never exceeds the cash no session owns).",
+
   "position_sizing": {
     "capital":            null,
     "risk_per_trade_pct": 1.0,
