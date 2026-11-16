@@ -19,6 +19,8 @@ Options:
     --symbols A,B    only these symbols. Default: the symbols that have bars on the stored sessions nearest the
                      range (before and after it), i.e. the universe the 30-minute bar job was fetching then
     --interval 15    bar size in minutes (Dhan: 1, 5, 15, 25, 60)
+    --min-bars N     a symbol-session with fewer than N bars counts as missing (default 1: only a session with no
+                     bar). For a session cut short, e.g. 16 Nov 2026 (bars stop at 10:15 IST): --min-bars 20
 """
 
 from __future__ import annotations
@@ -89,24 +91,25 @@ def neighbour_universe(conn, start: date, end: date, interval: int):
     return sorted(syms), (statistics.median(counts) if counts else None)
 
 
-def measure(conn, start: date, end: date, interval: int, symbols=None) -> dict:
+def measure(conn, start: date, end: date, interval: int, symbols=None, min_bars: int = 1) -> dict:
     sessions = sessions_between(start, end)
     have = _by_session(conn, start, end, interval)
     universe, per = (sorted(set(symbols)), None) if symbols else neighbour_universe(conn, start, end, interval)
     if per is None:
         _, per = neighbour_universe(conn, start, end, interval)
-    rows, need = [], {}
+    rows, need, short = [], {}, 0.0
     for s in sessions:
         got = have.get(str(s), {})
-        missing = [x for x in universe if not got.get(x)]
+        missing = [x for x in universe if (got.get(x) or 0) < max(1, min_bars)]
         rows.append({"session": str(s), "have": len(universe) - len(missing), "missing": len(missing),
                      "bars": sum(got.values())})
         for x in missing:
             need.setdefault(x, []).append(str(s))
+            short += max(0.0, (per or 0) - (got.get(x) or 0))
     pairs = sum(r["missing"] for r in rows)
     return {"sessions": rows, "universe": len(universe), "symbols_to_fetch": sorted(need), "need": need,
             "missing_pairs": pairs, "bars_per_symbol_session": per,
-            "est_missing_bars": int(round(pairs * per)) if per else None}
+            "est_missing_bars": int(round(short)) if per else None}
 
 
 def apply(db: Path, need: dict, start: date, end: date, interval: int) -> dict:
@@ -157,6 +160,8 @@ def main(argv=None) -> int:
     ap.add_argument("--db", default=None)
     ap.add_argument("--symbols", default=None)
     ap.add_argument("--interval", type=int, default=15)
+    ap.add_argument("--min-bars", type=int, default=1,
+                    help="a symbol-session with fewer bars than this counts as missing (default 1)")
     ap.add_argument("--apply", action="store_true", help="fetch from Dhan and insert (default: dry run)")
     a = ap.parse_args(argv)
     start, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
@@ -168,14 +173,15 @@ def main(argv=None) -> int:
     symbols = [s.strip().upper() for s in a.symbols.split(",") if s.strip()] if a.symbols else None
     conn = _connect(db, write=False)
     try:
-        m = measure(conn, start, end, a.interval, symbols)
+        m = measure(conn, start, end, a.interval, symbols, a.min_bars)
     finally:
         conn.close()
     if not m["universe"]:
         print("No stored sessions near the range to take a universe from: pass --symbols.")
         return 2
     print(f"intraday_bars ({a.interval}-minute) in {db}")
-    print(f"Range {start} .. {end}: {len(m['sessions'])} sessions, universe {m['universe']} symbols")
+    print(f"Range {start} .. {end}: {len(m['sessions'])} sessions, universe {m['universe']} symbols"
+          + (f"; fewer than {a.min_bars} bars counts as missing" if a.min_bars > 1 else ""))
     print(f"{'session':<12}{'have':>6}{'missing':>9}{'bars':>8}")
     for r in m["sessions"]:
         print(f"{r['session']:<12}{r['have']:>6}{r['missing']:>9}{r['bars']:>8}")

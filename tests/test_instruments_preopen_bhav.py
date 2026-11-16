@@ -566,6 +566,28 @@ def test_the_backfill_tool_measures_the_gap_and_writes_nothing_in_a_dry_run(tmp_
     c.close()
 
 
+def test_the_backfill_tool_can_count_a_session_cut_short_as_missing(tmp_path, capsys):
+    # 16 Nov 2026: a stuck job lock stopped the 15-minute bars at 10:15 IST -- every symbol had 4-5 bars, so
+    # "no bar at all" found nothing to fill. --min-bars counts a short session as missing (CAP-06).
+    import tools.backfill_intraday_bars as T
+    db = tmp_path / "copy.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE intraday_bars (symbol TEXT NOT NULL, ts TIMESTAMP NOT NULL, interval_min INTEGER NOT NULL, "
+              "open REAL, high REAL, low REAL, close REAL, volume INTEGER, source TEXT DEFAULT 'dhan', created_at "
+              "TIMESTAMP, PRIMARY KEY (symbol, interval_min, ts))")
+    _bars(c, dt.date(2026, 11, 12), ["AAA", "BBB", "CCC"])
+    _bars(c, dt.date(2026, 11, 13), ["AAA", "BBB", "CCC"])
+    _bars(c, dt.date(2026, 11, 16), ["AAA", "BBB"], n=5)
+    c.commit()
+    c.close()
+    assert T.main(["--db", str(db), "--from", "2026-11-16", "--to", "2026-11-16"]) == 0
+    assert "Gap: 1 symbol-sessions, about 25 bars" in capsys.readouterr().out
+    assert T.main(["--db", str(db), "--from", "2026-11-16", "--to", "2026-11-16", "--min-bars", "20"]) == 0
+    out = capsys.readouterr().out
+    assert "fewer than 20 bars counts as missing" in out
+    assert "Gap: 3 symbol-sessions, about 65 bars" in out and "Dry run: nothing written" in out
+
+
 # ═════ the jobs ═════════════════════════════════════════════════════════
 
 def test_the_0800_0845_and_1615_jobs_are_registered(monkeypatch):
