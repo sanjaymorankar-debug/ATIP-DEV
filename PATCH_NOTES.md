@@ -588,7 +588,7 @@ pages (822); session names; VF-34 / VF-35 (another session). **To do at deploy:*
 
 Report: `docs/reports/2026-11-06-post-market-rca/POST_MARKET_RCA_2026-11-06.html` (+ `.pdf`). Testing:
 `docs/testing/ATIP_PostMarket_RCA_Test_Report_2026-11-06.md`. Branch `claude/rca-2026-11-06` from master `ea4f2a0`;
-**committed as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
+**committed as `1966119` (6 Nov 2026, 21:44 IST); merged to master as `2885582` (16 Nov 2026, 00:02 IST); live since 00:52 IST 16 Nov 2026.** Delta zip: `deliverables/2026-11-06/ATIP_post_market_rca_delta_2026-11-06.zip`.
 
 The day (all PAPER, IST): realised net −₹1,107.85 (4 sold: 1 won, 3 lost; charges ₹282.17), day P&L marked −₹763.12,
 while Nifty closed +2.01 %. BHEL (S10), LODHA (S9) and ADANIENT (S2) were stopped by the 2 % stop, which sat at
@@ -630,7 +630,7 @@ master too, and `test_order_paths_are_untouched`, which needs the work committed
 
 # 6 Nov 2026: the order monitor's 09:15 pass lost a minute to "database is locked" (RCA-13)
 
-Branch `claude/amazing-cray-703f0e` (from master `ea4f2a0`), not merged, not live. Found by the 6 Nov post-market RCA.
+Branch `claude/amazing-cray-703f0e` (from master `ea4f2a0`); merged to master as `c865ae2` (16 Nov 2026, 00:02 IST); live since 00:52 IST 16 Nov 2026. Found by the 6 Nov post-market RCA.
 
 **What happened (IST, `atip_data/atip.log` / `atip.jsonl`, `order_rules`, `session_events`).** S9 (LODHA) and S1
 (AUROPHARMA) each had an auto-pick still waiting from 5 Nov. The order monitor's first market-hours pass began about
