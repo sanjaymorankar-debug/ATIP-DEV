@@ -21,6 +21,10 @@ Options:
     --interval 15    bar size in minutes (Dhan: 1, 5, 15, 25, 60)
     --min-bars N     a symbol-session with fewer than N bars counts as missing (default 1: only a session with no
                      bar). For a session cut short, e.g. 16 Nov 2026 (bars stop at 10:15 IST): --min-bars 20
+    --refresh-partial  also re-read the bars stored while still forming (created_at before the bar closed) and store
+                     Dhan's finished values (created_at = now). The bar job's next run normally does this itself (its
+                     upsert keeps created_at, so on an ordinary day most bars look "stored while forming" and a refresh
+                     only rewrites the same values); use it for a day the job stopped, e.g. 16 Nov 2026.
 """
 
 from __future__ import annotations
@@ -153,6 +157,58 @@ def apply(db: Path, need: dict, start: date, end: date, interval: int) -> dict:
     return {"inserted": inserted, "symbols": len(need), "no_bars_from_dhan": empty}
 
 
+def partial_bars(conn, start: date, end: date, interval: int) -> dict:
+    """symbol -> [ts] of the bars stored before their interval closed (created_at < ts + interval)."""
+    out = {}
+    for sym, ts in conn.execute(
+            "SELECT symbol, ts FROM intraday_bars WHERE interval_min=? AND ts>=? AND ts<? AND created_at IS NOT NULL "
+            "AND created_at < datetime(ts, ?)",
+            (interval, str(start), str(end + timedelta(days=1)), f"+{int(interval)} minutes")):
+        out.setdefault(sym, []).append(str(ts)[:19])
+    return out
+
+
+def refresh(db: Path, partial: dict, start: date, end: date, interval: int) -> dict:
+    """Re-read the bars stored while forming and store Dhan's finished OHLCV (read-only Dhan calls, as apply)."""
+    os.chdir(ROOT)
+    from data.dhan import fetch_historical_intraday, get_dhan_client
+    client, _ = get_dhan_client()
+    conn = _connect(db, write=True)
+    updated, missed, now = 0, [], datetime.now()
+    try:
+        for i, sym in enumerate(sorted(partial)):
+            wanted = set(partial[sym])
+            got = 0
+            a = start
+            while a <= end:
+                b = min(end, a + timedelta(days=MAX_DAYS_PER_CALL - 1))
+                df = fetch_historical_intraday(sym, a, b + timedelta(days=1), interval, client)
+                for r in ([] if df is None or df.empty else df.to_dict("records")):
+                    ts = r.get("datetime")
+                    if ts is None:
+                        continue
+                    ts = (ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts).strftime("%Y-%m-%d %H:%M:%S")
+                    if ts not in wanted:
+                        continue
+                    cur = conn.execute(
+                        "UPDATE intraday_bars SET open=?, high=?, low=?, close=?, volume=?, created_at=? "
+                        "WHERE symbol=? AND interval_min=? AND ts=?",
+                        (r.get("open"), r.get("high"), r.get("low"), r.get("close"), int(r.get("volume") or 0), now,
+                         sym, int(interval), ts))
+                    got += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                a = b + timedelta(days=1)
+            updated += got
+            if got < len(wanted):
+                missed.append(sym)
+            if (i + 1) % 20 == 0:
+                conn.commit()
+                print(f"  {i + 1}/{len(partial)} symbols, {updated} bars refreshed", flush=True)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"refreshed": updated, "symbols": len(partial), "not_returned": missed}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--from", dest="start", default=DEFAULT_FROM)
@@ -162,6 +218,8 @@ def main(argv=None) -> int:
     ap.add_argument("--interval", type=int, default=15)
     ap.add_argument("--min-bars", type=int, default=1,
                     help="a symbol-session with fewer bars than this counts as missing (default 1)")
+    ap.add_argument("--refresh-partial", action="store_true",
+                    help="also re-read the bars stored while still forming and store Dhan's finished values")
     ap.add_argument("--apply", action="store_true", help="fetch from Dhan and insert (default: dry run)")
     a = ap.parse_args(argv)
     start, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
@@ -174,8 +232,11 @@ def main(argv=None) -> int:
     conn = _connect(db, write=False)
     try:
         m = measure(conn, start, end, a.interval, symbols, a.min_bars)
+        partial = partial_bars(conn, start, end, a.interval) if a.refresh_partial else {}
     finally:
         conn.close()
+    if symbols and partial:
+        partial = {s: v for s, v in partial.items() if s in set(symbols)}
     if not m["universe"]:
         print("No stored sessions near the range to take a universe from: pass --symbols.")
         return 2
@@ -190,17 +251,27 @@ def main(argv=None) -> int:
           + (f", about {m['est_missing_bars']:,} bars at {per:g} bars a symbol-session" if per else ""))
     print(f"--apply would make ~{len(m['symbols_to_fetch'])} Dhan intraday calls "
           f"(~{len(m['symbols_to_fetch']) * 0.3 / 60:.1f} min at Dhan's pacing)")
+    if a.refresh_partial:
+        print(f"Stored while still forming: {sum(len(v) for v in partial.values()):,} bars of {len(partial)} symbols"
+              f" (--apply re-reads them: ~{len(partial)} more Dhan calls)")
     if not a.apply:
         print("Dry run: nothing written, Dhan not called. Add --apply to fetch and insert.")
         return 0
-    if not m["need"]:
+    if not m["need"] and not partial:
         print("Nothing missing.")
         return 0
-    t0 = time.monotonic()
-    out = apply(db, m["need"], start, end, a.interval)
-    print(f"Inserted {out['inserted']:,} bars for {out['symbols']} symbols in {time.monotonic() - t0:.0f}s"
-          + (f"; Dhan returned nothing for {len(out['no_bars_from_dhan'])}: {', '.join(out['no_bars_from_dhan'][:10])}"
-             if out["no_bars_from_dhan"] else ""))
+    if m["need"]:
+        t0 = time.monotonic()
+        out = apply(db, m["need"], start, end, a.interval)
+        print(f"Inserted {out['inserted']:,} bars for {out['symbols']} symbols in {time.monotonic() - t0:.0f}s"
+              + (f"; Dhan returned nothing for {len(out['no_bars_from_dhan'])}: "
+                 f"{', '.join(out['no_bars_from_dhan'][:10])}" if out["no_bars_from_dhan"] else ""))
+    if partial:
+        t0 = time.monotonic()
+        out = refresh(db, partial, start, end, a.interval)
+        print(f"Refreshed {out['refreshed']:,} bars stored while forming, {out['symbols']} symbols, in "
+              f"{time.monotonic() - t0:.0f}s" + (f"; Dhan did not return every bar for {len(out['not_returned'])}: "
+                                                 f"{', '.join(out['not_returned'][:10])}" if out["not_returned"] else ""))
     return 0
 
 

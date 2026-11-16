@@ -588,6 +588,41 @@ def test_the_backfill_tool_can_count_a_session_cut_short_as_missing(tmp_path, ca
     assert "Gap: 3 symbol-sessions, about 65 bars" in out and "Dry run: nothing written" in out
 
 
+def test_the_backfill_tool_refreshes_only_the_bars_stored_while_forming(tmp_path, capsys, monkeypatch):
+    # 16 Nov 2026: the 10:01 IST run finished at 10:16 and stored each symbol's last bar while it was still forming;
+    # the job's next run, which rewrites it, never came. --refresh-partial stores Dhan's finished values for those.
+    import pandas as pd
+    import data.dhan as D
+    import tools.backfill_intraday_bars as T
+    db = tmp_path / "copy.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE intraday_bars (symbol TEXT NOT NULL, ts TIMESTAMP NOT NULL, interval_min INTEGER NOT NULL, "
+              "open REAL, high REAL, low REAL, close REAL, volume INTEGER, source TEXT DEFAULT 'dhan', created_at "
+              "TIMESTAMP, PRIMARY KEY (symbol, interval_min, ts))")
+    _bars(c, dt.date(2026, 11, 13), ["AAA"])
+    _bars(c, dt.date(2026, 11, 16), ["AAA"], n=4)              # 09:15 .. 10:00, value 1
+    c.execute("UPDATE intraday_bars SET created_at='2026-11-16 10:02:20.5' WHERE ts>='2026-11-16'")
+    c.commit()
+    c.close()
+    finished = pd.DataFrame([{"datetime": pd.Timestamp(2026, 11, 16, 9, 15) + pd.Timedelta(minutes=15 * i),
+                              "open": 2, "high": 3, "low": 1.5, "close": 2.5, "volume": 99} for i in range(25)])
+    calls = []
+    monkeypatch.setattr(D, "get_dhan_client", lambda: (object(), None))
+    monkeypatch.setattr(D, "fetch_historical_intraday", lambda *a: calls.append(a[0]) or finished)
+    monkeypatch.chdir(tmp_path)
+    args = ["--db", str(db), "--from", "2026-11-16", "--to", "2026-11-16", "--refresh-partial"]
+    assert T.main(args) == 0
+    assert "Stored while still forming: 1 bars of 1 symbols" in capsys.readouterr().out and not calls
+    assert T.main(args + ["--apply"]) == 0
+    assert "Refreshed 1 bars stored while forming, 1 symbols" in capsys.readouterr().out and calls == ["AAA"]
+    c = sqlite3.connect(db)
+    rows = dict(c.execute("SELECT ts, close FROM intraday_bars WHERE ts>='2026-11-16'").fetchall())
+    c.close()
+    assert rows == {"2026-11-16 09:15:00": 1, "2026-11-16 09:30:00": 1, "2026-11-16 09:45:00": 1,
+                    "2026-11-16 10:00:00": 2.5}                 # finished bars untouched; nothing inserted
+    assert T.main(args) == 0 and "Stored while still forming: 0 bars" in capsys.readouterr().out
+
+
 # ═════ the jobs ═════════════════════════════════════════════════════════
 
 def test_the_0800_0845_and_1615_jobs_are_registered(monkeypatch):
