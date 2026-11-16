@@ -386,3 +386,12 @@ def test_a_wrong_first_close_is_a_mismatch_not_a_step(bh):
         conn.close()
     out = bh.verify(symbols=["ACME"])
     assert (out["mismatch"], out["steps"]) == (1, 0) and out["issues"][0]["date"] == "2024-07-01"
+
+
+def test_three_refusals_in_a_row_stop_the_run(bh):
+    days = _weekdays(dt.date(2024, 7, 1), dt.date(2024, 7, 12))
+    fake = FakeNSE({d: [("ACME", "EQ", 100.0, 100.0, 10)] for d in days}, down=set(days[:-1]))
+    out = bh.run_archive(minutes=0, session=fake, now=dt.datetime(2024, 7, 12, 20, 0), max_sessions=10, clock=Clock(),
+                         sleep=lambda s: None)
+    assert (out["session"], out["error"], out["dates"]) == (1, 3, 4) and out["stopped"].startswith("3 errors in a row")
+    assert out["status"] == "PARTIAL" and len(fake.calls) == 5, "12 Jul (CM + delivery), then one try each of 3 dates"

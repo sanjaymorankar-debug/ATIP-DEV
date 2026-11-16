@@ -72,6 +72,7 @@ UDIFF_FROM = date(2024, 7, 5)       # both layouts exist for 5 Jul 2024; the old
 PUBLISHED_BY = "17:00"              # NSE posts the day's CM file around 16:30 IST
 PENDING_DAYS = 3                    # a 404 this recent may be a file NSE has not posted yet
 MAX_ATTEMPTS = 5                    # failed tries of one date before the scheduled runs leave it (status lists it)
+STOP_AFTER_ERRORS = 3               # errors in a row (403 / 5xx / timeouts): NSE is refusing -- stop, ask again later
 KNOWN_AT = "20:00:00"               # knowledge time of a session's files: after NSE posts the delivery file
 PRICE_SERIES = ("EQ", "BE", "BZ", "SM", "ST")     # series a prices_daily row can come from, most traded first
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0",
@@ -361,7 +362,8 @@ def run_archive(minutes=None, years=None, max_sessions=None, session=None, now=N
     paced = _Paced(session, cfg["pause_seconds"], sleep)
     conn = get_connection()
     counts = {"session": 0, "holiday": 0, "pending": 0, "error": 0}
-    rows = done = 0
+    rows = done = streak = 0
+    stopped = None
     todo = []
     try:
         ensure_tables(conn)
@@ -374,6 +376,11 @@ def run_archive(minutes=None, years=None, max_sessions=None, session=None, now=N
             counts[r["status"]] += 1
             rows += r["rows"]
             done += 1
+            streak = streak + 1 if r["status"] == "error" else 0
+            if streak >= STOP_AFTER_ERRORS:      # don't keep knocking: ATIP's other NSE calls share this address
+                stopped = f"{streak} errors in a row, last {d}: stopped"
+                log.warning(f"  NSE archive: {stopped}")
+                break
     finally:
         conn.close()
     remaining = len(todo) - done
@@ -381,7 +388,7 @@ def run_archive(minutes=None, years=None, max_sessions=None, session=None, now=N
     log.info(f"  NSE archive: {counts['session']} sessions ({rows} rows), {counts['holiday']} holidays, "
              f"{counts['pending']} pending, {counts['error']} errors; {remaining} dates left back to {target}")
     return {"status": status, "rows": rows, "target": str(target), "dates": done, **counts, "remaining": remaining,
-            "requests": paced.calls}
+            "requests": paced.calls, "stopped": stopped}
 
 
 def status(conn=None) -> dict:

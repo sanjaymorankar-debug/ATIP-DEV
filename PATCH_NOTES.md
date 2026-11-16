@@ -824,25 +824,46 @@ time-of-day feeds test); 0 regressions.
   dashboard 200 at 06:28:27, startup log clean (PAPER). Rollback branch `claude/live-running-2026-11-16-0628` =
   `ea53a82` (what pid 14211 ran). Not pushed. From tonight the 22:20 IST backfill asks each window up to end + 1.
 
-## Checked, not built: seven years of NSE Bhavcopy kept locally (owner, 16 Nov 2026)
+## Built: seven years of NSE's Bhavcopy kept locally, and a weekly check against it (owner, 16 Nov 2026)
 
-- **Today.** The 7-year history in `prices_daily` is Dhan's, adjusted for splits and bonuses as of the day it was
-  fetched. NSE's official file is kept only from 30 Jan 2025 (309 unzipped CSVs in `atip_data/raw`); full-market rows
-  start 28 Jul 2026 (46 sessions); delivery % starts 3 Mar 2025.
-- **NSE serves all seven years to this Mac** (checked 06:05–06:17 IST): `content/historical/EQUITIES/YYYY/MON/
-  cmDDMONYYYYbhav.csv.zip` up to 5 Jul 2024 (70–110 KB), `content/cm/BhavCopy_NSE_CM_0_0_0_YYYYMMDD_F_0000.csv.zip`
-  from 5 Jul 2024 (165–210 KB), `products/content/sec_bhavdata_full_DDMMYYYY.csv` (delivery) back to 2019 (~220 KB).
-  A holiday is a 404 (2023-11-14) and the Saturday session of 2 Mar 2024 has a file, so the archive is also the
-  session calendar for 2019–2024 that `utils/trading_calendar.py` lacks (it lists 2025–2026).
-- **Accuracy.** Three official files (15 Nov 2019, 3 Mar 2022, 2 Mar 2024) against `prices_daily`: every close equal,
-  except stocks with a later corporate action, where the ratio is the action's factor (BPCL 0.5, BLS 0.25, BRIGADE
-  0.75, BSE 1/9, CANBK 0.2, CUPID 0.01, STLTECH 0.7027). So the official store must stay raw; the adjustment belongs
-  to the comparison, through `corporate_actions`.
-- **Size.** About 1,733 sessions: ~200 MB of zipped Bhavcopy plus ~380 MB of delivery CSV (~70 MB gzipped), ~4.5 million
-  rows. That belongs in the data lake (`atip_data/lake/nse_cm_bhavcopy/date=…`, as `fo_bhavcopy` already is), not in
-  `atip.db` (780 MB today, copied by every backup).
-- **Proposed build:** a resumable nightly backfill (about 150 sessions a night at one request every 1.5 s: about 12
-  nights), the file as published plus a lake partition per session, each session's outcome kept (file / 404) as the
-  session calendar; the 16:45 run archives its own file into the same store; a weekly check of every stored close
-  against Bhavcopy × the corporate-action factor, with the mismatches listed; gaps in `prices_daily` filled from
-  Bhavcopy instead of Dhan; seven-year retention in `db/purge.py`'s HISTORY tier.
+**Why.** The 7-year history in `prices_daily` is Dhan's, adjusted for splits and bonuses as of the day it was fetched;
+NSE's own end-of-day file was kept only from 30 Jan 2025 (309 CSVs in `atip_data/raw`), full-market rows start
+28 Jul 2026 and delivery % 3 Mar 2025. NSE's archive serves all seven years to this Mac (checked 06:05–06:43 IST):
+the old `cmDDMONYYYYbhav.csv.zip` up to 5 Jul 2024, UDiFF `BhavCopy_NSE_CM_0_0_0_YYYYMMDD_F_0000.csv.zip` from 5 Jul
+2024, `sec_bhavdata_full_DDMMYYYY.csv` (delivery) throughout; a holiday is a 404 in both layouts.
+
+**`data/bhavcopy_history.py`**
+- Keeps each session's files as published (`atip_data/raw/nse_archive/cm/<YYYY>/`, `delivery/<YYYY>/*.csv.gz`) and
+  every row, all series, in one column set as the lake dataset `nse_cm_bhavcopy` (raw prices, knowledge time 20:00
+  IST of the session). `nse_archive_session` records each date (session / holiday / pending / error), NSE's own
+  calendar for 2019–2024, which `utils/trading_calendar.py` lacks; `tools/dhan_boundary_days.py` now takes its word.
+- Runs newest first inside a time budget (the scheduler runs one job at a time, and the evening re-score must finish
+  before 21:00): every day 19:50 IST for 5 minutes, Saturday and Sunday 10:00 IST for 90 minutes, one request every
+  1.2 s (about 1,830 dates, two files each: the first weekend run finishes the backlog). A 404 within 3 days is
+  "pending", older a holiday — unless 50 or more bars are stored for the day, then "error". Three errors in a row
+  (403 / 5xx / timeouts: NSE's bot protection) stop the run, so ATIP's other NSE calls on this address are not put
+  at risk; the next run asks again.
+- `verify()` (Sunday 12:00 IST, report in `atip_data/reports/price_check/`): per stock, stored close / NSE close is
+  one number between corporate actions when the history is right. A new ratio that holds 3 sessions is a re-basing,
+  explained when `corporate_actions` or NSE's adjusted previous close shows an event that day — NSE's UDiFF file kept
+  the *unadjusted* previous close on CONCORDBIO's 1:1 bonus ex-date (4 Nov 2026), so NSE's previous close alone is not
+  enough; a shorter deviation over 0.5 % is a mismatch; NSE rows inside a stock's history with no stored bar are
+  missing; stored bars on a day NSE had no session are phantom. Only the range archived without a gap is checked.
+- `fill()` writes missing days from NSE on the stored basis (prices × the day's level, volume × the stored/NSE volume
+  ratio nearby), source `bhavcopy_hist`, never over a stored row; dry run unless `--apply`.
+- Seven-year retention through `db/purge.py` (lake partitions, kept files, session rows).
+
+    python -m data.bhavcopy_history status | run [--minutes 80] | verify [--list] | fill [--apply]
+
+**Measured** on a copy of the live DB (06:42–06:46 IST, real NSE): the 12 newest dates (11 sessions, 40,701 rows;
+10 Nov a holiday) plus 2 Mar 2024 (Saturday session), 3 Mar 2023, 15 Nov 2019, 5 and 8 Jul 2024 (both layouts), and
+2023-11-14 recorded as a holiday; delivery for all 16. About 290 KB of files and 125 KB of lake per session: roughly
+0.5–0.6 GB for seven years. The check over 30 Oct–13 Nov: 504 stocks, **5,517 stock-days, all equal to NSE**; one
+re-basing (CONCORDBIO, explained by `corporate_actions`); **27 stocks have no bar for the Sunday Muhurat session of
+8 Nov 2026**, which NSE published (other stocks have Dhan's bar for it; `utils/trading_calendar.py` lists the day as
+a holiday) — `fill --apply` would add them; left for the owner.
+
+**Not done here:** delivery % before 3 Mar 2025 is in the archive but not copied into `prices_daily`; the scheduled
+jobs start with the next restart (none was done for this change). Tests: `tests/test_bhavcopy_history.py` (14, a fake
+NSE archive serving both layouts, delivery and 404s). Full suite 06:46–06:57 IST: 2,777 passed, 65 skipped, 4 failed —
+the same 4 as on master (3 sandbox sockets, 1 time-of-day feeds test); 0 regressions.
