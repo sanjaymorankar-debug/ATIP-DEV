@@ -7,8 +7,8 @@ release.
 **Version 2026.11.16.1** (Android `versionCode` 10 / `versionName` 2026.11.16.1; iOS `CFBundleShortVersionString`
 2026.11.16.1 / `CFBundleVersion` 10), 16 Nov 2026 (session review of 9–13 Nov + Kite breakout-retest port, PAPER).
 One native change: the banner. Everything else is the server's screens, so the apps show it as soon as the Mac runs
-this code. **Not compiled on 16 Nov:** this Mac has only the Xcode command-line tools (no Xcode) and no Java / Android
-SDK / Gradle, so neither app could be built here; build with Xcode (`xcodegen` then Archive) and Android Studio.
+this code. **Android built on the owner's Mac on 16 Nov** (`./gradlew assembleDebug`, no warnings; the APK reads
+`versionCode` 10 / `versionName` 2026.11.16.1). **iOS not built:** the Mac has no Xcode yet (see Build below).
 
 * **Regime-gate banner (native).** `/api/v2/shell/state` carries `regime_gate`; while the breadth gate holds the gated
   arms back, the strip reads "◐ Regime gate closed: breadth50 19.3% < 50% -- gated arms wait, exits run" in amber.
@@ -160,10 +160,16 @@ refused with HTTP 423 while ATIP is stopped). Signals for the Asian markets are 
 
 ## Build
 
-**Android** (`mobile/android`, Kotlin, minSdk 26, targetSdk 35): open in Android Studio (Ladybug or newer) or
+**Android** (`mobile/android`, Kotlin, minSdk 26, targetSdk 35, JDK 17, Gradle wrapper 8.11.1): open in Android
+Studio (Ladybug or newer) or
 
-    cd mobile/android && gradle wrapper && ./gradlew assembleDebug
+    cd mobile/android && ./gradlew assembleDebug
     # APK: app/build/outputs/apk/debug/app-debug.apk
+
+The SDK location comes from `ANDROID_HOME` or an uncommitted `local.properties` (`sdk.dir=...`; Android Studio
+writes it). On the owner's Mac the McAfee network extension breaks Java's IPv6 sockets ("Broken pipe" from
+dl.google.com and Maven Central), so build there with `export JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true`
+(Gradle drops that flag from `org.gradle.jvmargs`).
 
 **iOS** (`mobile/ios`, SwiftUI, iOS 16+):
 
@@ -173,7 +179,15 @@ refused with HTTP 423 while ATIP is stopped). Signals for the Asian markets are 
       -destination 'generic/platform=iOS Simulator' build
 
 or open `ATIP.xcodeproj` in Xcode and run on a simulator or a device (a free Apple ID can sideload to your own
-phone; the App Store needs an Apple Developer account).
+phone; the App Store needs an Apple Developer account). The owner's Mac runs macOS 14.6.1, where the newest Xcode
+is 16.2 (developer.apple.com/download/all, Apple ID sign-in); the App Store's Xcode 26, which App Store uploads
+need, wants macOS 15.6 or later.
+
+**2026-11-16: Android built on the owner's Mac.** Installed: Eclipse Temurin 17 in
+`~/Library/Java/JavaVirtualMachines` (Homebrew has no openjdk bottle for macOS 14 and would need Xcode to compile
+it), the Android SDK in `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, platform-tools), xcodegen 2.46.0.
+The first build failed on `checkDebugAarMetadata`: the AndroidX dependencies need `android.useAndroidX=true`, now in
+`gradle.properties`. `xcodegen` generates `ATIP.xcodeproj`; Xcode itself still needs the owner's Apple ID.
 
 **Not built on the owner's Mac (2026-10-26, 2026-11-02).** It has no Android SDK, Gradle or Java runtime, and
 only the Xcode Command Line Tools (no Xcode, no iOS SDK, no xcodegen). Checks run instead on 2026-11-02:
