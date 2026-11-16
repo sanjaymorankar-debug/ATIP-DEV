@@ -31,6 +31,9 @@ versions were dropped so there is one of each.)
     preopen_health       16 Nov 2026 (owner item 6)  08:45 IST on market days, retried 08:50 / 09:00 / 09:10 while
                          failing: Dhan token (DH-901, TOTP renewal), quote feed, today's scrip master, the previous
                          session's scores. Auto-pick waits on gate_status(); the reason is a banner on every page.
+    bhavcopy_history     16 Nov 2026 (owner)  seven years of NSE's CM Bhavcopy and delivery files kept locally
+                         (data/bhavcopy_history.py): 19:50 IST for 5 minutes every day, Sat/Sun 10:00 for 90 minutes,
+                         newest session first; price_check Sunday 12:00 compares every stored close with NSE's.
     intraday_completeness 16 Nov 2026 (owner item 18)  16:15 IST on market days: alert when fewer than 95% of the
                          universe have 15-minute bars for a session (data/completeness.py)
 
@@ -157,12 +160,31 @@ def schedule_jobs(schedule, run_job) -> list:
             out.append(f"intraday_completeness daily {t} IST (market days; alert under {dc['min_share']:.0%})")
     except Exception as e:
         log.warning(f"  instrument master / pre-open gate / completeness jobs not scheduled: {e}")
+    # 16 Nov 2026 (owner): seven years of NSE's CM Bhavcopy kept locally (data/bhavcopy_history.py), newest first and
+    # inside a time budget -- one job at a time runs here, so a long download would hold up the evening re-score.
+    try:
+        from data.bhavcopy_history import settings as bh_settings
+        bh = bh_settings()
+        if bh["enabled"]:
+            t, wt, vt = _hhmm(bh["time"], "19:50"), _hhmm(bh["weekend_time"], "10:00"), _hhmm(bh["verify_time"], "12:00")
+            schedule.every().day.at(t).do(run_job, "bhavcopy_history", bhavcopy_history_run, "evening")
+            schedule.every().day.at(wt).do(run_job, "bhavcopy_history_weekend", bhavcopy_history_run, "weekend")
+            schedule.every().day.at(vt).do(run_job, "price_check", bhavcopy_history_run, "verify")
+            out.append(f"bhavcopy_history daily {t} IST ({bh['minutes']} min), Sat/Sun {wt} ({bh['weekend_minutes']} min), "
+                       f"price_check Sunday {vt} (NSE's Bhavcopy, {bh['years']} years)")
+    except Exception as e:
+        log.warning(f"  NSE Bhavcopy archive not scheduled: {e}")
     return out
 
 
 def instrument_master_run() -> dict:
     from data.instruments import run_scheduled
     return run_scheduled()
+
+
+def bhavcopy_history_run(kind: str = "evening") -> dict:
+    from data.bhavcopy_history import run_scheduled
+    return run_scheduled(kind)
 
 
 def intraday_completeness_run() -> dict:

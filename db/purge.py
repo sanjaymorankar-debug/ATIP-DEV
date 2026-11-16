@@ -160,6 +160,14 @@ def purge_old_data(long_days: int = None, short_days: int = None,
             history_cutoff = str(date.today() - timedelta(days=max(history_days, long_days)))
             for table, col in HISTORY_RETENTION_TABLES.items():
                 results[table] = _purge_table(conn, table, col, history_cutoff, dry_run)
+            try:                         # NSE's Bhavcopy kept locally (16 Nov 2026): lake, files and session rows
+                from data.bhavcopy_history import purge as _bhav_purge
+                bh = _bhav_purge(history_cutoff, conn=conn, dry_run=dry_run)
+                results["lake:nse_cm_bhavcopy"] = bh["lake_rows"]
+                results["nse_archive_session"] = bh["sessions"]
+            except Exception as e:
+                log.warning(f"  purge NSE Bhavcopy archive: {e}")
+                results["lake:nse_cm_bhavcopy"] = f"error: {e}"
         for table, col in LONG_RETENTION_TABLES.items():
             results[table] = _purge_table(conn, table, col, long_cutoff, dry_run)
         for table, col in SHORT_RETENTION_TABLES.items():

@@ -12,7 +12,8 @@ is the day never fetched). A `to` day is listed when it lies inside the symbol's
 a session -- for a year utils/trading_calendar.py lists, is_trading_day(); before that, some stored symbol has a bar
 that day (2 Mar 2024 was a Saturday session). A weekday before the calendar that no stored symbol has a bar for is
 listed as unconfirmed: --apply asks Dhan for it too, and an empty answer -- or DH-907 "no data present", which is how
-Dhan answered for Diwali Balipratipada 2023-11-14 on 16 Nov 2026 -- means there was no session; it stays listed.
+Dhan answered for Diwali Balipratipada 2023-11-14 on 16 Nov 2026 -- means there was no session; it stays listed until
+NSE's Bhavcopy archive (data/bhavcopy_history.py) has the day, whose word then decides.
 
     python -m tools.dhan_boundary_days                               # dry run on atip_data/atip.db, read-only
     python -m tools.dhan_boundary_days --db atip_data/backups/X.db   # dry run on a copy (opened immutable)
@@ -50,11 +51,15 @@ def window_ends(cache_dir) -> dict:
     return out
 
 
-def _session(day: date, traded: set):
-    """True: a session. None: a weekday before the holiday calendar that no stored symbol traded. False: not one."""
+def _session(day: date, traded: set, nse: dict | None = None):
+    """True: a session. None: a weekday before the holiday calendar that no stored symbol traded. False: not one.
+    nse: NSE's own word from the Bhavcopy archive (data/bhavcopy_history.calendar), when it has the day."""
     from utils.trading_calendar import NSE_HOLIDAYS, is_trading_day
     if day.year >= min(d.year for d in NSE_HOLIDAYS):
         return is_trading_day(day)
+    word = (nse or {}).get(str(day))
+    if word in ("session", "holiday"):
+        return word == "session"
     if str(day) in traded:
         return True
     return None if day.weekday() < 5 else False
@@ -67,6 +72,8 @@ def plan(conn, cache_dir, symbols=None) -> list:
         wanted = {s.upper() for s in symbols}
         ends = {s: v for s, v in ends.items() if s.upper() in wanted}
     traded = {str(r[0])[:10] for r in conn.execute("SELECT DISTINCT date FROM prices_daily")}
+    from data.bhavcopy_history import calendar
+    nse = calendar(conn)                 # {} until the archive table exists
     out = []
     for sym in sorted(ends):
         lo, hi = conn.execute("SELECT MIN(date), MAX(date) FROM prices_daily WHERE symbol=?", (sym,)).fetchone()
@@ -81,7 +88,7 @@ def plan(conn, cache_dir, symbols=None) -> list:
         for d in inside:
             if d in have:
                 continue
-            ok = _session(date.fromisoformat(d), traded)
+            ok = _session(date.fromisoformat(d), traded, nse)
             if ok is not False:
                 out.append({"symbol": sym, "date": d, "confirmed": bool(ok)})
     return out
