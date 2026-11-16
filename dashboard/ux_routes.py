@@ -14,6 +14,10 @@ Pages (GET, rendered in the shell): /home /sessions /sessions/{sid} /accounting 
                                                  compound_basis, target / stop / trail / hold, max_occurrences, auto_pick;
                                                  400 {"error", "errors": {field: plain-English message}}
     POST /api/v2/sessions/split    {total, ids}  proposed equal amounts (nothing saved)
+    GET  /api/v2/sessions/spare                  the PAPER cash outside the sessions (16 Nov 2026)
+    POST /api/v2/sessions/new      {name?, capital?, like?, run?, ack?}   PAPER only: a new session S11.. out of that
+                                                 cash (all of it by default), copying `like`'s rules (default S5);
+                                                 PAUSED / CONFIRM unless run and ack are both true
     POST /api/v2/sessions/sync     {force?}      store closed cycles now (force: recompute them)
     GET  /api/v2/accounting/{ledger|trial-balance|session/{sid}|charges|tax|funds|recon}
     POST /api/v2/accounting/transfer {from, to, amount, reason}   /adjust {account, amount, reason}
@@ -293,6 +297,23 @@ def register(app, guard, Req, get_connection, json_safe):
         b = await body(request)
         from accounting.cycles import split
         return await run_in_threadpool(call, lambda c: split(b.get("total"), b.get("ids")))
+
+    @app.get("/api/v2/sessions/spare")
+    async def api_v2_spare():
+        from orders.sessions import spare_paper_cash
+        return await run_in_threadpool(call, spare_paper_cash)
+
+    @app.post("/api/v2/sessions/new", dependencies=guard)
+    async def api_v2_new_session(request: Req):
+        b = await body(request)
+        from orders.sessions import NEW_SESSION_LIKE, add_session
+        rules = {k: b.get(k) for k in ("target_pct", "stop_pct", "min_buy_value", "max_occurrences", "trail_pct",
+                                       "hold_days") if b.get(k) not in (None, "")}
+        like = b.get("like", NEW_SESSION_LIKE)                      # "" or "none": the pool's own default rules
+        like = None if str(like or "").strip().lower() in ("", "none") else str(like)
+        return await run_in_threadpool(call, lambda c: add_session(
+            c, str(b.get("name") or ""), b.get("capital"), like, str(b.get("strategy") or ""),
+            b.get("run") is True, b.get("ack") is True, **rules))
 
     @app.post("/api/v2/sessions/sync", dependencies=guard)
     async def api_v2_sync(request: Req):

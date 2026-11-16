@@ -143,8 +143,8 @@ server's screens (Sessions, More → Sessions → Arms (A/B), More → Reports �
 
 | Build | Result |
 |---|---|
-| iOS | **Not built**: this Mac has only the Xcode command-line tools (`xcodebuild` needs Xcode). `swiftc -parse` on every Swift source: exit 0 (00:36 IST) |
-| Android | **Not built**: no Java runtime, Android SDK or Gradle on this Mac |
+| iOS | **Not built**: this Mac has only the Xcode command-line tools (`xcodebuild` needs Xcode, which needs the owner's Apple ID). `swiftc -parse` on every Swift source: exit 0 (00:36 IST) |
+| Android | **Debug APK built 06:04 IST 16 Nov** after the toolchain install (Temurin 17 + Android SDK): `mobile/android/app/build/outputs/apk/debug/app-debug.apk`, `com.atip.mobile` 2026.11.16.1 / versionCode 10, 5,627,887 bytes, sha256 `45bc49193da49796…`. Not a signed release bundle (no signing key on this Mac). Until then this row read "Not built: no Java runtime, Android SDK or Gradle on this Mac" (corrected 16 Nov by the audit) |
 
 To build: Xcode → `xcodegen` in `mobile/ios`, Archive; Android Studio → `mobile/android`, Build → Generate Signed Bundle.
 

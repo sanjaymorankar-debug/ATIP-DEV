@@ -384,7 +384,7 @@ def _home_kpis(conn, d: dict, idx: dict, mk: dict, td: dict) -> tuple[str, str]:
                  e(fd.get("text") or ""), "bad" if fd.get("stale") else "info") + "</div>")
     grid = ""
     if b.get("rows"):
-        grid = (f'<div class="ax-card" data-widget="ten"><div class="ax-cardhead"><h2>The ten sessions</h2>'
+        grid = (f'<div class="ax-card" data-widget="ten"><div class="ax-cardhead"><h2>{_n_sessions(b)}</h2>'
                 f'<a class="ax-small" href="/sessions">All details →</a></div>'
                 f'<p class="ax-small ax-muted" role="status">{e(b["message"])}</p>{_board_cards(b, compact=True)}</div>')
     return strip, grid
@@ -424,7 +424,7 @@ def home(conn, root="", app=False) -> str:
         running = _answer("Is it running?", "Stopped", "", f"{e(st.get('banner'))} · read-only, no orders", "warn", "⏸")
     else:
         running = _answer("Is it running?", "Yes" if run_n else "Idle", "",
-                          f"{run_n} of 10 sessions running · auto-send {'on' if st.get('auto_send') else 'off'} · "
+                          f"{run_n} of {st.get('sessions_total') or 10} sessions running · auto-send {'on' if st.get('auto_send') else 'off'} · "
                           f"data {_ist(st.get('last_updated'), today_iso) or '—'}", "good" if run_n else "warn",
                           "●" if run_n else "○")
     # 3. making money today? (H1: today = realised today + open now; every figure says its period)
@@ -684,6 +684,12 @@ def _board_status(st: str) -> tuple:
     return _BOARD_STATUS.get(st, ("waiting", "", st))
 
 
+def _n_sessions(b: dict) -> str:
+    """The board's heading: "The ten sessions", or "The 11 sessions" once one is made from spare paper cash (16 Nov)."""
+    n = b.get("target") or len(b.get("rows") or [])
+    return "The ten sessions" if n == 10 else f"The {n} sessions"
+
+
 def _board_cards(b: dict, compact: bool = False) -> str:
     """The ten sessions as a card grid (3 Nov 2026 brief): status chip, rank, why, score badges, entry / target / stop,
     P&L and wins. compact = the Home page's version: symbol, chip, rank and P&L only."""
@@ -716,7 +722,7 @@ def _board_cards(b: dict, compact: bool = False) -> str:
                      f'<div class="ax-tc-why">{why}</div>{G.badges(r.get("score_snapshot")) if r.get("symbol") else ""}'
                      f'<dl class="ax-tc-lv">{lv}</dl><div class="ax-tc-foot"><span>P&amp;L <b>{pnl}</b></span>'
                      f'<span title="winning closed trades / closed trades">Wins <b>{wins}</b></span></div></li>')
-    return f'<ul class="ax-sgrid{" compact" if compact else ""}" aria-label="The ten sessions">{"".join(cards)}</ul>'
+    return f'<ul class="ax-sgrid{" compact" if compact else ""}" aria-label="{_n_sessions(b)}">{"".join(cards)}</ul>'
 
 
 def _board_html(conn) -> str:
@@ -743,7 +749,7 @@ def _board_html(conn) -> str:
             K.money(r["stoploss"]) if r.get("stoploss") else "—", e(r["status"]),
             K.money(r["pnl"], True) if r.get("pnl") is not None else "—",
             f'{r.get("successful_trades") or 0}/{r.get("closed_trades") or 0}'))) + "</tr>")
-    return (f'<h2 class="ax-h2">The ten sessions</h2><div class="ax-banner {cls} ax-small" role="status">{e(b["message"])}</div>'
+    return (f'<h2 class="ax-h2">{_n_sessions(b)}</h2><div class="ax-banner {cls} ax-small" role="status">{e(b["message"])}</div>'
             f'<p class="ax-boarddetail">{e(b.get("detail") or "")}'
             f'{" · ranks from " + e(b["rank_day"]) if b.get("rank_day") else ""}</p>' + _board_cards(b) +
             '<details class="ax-help"><summary>Table view</summary>'
@@ -794,16 +800,59 @@ def sessions(conn, root="", app=False) -> str:
              'data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">Fill in amounts</button></div></form></dialog>')
     help_ = _worked_example()
     from dashboard.arms_routes import gate_banner                    # KGF-09 (16 Nov 2026): the regime gate, per arm
+    new_btn, new_dlg = _new_session(conn, ov["sessions"])
     body = (_closed_banner() + gate_banner(conn) + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
-            "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split +
+            "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split + new_dlg +
             f'<div id="ax-sdata" hidden data-json="{e(json.dumps(data, default=str))}"></div>' + SETUP_JS)
     return page("Sessions", body, "/sessions", root=root, app=app,
-                job="Ten independent mini-funds. Set each one's money and rules, and see what it really earned: gross "
+                job="Independent mini-funds. Set each one's money and rules, and see what it really earned: gross "
                     "P&L before any cost, actual P&L after charges and the per-cycle tax reserve.",
                 actions='<button class="ax-btn" type="button" onclick="document.getElementById(\'ax-split\').showModal()">'
-                        'Split a total…</button><a class="ax-btn" href="/reports">Session reports</a>',
+                        'Split a total…</button>' + new_btn + '<a class="ax-btn" href="/reports">Session reports</a>',
                 mar=[("Manage", "/sessions", True), ("Accounting", "/accounting?tab=session", False),
                      ("Reports", "/reports", False)])
+
+
+def _new_session(conn, sessions: list) -> tuple:
+    """The "New paper session" button and dialog (owner 16 Nov 2026): a session S11.. out of the PAPER cash outside the
+    sessions (orders/sessions.py add_session). Nothing on a LIVE book."""
+    from orders import sessions as S
+    try:
+        if not S._paper():
+            return "", ""
+        spare = S.spare_paper_cash(conn)["spare"]
+    except Exception:
+        return "", ""
+    if spare < 1:
+        return ('<button class="ax-btn" type="button" disabled title="No paper cash is outside the sessions">'
+                'New paper session…</button>'), ""
+    btn = ('<button class="ax-btn" type="button" onclick="document.getElementById(\'ax-new\').showModal()">'
+           'New paper session…</button>')
+    opts = "".join(f'<option value="{e(s["id"])}"{" selected" if s["id"] == S.NEW_SESSION_LIKE else ""}>'
+                   f'{e(s["id"])} {e(s["name"])}</option>' for s in sessions)
+    dlg = ('<dialog class="ax-dialog" id="ax-new" aria-labelledby="ax-new-h"><form novalidate><div class="ax-dhead" '
+           'id="ax-new-h">New paper session</div><div class="ax-dbody">'
+           f'<p class="ax-small ax-muted">{K.money(spare)} of paper cash is outside the sessions. A new session gets its own '
+           'pool out of it and compounds on its own. PAPER only; the other sessions are not touched.</p>'
+           '<div class="ax-field"><label for="ns-name">Name</label><input class="ax-input" id="ns-name" name="name" '
+           'placeholder="Control (spare cash)" maxlength="80"></div>'
+           '<div class="ax-field"><label for="ns-cap">Starting amount (₹)</label><input class="ax-input" id="ns-cap" '
+           f'name="capital" inputmode="decimal" value="{int(spare)}" aria-describedby="ns-cap-h">'
+           f'<div class="ax-small ax-muted" id="ns-cap-h">At most {K.money(spare)}.</div></div>'
+           '<div class="ax-field"><label for="ns-like">Copy the rules of</label><select class="ax-input" id="ns-like" '
+           f'name="like">{opts}<option value="none">None: the pool defaults (target 3 %, stop 2 %)</option></select></div>'
+           '<label class="ax-check"><input type="checkbox" name="run"><span>Start it now: running in AUTO with auto-pick '
+           'on. I understand AUTO sends its paper entries without asking me.</span></label>'
+           '<div class="ax-err" role="alert"></div></div><div class="ax-dfoot"><button class="ax-btn" type="button" '
+           'data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">Create session</button></div>'
+           '</form></dialog>'
+           """<script>(function(){var d=document.getElementById('ax-new');if(!d)return;var f=d.querySelector('form');
+f.addEventListener('submit',function(ev){ev.preventDefault();var run=f.elements.run.checked,b=f.querySelector('button[type=submit]');b.disabled=true;
+ AX.api('/api/v2/sessions/new',{body:{name:f.elements.name.value,capital:f.elements.capital.value.replace(/,/g,''),like:f.elements.like.value,run:run,ack:run}})
+ .then(function(r){d.close();AX.toast(r.id+' created with '+AX.inr(r.start_capital)+(run?', running in AUTO.':'. It is paused: open its setup to start it.'));
+  setTimeout(function(){location.hash='setup-'+r.id;location.reload();},900);})
+ .catch(function(x){d.querySelector('.ax-err').textContent=x.message;}).finally(function(){b.disabled=false;});});})();</script>""")
+    return btn, dlg
 
 
 def _worked_example() -> str:

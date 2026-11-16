@@ -86,6 +86,7 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
     from orders import autopick, sessions as S
     today = today or date.today()
     ls = S.list_sessions(conn)["sessions"]
+    target = max(TARGET, len(ls))           # 16 Nov 2026: a session made from spare paper cash (S11..) counts too
     ranks, n_ranked, rank_day = _ranks(conn)
     plan = {}
     if run_dry:
@@ -94,7 +95,7 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
         except Exception as e:                      # the board must still draw
             plan = {"_error": {"reason": f"pick preview unavailable: {e}"}}
     rows, sources = [], {"BUY": 0, "HOLD-CUT": 0, "RANK-FILL": 0}
-    for s in ls[:TARGET]:
+    for s in ls[:target]:
         pool = s.get("pool") or {}
         held = (pool.get("open") or [None])[0]
         queued = next((r for r in S._linked_rules(conn, s["id"])
@@ -156,7 +157,7 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
               "planned": sum(1 for r in rows if str(r["status"]).startswith("NEXT PICK")),
               "waiting": sum(1 for r in rows if r["status"] == "WAITING")}
     why = None
-    if filled < TARGET:
+    if filled < target:
         waits = [r for r in rows if not r.get("symbol")]
         reasons = {}
         for r in waits:
@@ -172,13 +173,13 @@ def board(conn, today: date | None = None, run_dry: bool = True) -> dict:
         parts.append(f"{sources['HOLD-CUT']} on HOLD above the cut-off")
     if sources["RANK-FILL"]:
         parts.append(f"{sources['RANK-FILL']} rank-filled (no BUY signal free)")
-    msg = f"{filled} of {TARGET} sessions filled" + (f" ({', '.join(parts)})" if parts and filled else "") + (
+    msg = f"{filled} of {target} sessions filled" + (f" ({', '.join(parts)})" if parts and filled else "") + (
         f" — {why}" if why else "")
     held = [f"{counts['holding']} holding", f"{counts['queued']} queued"] + (
         [f"{counts['planned']} to buy at the next pick"] if counts["planned"] else [])
     detail = " · ".join(held)
-    return {"target": TARGET, "filled": filled, "message": msg, "detail": detail, "counts": counts,
-            "complete": filled >= TARGET, "rows": rows, "rank_day": rank_day, "ranked": n_ranked,
+    return {"target": target, "filled": filled, "message": msg, "detail": detail, "counts": counts,
+            "complete": filled >= target, "rows": rows, "rank_day": rank_day, "ranked": n_ranked,
             "signal_day": (cands or {}).get("date"), "buy_signals": (cands or {}).get("n_signal"),
             "rank_fill_candidates": (cands or {}).get("n_fill"), "rank_fill": autopick.rank_fill_enabled(conn),
             "cri_direction": "lower is better (ranked ascending)"}

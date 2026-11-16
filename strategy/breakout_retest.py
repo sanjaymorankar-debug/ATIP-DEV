@@ -32,7 +32,9 @@ ATIP ADDITIONS ON EACH ROW
                 bids a resting buy at the structural level, never at LTP (KGF-11)
     stop_price  buy_price x 0.95 rounded DOWN (to_tick SELL / STOP, Decimal via ticks.mul): 5 % under the bid
     tick_size   one tick per stock (the instrument master's, else NSE's band for the breakout low), used for both
-                prices -- JKCEMENT 5,136.00 x 0.95 = 4,879.20 -> 4,879.00 on its 0.50 tick, as the study bid it
+                prices -- JKCEMENT 5,136.00 x 0.95 = 4,879.20 -> 4,879.00 on its 0.50 tick, as the study bid it on
+                the 15 Nov backup; the live scan of 16 Nov 2026 bids 5,136.30 / 4,879.40, Dhan's newer instrument
+                master giving JKCEMENT a 0.10 tick (the test's 13 Nov reference stays on the backup's master)
     nifty50 / next50 / midcap150 / smallcap250 / nifty500
                 index membership where ATIP has the list (index_flags); None = no list on this machine, not "no"
     rank, breakoutClose, avgVolume, lastDate

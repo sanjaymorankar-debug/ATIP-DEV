@@ -388,6 +388,7 @@ def state(conn) -> dict:
         from orders import sessions as S
         ls = S.list_sessions(conn)
         out["sessions_running"] = ls["running"]
+        out["sessions_total"] = len(ls["sessions"])
         out["auto_send"] = ls["auto_bypass"]
         opens = [h for s in ls["sessions"] if s.get("pool") for h in s["pool"]["open"]]
         out["open_trades"] = len(opens)

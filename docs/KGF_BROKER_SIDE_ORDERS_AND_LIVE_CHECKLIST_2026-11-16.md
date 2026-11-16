@@ -40,7 +40,7 @@ Notes for the LIVE design:
 | Rule | ATIP today | Needed before LIVE |
 |---|---|---|
 | Static IP whitelisted with the broker | The Mac's home IP (dynamic) — **does not qualify** | A VPS with a static IP for the order path (the viewer server is view-only by design; the order engine must move or proxy through it under ops/role.py rules) |
-| ≤ 10 orders per second per exchange | `max_orders_per_day` 10 (owner VF-04: 20); one order per pass | Keep a per-second limiter in `orders/broker.py` (Dhan pacing exists for data calls: `data/dhan.py PACE_SECONDS`) |
+| ≤ 10 orders per second per exchange | `max_orders_per_day` 50 (the owner's `risk_limits`, 16 Nov 2026 05:36 IST; was 10, then 20 under VF-04); one order per pass | Keep a per-second limiter in `orders/broker.py` (Dhan pacing exists for data calls: `data/dhan.py PACE_SECONDS`) |
 | Orders tagged with the broker's generic algo ID | `config.json sebi_algo_id` is checked by `orders/sessions._auto_guards` for LIVE AUTO | Pass the algo ID on every order (`tag` / `algoId` field) |
 | Daily 2FA login | Dhan token renewal by TOTP (`ops/dhan_token.py`, retried 06:30/08:00/09:00) | Keep; the 08:45 pre-open health gate (`ops/preopen_health.py`) holds auto-pick when the token is bad |
 | Market orders become market-price-protection orders | ATIP's entries are now LIMIT (KGF-02); exits are MARKET | Convert exits to LIMIT with protection (stop: trigger − 0.5 %); prefer LIMIT everywhere |

@@ -840,6 +840,89 @@ def setup_pools(conn, capital: float, ids=None, target_pct=None, stop_pct=None, 
             "total": round(capital * len(done), 2), "left_over": round(total - capital * len(ids), 2) if total else None}
 
 
+def spare_paper_cash(conn) -> dict:
+    """The PAPER account's cash no session owns (owner 16 Nov 2026): the paper balance less each pool session's own
+    cash. A session's holdings were paid out of that balance already, so what is left belongs to no session -- the
+    unallocated money accounting/ledger.py funds() shows as outside_pools_cash."""
+    try:
+        r = conn.execute("SELECT balance FROM paper_account WHERE id = 1").fetchone()
+    except Exception:                       # no paper trade yet: the account opens at its opening balance
+        r = None
+    if r:
+        balance = float(r[0])
+    else:
+        from orders.paper import settings
+        balance = float(settings()["paper_opening_balance"])
+    pools = {s["id"]: float(s["pool"]["cash"]) for s in list_sessions(conn)["sessions"] if s.get("pool")}
+    held = round(sum(pools.values()), 2)
+    return {"paper_balance": round(balance, 2), "sessions_cash": held, "spare": round(max(0.0, balance - held), 2),
+            "sessions": pools}
+
+
+NEW_SESSION_LIKE = "S5"             # a new session copies the control: the owner's own rules (stop 2 %, trail +3 % / 1 %)
+
+
+def add_session(conn, name: str = "", capital=None, like: str | None = NEW_SESSION_LIKE, strategy: str = "",
+                run: bool = False, ack: bool = False, **rules) -> dict:
+    """PAPER only (owner 16 Nov 2026): a new session -- S11, S12, ... -- with its own cash pool out of the spare paper
+    cash (spare_paper_cash): all of it, rounded down to the rupee, when `capital` is not given, and never more.
+
+    `like` names the session it copies: its exits, floor, universe and daily limits (the loss limit scaled to the new
+    capital, so it is the same share of the money), and its arm (orders/arms.py) when it has one, labelled with the new
+    name. Default S5, the control. `rules` (target_pct, stop_pct, min_buy_value, max_occurrences, trail_pct,
+    hold_days) override the copied exits. It starts PAUSED in CONFIRM mode with auto-pick off, so making it trades
+    nothing; run=True with ack=True (AUTO sends without asking) starts it RUNNING in AUTO with auto-pick on, as S1-S10
+    run. Nothing is refused or resized in S1-S10."""
+    from ops.role import refuse
+    refuse("New session")
+    if not _paper():
+        raise ValueError("a new session from spare cash is PAPER only: broker_env is not PAPER")
+    if run and not ack:
+        raise ValueError("run=true starts it in AUTO, which sends its entries without asking: confirm with ack=true")
+    seed(conn)
+    spare = spare_paper_cash(conn)["spare"]
+    if capital in (None, ""):
+        if spare < 1:
+            raise ValueError("there is no paper cash outside the sessions")
+        capital = float(int(spare))
+    try:
+        capital = float(str(capital).replace(",", ""))
+    except (TypeError, ValueError):
+        raise ValueError("capital must be a number")
+    if capital > spare + 0.005:
+        raise ValueError(f"Rs {capital:,.2f} is more than the Rs {spare:,.2f} of paper cash outside the sessions")
+    src = get_session(conn, str(like).upper()) if like else {}
+    vals = {k: src.get(k) for k in ("target_pct", "stop_pct", "min_buy_value", "max_occurrences", "trail_pct", "hold_days")}
+    vals.update({k: v for k, v in rules.items() if k in vals and v not in (None, "")})
+    _pool_values(capital, **vals)                                   # bad figures create nothing
+    sid = f"S{max([int(str(r[0]).lstrip('S') or 0) for r in conn.execute('SELECT id FROM trading_sessions')] + [0]) + 1}"
+    label = str(name or "").strip() or (f"{src['name']} (spare cash)" if src else "Spare cash")
+    loss = src.get("max_loss_value") or DEFAULT_LIMITS["max_loss_value"]
+    if src.get("start_capital"):
+        loss = round(float(loss) * capital / float(src["start_capital"]), 2)
+    ts = _now()
+    conn.execute("INSERT INTO trading_sessions (id, name, strategy, mode, status, max_trades, max_loss_value, capital_cap, "
+                 "universe, created_at, updated_at) VALUES (?, ?, ?, 'CONFIRM', 'PAUSED', ?, ?, ?, ?, ?, ?)",
+                 (sid, label, strategy or src.get("strategy") or "", src.get("max_trades") or DEFAULT_LIMITS["max_trades"],
+                  loss, src.get("capital_cap") or DEFAULT_LIMITS["capital_cap"], src.get("universe") or "", ts, ts))
+    _event(conn, sid, "CREATED", {"from": "spare paper cash", "spare": spare, "capital": capital, "like": src.get("id")})
+    start_pool(conn, sid, capital, **vals)
+    for k in ("floor_rule", "floor_value", "floor_step_every", "compound_basis"):
+        if src.get(k) is not None:
+            conn.execute(f"UPDATE trading_sessions SET {k} = ? WHERE id = ?", (src[k], sid))
+    conn.commit()
+    from orders import arms
+    arm = arms.get(conn, src["id"]) if src else None
+    if arm:
+        arms.set_arm(conn, sid, {**arm, "label": label}, f"new session from spare paper cash, like {src['id']}")
+    if run:
+        update_session(conn, sid, {"auto_pick": True})
+        set_status(conn, sid, "RUNNING", "new session from spare paper cash")
+        set_mode(conn, sid, "AUTO", ack=True)
+    return {**get_session(conn, sid), "pool": ledger(conn, sid), "like": src.get("id"), "arm": arm and arms.describe(arm),
+            "spare_before": spare, "spare_after": spare_paper_cash(conn)["spare"]}
+
+
 def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
     """None when the rule may fire, else the reason its session holds it. Exit legs and rules
     without a session always pass. A session that cannot be read holds its entries (fail closed)."""
