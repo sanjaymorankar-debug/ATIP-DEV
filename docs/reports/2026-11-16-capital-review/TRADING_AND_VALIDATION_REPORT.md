@@ -3,8 +3,8 @@
 Owner prompt 16 Nov 2026, 4:39 PM IST. **PAPER only: no order was placed with Dhan or Kite.** All times IST.
 Data: read-only SQLite backups of the live `atip_data/atip.db`, taken 16:41:36 IST (trading data) and 16:52:44 IST
 (after the 16:45 post-market run finished at 16:49:38). Code: branch `claude/capital-plan-2026-11-16` (worktree
-`.claude/worktrees/capital-2026-11-16`), **not committed and not live** — the live Mac still runs master `e41ccf3`
-(pid 82833, since 15:32:42 IST).
+`.claude/worktrees/capital-2026-11-16`). **Live since 19:21:39 IST** on the owner's yes (master `e3ed12a`, pid 48592);
+the ₹2,00,000 paper top-up (₹20,000 × S1–S10) was applied at 19:23:25 IST. The figures below are from before the top-up.
 
 ---
 
@@ -24,7 +24,7 @@ Data: read-only SQLite backups of the live `atip_data/atip.db`, taken 16:41:36 I
 | Best trade | S6 KALYANKJIL +₹581.79 net (35 @ ₹698.85 → ₹717.50, trailing stop) |
 | Worst trade | S9 SAILIFE −₹612.46 net (13 @ ₹1,921.16 → ₹1,879.50, 2 % stop) |
 | Sessions since 29 Oct (10 × ₹25,000) | equity ₹2,54,733.70: **+₹4,733.70 (+1.89 %)**, 38 closed trades, 21 won (55.3 %) |
-| Issues found / fixed | **18 found** (0 Critical, 5 High, 5 Medium, 6 Low, 2 Info); **4 High fixed + 1 High partly fixed** in code (not live yet) |
+| Issues found / fixed | **18 found** (0 Critical, 5 High, 5 Medium, 6 Low, 2 Info); **4 High fixed + 1 High partly fixed**, live since 19:21:39 IST |
 
 ---
 

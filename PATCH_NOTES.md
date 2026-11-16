@@ -928,8 +928,15 @@ monitor and index feed started, no traceback. The /ab skip and re-entry columns 
 
 Owner prompt 16 Nov 2026 4:39 PM IST (post-market review: capital utilisation, formula and signal validation, trading
 report). PAPER only; no order was placed. Branch `claude/capital-plan-2026-11-16` (worktree
-`.claude/worktrees/capital-2026-11-16`), uncommitted until the owner says so. Report:
+`.claude/worktrees/capital-2026-11-16`). Report:
 `docs/reports/2026-11-16-capital-review/` (trading & validation report, issues register, testing report).
+
+**Live since 19:21:39 IST 16 Nov (owner yes 19:19 IST):** master `39e33db` + docs `e3ed12a` (fast-forward), backup
+`atip-pre-release-20261116-192107.db`, restart pid 48592. `paper_capital_plan` added to `atip_data/config.json`
+(backup `config.backup-2026-11-16-before-capital-plan.json`). **Top-up applied 19:23:25 IST:** ₹20,000 into each of
+S1–S10 (session_transfers 1–10, event CAPITAL_PLAN), each session's capital ₹45,000 and daily loss limit ₹2,700;
+₹54,865.24 (10.77 %) stays unallocated; paper cash unchanged at ₹3,27,564.54. The sessions show capital ₹4,50,000,
+equity ₹4,54,733.70, P&L +₹4,733.70 (not +₹2,04,733.70). No error logged after the restart.
 
 **What the data said (16 Nov, 16:41 IST, read-only snapshot of atip.db).** The paper account opened with ₹5,00,000;
 S1–S10 were given ₹25,000 each on 29 Oct, so ₹2,54,865.24 belonged to no session. The book held ₹3,27,564.54 cash and

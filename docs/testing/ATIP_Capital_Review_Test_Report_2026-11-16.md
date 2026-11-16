@@ -124,3 +124,17 @@ Test: 21/21 passed · Prod: 20/20 passed (second run on the final code, fresh da
 ## 6. Mobile
 
 Android `./gradlew assembleDebug --offline`: **built 17:10:53 IST**, `app-debug.apk` 5.6 MB, versionCode 11 / 2026.11.16.2. iOS: **not built** — no Xcode on the Mac (needs the owner's Apple ID; Xcode 16.2 for macOS 14.6).
+
+## 7. Live deploy checks (the Mac, owner yes 19:19 IST)
+
+| Check | Live result | IST time | Notes |
+|---|---|---|---|
+| Shared folder clean, no other ATIP session running | PASS | 19:19:12 | `git status` no tracked changes; session list idle |
+| New tests + order-path guard on the committed branch | PASS 36/36 | ≈19:20 | `test_capital_plan_2026_11_16.py`, `test_order_paths_are_untouched`, `test_session_pools.py` |
+| Pre-release backup | PASS | 19:21:07–19:21:15 | `atip-pre-release-20261116-192107.db`, 814 MB |
+| Restart (launchd) | PASS | 19:21:39 → up 19:23:10 | pid 48592, master `e3ed12a`; leader lease `smoru:48592`; no error logged since |
+| Plan (dry run) matches the Prod copy | PASS | 19:23:10 | ₹20,000 × 10, buffer ₹54,865.24 (10.77 %), allocated 49.99 % → 89.23 % |
+| Top-up applied | PASS | 19:23:25 | session_transfers 1–10 (VIRTUAL), event CAPITAL_PLAN 239, `capital_plan:last` saved |
+| Session capital / loss limit | PASS | 19:24 | each ₹45,000 / ₹2,700; paper cash unchanged ₹3,27,564.54; over_allocated ₹0 |
+| P&L is not inflated (CAP-03 live) | PASS | 19:25 | ledger total capital ₹4,50,000, equity ₹4,54,733.70, P&L +₹4,733.70; no page shows ₹2,04,733 (/, /sessions, /accounting, /command/pnl, /reports, /api/v2/sessions) |
+| Sessions page | PASS | 19:26 | "+₹2,00,000.00 moved in · capital ₹4,50,000.00"; screenshot `screenshots/capital-2026-11-16/live_sessions_after_topup_1923IST.jpg` |
