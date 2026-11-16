@@ -938,6 +938,14 @@ S1–S10 (session_transfers 1–10, event CAPITAL_PLAN), each session's capital 
 ₹54,865.24 (10.77 %) stays unallocated; paper cash unchanged at ₹3,27,564.54. The sessions show capital ₹4,50,000,
 equity ₹4,54,733.70, P&L +₹4,733.70 (not +₹2,04,733.70). No error logged after the restart.
 
+**CAP-06 — 16 Nov 15-minute bars refilled (owner yes, 20:44–20:52 IST).** `tools/backfill_intraday_bars.py` gains
+`--min-bars N` (a symbol-session with fewer bars counts as missing; default 1 = as before) and `--refresh-partial` (bars
+stored before they closed — created_at < ts + interval — are re-read and given Dhan's finished OHLCV). Live run
+`--from 2026-11-16 --to 2026-11-16 --min-bars 20 --refresh-partial --apply` after backups `atip-pre-release-20261116-
+204411.db` / `-204931.db`: 10,206 bars inserted (499 stocks), 493 forming bars of the 10:01 run (finished 10:16:50)
+rewritten. 16 Nov: 499 stocks, 12,258 bars, 09:15–15:15. Not re-run: the 15:47 intraday-signal job (EMPTY; it records
+what ATIP saw live) and the 20:30 technical signals (next run uses the refilled bars). The 16:00 RCA fetches from Dhan.
+
 **What the data said (16 Nov, 16:41 IST, read-only snapshot of atip.db).** The paper account opened with ₹5,00,000;
 S1–S10 were given ₹25,000 each on 29 Oct, so ₹2,54,865.24 belonged to no session. The book held ₹3,27,564.54 cash and
 ₹1,82,035.24 of stock at cost: 35.7 % of its ₹5,09,673.54 equity at work, not the assumed 50 %. Under the arms' risk
