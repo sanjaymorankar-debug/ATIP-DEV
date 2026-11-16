@@ -552,10 +552,13 @@ def compare(conn, start=None, end=None, symbols=None, tolerance=0.005) -> dict:
     if end:
         sql += "AND date<=? "
         args.append(str(end))
-    stored = []
+    stored, span = [], {}
     for i in range(0, len(syms), 400):
         chunk = syms[i:i + 400]
-        stored.append(pd.read_sql(sql.format(",".join("?" * len(chunk))), conn, params=chunk + args))
+        marks = ",".join("?" * len(chunk))
+        stored.append(pd.read_sql(sql.format(marks), conn, params=chunk + args))
+        span.update({r[0]: (str(r[1])[:10], str(r[2])[:10]) for r in conn.execute(
+            f"SELECT symbol, MIN(date), MAX(date) FROM prices_daily WHERE symbol IN ({marks}) GROUP BY symbol", chunk)})
     stored = pd.concat(stored, ignore_index=True)
     stored["date"] = stored["date"].astype(str).str[:10]
     by_sym = dict(tuple(stored.groupby("symbol")))
@@ -568,7 +571,7 @@ def compare(conn, start=None, end=None, symbols=None, tolerance=0.005) -> dict:
         nse_adj = (o["prev_close"] / o["close"].shift(1) - 1).abs() > tolerance      # NSE adjusted the day before
         events = known.get(sym, set()) | set(o.loc[nse_adj, "date"])
         m = s.merge(o, on="date", how="outer", suffixes=("_stored", "_nse")).sort_values("date")
-        lo, hi = s["date"].min(), s["date"].max()
+        lo, hi = span[sym]               # the whole stored history: a bar missing on `start` is inside it too
         m = m[(m["date"] >= lo) & (m["date"] <= hi)].reset_index(drop=True)
         both = m["close_stored"].notna() & m["close_nse"].notna() & (m["close_nse"] > 0)
         idx = list(m.index[both])

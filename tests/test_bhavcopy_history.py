@@ -388,6 +388,33 @@ def test_a_wrong_first_close_is_a_mismatch_not_a_step(bh):
     assert (out["mismatch"], out["steps"]) == (1, 0) and out["issues"][0]["date"] == "2024-07-01"
 
 
+def test_a_bar_missing_on_the_first_archived_day_is_found(bh):
+    """16 Nov 2026 on the live DB: the archive started at the 8 Nov Muhurat session, which 27 stocks lacked, and the
+    check judged "inside the history" from the stored bars after that day -- so it found none of them. ACME's
+    history starts in June, before the archive; BETA's first bar is 3 Jul, so NSE's 1-2 Jul rows are not gaps."""
+    from db.schema import get_connection
+    days = _weekdays(dt.date(2024, 7, 1), dt.date(2024, 7, 12))
+    bh.run_archive(minutes=0, session=FakeNSE({d: [("ACME", "EQ", 100.0, 100.0, 10), ("BETA", "EQ", 50.0, 50.0, 10)]
+                                               for d in days}),
+                   now=dt.datetime(2024, 7, 12, 20, 0), years=1, max_sessions=10, clock=Clock(), sleep=lambda s: None)
+    conn = get_connection()
+    try:
+        for d in _weekdays(dt.date(2024, 6, 25), dt.date(2024, 6, 28)) + days[1:]:
+            conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                         "VALUES ('ACME',?,100,100,100,100,10,'dhan')", (str(d),))
+        for d in days[2:]:
+            conn.execute("INSERT INTO prices_daily (symbol,date,open,high,low,close,volume,source) "
+                         "VALUES ('BETA',?,50,50,50,50,10,'dhan')", (str(d),))
+        conn.commit()
+        assert str(bh.covered_from(conn)) == "2024-07-01"
+    finally:
+        conn.close()
+    out = bh.verify(symbols=["ACME", "BETA"])
+    assert out["per_symbol"] == {"ACME": {"missing": 1}} and out["issues"][0]["date"] == "2024-07-01"
+    dry = bh.fill(symbols=["ACME", "BETA"])
+    assert [(r["symbol"], r["date"], r["close"]) for r in dry["rows"]] == [("ACME", "2024-07-01", 100.0)]
+
+
 def test_three_refusals_in_a_row_stop_the_run(bh):
     days = _weekdays(dt.date(2024, 7, 1), dt.date(2024, 7, 12))
     fake = FakeNSE({d: [("ACME", "EQ", 100.0, 100.0, 10)] for d in days}, down=set(days[:-1]))

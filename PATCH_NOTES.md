@@ -867,3 +867,16 @@ a holiday) — `fill --apply` would add them; left for the owner.
 jobs start with the next restart (none was done for this change). Tests: `tests/test_bhavcopy_history.py` (14, a fake
 NSE archive serving both layouts, delivery and 404s). Full suite 06:46–06:57 IST: 2,777 passed, 65 skipped, 4 failed —
 the same 4 as on master (3 sandbox sockets, 1 time-of-day feeds test); 0 regressions.
+
+**Live (16 Nov 2026, IST):** ATIP restarted 08:14:53 on master 2370826 (pid 47410); the jobs are registered. On the
+owner's "Yes" (relayed from the parent session) the 27 Muhurat bars were filled: backup
+`atip-pre-release-20261116-081758.db`; NSE's files for 6–13 Nov archived into the live store (6 sessions, 10 Nov a
+holiday, 14 requests, 08:18–08:19); dry run = exactly those 27 stock-days; 27 rows written 08:19:25, source
+`bhavcopy_hist`. Nothing re-scored, no indicators recomputed. Check 6–13 Nov afterwards: 504 stocks, 3,024 stock-days,
+all equal to NSE, nothing missing.
+
+**Fixed then:** the first dry run found none of the 27. `compare` judged "inside the stock's history" from the stored
+bars after the archive's first day, so a bar missing on exactly that day (8 Nov, where the archive then started) was
+never reported. It now uses each stock's whole stored span. The live fill used the code as deployed, with one more
+session (6 Nov) archived first so 8 Nov was inside; the fix is for the weekly check. Test:
+`test_a_bar_missing_on_the_first_archived_day_is_found` (fails without the fix).
