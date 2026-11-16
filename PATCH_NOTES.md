@@ -741,3 +741,18 @@ feeds test; 0 regressions); 166 new tests. Pages: Test + Prod 88/88 clean, live 
   were left untouched; list in `.ux_build/kite-fix-2026-11-16/untracked_before_merge.txt`.
 - **Owner, still open:** `max_orders_per_day` 20 (VF-04) not applied (the session's permission check refused the live
   config edit); the LIVE `pnl_daily` repair (`tools/repair_live_pnl_daily.py --paper-match`); PA-05.
+
+# 16 Nov 2026 (morning): the arms' risk budget compounds with the session (owner)
+
+The owner set `risk_limits` themself at 05:36 IST (`max_order_value` ₹1,00,000, `max_orders_per_day` 50,
+`max_open_positions` 50, `max_daily_loss_value` ₹10,000, `max_drawdown_pct` 10) — which closes the VF-04 item above — and
+asked whether anything stops a session compounding. `max_order_value` does not (a session's orders are exempt, 29 Oct);
+the KGF-13 risk budget did: a fixed ₹625 at the stop held nine arms to ₹10,000–31,250 per buy however large the session grew.
+
+- `orders/arms.py`: `risk_budget_pct` 2.5 (of the session's cash) replaces the fixed `risk_budget` ₹625 in every arm, so the
+  buy is min(cash, max(min_buy_value, cash × 2.5 % / stop %)): the same ₹12,500 at a 5 % stop on ₹25,000 as before, ₹50,000
+  once the session has ₹1,00,000. A fixed `risk_budget` still works for an arm that sets one. S5 (control) is unchanged.
+- `orders/sessions.py` `pool_quantity` passes the session's investable cash to `arms.value_cap`.
+- Live DB: the nine stored arms switched by `.ux_build/risk-budget-2026-11-16/migrate_arms.py --apply` (`arms.set_arm`,
+  one ARM session event each); open trades keep their exit legs (checked: 20 open rules identical on a copy).
+- Test: `test_risk_budget_grows_with_the_session`.

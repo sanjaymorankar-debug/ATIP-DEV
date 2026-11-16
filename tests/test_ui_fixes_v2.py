@@ -369,6 +369,7 @@ def test_order_paths_are_untouched():
     # paper.py fills), the LIMIT auto-pick on a fresh LTP and the arms (autopick.py, sessions.py, arms.py), the DUMMY-
     # broker-side records that never reach a broker (algo_gtt.py) and reference_price on a buy (broker.py).
     # Owner item 8 (16 Nov) changes risk.py on purpose: the loss limits name an unrecorded cash move when they bind.
+    # The owner's 16 Nov risk budget changes arms.py and sessions.py on purpose: 2.5 % of the session's cash, not Rs 625.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
                "orders/risk.py", "orders/entry_guards.py", "orders/ticks.py", "orders/arms.py", "orders/algo_gtt.py",
                "orders/paper.py"}

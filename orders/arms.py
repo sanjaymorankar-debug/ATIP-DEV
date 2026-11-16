@@ -22,8 +22,10 @@ it was bought with. Keys (absent = off / the session's own column):
     target_pct               a fixed take-profit, live from the fill (the bracket arms)
     hold_days                with a trail: after this many days a price at +after% or more sells (today's 15-day sale)
     max_days                 time exit: sell what is still held at the close of the Nth trading day after the fill
-    risk_budget              rupees lost at the stop: the buy is min(cash, max(min_buy_value, budget / stop%)), so a
-                             5 % stop risks about Rs 625, today's ~Rs 600 at a 2 % stop on Rs 25,000
+    risk_budget_pct          % of the session's cash lost at the stop: the buy is min(cash, max(min_buy_value,
+                             cash x pct / stop%)), so it grows as the session compounds (owner 16 Nov 2026: 2.5 %, i.e.
+                             Rs 625 on Rs 25,000 -- a 5 % stop buys Rs 12,500, and Rs 50,000 once the cash is Rs 1,00,000)
+    risk_budget              a fixed rupee budget instead (the arms of 16 Nov 00:52 IST; it does not grow with the session)
     min_buy_value            the smallest buy (Rs 10,000 for the risk-budget arms)
     sector_cap               at most N open or queued positions per NSE industry across all sessions
     no_entry_after           no new CNC entry after HH:MM IST (default 14:45, KGF-03)
@@ -45,7 +47,7 @@ log = logging.getLogger("atip.arms")
 PREFIX = "arm:"
 NO_ENTRY_AFTER = "14:45"
 MAX_INTRADAY_DROP_PCT = 1.5
-RISK_BUDGET = 625.0
+RISK_BUDGET_PCT = 2.5          # of the session's cash: Rs 625 on Rs 25,000, compounding with the session
 GATE50 = {"metric": "breadth50", "min": 50}
 GATE20 = {"metric": "breadth20", "min": 50}
 RANK_FILL, KITE_RETEST = "rank_fill", "kite_retest"
@@ -57,20 +59,20 @@ ARMS = {
            "strategy": "Rank-fill on ATIP score + breadth50 gate; stop max(3%, 1.5xATR14) capped 6%; trails 2% from +4%",
            "stop": {"type": "atr", "mult": 1.5, "min": 3.0, "max": 6.0},
            "trail": {"after": {"type": "pct", "value": 4.0}, "by": {"type": "pct", "value": 2.0}}, "hold_days": 15,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S2": {"label": "Buy zones (retest K2)", "entry": KITE_RETEST, "regime_gate": GATE50,
            "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 5%, 20 days; breadth50 gate",
            "stop": {"type": "pct", "value": 5.0}, "target_pct": 5.0, "max_days": 20,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S3": {"label": "Breakouts (retest K1)", "entry": KITE_RETEST, "regime_gate": GATE50,
            "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 10%, 20 days; breadth50 gate",
            "stop": {"type": "pct", "value": 5.0}, "target_pct": 10.0, "max_days": 20,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S4": {"label": "Swing (retest K4)", "entry": KITE_RETEST, "regime_gate": GATE50,
            "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, trails 3% from +5%, 40 days; breadth50 gate",
            "stop": {"type": "pct", "value": 5.0},
            "trail": {"after": {"type": "pct", "value": 5.0}, "by": {"type": "pct", "value": 3.0}}, "max_days": 40,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S5": {"label": "Control", "entry": RANK_FILL, "regime_gate": None,
            "strategy": "Control arm: today's rules (15 Nov) -- rank-fill on ATIP score, stop 2%, trails 1% from +3%, no gate",
            "stop": {"type": "pct", "value": 2.0},
@@ -80,25 +82,25 @@ ARMS = {
            "stop": {"type": "atr", "mult": 2.0, "min": 2.0, "max": 8.0},
            "trail": {"after": {"type": "atr", "mult": 2.0, "min": 2.0, "max": 8.0},
                      "by": {"type": "atr", "mult": 1.0, "min": 1.0, "max": 4.0}}, "hold_days": 15,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S7": {"label": "Wide-stop", "entry": RANK_FILL, "regime_gate": GATE50,
            "strategy": "Rank-fill on ATIP score + breadth50 gate; stop 4%; trails 2% from +4%",
            "stop": {"type": "pct", "value": 4.0},
            "trail": {"after": {"type": "pct", "value": 4.0}, "by": {"type": "pct", "value": 2.0}}, "hold_days": 15,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S8": {"label": "Sector", "entry": RANK_FILL, "regime_gate": GATE50, "sector_cap": 2,
            "strategy": "Rank-fill on ATIP score + breadth50 gate; at most 2 open per industry; stop 3%; trails 2% from +4%",
            "stop": {"type": "pct", "value": 3.0},
            "trail": {"after": {"type": "pct", "value": 4.0}, "by": {"type": "pct", "value": 2.0}}, "hold_days": 15,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S9": {"label": "Bracket 3/6", "entry": RANK_FILL, "regime_gate": GATE50,
            "strategy": "Rank-fill on ATIP score + breadth50 gate; fixed stop 3%, target 6% live from the fill",
            "stop": {"type": "pct", "value": 3.0}, "target_pct": 6.0,
-           "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+           "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
     "S10": {"label": "Retest fast-gate", "entry": KITE_RETEST, "regime_gate": GATE20,
             "strategy": "Kite breakout-retest (K1 exits: stop 5%, target 10%, 20 days) behind the faster breadth20 gate",
             "stop": {"type": "pct", "value": 5.0}, "target_pct": 10.0, "max_days": 20,
-            "risk_budget": RISK_BUDGET, "min_buy_value": 10000.0},
+            "risk_budget_pct": RISK_BUDGET_PCT, "min_buy_value": 10000.0},
 }
 
 
@@ -153,6 +155,8 @@ def _validate(arm: dict) -> dict:
     for k in ("stop",):
         if not arm.get(k):
             raise ValueError("an arm needs a stop")
+    if arm.get("risk_budget_pct") is not None and not 0 < float(arm["risk_budget_pct"]) <= 100:
+        raise ValueError("risk_budget_pct is a % of the session's cash, above 0 and at most 100")
     for spec in (arm.get("stop"), (arm.get("trail") or {}).get("after"), (arm.get("trail") or {}).get("by")):
         if spec is None:
             continue
@@ -300,16 +304,26 @@ def describe(arm: dict | None) -> str | None:
         parts.append(f"{int(arm['max_days'])} days max")
     if arm.get("sector_cap"):
         parts.append(f"<= {int(arm['sector_cap'])} per industry")
-    if arm.get("risk_budget"):
+    if arm.get("risk_budget_pct"):
+        parts.append(f"~{float(arm['risk_budget_pct']):g}% of the session's cash at risk")
+    elif arm.get("risk_budget"):
         parts.append(f"~Rs {float(arm['risk_budget']):,.0f} at risk")
     return "; ".join(parts)
 
 
-def value_cap(arm: dict | None, stop_pct: float | None, floor: float = 0.0) -> float | None:
-    """The rupee size of a risk-budget arm's buy before the session's cash: max(floor, budget / stop%). None = no cap."""
-    if not arm or not arm.get("risk_budget") or not stop_pct:
+def value_cap(arm: dict | None, stop_pct: float | None, floor: float = 0.0, cash: float | None = None) -> float | None:
+    """The rupee size of a risk-budget arm's buy before the session's cash: max(floor, budget / stop%), the budget
+    being risk_budget_pct of the session's `cash` (so it compounds with the session) or a fixed risk_budget.
+    None = no cap."""
+    if not arm or not stop_pct:
         return None
-    return max(float(floor or 0), float(arm["risk_budget"]) / (float(stop_pct) / 100))
+    if arm.get("risk_budget_pct") and cash is not None:
+        budget = max(0.0, float(cash)) * float(arm["risk_budget_pct"]) / 100
+    elif arm.get("risk_budget"):
+        budget = float(arm["risk_budget"])
+    else:
+        return None
+    return max(float(floor or 0), budget / (float(stop_pct) / 100))
 
 
 def gate(conn, arm: dict | None, on: str | None = None) -> dict:
