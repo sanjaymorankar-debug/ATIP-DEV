@@ -3,7 +3,7 @@
 Owner prompt: 6 Nov 2026, 05:28 PM IST. Tested 17:30–18:20 IST on 6 Nov 2026. **Every time here is IST.**
 
 Build under test: branch `claude/rca-2026-11-06` (from master `ea4f2a0`), worktree `.claude/worktrees/rca-2026-11-06`.
-**Committed on the branch as `1966119` (6 Nov 2026, 21:44 IST); not merged, not live.** The Mac's running ATIP (launchd `com.atip.platform`, port 8000) was not
+**Committed on the branch as `1966119` (6 Nov 2026, 21:44 IST); merged to master as `2885582` (16 Nov 2026, 00:02 IST); live on the Mac since 00:52 IST 16 Nov 2026.** The Mac's running ATIP (launchd `com.atip.platform`, port 8000) was not
 restarted or written to; the live `atip.db` was only read (one SQLite backup at 17:30:16 IST).
 
 ## 1. Environments
@@ -135,8 +135,9 @@ poll missing stop wicks; SPI / fund_score NULL for every stock; the global feed'
 
 ## 8. Pending
 
-* Merge and restart (owner's go-ahead; committed on the branch 21:44 IST). Then the first live run is **Mon 9 Nov 2026 at 16:00 IST** (7 and 8 Nov
-  are not market days; 10 Nov is a holiday in ATIP's calendar). Check `/rca` on the Mac after it.
+* Merged (`2885582`, 00:02 IST 16 Nov 2026) and live since 00:52 IST 16 Nov. Checked read-only at 05:55 IST: `/rca` 200,
+  `/api/rca` 404 (nothing stored yet), all five guards off. The RCA was not live 9–13 Nov, so the first live run is
+  **Mon 16 Nov 2026 at 16:00 IST**. Check `/rca` on the Mac after it.
 * Guards stay OFF until the owner turns them on.
 * Build and install the apps.
 
