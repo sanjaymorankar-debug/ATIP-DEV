@@ -26,8 +26,8 @@ def _is_session(d):
 class FakeDhan:
     """historical_daily_data as Dhan answers it: toDate excluded. inclusive=True plays a Dhan that includes it."""
 
-    def __init__(self, listing=dt.date(2000, 1, 1), inclusive=False):
-        self.listing, self.inclusive, self.calls = listing, inclusive, []
+    def __init__(self, listing=dt.date(2000, 1, 1), inclusive=False, repeat_last=0):
+        self.listing, self.inclusive, self.repeat_last, self.calls = listing, inclusive, repeat_last, []
 
     def historical_daily_data(self, security_id, exchange_segment, instrument_type, from_date, to_date):
         frm, to = dt.date.fromisoformat(from_date), dt.date.fromisoformat(to_date)
@@ -35,8 +35,11 @@ class FakeDhan:
         last = to if self.inclusive else to - dt.timedelta(days=1)
         days = [frm + dt.timedelta(days=i) for i in range((last - frm).days + 1)]
         days = [d for d in days if d >= self.listing and _is_session(d)]
-        if not days:
-            return {"status": "success", "data": {}}
+        if not days:                            # how Dhan answered for the 2023-11-14 holiday on 16 Nov 2026
+            return {"status": "failure", "data": "", "remarks": {
+                "error_code": "DH-907", "error_type": "Data_Error",
+                "error_message": "System is unable to fetch data due to incorrect parameters or no data present"}}
+        days = days + [days[-1]] * self.repeat_last    # Dhan sometimes sends a day's candle twice
         n = len(days)
         return {"status": "success", "data": {
             "timestamp": [int(dt.datetime(d.year, d.month, d.day, tzinfo=IST).timestamp()) for d in days],
@@ -87,6 +90,11 @@ def test_dhan_leaves_out_the_end_day_and_fetch_daily_through_asks_for_the_next_d
     inclusive = FakeDhan(inclusive=True)        # were Dhan ever to include toDate, the day after is still dropped
     df = dhan.fetch_daily_through("ACME", fri, mon - dt.timedelta(days=1), inclusive)
     assert list(pd.to_datetime(df["date"]).dt.date) == [fri]
+
+
+def test_a_candle_dhan_sends_twice_is_kept_once(dhan):
+    df = dhan.fetch_daily_through("ICICILIFE", dt.date(2026, 10, 21), dt.date(2026, 10, 21), FakeDhan(repeat_last=1))
+    assert list(pd.to_datetime(df["date"]).dt.date) == [dt.date(2026, 10, 21)]
 
 
 def test_a_refusal_passes_through_fetch_daily_through(dhan):
@@ -202,6 +210,19 @@ def test_apply_fills_the_sessions_and_a_second_run_finds_only_the_holiday(gaps, 
                             "AND source='dhan'").fetchone()[0] == 1
         assert T.plan(conn, gaps) == [{"symbol": "ACME", "date": "2023-03-07", "confirmed": False}], \
             "the filled days are gone; Holi stays unconfirmed (Dhan has no bar for it)"
+    finally:
+        conn.close()
+
+
+def test_no_data_is_no_bar_for_an_unconfirmed_day_but_a_refusal_for_a_session(gaps):
+    from db.schema import get_connection
+    from tools.dhan_boundary_days import fill
+    conn = get_connection()
+    try:
+        none = FakeDhan(listing=dt.date(2030, 1, 1))     # answers DH-907 for everything
+        res = fill(conn, [{"symbol": "ACME", "date": "2023-03-07", "confirmed": False},
+                          {"symbol": "ACME", "date": "2023-03-03", "confirmed": True}], none)
+        assert res["no_bar"] == [("ACME", "2023-03-07")] and res["refused"] == {"DH-907": 1}
     finally:
         conn.close()
 

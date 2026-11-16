@@ -437,13 +437,15 @@ def fetch_daily_through(symbol: str, from_date: date, to_date: date, dhan=None) 
     ends the day before, so nothing asked for it again (3 Mar 2020-2023 and the
     Saturday session of 2 Mar 2024, ~300 symbols each, measured 16 Nov 2026).
     This asks for to_date + 1 and drops anything after to_date, so back-to-back
-    windows never store a day twice.
+    windows never store a day twice. Dhan sometimes sends one day's candle twice
+    (ICICILIFE 2026-10-21, POONAWALLA 3 Mar 2020 and 2021, identical): one is kept.
     A refusal comes back as fetch_historical_daily returns it (attrs dhan_error).
     """
     df = fetch_historical_daily(symbol, from_date, to_date + timedelta(days=1), dhan)
     if df.empty or "date" not in df.columns:
         return df
-    return df[pd.to_datetime(df["date"]).dt.date <= to_date].reset_index(drop=True)
+    days = pd.to_datetime(df["date"]).dt.date
+    return df[(days <= to_date) & ~days.duplicated(keep="last")].reset_index(drop=True)
 
 
 def fetch_historical_intraday(symbol: str, from_date: date, to_date: date,

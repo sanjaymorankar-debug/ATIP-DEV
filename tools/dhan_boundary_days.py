@@ -11,7 +11,8 @@ Which days: Dhan's cache records every window asked for (atip_data/raw/dhan/{SYM
 is the day never fetched). A `to` day is listed when it lies inside the symbol's stored history, has no bar, and was
 a session -- for a year utils/trading_calendar.py lists, is_trading_day(); before that, some stored symbol has a bar
 that day (2 Mar 2024 was a Saturday session). A weekday before the calendar that no stored symbol has a bar for is
-listed as unconfirmed: --apply asks Dhan for it too, and an empty answer means there was no session.
+listed as unconfirmed: --apply asks Dhan for it too, and an empty answer -- or DH-907 "no data present", which is how
+Dhan answered for Diwali Balipratipada 2023-11-14 on 16 Nov 2026 -- means there was no session; it stays listed.
 
     python -m tools.dhan_boundary_days                               # dry run on atip_data/atip.db, read-only
     python -m tools.dhan_boundary_days --db atip_data/backups/X.db   # dry run on a copy (opened immutable)
@@ -35,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+NO_DATA = "DH-907"              # Dhan: "incorrect parameters or no data present"
 CACHE_NAME = re.compile(r"^(?P<sym>.+)_(?P<frm>\d{4}-\d{2}-\d{2})_(?P<to>\d{4}-\d{2}-\d{2})_daily\.json$")
 
 
@@ -98,8 +100,9 @@ def fill(conn, todo, dhan, events=None) -> dict:
         day = date.fromisoformat(t["date"])
         df = fetch_daily_through(t["symbol"], day, day, dhan)
         if df.empty:
-            if df.attrs.get("dhan_error"):
-                res["refused"][str(df.attrs["dhan_error"])] += 1
+            err = df.attrs.get("dhan_error")
+            if err and not (err == NO_DATA and not t["confirmed"]):
+                res["refused"][str(err)] += 1
             else:
                 res["no_bar"].append((t["symbol"], t["date"]))
             continue
