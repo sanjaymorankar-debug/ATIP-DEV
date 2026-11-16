@@ -794,10 +794,55 @@ fallback (`data/bhavcopy.py`, already asks day + 1) fills the session, and the n
 end + 1 there would let Dhan's bar arrive before the Bhavcopy, whose upsert only refreshes close and volume, so
 the session's open, high, low and `source` would stay Dhan's: a change to the live EOD path, left for the owner.
 
-**Owner:** run `--apply` on the live DB (writes about 1,500 rows of 2019–2026 history); whether to re-score the 13
-symbol-days of the last year; merge and restart for the backfill fix (until then the nightly 22:20 IST run still asks the
-old windows for the symbols it has left). Tests: `tests/test_dhan_window_edges.py` (a fake Dhan client that answers as Dhan does: the old call loses
-Friday 3 Mar 2023, the new one keeps it; the backfill over 2022–2025 stores every session once; the tool's plan, apply,
-second run and read-only copy); two assertions in `tests/test_w39_history.py` follow the end + 1 window.
-Full suite 05:46–05:57 IST 16 Nov: 2,761 passed (7 new), 65 skipped, 4 failed: the same 4 fail on master `ea53a82`
-(3 sandbox sockets, 1 time-of-day feeds test); 0 regressions.
+**Tests:** `tests/test_dhan_window_edges.py` (a fake Dhan client that answers as Dhan does: the old call loses
+Friday 3 Mar 2023, the new one keeps it; the backfill over 2022–2025 stores every session once; a candle sent twice
+is kept once; DH-907 on a holiday is no bar; the tool's plan, apply, second run and read-only copy); two assertions
+in `tests/test_w39_history.py` follow the end + 1 window. Full suite on the branch merged with master (06:17–06:27
+IST 16 Nov): 2,764 passed, 65 skipped, 4 failed — the same 4 fail on master `ea53a82` (3 sandbox sockets, 1
+time-of-day feeds test); 0 regressions.
+
+## Live (owner's yes, 16 Nov 2026, IST)
+
+- **Backup** `atip-pre-release-20261116-060358.db` (06:03:58, VERIFIED, sha256 `33b10be6…`).
+- **Fill** 06:04:30–06:12:21: `--apply` on the live DB, 1,507 Dhan requests (read-only history). **1,499 new rows**
+  (744,688 → 746,187), no duplicate symbol-date; 2 Mar 2024 now has 330 bars. The 8 rows of 2023-11-14 came back
+  DH-907 "no data present" (Diwali Balipratipada; NSE's archive has no file for it either) and stay listed as
+  unconfirmed. Dhan sent three candles twice (ICICILIFE 2026-10-21, POONAWALLA 3 Mar 2020 and 2021, identical):
+  one row each; `fetch_daily_through` now drops a repeated date and the tool counts DH-907 on an unconfirmed day as
+  "no bar" (commit `ee5ce66`).
+- **Re-score** 06:13:16–06:13:32: `technical_indicators` and `technical_ext` of the 12 symbols whose filled bars sit
+  inside their indicator windows (CUPID, INOXINDIA, KIRLOSBROS, KSB, MTARTECH, PRIVISCL, RUBICON, SANSERA,
+  SHRIPISTON, STLTECH, ICICILIFE, HEGAM) recomputed on their 27 sessions (291 rows each, bars up to each session
+  only). On 13 Nov their `tech_score` moved by at most 0.06. The 13 Nov universe re-score that followed also applied
+  the VPI formula deployed at 00:52 (VF5-01) to all 499 stocks (VPI +4.3 on average, top-15 ATIP overlap 10 of 15);
+  **the owner chose to keep the recorded 13 Nov scores**, restored at 06:16:07 from the backup: `ai_scores` 499,
+  `predictions` 499, `score_components` 27,421, `market_health` 1, `technical_ext.rs_sector_pctile` 3,240 (the
+  industry percentiles of the 27 sessions). Checked against the backup: those tables are identical; the live DB
+  differs only by the 1,499 bars and the 12 symbols' indicator rows. Earlier sessions' scores stay as recorded.
+- **Merge and restart:** master fast-forwarded to `ffa2051` at 06:28:12 (this branch with the risk-budget merge
+  `1a4c7ff`, the mobile build `1b99fee` and the RCA docs `e1cdfda`); restart 06:28:23, pid 14211 → 11912,
+  dashboard 200 at 06:28:27, startup log clean (PAPER). Rollback branch `claude/live-running-2026-11-16-0628` =
+  `ea53a82` (what pid 14211 ran). Not pushed. From tonight the 22:20 IST backfill asks each window up to end + 1.
+
+## Checked, not built: seven years of NSE Bhavcopy kept locally (owner, 16 Nov 2026)
+
+- **Today.** The 7-year history in `prices_daily` is Dhan's, adjusted for splits and bonuses as of the day it was
+  fetched. NSE's official file is kept only from 30 Jan 2025 (309 unzipped CSVs in `atip_data/raw`); full-market rows
+  start 28 Jul 2026 (46 sessions); delivery % starts 3 Mar 2025.
+- **NSE serves all seven years to this Mac** (checked 06:05–06:17 IST): `content/historical/EQUITIES/YYYY/MON/
+  cmDDMONYYYYbhav.csv.zip` up to 5 Jul 2024 (70–110 KB), `content/cm/BhavCopy_NSE_CM_0_0_0_YYYYMMDD_F_0000.csv.zip`
+  from 5 Jul 2024 (165–210 KB), `products/content/sec_bhavdata_full_DDMMYYYY.csv` (delivery) back to 2019 (~220 KB).
+  A holiday is a 404 (2023-11-14) and the Saturday session of 2 Mar 2024 has a file, so the archive is also the
+  session calendar for 2019–2024 that `utils/trading_calendar.py` lacks (it lists 2025–2026).
+- **Accuracy.** Three official files (15 Nov 2019, 3 Mar 2022, 2 Mar 2024) against `prices_daily`: every close equal,
+  except stocks with a later corporate action, where the ratio is the action's factor (BPCL 0.5, BLS 0.25, BRIGADE
+  0.75, BSE 1/9, CANBK 0.2, CUPID 0.01, STLTECH 0.7027). So the official store must stay raw; the adjustment belongs
+  to the comparison, through `corporate_actions`.
+- **Size.** About 1,733 sessions: ~200 MB of zipped Bhavcopy plus ~380 MB of delivery CSV (~70 MB gzipped), ~4.5 million
+  rows. That belongs in the data lake (`atip_data/lake/nse_cm_bhavcopy/date=…`, as `fo_bhavcopy` already is), not in
+  `atip.db` (780 MB today, copied by every backup).
+- **Proposed build:** a resumable nightly backfill (about 150 sessions a night at one request every 1.5 s: about 12
+  nights), the file as published plus a lake partition per session, each session's outcome kept (file / 404) as the
+  session calendar; the 16:45 run archives its own file into the same store; a weekly check of every stored close
+  against Bhavcopy × the corporate-action factor, with the mismatches listed; gaps in `prices_daily` filled from
+  Bhavcopy instead of Dhan; seven-year retention in `db/purge.py`'s HISTORY tier.
