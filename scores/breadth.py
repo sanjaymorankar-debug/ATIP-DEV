@@ -80,7 +80,7 @@ def compute(conn, start: str | None = None, end: str | None = None) -> list[dict
     if start > end:
         return []
     lo = (date.fromisoformat(start) - timedelta(days=LOOKBACK_DAYS)).isoformat()
-    q = ("SELECT symbol, date, close, rowid AS rid FROM prices_daily WHERE series = 'EQ' AND date >= ? AND date <= ? "
+    q = ("SELECT symbol, date, close, id AS rid FROM prices_daily WHERE series = 'EQ' AND date >= ? AND date <= ? "
          f"AND symbol IN ({','.join('?' * len(uni))})")
     d = pd.DataFrame([_row(r) for r in conn.execute(q, (lo, end + "T99", *uni)).fetchall()],
                      columns=["symbol", "date", "close", "rid"])

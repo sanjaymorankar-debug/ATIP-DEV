@@ -427,8 +427,8 @@ def evaluate(conn, now=None, cfg=None) -> dict:
         c = _close_row(conn, r["for_session"])
         if not c:
             continue
-        conn.execute("UPDATE news_impact SET actual_chg=?, hit=CASE nifty_direction WHEN 'UP' THEN ?>0 WHEN 'DOWN' "
-                     "THEN ?<0 ELSE NULL END, evaluated_at=? WHERE article_id=?",
+        conn.execute("UPDATE news_impact SET actual_chg=?, hit=CASE nifty_direction WHEN 'UP' THEN CAST(?>0 AS INTEGER) "
+                     "WHEN 'DOWN' THEN CAST(?<0 AS INTEGER) ELSE NULL END, evaluated_at=? WHERE article_id=?",
                      (c["nifty50_chg"], c["nifty50_chg"], c["nifty50_chg"], _ts(now), r["article_id"]))
         items += 1
     conn.commit()

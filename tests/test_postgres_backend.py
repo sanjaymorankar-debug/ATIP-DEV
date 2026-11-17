@@ -149,11 +149,13 @@ def test_the_connection_is_sqlite_shaped(live_db):
     without it."""
     c = pg.PgConnection(LIVE_URL)
     try:
-        assert c.cursor() is c
+        assert c.cursor().execute("SELECT 1").fetchone()[0] == 1
         c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, sym TEXT, px REAL)")
         c.execute("INSERT INTO t (id, sym, px) VALUES (?, ?, ?)", (1, "ACME", 12.5))
         c.commit()
-        row = c.cursor().execute("SELECT id, sym, px FROM t WHERE sym=?", ("ACME",)).fetchone()
+        cur = c.cursor().execute("SELECT id, sym, px FROM t WHERE sym=?", ("ACME",))
+        assert [d[0] for d in cur.description] == ["id", "sym", "px"]
+        row = cur.fetchone()
         assert row[1] == "ACME"            # by index
         assert row["sym"] == "ACME"        # by name, like sqlite3.Row
         assert float(row["px"]) == 12.5
@@ -241,3 +243,154 @@ def test_a_backticked_column_is_still_qualified_on_the_right_of_an_upsert():
     assert "ticks=s.ticks+excluded.ticks" in translate(
         "INSERT INTO s (day, ticks) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET ticks=ticks+excluded.ticks",
         lambda t: [["day"]])
+
+
+# ── SQLite functions PostgreSQL lacks or types differently (17 Nov, bkesari VPS rehearsal) ──
+#
+# Found by PREPARE-ing every literal statement in the code base against a PostgreSQL copy
+# of the live schema: these were the constructs PostgreSQL rejected.
+
+def test_round_with_places_goes_through_numeric_and_returns_a_float():
+    from db.postgres import translate
+    assert translate("SELECT ROUND(SUM(px * q), 2) FROM t") == \
+        "SELECT CAST(ROUND(CAST(SUM(px * q) AS numeric), 2) AS double precision) FROM t"
+    assert translate("UPDATE p SET o=ROUND(o*?,2) WHERE s=?") == \
+        "UPDATE p SET o=CAST(ROUND(CAST(o*%s AS numeric), 2) AS double precision) WHERE s=%s"
+    assert translate("SELECT CAST(ROUND(v / ?) AS INTEGER) FROM t") == "SELECT CAST(ROUND(v / %s) AS INTEGER) FROM t"
+
+
+def test_substr_works_on_the_text_of_any_value():
+    from db.postgres import translate
+    assert translate("SELECT substr(ts,1,10) d FROM b") == "SELECT substr(CAST(ts AS text), 1, 10) d FROM b"
+
+
+def test_date_and_datetime_modifiers():
+    from db.postgres import translate, UnsupportedSQL
+    assert translate("SELECT 1 WHERE c >= datetime('now', '-1 day')") == \
+        "SELECT 1 WHERE c >= CAST(LOCALTIMESTAMP - INTERVAL '1 day' AS timestamp(0))"
+    assert translate("SELECT DATE(MAX(date), ?) FROM q") == \
+        "SELECT CAST(CAST(MAX(date) AS date) + CAST(%s AS interval) AS date) FROM q"
+    out = translate("SELECT 1 WHERE DATETIME(REPLACE(SUBSTR(ts,1,19),'T',' '), '+' || n || ' minutes')<=?")
+    assert out == ("SELECT 1 WHERE CAST(CAST(REPLACE(substr(CAST(ts AS text), 1, 19),'T',' ') AS timestamp) "
+                   "+ CAST('+' || n || ' minutes' AS interval) AS timestamp(0))<=%s")
+    assert translate("SELECT date(d, 'start of month')") == "SELECT CAST(date_trunc('month', CAST(d AS date)) AS date)"
+    assert translate("SELECT date(d)") == "SELECT CAST(d AS date)"
+    with pytest.raises(UnsupportedSQL):
+        translate("SELECT date(d, 'weekday 1')")
+    # a column called date / time is not a call, and neither is a dotted name
+    assert translate("INSERT INTO t (date, time) VALUES (?, ?)") == "INSERT INTO t (date, time) VALUES (%s, %s)"
+    assert translate("SELECT x.date FROM t x WHERE x.date=date('now')") == \
+        "SELECT x.date FROM t x WHERE x.date=CURRENT_DATE"
+
+
+def test_current_timestamp_is_sqlite_shaped_utc_text():
+    from db.postgres import translate, ddl
+    assert translate("UPDATE t SET at=CURRENT_TIMESTAMP") == "UPDATE t SET at=LOCALTIMESTAMP(0)"
+    assert "DEFAULT LOCALTIMESTAMP(0)" in ddl("CREATE TABLE t (a TEXT DEFAULT CURRENT_TIMESTAMP)")
+    assert translate("SELECT 'CURRENT_TIMESTAMP'") == "SELECT 'CURRENT_TIMESTAMP'"
+
+
+def test_is_with_a_parameter_is_null_safe_equality():
+    from db.postgres import translate
+    assert translate("SELECT 1 FROM e WHERE sid IS ? AND x IS NOT ? AND y IS NULL") == \
+        "SELECT 1 FROM e WHERE sid IS NOT DISTINCT FROM %s AND x IS DISTINCT FROM %s AND y IS NULL"
+
+
+def test_min_max_of_a_comparison_counts_it_as_0_or_1():
+    from db.postgres import translate
+    assert translate("SELECT MIN(kind IN ('A','B')), MAX(px) FROM c") == \
+        "SELECT MIN(CAST((kind IN ('A','B')) AS INT)), MAX(px) FROM c"
+
+
+def test_named_parameters_become_pyformat():
+    from db.postgres import translate
+    assert translate("UPDATE p SET d=:p WHERE s=:s AND t='09:15' AND x::text=:d") == \
+        "UPDATE p SET d=%(p)s WHERE s=%(s)s AND t='09:15' AND x::text=%(d)s"
+
+
+def test_ddl_turns_backticks_into_double_quotes():
+    from db.postgres import ddl
+    assert ddl("CREATE TABLE t (a TEXT, `signal` TEXT, b TEXT DEFAULT 'x`y')") == \
+        "CREATE TABLE t (a TEXT, \"signal\" TEXT, b TEXT DEFAULT 'x`y')"
+
+
+@live_only
+def test_the_connection_behaves_like_sqlite3_where_atip_relies_on_it(live_db):
+    """A failed statement does not abort the transaction; lastrowid and total_changes
+    are filled; SUM of integers is an int, AVG a float, a comparison 1/0 -- never
+    Decimal or bool; pandas.read_sql works; 'now' is UTC."""
+    c = pg.PgConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, q INTEGER, at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        c.commit()
+        cur = c.execute("INSERT INTO t (q) VALUES (?)", (3,))
+        assert cur.lastrowid == 1 and cur.fetchone() is None
+        assert c.cursor().execute("INSERT INTO t (q) VALUES (?)", (4,)).lastrowid == 2
+        with pytest.raises(sqlite3.OperationalError):
+            c.execute("ALTER TABLE t ADD COLUMN q INTEGER")          # already exists
+        with pytest.raises(sqlite3.OperationalError):
+            c.execute("SELECT * FROM no_such_table")
+        c.execute("UPDATE t SET q=q+1 WHERE id=?", (1,))             # the transaction is still usable
+        c.commit()
+        assert c.total_changes == 3
+        s, a = c.execute("SELECT SUM(q), AVG(q) FROM t WHERE id=1").fetchone()
+        b = c.execute("SELECT q>3 FROM t WHERE id=1").fetchone()[0]
+        assert (s, type(s), type(a), b, type(b)) == (4, int, float, 1, int)
+        assert c.execute("SELECT ROUND(AVG(q)*1.0/3, 2) FROM t").fetchone()[0] == 1.33
+        at = c.execute("SELECT at FROM t WHERE id=1").fetchone()[0]
+        assert len(at) == 19 and at[10] == " "                       # 'YYYY-MM-DD HH:MM:SS', as SQLite
+        pd = pytest.importorskip("pandas")
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df = pd.read_sql("SELECT id, q FROM t WHERE q>=? ORDER BY id", c, params=[4])
+        assert list(df["id"]) == [1, 2]
+        c.execute("UPDATE t SET q=:q WHERE id=:id", {"q": 9, "id": 2})
+        assert c.execute("SELECT q FROM t WHERE id IS ?", (2,)).fetchone()[0] == 9
+    finally:
+        c.close()
+
+
+def test_end_of_day_sentinels_become_the_last_instant_of_the_day():
+    """day + " 99" / "T99" / "~" sort after every time of the day as SQLite TEXT; PostgreSQL rejects
+    them as DATE / TIMESTAMP input. Anything else passes through untouched."""
+    assert pg._params(("2026-11-17", "2026-11-17 99", "2026-11-17T99", "2026-11-17~")) == \
+        ("2026-11-17", "2026-11-17 23:59:59.999999", "2026-11-17 23:59:59.999999", "2026-11-17 23:59:59.999999")
+    assert pg._params({"a": "2026-11-17~", "b": "x~", "c": 5}) == {"a": "2026-11-17 23:59:59.999999", "b": "x~", "c": 5}
+
+
+@live_only
+def test_end_of_day_sentinels_bound_date_and_timestamp_columns(live_db):
+    c = pg.PgConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE b (ts TIMESTAMP, d DATE)")
+        c.executemany("INSERT INTO b (ts, d) VALUES (?, ?)",
+                      [("2026-11-17 09:15:00", "2026-11-17"), ("2026-11-17 15:30:00", "2026-11-17"),
+                       ("2026-11-18 09:15:00", "2026-11-18")])
+        c.commit()
+        assert c.execute("SELECT COUNT(*) FROM b WHERE ts>=? AND ts<?", ("2026-11-17", "2026-11-17 99")).fetchone()[0] == 2
+        assert c.execute("SELECT COUNT(*) FROM b WHERE ts>=? AND ts<?", ("2026-11-17", "2026-11-17~")).fetchone()[0] == 2
+        assert c.execute("SELECT COUNT(*) FROM b WHERE d<=?", ("2026-11-17T99",)).fetchone()[0] == 2
+    finally:
+        c.close()
+
+
+@live_only
+def test_vacuum_runs_after_a_commit_and_refuses_inside_a_transaction(live_db):
+    """db/purge.py commits its deletes and then runs VACUUM; PostgreSQL rejects VACUUM in a
+    transaction block, so the backend runs it in autocommit -- and, like SQLite, refuses it
+    while a transaction is open."""
+    import sqlite3
+    c = pg.PgConnection(LIVE_URL)
+    try:
+        c.execute("CREATE TABLE v (x INTEGER)")
+        c.execute("INSERT INTO v (x) VALUES (?)", (1,))
+        with pytest.raises(sqlite3.OperationalError):
+            c.execute("VACUUM")
+        c.commit()
+        assert c.execute("VACUUM").fetchall() == []
+        c.execute("INSERT INTO v (x) VALUES (?)", (2,))
+        c.commit()
+        assert c.execute("SELECT COUNT(*) FROM v").fetchone()[0] == 2
+    finally:
+        c.close()

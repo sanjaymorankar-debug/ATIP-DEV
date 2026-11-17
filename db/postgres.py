@@ -8,7 +8,11 @@ Postgres needs, without forcing it:
                         db/dialect_scan.py): ? placeholders, INSERT OR IGNORE, INSERT OR REPLACE (as an
                         upsert on the table's primary key), excluded., date(x, '+/-N unit'), GROUP_CONCAT,
                         2-argument MAX / MIN (-> GREATEST / LEAST), LIKE (case-insensitive in SQLite ->
-                        ILIKE). PRAGMA and sqlite_master ARE translated, onto information_schema and a
+                        ILIKE), date / datetime / time / julianday with any modifier ATIP uses (see
+                        _sqlite_fn), ROUND(x, n) (via numeric), substr() of a non-text value, `IS ?`,
+                        :name parameters, CURRENT_TIMESTAMP as SQLite's UTC 'YYYY-MM-DD HH:MM:SS'.
+                        Every literal statement in the code base was PREPAREd against a PostgreSQL copy
+                        of the live schema on 17 Nov 2026 to find these. PRAGMA and sqlite_master ARE translated, onto information_schema and a
                         catalogue subquery, so the existence checks db/schema.py's migrations rely on work.
                         Constructs with no safe automatic translation -- rowid, strftime() in SQL -- raise
                         UnsupportedSQL naming the construct, so a missed query fails loudly instead of
@@ -20,7 +24,11 @@ Postgres needs, without forcing it:
                         fetchone / fetchall / commit / rollback / close, and `with conn:`; rows readable by
                         index AND by column name, like sqlite3.Row), translating every statement on the way
                         through -- and raising the sqlite3 exception classes callers catch rather than
-                        psycopg's, which are unrelated to them. See as_sqlite_error().
+                        psycopg's, which are unrelated to them. See as_sqlite_error(). It also keeps
+                        SQLite's behaviour where ATIP depends on it: a failed statement does not abort
+                        the transaction (_statement), lastrowid and total_changes are filled, results
+                        are int / float rather than Decimal or bool, cursor() is a real cursor (so
+                        pandas.read_sql works), and the session runs in UTC like SQLite's 'now'.
 
 Activation (db/schema.get_connection): config.json "database": {"backend": "postgres",
 "allow_experimental": true} plus a DSN in ATIP_PG_DSN (secret). BOTH are required: until every query has
@@ -33,6 +41,12 @@ from __future__ import annotations
 import contextlib
 import re
 import sqlite3
+import warnings
+
+# pandas.read_sql works through PgConnection.cursor() (see _ConnCursor) but warns on every call that
+# only SQLAlchemy / sqlite3 connections are "tested" -- thousands of lines per scoring run. That one
+# message only; every other warning still shows.
+warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable", category=UserWarning)
 
 
 class UnsupportedSQL(ValueError):
@@ -78,9 +92,11 @@ def _catalog(sql):
 
 
 def _bool_aggs(sql):
-    """SUM / AVG / TOTAL of a comparison (SQLite booleans are 0/1) -> SUM(CAST((cmp) AS INT))."""
+    """SUM / AVG / TOTAL / MIN / MAX of a comparison (SQLite booleans are 0/1) -> SUM(CAST((cmp) AS INT)).
+    Two-argument MAX / MIN have already become GREATEST / LEAST, so a MAX( or MIN( left here is the
+    aggregate."""
     out, i = [], 0
-    pat = re.compile(r"\b(SUM|AVG|TOTAL)\s*\(", re.I)
+    pat = re.compile(r"\b(SUM|AVG|TOTAL|MIN|MAX)\s*\(", re.I)
     cmp_rx = re.compile(r"\bIS\s+(NOT\s+)?NULL\b|<>|!=|<=|>=|[<>=]|\bLIKE\b|\bIN\b", re.I)
     while True:
         m = pat.search(sql, i)
@@ -131,13 +147,114 @@ def _split_strings(sql):
     return out
 
 
-def _date_mod(m):
-    arg, sign, n, unit = m.group(1).strip(), m.group(2), m.group(3), m.group(4).lower()
-    u = _UNITS.get(unit)
-    if not u:
-        raise UnsupportedSQL(f"date modifier unit {unit!r}")
-    base = "CURRENT_DATE" if arg.lower() in ("'now'",) else f"CAST({arg} AS date)"
-    return f"CAST({base} {sign} INTERVAL '{n} {u}' AS date)"
+def _call_args(sql, open_at):
+    """sql[open_at] is '(' -> (index after the matching ')', [top-level arguments]).
+    String literals are skipped, so a comma or parenthesis inside quotes is data."""
+    depth, i, start, args = 1, open_at + 1, open_at + 1, []
+    while i < len(sql):
+        c = sql[i]
+        if c == "'":
+            i += 1
+            while i < len(sql) and not (sql[i] == "'" and sql[i + 1:i + 2] != "'"):
+                i += 2 if sql[i] == "'" else 1
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                args.append(sql[start:i])
+                return i + 1, args
+        elif c == "," and depth == 1:
+            args.append(sql[start:i])
+            start = i + 1
+        i += 1
+    raise UnsupportedSQL(f"unbalanced parentheses: {sql.strip()[:120]}")
+
+
+def _rewrite_calls(sql, names, fn):
+    """Replace every call name(args...) outside string literals with fn(name, [args]), innermost
+    arguments first. A dotted or longer identifier (x.date(, update_date() is not a call to `name`."""
+    rx = re.compile(r"(?<![\w.\"])(" + "|".join(names) + r")\s*\(", re.I)
+    lit = [False] * len(sql)
+    pos = 0
+    for s, p in _split_strings(sql):
+        if s:
+            lit[pos:pos + len(p)] = [True] * len(p)
+        pos += len(p)
+    out, i = [], 0
+    for m in rx.finditer(sql):
+        if m.start() < i or lit[m.start()]:
+            continue
+        end, args = _call_args(sql, m.end() - 1)
+        args = [_rewrite_calls(a, names, fn).strip() for a in args]
+        out.append(sql[i:m.start()])
+        out.append(fn(m.group(1).lower(), args))
+        i = end
+    out.append(sql[i:])
+    return "".join(out)
+
+
+_TRUNC = {"start of day": "day", "start of month": "month", "start of year": "year"}
+
+
+def _sqlite_fn(name, args):
+    """SQLite scalar functions PostgreSQL lacks or types differently.
+
+    date / datetime / time / julianday with SQLite modifiers. 'now' is UTC in SQLite;
+    PgConnection sets the session TimeZone to UTC, so LOCALTIMESTAMP and CURRENT_DATE are
+    the same instant. A literal '+N unit' modifier becomes an INTERVAL, 'start of
+    day|month|year' a date_trunc, and a non-literal modifier (a parameter or an expression
+    such as '+' || n || ' minutes') a CAST to interval -- the text SQLite accepts for those
+    is valid interval input. Any other literal modifier ('weekday 1', 'localtime', ...)
+    raises UnsupportedSQL rather than meaning something else.
+
+    round(x, n): PostgreSQL has round(numeric, int) only; SQLite's always returns a REAL.
+    substr(x, ...): SQLite works on the text of any value (a TIMESTAMP column included);
+    PostgreSQL only on text.
+    """
+    if name == "round":
+        if len(args) == 2:
+            return f"CAST(ROUND(CAST({args[0]} AS numeric), {args[1]}) AS double precision)"
+        return f"ROUND({', '.join(args)})"
+    if name == "substr":
+        return f"substr(CAST({args[0]} AS text), {', '.join(args[1:])})"
+    if not args:
+        raise UnsupportedSQL(f"{name}() without arguments")
+    base, mods = args[0], args[1:]
+    now = base.lower() == "'now'"
+    if name == "date" and not mods:
+        return "CURRENT_DATE" if now else f"CAST({base} AS date)"
+    if name == "date":
+        expr = "CURRENT_DATE" if now else f"CAST({base} AS date)"
+    else:
+        expr = "LOCALTIMESTAMP" if now else f"CAST({base} AS timestamp)"
+    for m in mods:
+        lit = re.fullmatch(r"'\s*([-+])\s*(\d+(?:\.\d+)?)\s+([a-z]+)\s*'", m, re.I)
+        if lit:
+            u = _UNITS.get(lit.group(3).lower())
+            if not u:
+                raise UnsupportedSQL(f"date modifier unit {lit.group(3)!r}")
+            expr = f"{expr} {lit.group(1)} INTERVAL '{lit.group(2)} {u}'"
+        elif re.fullmatch(r"'(?:[^']|'')*'", m):
+            t = _TRUNC.get(m.strip("'").strip().lower())
+            if not t:
+                raise UnsupportedSQL(f"{name}() modifier {m} has no automatic PostgreSQL translation")
+            expr = f"date_trunc('{t}', {expr})"
+        else:
+            expr = f"{expr} + CAST({m} AS interval)"
+    if name == "date":
+        return f"CAST({expr} AS date)"
+    if name == "datetime":
+        return f"CAST({expr} AS timestamp(0))"
+    if name == "time":
+        return f"CAST({expr} AS time(0))"
+    return f"(EXTRACT(EPOCH FROM {expr}) / 86400.0 + 2440587.5)"          # julianday
+
+
+def _named_params(sql):
+    """:name placeholders (sqlite3 named style, used with a dict) -> %(name)s, outside literals.
+    `::type` casts are not placeholders."""
+    return "".join(p if s else re.sub(r"(?<![:\w]):([A-Za-z_]\w*)", r"%(\1)s", p) for s, p in _split_strings(sql))
 
 
 def _greatest(sql):
@@ -239,6 +356,13 @@ def translate(sql: str, pk_of=None) -> str:
     text = re.sub(r"(?<!NOT )\bLIKE\b", "ILIKE", text, flags=re.I)
     text = _greatest(text)
     text = _bool_aggs(text)
+    # `IS ?` / `IS NOT ?` -- SQLite's null-safe comparison with a parameter; PostgreSQL's IS takes
+    # only NULL / TRUE / FALSE
+    text = re.sub(r"\bIS\s+NOT\s+(\?|:[A-Za-z_]\w*)", r"IS DISTINCT FROM \1", text, flags=re.I)
+    text = re.sub(r"\bIS\s+(\?|:[A-Za-z_]\w*)", r"IS NOT DISTINCT FROM \1", text, flags=re.I)
+    # CURRENT_TIMESTAMP is 'YYYY-MM-DD HH:MM:SS' UTC text in SQLite; LOCALTIMESTAMP(0) in a UTC session
+    # is the same value, and has the same text when it lands in a TEXT column
+    text = re.sub(r"\bCURRENT_TIMESTAMP\b", "LOCALTIMESTAMP(0)", text, flags=re.I)
     # rejoin with the string literals back in place, then the date() modifiers (they contain literals)
     chunks = text.split("\x00")
     out = []
@@ -247,12 +371,12 @@ def translate(sql: str, pk_of=None) -> str:
         if i < len(strings):
             out.append(strings[i])
     sql2 = "".join(out)
-    sql2 = re.sub(r"\bdate\s*\(\s*([^,()]+?)\s*,\s*'([-+])\s*(\d+)\s+([a-z]+)'\s*\)", _date_mod, sql2, flags=re.I)
-    sql2 = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", sql2, flags=re.I)
+    sql2 = _rewrite_calls(sql2, ("date", "datetime", "time", "julianday", "round", "substr"), _sqlite_fn)
     # ? -> %s outside literals; every % is doubled, INSIDE literals too (LIKE 'a%'): psycopg parses the
     # whole statement for placeholders when parameters are passed, and PgConnection always passes them
     sql2 = "".join(p.replace("%", "%%") if s else p.replace("%", "%%").replace("?", "%s")
                    for s, p in _split_strings(sql2))
+    sql2 = _named_params(sql2)
     if ignore and not re.search(r"\bON\s+CONFLICT\b", sql2, re.I):
         sql2 = sql2.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
     if replace_target:
@@ -276,11 +400,18 @@ def translate(sql: str, pk_of=None) -> str:
 
 def ddl(stmt: str) -> str:
     s = stmt
+    # backtick-quoted reserved column names (signal, rows, trigger) -> standard double quotes, as
+    # translate() already does for queries; PostgreSQL rejects backticks in CREATE TABLE too
+    s = "".join(p if q else p.replace("`", '"') for q, p in _split_strings(s))
     # INTEGER PRIMARY KEY is the rowid alias in SQLite: auto-numbered with or without AUTOINCREMENT
     s = re.sub(r"\bINTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\b", "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY",
                s, flags=re.I)
     s = re.sub(r"\bAUTOINCREMENT\b", "", s, flags=re.I)
-    s = re.sub(r"\(\s*datetime\s*\(\s*'now'\s*\)\s*\)|\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", s, flags=re.I)
+    # SQLite's CURRENT_TIMESTAMP / datetime('now') default is 'YYYY-MM-DD HH:MM:SS' in UTC.
+    # LOCALTIMESTAMP(0) in PgConnection's UTC session is that value -- and that text in a TEXT
+    # column, where CURRENT_TIMESTAMP would store '... .123456+00'.
+    s = re.sub(r"\(\s*datetime\s*\(\s*'now'\s*\)\s*\)|\bdatetime\s*\(\s*'now'\s*\)|\bCURRENT_TIMESTAMP\b",
+               "LOCALTIMESTAMP(0)", s, flags=re.I)
     s = re.sub(r"\(\s*date\s*\(\s*'now'\s*\)\s*\)|\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", s, flags=re.I)
     s = re.sub(r"\bWITHOUT\s+ROWID\b", "", s, flags=re.I)
     s = re.sub(r"\s+COLLATE\s+NOCASE\b", "", s, flags=re.I)
@@ -413,8 +544,9 @@ def sqlite_errors():
 
 
 class _Cursor:
-    def __init__(self, cur):
+    def __init__(self, cur, lastrowid=None):
         self._c = cur
+        self.lastrowid = lastrowid
 
     def _wrap(self, r):
         if r is None:
@@ -424,14 +556,27 @@ class _Cursor:
 
     def fetchone(self):
         with sqlite_errors():
+            if self._c.description is None:                         # INSERT / UPDATE: None, as in sqlite3
+                return None
             return self._wrap(self._c.fetchone())
 
     def fetchall(self):
         with sqlite_errors():
+            if self._c.description is None:                         # INSERT / UPDATE: no rows, as in sqlite3
+                return []
             return [self._wrap(r) for r in self._c.fetchall()]
+
+    def fetchmany(self, size=None):
+        with sqlite_errors():
+            if self._c.description is None:
+                return []
+            return [self._wrap(r) for r in self._c.fetchmany(size or 1)]
 
     def __iter__(self):
         return iter(self.fetchall())
+
+    def close(self):
+        pass
 
     @property
     def rowcount(self):
@@ -442,6 +587,108 @@ class _Cursor:
         return self._c.description
 
 
+class _Done:
+    """An INSERT whose RETURNING row has been read for lastrowid: no rows, like sqlite3's."""
+    description = None
+
+    def __init__(self, rowcount):
+        self.rowcount = rowcount
+
+
+class _ConnCursor:
+    """conn.cursor(): a sqlite3-style cursor -- execute() returns the cursor itself and the last
+    result is read from it. pandas.read_sql works through exactly this (cursor().execute(),
+    then .description and .fetchall() on the same object), as does init_db()'s
+    conn.cursor().execute(...)."""
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._last = None
+
+    def execute(self, sql, params=()):
+        self._last = self._conn.execute(sql, params)
+        return self
+
+    def executemany(self, sql, seq):
+        self._last = self._conn.executemany(sql, seq)
+        return self
+
+    def fetchone(self):
+        return self._last.fetchone() if self._last else None
+
+    def fetchall(self):
+        return self._last.fetchall() if self._last else []
+
+    def fetchmany(self, size=None):
+        return self._last.fetchmany(size) if self._last else []
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+    def close(self):
+        self._last = None
+
+    @property
+    def description(self):
+        return self._last.description if self._last else None
+
+    @property
+    def rowcount(self):
+        return self._last.rowcount if self._last else -1
+
+    @property
+    def lastrowid(self):
+        return self._last.lastrowid if self._last else None
+
+
+# "End of this day" bounds written for SQLite's TEXT comparison: day + " 99", day + "T99", day + "~"
+# sort after every time of that day as text, so `ts < ?` / `date <= ?` with one of them means "up to the
+# end of the day". PostgreSQL compares DATE / TIMESTAMP columns as values and rejects them as input
+# ("invalid input syntax for type timestamp"). As a parameter they become the last instant of that
+# day, which keeps the meaning for both column types: as a DATE it is the day itself.
+# Used by quant/microstructure.py, data/order_pressure.py, orders/arms.py and scores/breadth.py.
+_EOD_SENTINEL = re.compile(r"^(\d{4}-\d{2}-\d{2})(?: 99|T99|~)$")
+
+
+def _param(v):
+    if isinstance(v, str):
+        m = _EOD_SENTINEL.match(v)
+        if m:
+            return f"{m.group(1)} 23:59:59.999999"
+    return v
+
+
+def _params(p):
+    if isinstance(p, dict):
+        return {k: _param(v) for k, v in p.items()}
+    return tuple(_param(v) for v in (p or ()))
+
+
+def _register_loaders(conn):
+    """Result values as sqlite3 returns them.
+
+    numeric (SUM / AVG of an integer column, ROUND(numeric)) arrives from psycopg as Decimal,
+    which does not mix with float (Decimal * float raises TypeError); SQLite returns int or float.
+    boolean (a comparison in a SELECT list) arrives as True / False where SQLite returns 1 / 0 --
+    and that reaches JSON as true / false. DATE and TIMESTAMP columns already load as
+    datetime.date / datetime.datetime, which is what db/schema's PARSE_DECLTYPES converters give."""
+    from psycopg.adapt import Loader
+
+    class _Numeric(Loader):
+        def load(self, data):
+            s = bytes(data).decode()
+            if "." in s or "e" in s.lower() or s in ("NaN", "Infinity", "-Infinity"):
+                return float(s)
+            return int(s)
+
+    class _Bool(Loader):
+        def load(self, data):
+            return 1 if bytes(data) == b"t" else 0
+
+    conn.adapters.register_loader("numeric", _Numeric)
+    conn.adapters.register_loader("bool", _Bool)
+
+
 class PgConnection:
     def __init__(self, dsn: str):
         try:
@@ -449,7 +696,13 @@ class PgConnection:
         except ImportError as e:
             raise RuntimeError('PostgreSQL backend needs: pip install "psycopg[binary]"') from e
         self._conn = psycopg.connect(dsn)
+        # SQLite's 'now' and CURRENT_TIMESTAMP are UTC; so is this session (see _sqlite_fn)
+        self._conn.execute("SET TimeZone TO 'UTC'")
+        self._conn.commit()
+        _register_loaders(self._conn)
         self._pk = {}
+        self._ident = {}
+        self.total_changes = 0
         self.row_factory = None                                     # accepted for sqlite3 compatibility
 
     def pk_of(self, table):
@@ -472,10 +725,62 @@ class PgConnection:
     def _is_ddl(sql):
         return sql.lstrip().upper().startswith(("CREATE ", "ALTER ", "DROP "))
 
+    def identity_of(self, table):
+        """The table's identity column (INTEGER PRIMARY KEY in SQLite, i.e. the rowid alias), or None."""
+        if table not in self._ident:
+            with sqlite_errors():
+                r = self._conn.execute("SELECT attname FROM pg_attribute WHERE attrelid=to_regclass(%s) "
+                                       "AND attidentity<>'' AND NOT attisdropped", (table,)).fetchone()
+            self._ident[table] = r[0] if r else None
+        return self._ident[table]
+
+    def _statement(self, run):
+        """Run one statement with SQLite's failure semantics.
+
+        In SQLite a failed statement fails alone; the open transaction carries on, and ATIP relies
+        on that (ALTER TABLE ADD COLUMN that may already exist, a probe of a table that may not).
+        PostgreSQL aborts the whole transaction instead -- every later statement then fails with
+        "current transaction is aborted" -- so inside a transaction each statement runs under a
+        savepoint, and a failure rolls back to it. Outside one there is nothing to protect: the
+        failed implicit transaction is rolled back, leaving the connection idle, as in SQLite."""
+        from psycopg.pq import TransactionStatus
+        in_tx = self._conn.info.transaction_status == TransactionStatus.INTRANS
+        if in_tx:
+            self._conn.execute("SAVEPOINT atip_stmt")
+        try:
+            out = run()
+        except Exception:
+            if in_tx:
+                self._conn.execute("ROLLBACK TO SAVEPOINT atip_stmt")
+                self._conn.execute("RELEASE SAVEPOINT atip_stmt")
+            else:
+                self._conn.rollback()
+            raise
+        if in_tx:
+            self._conn.execute("RELEASE SAVEPOINT atip_stmt")
+        return out
+
+    def _vacuum(self):
+        """SQLite's VACUUM. PostgreSQL refuses VACUUM inside a transaction block, and psycopg
+        opens one implicitly, so it runs in autocommit. Like SQLite, it is an error while a
+        transaction is open (db/purge.py commits first)."""
+        from psycopg.pq import TransactionStatus
+        if self._conn.info.transaction_status != TransactionStatus.IDLE:
+            raise sqlite3.OperationalError("cannot VACUUM from within a transaction")
+        with sqlite_errors():
+            self._conn.autocommit = True
+            try:
+                self._conn.execute("VACUUM (ANALYZE)")
+            finally:
+                self._conn.autocommit = False
+        return _Cursor(_Done(-1))
+
     def execute(self, sql, params=()):
         # Translation happens outside sqlite_errors(): it touches no server, so a
         # statement this backend cannot express raises UnsupportedSQL rather than
         # arriving disguised as a database error.
+        if re.fullmatch(r"\s*VACUUM\s*;?\s*", sql, re.I):
+            return self._vacuum()
         if self._is_ddl(sql):                       # untouched by placeholder parsing (trigger bodies use %)
             if re.match(r"\s*CREATE\s+TRIGGER", sql, re.I):
                 stmt = sql if re.search(r"\bEXECUTE\s+FUNCTION\b", sql, re.I) else trigger_ddl(sql)
@@ -483,17 +788,34 @@ class PgConnection:
                 stmt = sql                          # PostgreSQL already (atip_append_only)
             else:
                 stmt = ddl(sql)
+            self._ident.clear()
             with sqlite_errors():
-                return _Cursor(self._conn.execute(stmt))
+                return _Cursor(self._statement(lambda: self._conn.execute(stmt)))
         stmt = translate(sql, self.pk_of)
+        args = _params(params)
+        # sqlite3 fills cursor.lastrowid after an INSERT; PostgreSQL needs RETURNING for it
+        ins = re.match(r"\s*INSERT\s+INTO\s+\"?([A-Za-z_]\w*)\"?", stmt, re.I)
+        ident = self.identity_of(ins.group(1)) if ins and not re.search(r"\bRETURNING\b", stmt, re.I) else None
+        if ident:
+            stmt = stmt.rstrip().rstrip(";") + f' RETURNING "{ident}"'
         with sqlite_errors():
-            return _Cursor(self._conn.execute(stmt, tuple(params or ())))
+            cur = self._statement(lambda: self._conn.execute(stmt, args))
+            rowid = None
+            if ident:
+                rows = cur.fetchall()
+                rowid = rows[-1][0] if rows else None
+        if re.match(r"\s*(INSERT|UPDATE|DELETE)\b", stmt, re.I) and cur.rowcount > 0:
+            self.total_changes += cur.rowcount
+        return _Cursor(cur, rowid) if not ident else _Cursor(_Done(cur.rowcount), rowid)
 
     def executemany(self, sql, seq):
         stmt = translate(sql, self.pk_of)
+        rows = [_params(p) for p in seq]
         with sqlite_errors():
             cur = self._conn.cursor()
-            cur.executemany(stmt, [tuple(p) for p in seq])
+            self._statement(lambda: cur.executemany(stmt, rows))
+        if cur.rowcount > 0:
+            self.total_changes += cur.rowcount
         return _Cursor(cur)
 
     def reset_identity(self, table, column="id"):
@@ -520,8 +842,12 @@ class PgConnection:
         the PostgreSQL backend could not create the schema at all -- it failed with
         AttributeError before any SQL was sent. MySQLConnection has had it; this is
         the sibling catching up.
+
+        It is a separate cursor object rather than the connection itself, so that
+        pandas.read_sql -- cursor().execute(), then .description / .fetchall() on that
+        same cursor -- works too.
         """
-        return self
+        return _ConnCursor(self)
 
     def __enter__(self):
         return self
