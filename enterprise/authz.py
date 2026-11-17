@@ -255,11 +255,14 @@ def _owner_tenant(conn, key, value, cache):
 def resolve(conn, request) -> dict | None:
     """The principal for this request, with roles, permissions and flags; or None."""
     from dashboard.security import TOKEN_HEADER, token_ok
-    from enterprise import apikeys, rbac, users
+    from enterprise import apikeys, hub_identity, rbac, users
     s = settings()
     auth = request.headers.get("authorization") or ""
-    p = None
-    if auth.lower().startswith("bearer "):
+    # The bkesari ID first (enterprise/hub_identity.py): the hub signed this request for one of ATIP's owners.
+    p = hub_identity.principal(conn, request.headers, s)
+    if p:
+        pass
+    elif auth.lower().startswith("bearer "):
         p = users.session_principal(conn, auth[7:].strip())
     elif auth.lower().startswith("apikey "):
         p = apikeys.principal(conn, auth[7:].strip())

@@ -101,3 +101,6 @@ def test_login_is_on_the_design_system_without_the_shell():
     for i, label in (("u", "Username"), ("p", "Password")):
         assert f'<label for="{i}">{label}</label>' in h and f'id="{i}"' in h
     assert "--bg:#0f172a" not in h                                   # not the old always-dark page
+    # 18 Nov 2026: no tenant box; the MFA box is there but hidden until the server asks for a code
+    assert 'id="t"' not in h and "Tenant" not in h and "tenant_id:null" in h
+    assert "<div id='mfa' hidden>" in h and 'id="o"' in h and "mfa_required" in h

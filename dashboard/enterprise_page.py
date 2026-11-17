@@ -63,16 +63,19 @@ def render_login():
             "<div class='ax-card'><h1>Sign in</h1><p id='st' class='ax-muted'></p><form id='lf' novalidate>"
             + field.format(id="u", label="Username", attrs=' autocomplete="username" autocapitalize="none" required')
             + field.format(id="p", label="Password", attrs=' type="password" autocomplete="current-password" required')
-            + field.format(id="t", label="Tenant <span class='ax-muted'>(optional)</span>", attrs="")
-            + field.format(id="o", label="MFA code <span class='ax-muted'>(if enabled)</span>",
-                           attrs=' autocomplete="one-time-code" inputmode="numeric"')
+            # No tenant box (owner's request, 18 Nov 2026): the account's own tenant is used. The MFA box
+            # appears only when the server says this account needs a code.
+            + "<div id='mfa' hidden>"
+            + field.format(id="o", label="MFA code", attrs=' autocomplete="one-time-code" inputmode="numeric"')
+            + "</div>"
             + "<button class='ax-btn primary' type='submit'>Sign in</button>"
               "<p id='msg' class='ax-err' role='alert'></p></form></div></main>"
             + _JS + r"""<script>
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
 async function go(){const m=document.getElementById('msg');m.textContent='';
- try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null,otp:o.value||null});
-  const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}catch(e){m.textContent=e.message}}
+ try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:null,otp:o.value||null});
+  const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}
+ catch(e){if(e.message==='mfa_required'){document.getElementById('mfa').hidden=false;o.focus();m.textContent='Enter the code from your authenticator app.'}else{m.textContent=e.message}}}
 document.getElementById('lf').addEventListener('submit',function(ev){ev.preventDefault();go()});
 </script></body></html>""")
 
