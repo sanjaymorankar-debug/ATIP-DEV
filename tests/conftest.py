@@ -42,6 +42,11 @@ def _isolated(tmp_path, monkeypatch):
     # The 08:45 pre-open gate (ops/preopen_health.py) would run its real checks from 08:45 IST -- Dhan unreachable
     # in a test -- and hold every auto-pick pass. Off for every test; tests/test_instruments_preopen_bhav.py turns it on.
     monkeypatch.setenv("ATIP_PREOPEN_GATE", "off")
+    # The paper capital plan (orders/capital_plan.py) reads atip_data/config.json relative to the working directory:
+    # since 16 Nov 2026 the live file has a plan block, and its 10 % cap refused the fixtures' Rs 25,000 sessions on a
+    # Rs 1,00,000 test pool (90 failed + 11 errors, 17 Nov 04:01 IST). No plan unless a test writes one
+    # (tests/test_capital_plan_2026_11_16.py does).
+    monkeypatch.setattr("orders.capital_plan.CONFIG_PATH", tmp_path / "no-capital-plan" / "config.json")
     # The dashboard's state file is relative to the working directory: a test that rebuilds the
     # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
     # with its fixture rows (2026-10-26).
