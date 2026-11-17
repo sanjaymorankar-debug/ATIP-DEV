@@ -73,6 +73,123 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+# ── PostgreSQL runtime (17 Nov 2026) ───────────────────────────────────────────────────────────────
+# When ATIP runs on PostgreSQL (db.schema.pg_runtime_url()), a backup is a pg_dump custom-format
+# archive (atip-<kind>-<ts>.dump) instead of a copy of the SQLite file. verify() reads the archive back
+# with pg_restore (it must list, and its key tables' data are counted row by row from the archive
+# itself); the restore drill restores it into a scratch database, counts the key tables there and
+# drops it. Nothing here writes to the live database except the ops_backup / ops_restore_drill rows.
+
+def _pg_url():
+    from db.schema import pg_runtime_url
+    return pg_runtime_url()
+
+
+def _pg_bin(name: str) -> str:
+    """pg_dump / pg_restore / psql: ops.pg_bin_dir when set, else the newest /usr/lib/postgresql/N/bin, else PATH."""
+    from ops.config import ops
+    d = ops().get("pg_bin_dir")
+    if d:
+        return str(Path(d) / name)
+    found = sorted(Path("/usr/lib/postgresql").glob(f"*/bin/{name}"),
+                   key=lambda p: int(p.parent.parent.name) if p.parent.parent.name.isdigit() else 0)
+    return str(found[-1]) if found else (shutil.which(name) or name)
+
+
+def _run(args, **kw):
+    import subprocess
+    r = subprocess.run(args, capture_output=True, text=kw.pop("text", True), **kw)
+    if r.returncode != 0:
+        err = r.stderr if isinstance(r.stderr, str) else r.stderr.decode("utf-8", "replace")
+        raise RuntimeError(f"{Path(args[0]).name} failed: {err.strip()[:400]}")
+    return r
+
+
+def _dump_counts(path: Path) -> dict:
+    """Row counts of KEY_TABLES read from the archive's own data (COPY blocks), not from the live database."""
+    import subprocess
+    toc = _run([_pg_bin("pg_restore"), "-l", str(path)]).stdout
+    present = [t for t in KEY_TABLES if f" TABLE DATA public {t} " in toc]
+    counts = {}
+    for t in present:
+        p = subprocess.Popen([_pg_bin("pg_restore"), "-a", "-t", t, "-f", "-", str(path)],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        n, inside = 0, False
+        for line in p.stdout:
+            if inside:
+                if line == b"\\.\n":
+                    inside = False
+                else:
+                    n += 1
+            elif line.startswith(b"COPY "):
+                inside = True
+        if p.wait() != 0:
+            raise RuntimeError(f"pg_restore could not read {t}: {p.stderr.read().decode('utf-8', 'replace')[:300]}")
+        counts[t] = n
+    return counts
+
+
+def _verify_dump(path: Path) -> dict:
+    out = {"ok": False, "integrity": None, "tables": {}, "sha256": None, "size_bytes": None}
+    try:
+        out["tables"] = _dump_counts(path)
+        out["integrity"] = "ok"
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+        return out
+    out["sha256"] = sha256(path)
+    out["size_bytes"] = path.stat().st_size
+    out["ok"] = "prices_daily" in out["tables"]
+    if not out["ok"]:
+        out["error"] = "prices_daily missing"
+    return out
+
+
+def _pg_db_url(url: str, dbname: str) -> str:
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+    return make_conninfo(**{**conninfo_to_dict(url), "dbname": dbname})
+
+
+def _pg_restore_into(path: Path, url: str, dbname: str) -> dict:
+    """CREATE DATABASE dbname, pg_restore the archive into it, count KEY_TABLES. Leaves the database."""
+    import psycopg
+    if dbname == conninfo_dbname(url):
+        raise RuntimeError("restore never overwrites the live database")
+    with psycopg.connect(_pg_db_url(url, "postgres"), autocommit=True) as a:
+        a.execute(f'CREATE DATABASE "{dbname}"')
+    target = _pg_db_url(url, dbname)
+    _run([_pg_bin("pg_restore"), "--no-owner", "--exit-on-error", "-d", target, str(path)])
+    counts = {}
+    with psycopg.connect(target) as c:
+        names = {r[0] for r in c.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")}
+        for t in KEY_TABLES:
+            if t in names:
+                counts[t] = c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+    return counts
+
+
+def conninfo_dbname(url: str) -> str:
+    from psycopg.conninfo import conninfo_to_dict
+    return conninfo_to_dict(url).get("dbname") or ""
+
+
+def _pg_drop(url: str, dbname: str):
+    """Plain DROP DATABASE (it ends autovacuum workers itself); WITH (FORCE) would need the right to
+    signal them, which an ordinary role lacks on PostgreSQL 18, and a freshly restored database
+    always has one. Retried briefly in case a worker is mid-start."""
+    import time
+    import psycopg
+    with psycopg.connect(_pg_db_url(url, "postgres"), autocommit=True) as a:
+        for attempt in range(5):
+            try:
+                a.execute(f'DROP DATABASE IF EXISTS "{dbname}"')
+                return
+            except psycopg.errors.ObjectInUse:
+                if attempt == 4:
+                    raise
+                time.sleep(3)
+
+
 def verify(path: Path) -> dict:
     """integrity_check + key-table row counts + sha256. {"ok", "integrity", "tables", "sha256", "size_bytes"}."""
     path = Path(path)
@@ -80,6 +197,8 @@ def verify(path: Path) -> dict:
     if not path.exists():
         out["error"] = "file missing"
         return out
+    if path.suffix == ".dump":
+        return _verify_dump(path)
     try:
         c = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
         try:
@@ -105,7 +224,8 @@ def backup(kind="manual") -> dict:
     from db.schema import DB_PATH, get_connection
     started = datetime.now()
     bid = f"atip-{kind}-{started:%Y%m%d-%H%M%S}"
-    dest = _dir() / f"{bid}.db"
+    pg = _pg_url()
+    dest = _dir() / f"{bid}.{'dump' if pg else 'db'}"
     c = get_connection()
     try:
         c.execute("INSERT INTO ops_backup (backup_id,kind,path,started_at,status) VALUES (?,?,?,?,?)",
@@ -115,23 +235,31 @@ def backup(kind="manual") -> dict:
         c.close()
     res = {"backup_id": bid, "kind": kind, "path": str(dest), "status": "FAILED"}
     try:
-        src = sqlite3.connect(str(DB_PATH))
-        dst = sqlite3.connect(str(dest))
-        try:
-            src.backup(dst, pages=4096, sleep=0.05)
-            # the copy inherits the live DB's WAL mode, and every later read-only open (verify, drill)
-            # then leaves -wal / -shm files that prune / the drill never delete: make it one file
-            dst.execute("PRAGMA journal_mode=DELETE")
-        finally:
-            dst.close()
-            src.close()
+        if pg:
+            part = dest.with_name(dest.name + ".part")
+            try:
+                _run([_pg_bin("pg_dump"), "-Fc", "-Z", "6", "-f", str(part), "-d", pg])
+                part.replace(dest)
+            finally:
+                part.unlink(missing_ok=True)
+        else:
+            src = sqlite3.connect(str(DB_PATH))
+            dst = sqlite3.connect(str(dest))
+            try:
+                src.backup(dst, pages=4096, sleep=0.05)
+                # the copy inherits the live DB's WAL mode, and every later read-only open (verify, drill)
+                # then leaves -wal / -shm files that prune / the drill never delete: make it one file
+                dst.execute("PRAGMA journal_mode=DELETE")
+            finally:
+                dst.close()
+                src.close()
         v = verify(dest)
         res.update({k: v.get(k) for k in ("integrity", "tables", "sha256", "size_bytes")})
         if v["ok"]:
             res["status"] = "VERIFIED"
         else:
             res["error"] = v.get("error")
-            failed = dest.with_suffix(".db.failed")
+            failed = dest.with_suffix(dest.suffix + ".failed")
             dest.replace(failed)
             res["path"] = str(failed)
     except Exception as e:
@@ -173,7 +301,7 @@ def prune() -> list:
             if bid in keep:
                 continue
             p = Path(path).resolve()
-            if p.parent != base or not p.name.startswith("atip-") or not p.name.endswith(".db"):
+            if p.parent != base or not p.name.startswith("atip-") or not p.name.endswith((".db", ".dump")):
                 continue                       # only files this module created
             p.unlink(missing_ok=True)
             c.execute("UPDATE ops_backup SET pruned_at=? WHERE backup_id=?", (datetime.now(), bid))
@@ -294,7 +422,7 @@ def offsite_copy(backup_id: str) -> dict:
         od = Path(dest_dir)
         od.mkdir(parents=True, exist_ok=True)
         if available():
-            tmp = src.with_suffix(".db.enc")
+            tmp = src.with_suffix(src.suffix + ".enc")
             enc = encrypt_file(src, tmp)
             Path(str(tmp) + ".sha256").write_text(f"{enc['sha256']}  {tmp.name}\n", encoding="utf-8")
             shutil.copy2(tmp, od / tmp.name)
@@ -317,8 +445,8 @@ def offsite_copy(backup_id: str) -> dict:
                    backup_id))
         c.commit()
         keep = int(cfg.get("backup_offsite_keep") or 14)
-        mine = sorted(od.glob("atip-*.db*"), key=lambda p: p.stat().st_mtime, reverse=True)
-        mine = [p for p in mine if p.suffix in (".db", ".enc")]
+        mine = sorted(od.glob("atip-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        mine = [p for p in mine if p.suffix in (".db", ".dump", ".enc")]
         for old in mine[keep:]:
             old.unlink(missing_ok=True)
             Path(str(old) + ".sha256").unlink(missing_ok=True)
@@ -342,11 +470,15 @@ def restore_drill(notify: bool = True) -> dict:
     finally:
         c.close()
     res = {"drill_id": did, "status": "FAILED"}
-    drill = Path("atip_data/restore") / f"drill-{started:%Y%m%d-%H%M%S}.db"
+    is_dump = bool(r) and str(r[1]).endswith(".dump")
+    drill = Path("atip_data/restore") / f"drill-{started:%Y%m%d-%H%M%S}.{'dump' if is_dump else 'db'}"
+    pg, drill_db = _pg_url(), f"atip_drill_{did.lower()}"
     try:
         if not r:
             raise RuntimeError("no VERIFIED backup to drill")
         bid, path, tables_json, off, off_st = r
+        if is_dump and not pg:
+            raise RuntimeError("the newest backup is a PostgreSQL dump but ATIP is not running on PostgreSQL")
         drill.parent.mkdir(parents=True, exist_ok=True)
         if off and off_st == "COPIED_ENCRYPTED" and Path(off).exists():
             source = "offsite_encrypted"
@@ -360,7 +492,12 @@ def restore_drill(notify: bool = True) -> dict:
         else:
             source = "local"
             shutil.copy2(path, drill)
-        v = verify(drill)
+        if is_dump:                  # a real restore into a scratch database, then count there
+            got = _pg_restore_into(drill, pg, drill_db)
+            v = {"ok": "prices_daily" in got, "integrity": "ok", "tables": got,
+                 "error": None if "prices_daily" in got else "prices_daily missing"}
+        else:
+            v = verify(drill)
         want = _json.loads(tables_json or "{}")
         diff = {t: (want.get(t), v["tables"].get(t)) for t in want if want.get(t) != v["tables"].get(t)}
         ok = v["ok"] and not diff
@@ -372,6 +509,11 @@ def restore_drill(notify: bool = True) -> dict:
         res.setdefault("source", None)
     finally:
         drill.unlink(missing_ok=True)
+        if is_dump and pg:
+            try:
+                _pg_drop(pg, drill_db)
+            except Exception as e:
+                log.error(f"  restore drill: could not drop scratch database {drill_db}: {e}")
     res["seconds"] = round(time.monotonic() - t0, 2)
     c = get_connection()
     try:
@@ -409,6 +551,14 @@ def restore(source: str, target: str | None = None) -> dict:
     v = verify(path)
     if not v["ok"]:
         raise RuntimeError(f"source failed verification: {v.get('error')}")
+    if path.suffix == ".dump":     # PostgreSQL: restore into a NEW database (never the live one)
+        pg = _pg_url()
+        if not pg:
+            raise RuntimeError("a PostgreSQL dump restores only where ATIP runs on PostgreSQL")
+        dbname = target or f"atip_restored_{datetime.now():%Y%m%d_%H%M%S}"
+        got = _pg_restore_into(path, pg, dbname)
+        return {"restored_to": f"database {dbname}", "source": str(path), "verified": got == v["tables"],
+                "sha256_match": True, "tables": got}
     tgt = Path(target) if target else Path("atip_data/restore") / f"atip-restored-{datetime.now():%Y%m%d-%H%M%S}.db"
     if tgt.resolve() == Path(DB_PATH).resolve():
         raise RuntimeError("restore never overwrites the live database; stop ATIP and swap files manually")

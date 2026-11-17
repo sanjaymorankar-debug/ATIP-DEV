@@ -394,3 +394,38 @@ def test_vacuum_runs_after_a_commit_and_refuses_inside_a_transaction(live_db):
         assert c.execute("SELECT COUNT(*) FROM v").fetchone()[0] == 2
     finally:
         c.close()
+
+
+@live_only
+def test_backup_and_restore_drill_use_pg_dump_on_postgres(live_db, monkeypatch, tmp_path):
+    """On the PostgreSQL runtime ops/backup.py writes a pg_dump archive, verifies it from the
+    archive's own data, and the restore drill restores it into a scratch database (then drops it)
+    -- nothing copies a SQLite file."""
+    import psycopg
+    import db.schema as schema
+    from ops import backup as B
+
+    monkeypatch.setattr(schema, "_PG_URL", [LIVE_URL])
+    monkeypatch.setattr(schema, "get_connection", lambda: pg.PgConnection(LIVE_URL))
+    monkeypatch.setattr(schema, "DB_PATH", tmp_path / "must-not-exist.db")
+    monkeypatch.chdir(tmp_path)
+    schema.init_db()
+    c = pg.PgConnection(LIVE_URL)
+    try:
+        c.executemany("INSERT INTO prices_daily (symbol, date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                      [("AAA", f"2026-11-{d:02d}", 1, 2, 0.5, 1.5, 100) for d in range(1, 8)])
+        c.commit()
+    finally:
+        c.close()
+
+    res = B.backup("manual")
+    assert res["status"] == "VERIFIED", res
+    assert res["path"].endswith(".dump") and res["tables"]["prices_daily"] == 7
+    assert not (tmp_path / "must-not-exist.db").exists()
+
+    drill = B.restore_drill(notify=False)
+    assert drill["status"] == "SUCCESS", drill
+    assert drill["source"] == "local" and drill["mismatches"] == {}
+    with psycopg.connect(LIVE_URL) as a:
+        left = a.execute("SELECT count(*) FROM pg_database WHERE datname LIKE 'atip_drill_%'").fetchone()[0]
+    assert left == 0, "the scratch database is dropped after the drill"
