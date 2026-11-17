@@ -10,6 +10,36 @@ the app: since the capital plan block went into the live `atip_data/config.json`
 failed. Fixed in `tests/conftest.py` (one isolating line, test-only, uncommitted; section 5). The watch items below are
 known and none of them stops ATIP from trading today in PAPER.
 
+## Addendum 2, 18 Nov 00:20 IST: the token recovered on its own; the Mac copy was retired the same evening
+
+* **Token:** the 08:00 automatic retry on 17 Nov worked (`OK: new Dhan token saved via generateAccessToken`, valid to
+  18 Nov 08:00), and the 08:45 pre-open gate passed. "Invalid TOTP" at 06:30 has happened before (6, 7, 11, 12 Oct)
+  and cleared on a later try, so the guess below that TOTP was reset on the account was wrong. No owner action was
+  needed; the owner's `vault-set` did not store anything (vault unchanged since 08:00).
+* **The Mac stopped trading at 11:58 IST 17 Nov.** Dhan quotes came back empty from 11:55:31; the exit-monitor alert
+  (CAP-05) went to Telegram at 11:57:32; the log ends at 11:58:43 with no shutdown line. At 20:59 IST both LaunchAgents
+  (`com.atip.platform`, `com.atip.dhan-token-refresh`) were moved to `~/Library/LaunchAgents-retired-atip/` by the
+  session "Migrate bkesari.com projects to VPS", which moved the live ATIP to a VPS on PostgreSQL (commits `a439e41`
+  20:14 IST and `6861e3b` 21:52 IST, "verified on the live VPS"). The Mac's database has no 17 Nov close, scores or
+  post-market. ATIP on the Mac was deliberately not restarted: two copies would both trade and renew the Dhan token.
+* **Not checked:** the VPS itself (no access from this session). Its readiness for 18 Nov needs a check there.
+
+## Addendum 07:05 IST: the 06:30 Dhan token renewal failed — BLOCKER until the owner renews it
+
+The token expired at 06:30 as expected, and the renewal LaunchAgent ran at 06:30:05, but Dhan refused it:
+`RenewToken failed: HTTP 400 Invalid Token`, then `generateAccessToken failed: HTTP 200 Invalid TOTP` for both codes
+(06:30:15 and 06:30:42; 2 of the tool's 4 a day used). At 07:00 `dhan_portfolio` FAILED and the pre-market quote jobs
+were PARTIAL. Not the cause: the Mac's clock (within 0.01 s of time.apple.com and time.google.com) or the config
+(`config.json` differs from the 16 Nov backup only by the capital plan block; the Dhan PIN and TOTP secret live in the
+secret store, `atip_data/secrets/vault.json`, unchanged since the successful renewal at 06:30 16 Nov). So the same
+secret that worked yesterday is refused today: most likely TOTP was reset or re-enabled on the Dhan account.
+
+Next automatic tries: 08:00 (2 codes; the tool's daily cap of 4 stays under Dhan's 5-wrong-codes lock) and the 08:45
+gate. Owner fix (ATIP's own banner): generate a token at web.dhan.co and store it with
+`.venv/bin/python -m ops vault-set DHAN_ACCESS_TOKEN` (ATIP reads the vault on each call; no restart); if TOTP was
+re-enabled, store the new secret with `.venv/bin/python -m ops vault-set DHAN_TOTP_SECRET` too, so tomorrow's 06:30
+renewal works. Until then the 08:45 gate blocks auto-pick and the 8 open positions' stops are not watched.
+
 ## 1. Checks
 
 | Area | Check | Result | Status |
