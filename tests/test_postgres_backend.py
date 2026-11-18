@@ -429,3 +429,116 @@ def test_backup_and_restore_drill_use_pg_dump_on_postgres(live_db, monkeypatch, 
     with psycopg.connect(LIVE_URL) as a:
         left = a.execute("SELECT count(*) FROM pg_database WHERE datname LIKE 'atip_drill_%'").fetchone()[0]
     assert left == 0, "the scratch database is dropped after the drill"
+
+
+# ── the SQLite -> PostgreSQL copy tool (tools/sqlite_to_postgres.py) ───────
+#
+# 18 Nov 2026: after the live copy, 10 tables' identity counters were still at 1, so the first
+# new row in each collided with a copied id (auto-pick failed 09:15-09:31 IST on
+# session_events_pkey). The tool reset a counter only when the translated DDL read exactly
+# "id BIGINT GENERATED"; it missed the two shapes ATIP really has, below.
+
+_COPY_SOURCE = [
+    # orders/sessions.py lays its columns out in a column: "id          BIGINT GENERATED ..."
+    """CREATE TABLE session_events (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id  TEXT,
+        at          TEXT)""",
+    # data/news_impact.py: the identity column is not called id
+    "CREATE TABLE news_impact (article_id INTEGER PRIMARY KEY, headline TEXT)",
+    # the one shape the old check did catch
+    "CREATE TABLE order_log (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT)",
+    # an id that is not an identity: there is no counter to move
+    "CREATE TABLE trading_sessions (id TEXT PRIMARY KEY, name TEXT)",
+]
+_COPY_ROWS = {
+    "session_events": [(7, "S1", "a"), (244, "S8", "b")],
+    "news_impact": [(3, "x"), (17624, "y")],
+    "order_log": [(1, "AAA"), (103, "PHOENIXLTD")],
+    "trading_sessions": [("S1", "one"), ("S2", "two")],
+}
+# what each identity counter must hand out next: MAX + 1
+_COPY_NEXT = {("session_events", "id"): 245, ("news_impact", "article_id"): 17625, ("order_log", "id"): 104}
+
+
+def _copy_tool():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "tools" / "sqlite_to_postgres.py"
+    spec = importlib.util.spec_from_file_location("sqlite_to_postgres_under_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _copy_source(tmp_path):
+    src = tmp_path / "copy.db"
+    c = sqlite3.connect(src)
+    for ddl in _COPY_SOURCE:
+        c.execute(ddl)
+    for table, rows in _COPY_ROWS.items():
+        c.executemany(f"INSERT INTO {table} VALUES ({','.join('?' * len(rows[0]))})", rows)
+    c.commit()
+    c.close()
+    return src
+
+
+def test_the_copy_tool_resets_every_identity_column_whatever_its_name_or_layout(tmp_path, monkeypatch):
+    """No server needed: a stand-in connection answers identity_of() as PostgreSQL does for the
+    translated DDL (the live test below checks that on a real server) and records the resets."""
+    import re
+    import db.backend
+
+    made = []
+
+    class FakePg:
+        IDENTITY = {"session_events": "id", "news_impact": "article_id", "order_log": "id",
+                    "trading_sessions": None}
+
+        def __init__(self, url):
+            self.rows, self.resets = {}, []
+            made.append(self)
+
+        def execute(self, sql, args=()):
+            m = re.match(r'SELECT COUNT\(\*\) FROM "(\w+)"', sql)
+            n = self.rows.get(m.group(1), 0) if m else None
+            return type("Cur", (), {"fetchone": lambda _self: (n,)})()
+
+        def executemany(self, sql, batch):
+            name = re.match(r'INSERT INTO "(\w+)"', sql).group(1)
+            self.rows[name] = self.rows.get(name, 0) + len(batch)
+
+        def identity_of(self, table):
+            return self.IDENTITY[table]
+
+        def reset_identity(self, table, column="id"):
+            self.resets.append((table, column))
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(db.backend, "PgConnection", FakePg)
+    tool = _copy_tool()
+    src = _copy_source(tmp_path)
+    r = tool.execute(src, "postgresql://unused/none", tool.plan(src))
+    assert r["ok"], r
+    assert sorted(made[0].resets) == sorted(_COPY_NEXT), \
+        "every identity counter is moved, whatever the column is called or how the DDL is laid out"
+
+
+@live_only
+def test_the_copy_tool_leaves_no_identity_counter_behind_the_copied_ids(live_db, tmp_path):
+    """End to end on a real server: after the copy, the next new row in every identity table
+    gets MAX + 1, not an id that is already taken."""
+    tool = _copy_tool()
+    src = _copy_source(tmp_path)
+    r = tool.execute(src, LIVE_URL, tool.plan(src))
+    assert r["ok"], r
+    for (table, col), want in _COPY_NEXT.items():
+        got = live_db.execute(f"INSERT INTO {table} DEFAULT VALUES RETURNING {col}").fetchone()[0]
+        assert got == want, (table, col, got)
+    # nothing else moved: the text-keyed table copied as it was
+    assert live_db.execute("SELECT count(*) FROM trading_sessions").fetchone()[0] == 2

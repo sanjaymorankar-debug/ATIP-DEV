@@ -85,9 +85,13 @@ def execute(source: Path, target: str, p: dict) -> dict:
                     break
                 pg.executemany(f'INSERT INTO "{name}" ({",".join(chr(34) + x + chr(34) for x in cols)}) VALUES ({ph})',
                                batch)
-            if "id" in cols and re.search(rf'CREATE TABLE IF NOT EXISTS "?{name}"?\s*\([^;]*\bid BIGINT GENERATED',
-                                          "\n".join(p["ddl"])):
-                pg.reset_identity(name)                     # W38: new rows must not reuse copied ids
+            # W38: new rows must not reuse copied ids. Ask PostgreSQL for the table's identity column
+            # instead of matching the DDL text: the text check missed aligned columns
+            # ("id          BIGINT GENERATED", session_events) and identities not called id
+            # (news_impact.article_id), which left 10 counters at 1 after the 17 Nov 2026 copy.
+            ident = pg.identity_of(name)
+            if ident:
+                pg.reset_identity(name, ident)
             pg.commit()
             n = pg.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
             results.append({"table": name, "source_rows": t["rows"], "target_rows": n, "ok": n == t["rows"]})
