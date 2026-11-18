@@ -29,6 +29,9 @@ Postgres needs, without forcing it:
                         the transaction (_statement), lastrowid and total_changes are filled, results
                         are int / float rather than Decimal or bool, cursor() is a real cursor (so
                         pandas.read_sql works), and the session runs in UTC like SQLite's 'now'.
+                        SQLite's transaction statements sent through execute() -- BEGIN [DEFERRED |
+                        IMMEDIATE | EXCLUSIVE], COMMIT / END, ROLLBACK -- are carried out, not passed on:
+                        BEGIN IMMEDIATE takes the database write lock (see _tx_control).
 
 Activation (db/schema.get_connection): config.json "database": {"backend": "postgres",
 "allow_experimental": true} plus a DSN in ATIP_PG_DSN (secret). BOTH are required: until every query has
@@ -689,6 +692,25 @@ def _register_loaders(conn):
     conn.adapters.register_loader("bool", _Bool)
 
 
+# ── SQLite transaction control on PostgreSQL ─────────────────────────────
+#
+# ATIP starts its check-then-write transactions with SQLite's `BEGIN IMMEDIATE` (ops/jobs.acquire --
+# job locks and the scheduler leader lease --, ops/migrations.apply, orders/algo_gtt.place_dummy_buy).
+# PostgreSQL has no such statement: until 18 Nov 2026 it was passed through and failed as a syntax error,
+# so on the VPS every job lock silently failed open, every Kite-retest dummy buy came back "Busy, try
+# again" and any new migration would have been recorded FAILED. IMMEDIATE means "take the database's
+# write lock now, waiting up to the busy timeout, else fail with 'database is locked'". The equivalent
+# here is one transaction-scoped advisory lock that every BEGIN IMMEDIATE / EXCLUSIVE takes: those
+# transactions run one at a time, as in SQLite, and the lock ends with the COMMIT / ROLLBACK. (SQLite
+# also makes plain writers wait; on PostgreSQL row locks and unique indexes cover those, and every
+# statement in the transaction still sees the latest committed rows -- READ COMMITTED.)
+WRITE_LOCK_KEY = 0x4154_4950_5752_4954      # "ATIPWRIT": one key for the whole database, like SQLite's lock
+WRITE_LOCK_WAIT_S = 60.0                    # db/schema.BUSY_TIMEOUT_MS: how long SQLite waits for the lock
+_TX_CONTROL = re.compile(r"\s*(?:(BEGIN)(?:\s+(DEFERRED|IMMEDIATE|EXCLUSIVE))?|(COMMIT|END)|(ROLLBACK))"
+                         r"(?:\s+TRANSACTION)?\s*;?\s*", re.I)
+_DML = re.compile(r"\s*(INSERT|UPDATE|DELETE)\b", re.I)
+
+
 class PgConnection:
     def __init__(self, dsn: str):
         try:
@@ -704,6 +726,8 @@ class PgConnection:
         self._ident = {}
         self.total_changes = 0
         self.row_factory = None                                     # accepted for sqlite3 compatibility
+        self._dirty = False             # a write since the last commit / rollback (sqlite3's open transaction)
+        self.write_lock_wait = WRITE_LOCK_WAIT_S
 
     def pk_of(self, table):
         """[[columns] per unique index], primary key first."""
@@ -775,7 +799,45 @@ class PgConnection:
                 self._conn.autocommit = False
         return _Cursor(_Done(-1))
 
+    def _tx_control(self, m):
+        """BEGIN [DEFERRED | IMMEDIATE | EXCLUSIVE] / COMMIT / END / ROLLBACK, as sqlite3 runs them.
+
+        psycopg opens a transaction before the first statement, reads included; Python's sqlite3 opens one
+        only before INSERT / UPDATE / DELETE. So a transaction that holds nothing but reads (or DDL, which
+        sqlite3 commits as it goes) is one SQLite would not have: it is committed and the BEGIN goes ahead.
+        After an uncommitted write SQLite refuses the BEGIN, and so does this. COMMIT / ROLLBACK with no
+        transaction open are no-ops."""
+        from psycopg.pq import TransactionStatus
+        begin, mode, commit, rollback = m.groups()
+        if commit:
+            self.commit()
+        elif rollback:
+            self.rollback()
+        else:
+            if self._conn.info.transaction_status != TransactionStatus.IDLE:
+                if self._dirty:
+                    raise sqlite3.OperationalError("cannot start a transaction within a transaction")
+                self.commit()
+            if (mode or "").upper() in ("IMMEDIATE", "EXCLUSIVE"):
+                self._write_lock()
+        return _Cursor(_Done(-1))
+
+    def _write_lock(self):
+        """The database write lock for this transaction (see WRITE_LOCK_KEY): waits up to write_lock_wait
+        seconds, then fails the way SQLite does when its busy timeout runs out."""
+        import time
+        deadline = time.monotonic() + self.write_lock_wait
+        with sqlite_errors():
+            while not self._conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (WRITE_LOCK_KEY,)).fetchone()[0]:
+                if time.monotonic() >= deadline:
+                    self._conn.rollback()
+                    raise sqlite3.OperationalError("database is locked")
+                time.sleep(0.05)
+
     def execute(self, sql, params=()):
+        tx = _TX_CONTROL.fullmatch(sql)
+        if tx:
+            return self._tx_control(tx)
         # Translation happens outside sqlite_errors(): it touches no server, so a
         # statement this backend cannot express raises UnsupportedSQL rather than
         # arriving disguised as a database error.
@@ -804,8 +866,10 @@ class PgConnection:
             if ident:
                 rows = cur.fetchall()
                 rowid = rows[-1][0] if rows else None
-        if re.match(r"\s*(INSERT|UPDATE|DELETE)\b", stmt, re.I) and cur.rowcount > 0:
-            self.total_changes += cur.rowcount
+        if _DML.match(stmt):
+            self._dirty = True
+            if cur.rowcount > 0:
+                self.total_changes += cur.rowcount
         return _Cursor(cur, rowid) if not ident else _Cursor(_Done(cur.rowcount), rowid)
 
     def executemany(self, sql, seq):
@@ -814,6 +878,8 @@ class PgConnection:
         with sqlite_errors():
             cur = self._conn.cursor()
             self._statement(lambda: cur.executemany(stmt, rows))
+        if _DML.match(stmt):
+            self._dirty = True
         if cur.rowcount > 0:
             self.total_changes += cur.rowcount
         return _Cursor(cur)
@@ -827,10 +893,12 @@ class PgConnection:
     def commit(self):
         with sqlite_errors():
             self._conn.commit()
+        self._dirty = False
 
     def rollback(self):
         with sqlite_errors():
             self._conn.rollback()
+        self._dirty = False
 
     def close(self):
         self._conn.close()
