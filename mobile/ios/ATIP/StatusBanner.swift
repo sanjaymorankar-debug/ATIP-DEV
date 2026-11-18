@@ -14,6 +14,8 @@ struct OperatingState: Equatable {
     var role = ""                           // "VIEWER" on the view-only web server
     var feedText: String? = nil             // the live price feed in the web pages' words (UX audit H1, 3 Nov 2026)
     var gateText: String? = nil             // KGF-09 (16 Nov 2026): the breadth regime gate, only while it is closed
+    var sessionText: String? = nil          // session engine (18 Nov 2026): sessions paused below floor / completed
+    var sessionWarn = false                 // true: a session is paused below its floor (amber); false: completed only
     var reachable = true
 
     /// Environment badge colours (design system): PAPER teal, SANDBOX violet, LIVE red.
@@ -34,6 +36,10 @@ struct OperatingState: Equatable {
         role = js["role"] as? String ?? ""
         feedText = (js["feed"] as? [String: Any])?["text"] as? String
         if let g = (js["regime_gate"] as? [String: Any])?["text"] as? String, !g.isEmpty { gateText = g }
+        if let s = js["session_alert"] as? [String: Any], let t = s["text"] as? String, !t.isEmpty {
+            sessionText = t
+            sessionWarn = (s["tone"] as? String) == "warn"
+        }
     }
 
     init() {}
@@ -41,7 +47,9 @@ struct OperatingState: Equatable {
     /// UI fixes v2 (H10, 2026-11-03), as on the web: a normal run -- RUNNING, kill switch off, not LIVE, no manual
     /// override, ATIP answering -- shows only the environment pill and a small "● Running" pill. The full-width
     /// strip is for what is not normal: stopped, resuming, halted, LIVE money, a manual override, not reachable.
-    var isNormal: Bool { reachable && status == "RUNNING" && !halted && env != "LIVE" && overrideMode == nil && gateText == nil }
+    var isNormal: Bool {
+        reachable && status == "RUNNING" && !halted && env != "LIVE" && overrideMode == nil && gateText == nil && sessionText == nil
+    }
 
     /// The run pill's words when normal, else the strip's, with the same wording as the web banner
     /// (dashboard/global_asia.py). The strip always carries a symbol (● running, ⏸ stopped, ↻ resuming, ⛔ halted)
@@ -67,6 +75,7 @@ struct OperatingState: Equatable {
             parts = state
         }
         if let gateText { parts.insert("◐ \(gateText)", at: min(1, parts.count)) }
+        if let sessionText { parts.insert((sessionWarn ? "⚠ " : "✓ ") + sessionText, at: min(1, parts.count)) }
         if let overrideMode { parts.append("manual \(overrideMode)") }
         if let f = feedText, !f.isEmpty { parts.insert(f, at: min(1, parts.count)) }   // the web's one feed label (UX audit H1)
         if role == "VIEWER" { parts.append("view only") }
@@ -83,7 +92,8 @@ struct OperatingState: Equatable {
         switch status {
         case "STOPPED": return (Color(hex: 0x7C2D12), Color(hex: 0xFFEDD5))
         case "RESUMING": return (Color(hex: 0x1E3A8A), Color(hex: 0xDBEAFE))
-        case "RUNNING" where gateText != nil: return (Color(hex: 0x78350F), Color(hex: 0xFDE68A))
+        case "RUNNING" where gateText != nil || sessionWarn: return (Color(hex: 0x78350F), Color(hex: 0xFDE68A))
+        case "RUNNING" where sessionText != nil: return (Color(hex: 0x1E3A8A), Color(hex: 0xDBEAFE))
         case "RUNNING": return (Color(hex: 0x064E3B), Color(hex: 0xD1FAE5))
         default: return (Color(hex: 0x334155), .white)
         }

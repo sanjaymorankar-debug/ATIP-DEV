@@ -649,7 +649,71 @@ var m=location.hash.match(/^#setup-(S\d+)$/);if(m)setTimeout(function(){window.a
 })();</script>"""
 
 
-def _scard(s: dict) -> str:
+def _engine_meter(done: int, cap: int) -> str:
+    """Completed trades out of the session's maximum (500), as a meter."""
+    pct = min(100.0, done / cap * 100) if cap else 0.0
+    return (f'<div class="ax-progress" role="meter" aria-valuemin="0" aria-valuemax="{cap}" aria-valuenow="{done}" '
+            f'aria-label="{done} of {cap} completed trades"><span style="width:{pct:.1f}%"></span></div>'
+            f'<div class="ax-progress-l"><span>0</span><span>{done} of {cap} trades</span><span>{cap}</span></div>')
+
+
+def _engine_line(g: dict | None) -> str:
+    """The session engine's part of a card (18 Nov 2026): state, balance against the seed, growth, the 500-trade
+    meter, win rate and legs."""
+    if not g:
+        return ""
+    tone = {"ACTIVE": "good", "CREATED": "info", "COMPLETED": "info"}.get(g["state"], "warn")
+    wr = f'{g["win_rate_pct"]:.1f}%' if g.get("win_rate_pct") is not None else "—"
+    seed = (f'seed {K.money(g["seed_capital"])}' + (f' + {K.money(g["transfers"])} moved in' if g.get("transfers") else ""))
+    return (f'<div class="ax-engine" data-state="{e(g["state"])}">'
+            f'<div class="ax-row" style="justify-content:space-between;gap:8px"><span>{K.status(g["state"], tone)}</span>'
+            f'<span class="ax-small">Balance <b>{K.money(g["current_balance"])}</b> · {seed} · '
+            f'<b>{K.pct(g["growth_pct"])}</b></span></div>' + _engine_meter(g["completed_trades"], g["max_completed_trades"]) +
+            f'<div class="ax-small ax-muted">Win rate {wr} · {g["wins"]} won, {g["losses"]} lost · {g["legs"]} legs · '
+            f'pauses under {K.money(g["floor"])}</div></div>')
+
+
+def _engine_panel(conn) -> tuple[str, dict]:
+    """The session engine's summary row (18 Nov 2026) and its per-session figures for the cards."""
+    try:
+        from orders import session_engine as SE
+        ov = SE.overview(conn)
+    except Exception as ex:                                  # the page must still draw
+        return f'<div class="ax-banner warn ax-small">Session engine unavailable: {e(ex)}</div>', {}
+    sm = ov["summary"]
+    states = " · ".join(f"{n} {k.lower()}" for k, n in sorted(sm["by_state"].items()))
+    fits = sm.get("fits_new_sessions") or 0
+    tiles = '<div class="ax-tiles">' + "".join([
+        K.tile("Sessions", f'<span class="ax-num">{sm["sessions"]}</span>', e(states)),
+        K.tile("Combined balance", K.money(sm["combined_balance"]), f'capital {K.money(sm["capital"])}'),
+        K.tile("Combined P&L", K.money(sm["combined_pnl"], True),
+               f'realised {K.money(sm["realised_pnl"], True)} · open {K.money(sm["unrealised_pnl"], True)}', True),
+        K.tile("Reserve", K.money(sm["reserve"]),
+               (f'buffer {K.money(sm["buffer"])} · ' if sm.get("buffer") else "") +
+               (f'room for {fits} more ₹25K session{"s" if fits != 1 else ""}' if fits else "below one ₹25K seed"))]) + "</div>"
+    btn = ('<button class="ax-btn" type="button" onclick="document.getElementById(\'ax-engine-new\').showModal()">'
+           'Split reserve into ₹25K sessions…</button>') if fits else ""
+    dlg = ('<dialog class="ax-dialog" id="ax-engine-new" aria-labelledby="ax-engine-new-h"><form id="ax-engine-form">'
+           '<div class="ax-dhead" id="ax-engine-new-h">New ₹25,000 sessions from the reserve</div><div class="ax-dbody">'
+           f'<p class="ax-small">The reserve fits <b>{fits}</b> session(s) of ₹25,000 (PAPER). Each gets its own wallet and '
+           'starts CREATED: it trades nothing until you start it.</p>'
+           f'<div class="ax-field"><label for="en-n">How many</label><input class="ax-input" id="en-n" name="n" '
+           f'inputmode="numeric" value="{fits}"></div>'
+           '<label class="ax-check"><input type="checkbox" name="ack"> <span>I understand this moves paper cash from the '
+           'reserve into the new sessions</span></label><div class="ax-err" id="en-err"></div></div><div class="ax-dfoot">'
+           '<button class="ax-btn" type="button" data-ax-dclose>Cancel</button><button class="ax-btn primary" type="submit">'
+           'Create sessions</button></div></form></dialog>'
+           """<script>(function(){var f=document.getElementById('ax-engine-form');if(!f)return;f.addEventListener('submit',function(ev){
+ev.preventDefault();var er=document.getElementById('en-err');er.textContent='';if(!f.ack.checked){er.textContent='Tick the box first.';return;}
+AX.api('/api/v2/engine/create',{body:{n:parseInt(f.n.value,10),ack:true}}).then(function(r){AX.toast('Created '+r.created.join(', ')+'.');
+setTimeout(function(){location.reload();},900);}).catch(function(e){er.textContent=e.message;});});})();</script>""") if fits else ""
+    head = ('<h2 class="ax-h2">₹25K session engine</h2><p class="ax-small ax-muted">Each session trades only with its own '
+            'balance; profits stay in it. A session stops after 500 completed trades, and pauses (with an alert) if its '
+            f'balance falls under {ov["settings"]["floor_pct"]:g}% of its capital. Times are IST.</p>')
+    return head + tiles + (f'<div class="ax-row">{btn}</div>' if btn else "") + dlg, {g["session_id"]: g for g in ov["sessions"]}
+
+
+def _scard(s: dict, g: dict | None = None) -> str:
     ti = s["tiles"]
     head = (f'<div class="ax-stop"><a class="ax-sname" href="/sessions/{e(s["id"])}">{e(s["id"])} · {e(s["name"])}</a>'
             f'{K.mode_status(s["mode"], s["status"])}</div><div class="ax-small ax-muted">{e(s.get("strategy") or "")}'
@@ -667,7 +731,7 @@ def _scard(s: dict) -> str:
             f'<div class="ax-val">{K.money(ti["actual_pnl"], True)}</div></div></div>'
             f'<div class="ax-small ax-muted">Equity {K.money(ti["equity"])} · started {K.money(ti["start_capital"])} · '
             f'cycles {ti["cycles_done"]}/{ti["max_cycles"]} · floor {K.money(ti["floor"])}</div>'
-            f'{K.spark(s["spark"], s["id"] + " actual equity")}{opens}{waiting}'
+            f'{_engine_line(g)}{K.spark(s["spark"], s["id"] + " actual equity")}{opens}{waiting}'
             f'<span class="ax-proposed" data-proposed="{e(s["id"])}" hidden></span>'
             f'<div class="ax-row"><button class="ax-btn sm" type="button" aria-label="Set up {e(s["id"])}" onclick="axSetup(\'{e(s["id"])}\')">Setup</button>'
             f'<a class="ax-btn sm" href="/sessions/{e(s["id"])}" aria-label="{e(s["id"])} cycles and P&amp;L">Cycles &amp; P&amp;L</a></div></div>')
@@ -805,8 +869,9 @@ def sessions(conn, root="", app=False) -> str:
     new_btn, new_dlg = _new_session(conn, ov["sessions"])
     cap_btn, cap_dlg = _capital_plan(conn)
     new_btn, new_dlg = new_btn + cap_btn, new_dlg + cap_dlg
-    body = (_closed_banner() + gate_banner(conn) + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
-            "".join(_scard(s) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split + new_dlg +
+    eng_html, eng = _engine_panel(conn)                              # 18 Nov 2026: the Rs 25K session engine
+    body = (_closed_banner() + gate_banner(conn) + eng_html + tiles + _board_html(conn) + '<h2 class="ax-h2">Sessions</h2><div class="ax-sessions">' +
+            "".join(_scard(s, eng.get(s["id"])) for s in ov["sessions"]) + "</div>" + mult + help_ + SETUP_DRAWER + split + new_dlg +
             f'<div id="ax-sdata" hidden data-json="{e(json.dumps(data, default=str))}"></div>' + SETUP_JS)
     return page("Sessions", body, "/sessions", root=root, app=app,
                 job="Independent mini-funds. Set each one's money and rules, and see what it really earned: gross "
@@ -976,8 +1041,8 @@ def session_detail(conn, sid: str, tab: str = "manage", root="", app=False) -> s
     b = C.book(conn, sid)
     s = b["session"]
     path = f"/sessions/{sid}"
-    mar = [("Manage", path, tab == "manage"), ("Accounting", path + "?tab=accounting", tab == "accounting"),
-           ("Reports", path + "?tab=reports", tab == "reports")]
+    mar = [("Manage", path, tab == "manage"), ("Trades & ledger", path + "?tab=trades", tab == "trades"),
+           ("Accounting", path + "?tab=accounting", tab == "accounting"), ("Reports", path + "?tab=reports", tab == "reports")]
     title = f"{sid} · {s['name']}"
     actions = (f'<a class="ax-btn" href="/sessions#setup-{e(sid)}">Setup</a>'
                f'<button class="ax-btn primary" type="button" data-gen-book="{e(sid)}">Download cycle book (PDF)</button>')
@@ -990,6 +1055,8 @@ AX.api('/api/v2/reports/generate',{body:{kind:'session_cycle_book',params:{sessi
         return page(title, body, path, root=root, app=app, mar=mar)
     ti = b["tiles"]
     rows = R._cycle_rows(b["cycles"])
+    if tab == "trades":                                              # 18 Nov 2026: the session engine's drill-down
+        return page(title, _engine_drill(conn, sid), path, "tab=trades", root=root, app=app, mar=mar, actions=actions)
     if tab == "accounting":
         led = LG.session_ledger(conn, sid)
         lrows = [{**r, "at": str(r["at"]).replace("T", " ")[:16]} for r in led["rows"]]
@@ -1066,6 +1133,44 @@ AX.api('/api/v2/reports/generate',{{body:{{kind:'session_cycle_book',params:{{se
             '<div style="margin-top:14px"></div>' + charts + timeline + table + _worked_example() + gen_js)
     return page(title, body, path, root=root, app=app, mar=mar, actions=actions,
                 job=f"{s.get('strategy') or ''} · {s['mode']} · {s['status']} · {b['pool']['exit_rule']}")
+
+
+def _engine_drill(conn, sid: str) -> str:
+    """One session's wallet, its trade list and its ledger history, each with a CSV export (times IST)."""
+    from orders import session_engine as SE
+    SE.sync(conn, sid)
+    g = SE.stats(conn, sid)
+    if not g:
+        return f'<div class="ax-empty">{e(sid)} has no seed capital yet.</div>'
+    wr = f'{g["win_rate_pct"]:.1f}%' if g.get("win_rate_pct") is not None else "—"
+    tl = '<div class="ax-tiles">' + "".join([
+        K.tile("State", e(g["state"]), f'since {e(str(g.get("created_at_ist") or "")[:16].replace("T", " "))} IST'),
+        K.tile("Current balance", K.money(g["current_balance"]), f'{K.pct(g["growth_pct"])} on {K.money(g["capital"])}'),
+        K.tile("Cash available", K.money(g["cash_available"]), f'invested {K.money(g["invested_value"])}'),
+        K.tile("Realised P&L", K.money(g["realised_pnl"], True), f'charges {K.money(g["charges"])}', True),
+        K.tile("Unrealised P&L", K.money(g["unrealised_pnl"], True), "", True),
+        K.tile("Completed trades", f'<span class="ax-num">{g["completed_trades"]} / {g["max_completed_trades"]}</span>',
+               f'{g["legs"]} legs · {g["open_trades"]} open'),
+        K.tile("Win rate", wr, f'{g["wins"]} won · {g["losses"]} lost'),
+        K.tile("Average P&L / trade", K.money(g["avg_pnl_per_trade"], True) if g.get("avg_pnl_per_trade") is not None else "—"),
+        K.tile("Pause floor", K.money(g["floor"]), f'{g["floor_pct"]:g}% of capital: under it the session pauses')]) + "</div>"
+    trs = [{**t, "opened": str(t.get("opened_at_ist") or "").replace("T", " ")[:16],
+            "closed": str(t.get("closed_at_ist") or "").replace("T", " ")[:16]} for t in SE.trades(conn, sid)]
+    led = [{**r, "when": str(r.get("ts_ist") or "").replace("T", " ")[:16]} for r in SE.ledger_rows(conn, sid)]
+    csv = lambda kind: (f'<a class="ax-btn sm" href="/api/v2/engine/{e(sid)}/{kind}.csv" download '
+                        f'title="Every column, times in IST">Full CSV (IST)</a>')
+    return (_closed_banner() + _engine_meter(g["completed_trades"], g["max_completed_trades"]) + tl +
+            f'<div class="ax-row" style="justify-content:space-between"><h2 class="ax-h2">Trades</h2>{csv("trades")}</div>' +
+            K.table("t-etrades", [("opened", "Opened (IST)", "text"), ("symbol", "Symbol", "text"), ("qty", "Qty", "int"),
+                                  ("buy_price", "Buy", "money"), ("sell_price", "Sell", "money"), ("charges", "Charges", "money"),
+                                  ("net_pnl", "Net P&L", "pnl"), ("status", "Status", "text"), ("closed", "Closed (IST)", "text")],
+                    list(reversed(trs)), name=f"{sid}_trades", empty="No trade yet.") +
+            f'<div class="ax-row" style="justify-content:space-between"><h2 class="ax-h2">Ledger history</h2>{csv("ledger")}</div>'
+            '<p class="ax-small ax-muted">The session\'s own cash book: its seed, money moved in or out, every BUY and SELL '
+            'leg and the charges on each. A PNL line notes a completed trade\'s net result and does not move the balance.</p>' +
+            K.table("t-eledger", [("seq", "#", "int"), ("when", "When (IST)", "text"), ("type", "Type", "text"),
+                                  ("memo", "What", "text"), ("amount", "Amount", "pnl"), ("balance_after", "Balance", "money")],
+                    list(reversed(led)), name=f"{sid}_ledger", empty="No ledger line yet."))
 
 
 # ── Accounting ───────────────────────────────────────────────────────────────────────────────

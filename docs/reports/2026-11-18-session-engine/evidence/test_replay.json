@@ -1,0 +1,322 @@
+{
+ "started_ist": "2026-11-18T15:29:21",
+ "cancelled_from_run1": 5,
+ "engine_check": [
+  {
+   "session": "S12",
+   "to": "PAUSED",
+   "reason": "BELOW_FLOOR"
+  },
+  {
+   "session": "S13",
+   "to": "COMPLETED"
+  }
+ ],
+ "after": {
+  "S11": {
+   "session_id": "S11",
+   "name": "Options (spare cash)",
+   "status": "RUNNING",
+   "state": "ACTIVE",
+   "mode": "AUTO",
+   "auto_pick": false,
+   "seed_capital": 25000.0,
+   "transfers": 0,
+   "capital": 25000.0,
+   "cash_available": 26369.33,
+   "invested_value": 0,
+   "realised_pnl": 1369.33,
+   "unrealised_pnl": 0,
+   "current_balance": 26369.33,
+   "charges": 145.67,
+   "growth_pct": 5.48,
+   "legs": 4,
+   "completed_trades": 2,
+   "open_trades": 0,
+   "wins": 2,
+   "losses": 0,
+   "win_rate_pct": 100.0,
+   "avg_pnl_per_trade": 684.66,
+   "max_completed_trades": 500,
+   "progress_pct": 0.4,
+   "floor_pct": 80.0,
+   "floor": 20000.0,
+   "created_at_ist": "2026-11-18T15:28:31",
+   "completed_at_ist": null,
+   "pause_reason": null
+  },
+  "S12": {
+   "session_id": "S12",
+   "name": "Options (spare cash)",
+   "status": "PAUSED",
+   "state": "PAUSED \u2013 BELOW FLOOR",
+   "mode": "AUTO",
+   "auto_pick": false,
+   "seed_capital": 25000.0,
+   "transfers": 0,
+   "capital": 25000.0,
+   "cash_available": 18735.38,
+   "invested_value": 0,
+   "realised_pnl": -6264.62,
+   "unrealised_pnl": 0,
+   "current_balance": 18735.38,
+   "charges": 64.62,
+   "growth_pct": -25.06,
+   "legs": 2,
+   "completed_trades": 1,
+   "open_trades": 0,
+   "wins": 0,
+   "losses": 1,
+   "win_rate_pct": 0.0,
+   "avg_pnl_per_trade": -6264.62,
+   "max_completed_trades": 500,
+   "progress_pct": 0.2,
+   "floor_pct": 80.0,
+   "floor": 20000.0,
+   "created_at_ist": "2026-11-18T15:28:31",
+   "completed_at_ist": null,
+   "pause_reason": "BELOW_FLOOR"
+  },
+  "S13": {
+   "session_id": "S13",
+   "name": "Options (spare cash)",
+   "status": "COMPLETED",
+   "state": "COMPLETED",
+   "mode": "AUTO",
+   "auto_pick": false,
+   "seed_capital": 25000.0,
+   "transfers": 0,
+   "capital": 25000.0,
+   "cash_available": 26372.11,
+   "invested_value": 0,
+   "realised_pnl": 1372.11,
+   "unrealised_pnl": 0,
+   "current_balance": 26372.11,
+   "charges": 145.89,
+   "growth_pct": 5.49,
+   "legs": 4,
+   "completed_trades": 2,
+   "open_trades": 0,
+   "wins": 2,
+   "losses": 0,
+   "win_rate_pct": 100.0,
+   "avg_pnl_per_trade": 686.06,
+   "max_completed_trades": 2,
+   "progress_pct": 100.0,
+   "floor_pct": 80.0,
+   "floor": 20000.0,
+   "created_at_ist": "2026-11-18T15:28:31",
+   "completed_at_ist": "2026-11-18T15:29:22",
+   "pause_reason": null
+  }
+ },
+ "order_log": [
+  {
+   "timestamp": "2026-11-18 15:29:03",
+   "symbol": "RPLA",
+   "transaction_type": "BUY",
+   "quantity": 249,
+   "status": "BLOCKED_RISK_LIMIT",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:03",
+   "symbol": "RPLB",
+   "transaction_type": "BUY",
+   "quantity": 499,
+   "status": "BLOCKED_RISK_LIMIT",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:03",
+   "symbol": "RPLC",
+   "transaction_type": "BUY",
+   "quantity": 124,
+   "status": "BLOCKED_RISK_LIMIT",
+   "session_id": "S12"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:03",
+   "symbol": "RPLD",
+   "transaction_type": "BUY",
+   "quantity": 312,
+   "status": "BLOCKED_RISK_LIMIT",
+   "session_id": "S13"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:04",
+   "symbol": "RPLE",
+   "transaction_type": "BUY",
+   "quantity": 624,
+   "status": "BLOCKED_RISK_LIMIT",
+   "session_id": "S13"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLA",
+   "transaction_type": "BUY",
+   "quantity": 249,
+   "status": "PLACED",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLA",
+   "transaction_type": "SELL",
+   "quantity": 249,
+   "status": "PLACED",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLB",
+   "transaction_type": "BUY",
+   "quantity": 512,
+   "status": "PLACED",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLB",
+   "transaction_type": "SELL",
+   "quantity": 512,
+   "status": "PLACED",
+   "session_id": "S11"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLC",
+   "transaction_type": "BUY",
+   "quantity": 124,
+   "status": "PLACED",
+   "session_id": "S12"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:21",
+   "symbol": "RPLC",
+   "transaction_type": "SELL",
+   "quantity": 124,
+   "status": "PLACED",
+   "session_id": "S12"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:22",
+   "symbol": "RPLD",
+   "transaction_type": "BUY",
+   "quantity": 312,
+   "status": "PLACED",
+   "session_id": "S13"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:22",
+   "symbol": "RPLD",
+   "transaction_type": "SELL",
+   "quantity": 312,
+   "status": "PLACED",
+   "session_id": "S13"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:22",
+   "symbol": "RPLE",
+   "transaction_type": "BUY",
+   "quantity": 641,
+   "status": "PLACED",
+   "session_id": "S13"
+  },
+  {
+   "timestamp": "2026-11-18 15:29:22",
+   "symbol": "RPLE",
+   "transaction_type": "SELL",
+   "quantity": 641,
+   "status": "PLACED",
+   "session_id": "S13"
+  }
+ ],
+ "alerts": [
+  {
+   "session": "S12",
+   "state": "PAUSED \u2013 BELOW FLOOR",
+   "tone": "warn",
+   "text": "S12 paused: below floor"
+  },
+  {
+   "session": "S13",
+   "state": "COMPLETED",
+   "tone": "info",
+   "text": "S13 completed 2 trades"
+  }
+ ],
+ "state_events": [
+  {
+   "session_id": "S11",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S12",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S13",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S14",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S15",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S16",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S17",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S18",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S19",
+   "at": "2026-11-18T15:28:31",
+   "detail": "{\"from\": \"PAUSED\", \"to\": \"CREATED\", \"reason\": \"split of the reserve into Rs 25,000 sessions\"}"
+  },
+  {
+   "session_id": "S11",
+   "at": "2026-11-18T15:29:03",
+   "detail": "{\"from\": \"CREATED\", \"to\": \"ACTIVE\", \"reason\": \"activated by the owner\"}"
+  },
+  {
+   "session_id": "S12",
+   "at": "2026-11-18T15:29:03",
+   "detail": "{\"from\": \"CREATED\", \"to\": \"ACTIVE\", \"reason\": \"activated by the owner\"}"
+  },
+  {
+   "session_id": "S13",
+   "at": "2026-11-18T15:29:03",
+   "detail": "{\"from\": \"CREATED\", \"to\": \"ACTIVE\", \"reason\": \"activated by the owner\"}"
+  },
+  {
+   "session_id": "S12",
+   "at": "2026-11-18T15:29:22",
+   "detail": "{\"from\": \"ACTIVE\", \"to\": \"PAUSED \\u2013 BELOW FLOOR\", \"reason\": \"balance Rs 18,735.38 under its floor Rs 20,000.00 (80 % of Rs 25,000); not refilled from another session\"}"
+  },
+  {
+   "session_id": "S13",
+   "at": "2026-11-18T15:29:22",
+   "detail": "{\"from\": \"ACTIVE\", \"to\": \"COMPLETED\", \"reason\": \"2 completed trades (4 legs); final balance Rs 26,372.11\"}"
+  }
+ ],
+ "finished_ist": "2026-11-18T15:29:22"
+}

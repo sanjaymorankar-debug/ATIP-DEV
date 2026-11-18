@@ -47,6 +47,8 @@ def _isolated(tmp_path, monkeypatch):
     # Rs 1,00,000 test pool (90 failed + 11 errors, 17 Nov 04:01 IST). No plan unless a test writes one
     # (tests/test_capital_plan_2026_11_16.py does).
     monkeypatch.setattr("orders.capital_plan.CONFIG_PATH", tmp_path / "no-capital-plan" / "config.json")
+    # The session engine (18 Nov 2026) reads its block from the same file: its defaults unless a test writes one.
+    monkeypatch.setattr("orders.session_engine.CONFIG_PATH", tmp_path / "no-session-engine" / "config.json")
     # The dashboard's state file is relative to the working directory: a test that rebuilds the
     # dashboard, run from the project folder on the Mac, replaced the live atip_data/dashboard_state.json
     # with its fixture rows (2026-10-26).

@@ -68,7 +68,7 @@ from pathlib import Path
 log = logging.getLogger("atip.sessions")
 
 MODES = ("MANUAL", "CONFIRM", "AUTO")
-STATUSES = ("RUNNING", "PAUSED", "OFF")
+STATUSES = ("RUNNING", "PAUSED", "OFF", "CREATED", "COMPLETED")   # CREATED / COMPLETED: orders/session_engine.py (18 Nov 2026)
 MAX_SESSIONS = 10
 CONFIG_PATH = Path("atip_data") / "config.json"
 
@@ -978,7 +978,9 @@ def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
             if datetime.now().strftime("%H:%M") >= cut:
                 return f"session {sid}: no new swing entry after {cut} IST"
         u = usage(conn, sid)
-        if s.get("max_trades") and u["trades_today"] >= int(s["max_trades"]):
+        # Session engine (owner, 18 Nov 2026): no cap on the number of orders inside a cash-pool session -- its own cash
+        # is its only limit (and its max_occurrences); max_trades still holds sessions without a pool
+        if s.get("max_trades") and not s.get("start_capital") and u["trades_today"] >= int(s["max_trades"]):
             return f"session {sid} has used its {s['max_trades']} trades today"
         if s.get("max_loss_value") and -u["realised_today"] >= float(s["max_loss_value"]):
             return f"session {sid} lost Rs {-u['realised_today']:,.0f} today (limit Rs {s['max_loss_value']:,.0f})"

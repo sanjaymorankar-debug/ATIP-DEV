@@ -375,9 +375,12 @@ def test_order_paths_are_untouched():
     # The 16 Nov evening capital review adds orders/capital_plan.py (the paper top-up and the allocation guard), and
     # changes sessions.py (a transfer is capital, not P&L; the guard on start_pool / add_session) and rules.py (an alert
     # when open stops have had no price for 2 minutes; no rule fires differently), on purpose.
+    # The owner's 18 Nov session engine adds orders/session_engine.py (Rs 25K split, wallets, COMPLETED at the last trade,
+    # the floor pause) and changes broker.py (order_log.session_id; a pool's BUY checked against its own cash) and
+    # sessions.py (CREATED / COMPLETED states; no daily order-count cap inside a cash pool), on purpose.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
                "orders/risk.py", "orders/entry_guards.py", "orders/ticks.py", "orders/arms.py", "orders/algo_gtt.py",
-               "orders/paper.py", "orders/capital_plan.py"}
+               "orders/paper.py", "orders/capital_plan.py", "orders/session_engine.py"}
     assert [p for p in out.splitlines() if p not in allowed] == [] and dirty == ""
 
 

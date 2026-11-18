@@ -1,0 +1,2 @@
+CREATE FUNCTION
+68 identity columns; 0 would reuse an id: none | next session_events id 245 (max 244) | next news_impact.article_id 16875 (max 16874) | next order_log id 104 (max 103)

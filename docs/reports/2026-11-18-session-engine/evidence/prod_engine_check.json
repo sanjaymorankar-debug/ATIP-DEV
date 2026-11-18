@@ -1,0 +1,415 @@
+{
+ "as_of_ist": "2026-11-18T15:27:02",
+ "backend": "db.postgres",
+ "order_log_had_session_id": false,
+ "order_log_by_session": {
+  "MANUAL": 7,
+  "S1": 11,
+  "S10": 12,
+  "S2": 9,
+  "S3": 7,
+  "S4": 6,
+  "S5": 7,
+  "S6": 11,
+  "S7": 3,
+  "S8": 8,
+  "S9": 11,
+  "UNTAGGED": 11
+ },
+ "sync": {
+  "S1": {
+   "written": true,
+   "ledger_balance": 21311.87,
+   "engine_cash": 21311.87,
+   "ok": true
+  },
+  "S2": {
+   "written": true,
+   "ledger_balance": 20887.34,
+   "engine_cash": 20887.34,
+   "ok": true
+  },
+  "S3": {
+   "written": true,
+   "ledger_balance": 20471.92,
+   "engine_cash": 20471.92,
+   "ok": true
+  },
+  "S4": {
+   "written": true,
+   "ledger_balance": 45795.15,
+   "engine_cash": 45795.15,
+   "ok": true
+  },
+  "S5": {
+   "written": true,
+   "ledger_balance": 20360.41,
+   "engine_cash": 20360.41,
+   "ok": true
+  },
+  "S6": {
+   "written": true,
+   "ledger_balance": 33597.59,
+   "engine_cash": 33597.59,
+   "ok": true
+  },
+  "S7": {
+   "written": true,
+   "ledger_balance": 20367.76,
+   "engine_cash": 20367.76,
+   "ok": true
+  },
+  "S8": {
+   "written": true,
+   "ledger_balance": 44985.47,
+   "engine_cash": 44985.47,
+   "ok": true
+  },
+  "S9": {
+   "written": true,
+   "ledger_balance": 24811.53,
+   "engine_cash": 24811.53,
+   "ok": true
+  },
+  "S10": {
+   "written": true,
+   "ledger_balance": 45489.79,
+   "engine_cash": 45489.79,
+   "ok": true
+  }
+ },
+ "sessions": {
+  "S1": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 21311.87,
+   "invested_value": 24773.65,
+   "realised_pnl": 1085.52,
+   "unrealised_pnl": -182.65,
+   "current_balance": 45902.87,
+   "growth_pct": 2.01,
+   "legs": 11,
+   "completed_trades": 5,
+   "open_trades": 1,
+   "wins": 3,
+   "losses": 2,
+   "win_rate_pct": 60.0,
+   "avg_pnl_per_trade": 217.1,
+   "floor": 36000.0,
+   "ledger_rows": 29,
+   "trade_rows": 6
+  },
+  "S2": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 20887.34,
+   "invested_value": 23935.24,
+   "realised_pnl": -177.42,
+   "unrealised_pnl": -13.24,
+   "current_balance": 44809.34,
+   "growth_pct": -0.42,
+   "legs": 9,
+   "completed_trades": 4,
+   "open_trades": 1,
+   "wins": 2,
+   "losses": 2,
+   "win_rate_pct": 50.0,
+   "avg_pnl_per_trade": -44.36,
+   "floor": 36000.0,
+   "ledger_rows": 24,
+   "trade_rows": 5
+  },
+  "S3": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 20471.92,
+   "invested_value": 27316.01,
+   "realised_pnl": 2787.93,
+   "unrealised_pnl": -406.01,
+   "current_balance": 47381.92,
+   "growth_pct": 5.29,
+   "legs": 7,
+   "completed_trades": 3,
+   "open_trades": 1,
+   "wins": 3,
+   "losses": 0,
+   "win_rate_pct": 100.0,
+   "avg_pnl_per_trade": 929.31,
+   "floor": 36000.0,
+   "ledger_rows": 19,
+   "trade_rows": 4
+  },
+  "S4": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 45795.15,
+   "invested_value": 0,
+   "realised_pnl": 795.15,
+   "unrealised_pnl": 0,
+   "current_balance": 45795.15,
+   "growth_pct": 1.77,
+   "legs": 6,
+   "completed_trades": 3,
+   "open_trades": 0,
+   "wins": 2,
+   "losses": 1,
+   "win_rate_pct": 66.7,
+   "avg_pnl_per_trade": 265.05,
+   "floor": 36000.0,
+   "ledger_rows": 17,
+   "trade_rows": 3
+  },
+  "S5": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 20360.41,
+   "invested_value": 24460.98,
+   "realised_pnl": -178.61,
+   "unrealised_pnl": 249.02,
+   "current_balance": 45070.41,
+   "growth_pct": 0.16,
+   "legs": 7,
+   "completed_trades": 3,
+   "open_trades": 1,
+   "wins": 1,
+   "losses": 2,
+   "win_rate_pct": 33.3,
+   "avg_pnl_per_trade": -59.54,
+   "floor": 36000.0,
+   "ledger_rows": 19,
+   "trade_rows": 4
+  },
+  "S6": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 33597.59,
+   "invested_value": 12143.19,
+   "realised_pnl": 740.78,
+   "unrealised_pnl": 194.41,
+   "current_balance": 45935.19,
+   "growth_pct": 2.08,
+   "legs": 11,
+   "completed_trades": 5,
+   "open_trades": 1,
+   "wins": 3,
+   "losses": 2,
+   "win_rate_pct": 60.0,
+   "avg_pnl_per_trade": 148.16,
+   "floor": 36000.0,
+   "ledger_rows": 29,
+   "trade_rows": 6
+  },
+  "S7": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 20367.76,
+   "invested_value": 25316.24,
+   "realised_pnl": 684.0,
+   "unrealised_pnl": 43.76,
+   "current_balance": 45727.76,
+   "growth_pct": 1.62,
+   "legs": 3,
+   "completed_trades": 1,
+   "open_trades": 1,
+   "wins": 1,
+   "losses": 0,
+   "win_rate_pct": 100.0,
+   "avg_pnl_per_trade": 684.0,
+   "floor": 36000.0,
+   "ledger_rows": 9,
+   "trade_rows": 2
+  },
+  "S8": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 44985.47,
+   "invested_value": 0,
+   "realised_pnl": -14.53,
+   "unrealised_pnl": 0,
+   "current_balance": 44985.47,
+   "growth_pct": -0.03,
+   "legs": 8,
+   "completed_trades": 4,
+   "open_trades": 0,
+   "wins": 2,
+   "losses": 2,
+   "win_rate_pct": 50.0,
+   "avg_pnl_per_trade": -3.63,
+   "floor": 36000.0,
+   "ledger_rows": 22,
+   "trade_rows": 4
+  },
+  "S9": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 24811.53,
+   "invested_value": 19584.3,
+   "realised_pnl": -604.17,
+   "unrealised_pnl": 39.2,
+   "current_balance": 44435.03,
+   "growth_pct": -1.26,
+   "legs": 11,
+   "completed_trades": 5,
+   "open_trades": 1,
+   "wins": 2,
+   "losses": 3,
+   "win_rate_pct": 40.0,
+   "avg_pnl_per_trade": -120.83,
+   "floor": 36000.0,
+   "ledger_rows": 29,
+   "trade_rows": 6
+  },
+  "S10": {
+   "state": "ACTIVE",
+   "seed_capital": 25000.0,
+   "transfers": 20000.0,
+   "capital": 45000.0,
+   "cash_available": 45489.79,
+   "invested_value": 0,
+   "realised_pnl": 489.79,
+   "unrealised_pnl": 0,
+   "current_balance": 45489.79,
+   "growth_pct": 1.09,
+   "legs": 12,
+   "completed_trades": 6,
+   "open_trades": 0,
+   "wins": 3,
+   "losses": 3,
+   "win_rate_pct": 50.0,
+   "avg_pnl_per_trade": 81.63,
+   "floor": 36000.0,
+   "ledger_rows": 32,
+   "trade_rows": 6
+  }
+ },
+ "check_would_change": [],
+ "plan": {
+  "env": "PAPER",
+  "seed": 25000.0,
+  "paper_balance": 352944.07,
+  "sessions_cash": 298078.83,
+  "spare": 54865.24,
+  "buffer": 51039.82,
+  "available": 3825.42,
+  "new_sessions": 0,
+  "reserve": 54865.24,
+  "can_create": false,
+  "sessions": 10,
+  "sessions_capital": 450000.0,
+  "topped_up": [
+   {
+    "session": "S1",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S2",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S3",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S4",
+    "transfers": 20000.0,
+    "idle": true
+   },
+   {
+    "session": "S5",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S6",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S7",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S8",
+    "transfers": 20000.0,
+    "idle": true
+   },
+   {
+    "session": "S9",
+    "transfers": 20000.0,
+    "idle": false
+   },
+   {
+    "session": "S10",
+    "transfers": 20000.0,
+    "idle": true
+   }
+  ],
+  "if_topups_returned": {
+   "returnable_now": 60000.0,
+   "waiting_on_open_positions": [
+    "S1",
+    "S2",
+    "S3",
+    "S5",
+    "S6",
+    "S7",
+    "S9"
+   ],
+   "new_sessions": 8
+  }
+ },
+ "rebase_dry_run": {
+  "dry_run": true,
+  "would_return": [
+   {
+    "session": "S4",
+    "transfers": 20000.0,
+    "idle": true
+   },
+   {
+    "session": "S8",
+    "transfers": 20000.0,
+    "idle": true
+   },
+   {
+    "session": "S10",
+    "transfers": 20000.0,
+    "idle": true
+   }
+  ],
+  "skipped_open": [
+   "S1",
+   "S2",
+   "S3",
+   "S5",
+   "S6",
+   "S7",
+   "S9"
+  ],
+  "new_sessions_after": 8
+ },
+ "create_refused": "no Rs 25,000 session fits: Rs 3,825.42 available above the Rs 51,039.82 cash buffer",
+ "alerts": []
+}

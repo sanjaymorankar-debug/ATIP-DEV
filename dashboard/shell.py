@@ -411,6 +411,17 @@ def state(conn) -> dict:
                                   if closed else None}
     except Exception as e:
         log.debug(f"  shell regime gate: {e}")
+    try:                                   # session engine (18 Nov 2026): sessions paused below their floor, completed
+        from orders.session_engine import alerts as session_alerts
+        sa = session_alerts(conn)
+        out["session_alerts"] = sa
+        if sa:
+            warn = [a for a in sa if a["tone"] == "warn"]
+            out["session_alert"] = {"tone": "warn" if warn else "info",
+                                    "text": " · ".join(a["text"] for a in (warn + [a for a in sa if a["tone"] != "warn"])[:3])
+                                    + (f" (+{len(sa) - 3} more)" if len(sa) > 3 else "")}
+    except Exception as e:
+        log.debug(f"  shell session alerts: {e}")
     try:
         r = conn.execute("SELECT COUNT(*) FROM alert_log WHERE created_at >= datetime('now', '-1 day') "
                          "AND severity IN ('warning', 'critical', 'error')").fetchone()

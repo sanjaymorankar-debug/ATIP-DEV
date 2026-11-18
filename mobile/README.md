@@ -4,7 +4,19 @@ ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only 
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.16.2** (Android `versionCode` 11 / `versionName` 2026.11.16.2; iOS `CFBundleShortVersionString`
+**Version 2026.11.18.1** (Android `versionCode` 12 / `versionName` 2026.11.18.1; iOS `CFBundleShortVersionString`
+2026.11.18.1 / `CFBundleVersion` 12), 18 Nov 2026 (the ₹25K session engine, PAPER). **Android built on the owner's Mac
+at 15:24:24 IST 18 Nov** (`./gradlew assembleDebug`, BUILD SUCCESSFUL, `app-debug.apk`). **iOS not built:** the Mac
+still has no Xcode (needs the owner's Apple ID; see Build below).
+
+* **Sessions tab (server screen):** a summary row (sessions, combined balance, combined P&L, reserve) and on every card
+  the session's state (CREATED / ACTIVE / PAUSED – BELOW FLOOR / COMPLETED), balance against its ₹25,000 seed with %
+  growth, a meter of completed trades out of 500, and its win rate; each session's "Trades & ledger" tab with CSV export.
+* **Session alerts (native banner, both apps):** `/api/v2/shell/state` carries `session_alert`; while a session is
+  paused below its floor the strip reads "⚠ S12 paused: below floor" in amber, and a completed one "✓ S13 completed
+  500 trades" in blue. No alert: the normal "● Running" pill.
+
+Earlier, **Version 2026.11.16.2** (Android `versionCode` 11 / `versionName` 2026.11.16.2; iOS `CFBundleShortVersionString`
 2026.11.16.2 / `CFBundleVersion` 11), 16 Nov 2026 evening (capital review, PAPER). No native change beyond the version:
 the new parts are the server's screens, so the apps show them as soon as the Mac runs this code.
 

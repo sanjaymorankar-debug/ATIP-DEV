@@ -50,6 +50,7 @@ Run standalone:
     python -m orders.broker --buy RELIANCE --qty 5 --order-type LIMIT --price 2500 --confirm
 """
 import logging, argparse
+import contextvars
 from datetime import datetime
 from db.schema import get_connection, log_job
 from data.dhan import get_dhan_client, get_security_id, fetch_live_quotes
@@ -57,6 +58,12 @@ from orders.environment import broker_env, get_execution_client, describe, PAPER
 from orders.risk import halted, pretrade_check, risk_alert
 
 log = logging.getLogger(__name__)
+
+# Session engine (owner, 18 Nov 2026): every order_log row carries the session that sent it -- the session of the
+# order's ATIP-S<n> tag, MANUAL for an order placed outside any session. _place_order sets it for the rows it writes.
+_ORDER_SESSION = contextvars.ContextVar("atip_order_session", default=None)
+MANUAL_SESSION = "MANUAL"
+UNTAGGED = "UNTAGGED"           # a row written before 18 Nov 2026 that no paper order's tag identifies
 
 
 def _ensure_order_log_table(conn):
@@ -78,18 +85,36 @@ def _ensure_order_log_table(conn):
             error            TEXT
         )
     """)
+    try:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(order_log)").fetchall()}
+        if "session_id" not in have:
+            conn.execute("ALTER TABLE order_log ADD COLUMN session_id TEXT")
+            # the rows before it: the session from the paper order's tag (ATIP-S3 -> S3), MANUAL for an untagged
+            # paper order, UNTAGGED where no paper order matches (a refused or failed send has none)
+            try:
+                conn.execute("UPDATE order_log SET session_id = (SELECT CASE WHEN p.tag LIKE 'ATIP-%' "
+                             "THEN SUBSTR(p.tag, 6) ELSE 'MANUAL' END FROM paper_order p "
+                             "WHERE p.order_id = order_log.dhan_order_id) WHERE session_id IS NULL "
+                             "AND dhan_order_id IS NOT NULL")
+            except Exception as e:              # no paper_order table: nothing to match
+                log.debug(f"  order_log session backfill from paper orders skipped: {e}")
+            conn.execute("UPDATE order_log SET session_id = ? WHERE session_id IS NULL", (UNTAGGED,))
+            conn.commit()
+    except Exception as e:
+        log.warning(f"  order_log.session_id migration skipped: {e}")
 
 
 def _log_order(conn, symbol, ttype, qty, order_type, product_type, price,
-               est_value, avail, mode, status, order_id=None, error=None):
+               est_value, avail, mode, status, order_id=None, error=None, session_id=None):
+    session_id = session_id or _ORDER_SESSION.get() or MANUAL_SESSION
     conn.execute("""
         INSERT INTO order_log
             (timestamp,symbol,transaction_type,quantity,order_type,product_type,
-             price,estimated_value,available_funds,mode,status,dhan_order_id,error)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+             price,estimated_value,available_funds,mode,status,dhan_order_id,error,session_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), symbol, ttype, qty,
           order_type, product_type, price, est_value, avail, mode, status,
-          order_id, error))
+          order_id, error, session_id))
     conn.commit()
 
 
@@ -180,9 +205,41 @@ def _estimate_order_value(symbol, quantity, order_type, price):
     return float(price or 0) * quantity
 
 
+def check_session_funds(conn, sid: str, estimated_amount: float, account: dict | None = None) -> dict:
+    """Session engine (owner, 18 Nov 2026): a cash-pool session's BUY is checked against that session's own free cash
+    (orders/sessions.py ledger, tax reserve left out), never another session's or the account's spare money. The
+    account must still have the money (`account`, check_funds) -- the stricter of the two decides."""
+    from orders import sessions as S
+    L = S.ledger(conn, sid) or {}
+    free = float(L.get("investable_cash", L.get("cash", 0.0)) or 0.0)
+    ok = estimated_amount <= free + 0.01
+    msg = (f"OK — session {sid} has Rs.{free:,.2f}, Rs.{estimated_amount:,.2f} required" if ok else
+           f"INSUFFICIENT — session {sid} has Rs.{free:,.2f}, Rs.{estimated_amount:,.2f} required "
+           f"(short by Rs.{estimated_amount - free:,.2f}; sessions never borrow from each other)")
+    if ok and account is not None and not account["ok"]:
+        ok, msg = False, account["message"]
+    log.info(f"  Session funds check: {msg}")
+    return {"ok": ok, "available": free, "required": estimated_amount, "message": msg, "session": sid,
+            "account": account}
+
+
 def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
-                  product_type="CNC", price=0, confirm=False, tag=None,
-                  reference_price=None):
+                 product_type="CNC", price=0, confirm=False, tag=None,
+                 reference_price=None):
+    """Session engine (18 Nov 2026): the order's session (its ATIP-S<n> tag; MANUAL without one) goes on every
+    order_log row the placement writes. The placement itself is _place_order_inner."""
+    t = str(tag or "")
+    token = _ORDER_SESSION.set(t[len("ATIP-"):] if t.startswith("ATIP-") and len(t) > 5 else MANUAL_SESSION)
+    try:
+        return _place_order_inner(symbol, transaction_type, quantity, order_type, product_type, price, confirm, tag,
+                                  reference_price)
+    finally:
+        _ORDER_SESSION.reset(token)
+
+
+def _place_order_inner(symbol, transaction_type, quantity, order_type="MARKET",
+                       product_type="CNC", price=0, confirm=False, tag=None,
+                       reference_price=None):
     """
     transaction_type : "BUY" or "SELL"
     order_type        : "MARKET" or "LIMIT"
@@ -245,15 +302,24 @@ def _place_order(symbol, transaction_type, quantity, order_type="MARKET",
                    price, None, None, mode, "FAILED", error=msg)
         conn.close()
         return {"status": "FAILED", "error": msg}
+    from orders.sessions import pool_of_tag
+    pool = pool_of_tag(conn, tag)
     if transaction_type == "BUY":
         funds = check_funds(est_value)
+        if pool and est_value:              # session engine (18 Nov 2026): the session's own balance decides
+            # A SESSION buy is sized at the quote that fired it, and an auto-pick sends it as a LIMIT up to 0.5 % above
+            # (KGF-02); the paper broker fills a marketable LIMIT at that quote (min of the two), so in PAPER the session
+            # is checked at that price. LIVE stays at the limit: a real broker blocks the money at the limit price.
+            need = float(est_value)
+            if env != LIVE and order_type == "LIMIT" and price and reference_price:
+                need = min(float(price), float(reference_price)) * float(quantity)
+            funds = check_session_funds(conn, pool, need, funds)
     else:
         funds = {"ok": True, "available": available_balance(), "message": "SELL — funds check not required"}
 
-    from orders.sessions import pool_of_tag
     risk = pretrade_check(conn, symbol, transaction_type, quantity, est_value, env, order_type=order_type,
                           price=price if order_type == "LIMIT" else None,   # W39 (RK-21): the price band
-                          pool_session=pool_of_tag(conn, tag))              # a pool's cash sizes its orders
+                          pool_session=pool)                                # a pool's cash sizes its orders
     if not risk["ok"] and confirm:
         log.error(f"  ⛔ Order refused — {risk['message']}")
         _log_order(conn, symbol, transaction_type, quantity, order_type, product_type,

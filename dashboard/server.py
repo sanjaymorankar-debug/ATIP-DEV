@@ -2010,6 +2010,8 @@ if HAS_FASTAPI:
     _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.arms_routes import register as _register_arms_routes                # 16 Nov 2026: arms, gate, DUMMY GTTs (/ab)
     _register_arms_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.engine_routes import register as _register_engine_routes            # 18 Nov 2026: Rs 25K session engine
+    _register_engine_routes(app, _guard, _Req, get_connection, json_safe)              # (/api/v2/engine, CSV exports)
     from dashboard.algo_routes import register as _register_algo_routes                # KGF-10 (16 Nov 2026): Algo Signals
     _register_algo_routes(app, _guard, _Req, get_connection, json_safe)                # (/algo-signals, /api/scanner-data)
     from dashboard.global_asia import register as _register_global_asia                # Task 2/3: status + Asia
@@ -2278,12 +2280,24 @@ if HAS_FASTAPI:
     def _order_monitor_pass() -> bool:
         """One pass: auto-pick, then check_triggers. True when either lost to a database lock."""
         locked = False
+        try:                    # session engine (18 Nov 2026): COMPLETED at its last trade, PAUSED under its floor --
+            from orders import session_engine     # before auto-pick, so a session it stops is not picked for
+            c = get_connection()
+            try:
+                changed = session_engine.check(c)
+            finally:
+                c.close()
+            if changed:
+                log.info(f"  session engine: {changed}")
+        except Exception as e:
+            log.error(f"  session engine error: {e}")
+            locked = _is_db_lock(e)
         try:                    # free cash-pool sessions queue their next occurrence first
             from orders.autopick import run as autopick
             autopick()
         except Exception as e:
             log.error(f"  auto-pick error: {e}")
-            locked = _is_db_lock(e)
+            locked = locked or _is_db_lock(e)
         try:
             events = oe.check_triggers()
             if events:

@@ -1,0 +1,1730 @@
+{
+  "tables": 286,
+  "rows": 400627,
+  "skipped": 0,
+  "written": [
+    "/Users/agtci/ATIP/.ux_build/session-engine-2026-11-18/srv/prod/pg_migration/schema.postgresql.sql",
+    "/Users/agtci/ATIP/.ux_build/session-engine-2026-11-18/srv/prod/pg_migration/plan.json"
+  ]
+}
+{
+  "tables": [
+    {
+      "table": "ab_weekly_report",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "accuracy_tracker",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ai_scores",
+      "source_rows": 26001,
+      "target_rows": 26001,
+      "ok": true
+    },
+    {
+      "table": "ai_usage_log",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "alert_log",
+      "source_rows": 648,
+      "target_rows": 648,
+      "ok": true
+    },
+    {
+      "table": "algo_dummy_gtt",
+      "source_rows": 2,
+      "target_rows": 2,
+      "ok": true
+    },
+    {
+      "table": "algo_scan_results",
+      "source_rows": 52,
+      "target_rows": 52,
+      "ok": true
+    },
+    {
+      "table": "algo_scan_runs",
+      "source_rows": 4,
+      "target_rows": 4,
+      "ok": true
+    },
+    {
+      "table": "alt_dataset",
+      "source_rows": 2,
+      "target_rows": 2,
+      "ok": true
+    },
+    {
+      "table": "alt_observation",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "asia_sentiment",
+      "source_rows": 65,
+      "target_rows": 65,
+      "ok": true
+    },
+    {
+      "table": "asia_signals",
+      "source_rows": 94,
+      "target_rows": 94,
+      "ok": true
+    },
+    {
+      "table": "asia_source_health",
+      "source_rows": 7,
+      "target_rows": 7,
+      "ok": true
+    },
+    {
+      "table": "asset_price_daily",
+      "source_rows": 609,
+      "target_rows": 609,
+      "ok": true
+    },
+    {
+      "table": "assistant_conversation",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "assistant_message",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "audit_export",
+      "source_rows": 8,
+      "target_rows": 8,
+      "ok": true
+    },
+    {
+      "table": "backtest_drawdown",
+      "source_rows": 5,
+      "target_rows": 5,
+      "ok": true
+    },
+    {
+      "table": "backtest_equity",
+      "source_rows": 247,
+      "target_rows": 247,
+      "ok": true
+    },
+    {
+      "table": "backtest_montecarlo",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "backtest_run",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "backtest_trade",
+      "source_rows": 550,
+      "target_rows": 550,
+      "ok": true
+    },
+    {
+      "table": "broker_health_check",
+      "source_rows": 1356,
+      "target_rows": 1356,
+      "ok": true
+    },
+    {
+      "table": "broker_import_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "bulk_deals",
+      "source_rows": 1143,
+      "target_rows": 1143,
+      "ok": true
+    },
+    {
+      "table": "compliance_result",
+      "source_rows": 504,
+      "target_rows": 504,
+      "ok": true
+    },
+    {
+      "table": "compliance_run",
+      "source_rows": 36,
+      "target_rows": 36,
+      "ok": true
+    },
+    {
+      "table": "corporate_actions",
+      "source_rows": 300,
+      "target_rows": 300,
+      "ok": true
+    },
+    {
+      "table": "corporate_announcement",
+      "source_rows": 16273,
+      "target_rows": 16273,
+      "ok": true
+    },
+    {
+      "table": "data_completeness",
+      "source_rows": 30,
+      "target_rows": 30,
+      "ok": true
+    },
+    {
+      "table": "data_quality",
+      "source_rows": 476,
+      "target_rows": 476,
+      "ok": true
+    },
+    {
+      "table": "deferred_jobs",
+      "source_rows": 162,
+      "target_rows": 162,
+      "ok": true
+    },
+    {
+      "table": "depth20_snapshot",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "derivatives_instrument",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "derivatives_quote",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "earnings_surprise",
+      "source_rows": 3444,
+      "target_rows": 3444,
+      "ok": true
+    },
+    {
+      "table": "ema_gap_sessions",
+      "source_rows": 255,
+      "target_rows": 255,
+      "ok": true
+    },
+    {
+      "table": "enterprise_alert_rule",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_api_key",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_api_usage",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_audit",
+      "source_rows": 47,
+      "target_rows": 47,
+      "ok": true
+    },
+    {
+      "table": "enterprise_billing_ref",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_consent",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_email_token",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_invoice",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_mfa_recovery",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_notification",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_notification_delivery",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_notification_pref",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_onboarding",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_password_reset",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_payment",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_permission",
+      "source_rows": 29,
+      "target_rows": 29,
+      "ok": true
+    },
+    {
+      "table": "enterprise_plan",
+      "source_rows": 3,
+      "target_rows": 3,
+      "ok": true
+    },
+    {
+      "table": "enterprise_privacy_request",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_refresh_token",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_report",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_report_output",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_risk_profile",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_role",
+      "source_rows": 8,
+      "target_rows": 8,
+      "ok": true
+    },
+    {
+      "table": "enterprise_role_permission",
+      "source_rows": 119,
+      "target_rows": 119,
+      "ok": true
+    },
+    {
+      "table": "enterprise_session",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_subscription",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "enterprise_tenant",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "enterprise_usage",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_user",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_user_role",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_vault_credential",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "enterprise_watchlist",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "eod_price_source",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "event_study",
+      "source_rows": 25,
+      "target_rows": 25,
+      "ok": true
+    },
+    {
+      "table": "exec_algo_parent",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "execution_impact_calibration",
+      "source_rows": 4,
+      "target_rows": 4,
+      "ok": true
+    },
+    {
+      "table": "fii_dii_market",
+      "source_rows": 45,
+      "target_rows": 45,
+      "ok": true
+    },
+    {
+      "table": "fo_contract_daily",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "fo_participant_oi",
+      "source_rows": 90,
+      "target_rows": 90,
+      "ok": true
+    },
+    {
+      "table": "fo_underlying_daily",
+      "source_rows": 7062,
+      "target_rows": 7062,
+      "ok": true
+    },
+    {
+      "table": "formula_registry",
+      "source_rows": 4,
+      "target_rows": 4,
+      "ok": true
+    },
+    {
+      "table": "fundamental_data",
+      "source_rows": 3444,
+      "target_rows": 3444,
+      "ok": true
+    },
+    {
+      "table": "fundamental_filing",
+      "source_rows": 7320,
+      "target_rows": 7320,
+      "ok": true
+    },
+    {
+      "table": "fundamental_scorecard",
+      "source_rows": 7196,
+      "target_rows": 7196,
+      "ok": true
+    },
+    {
+      "table": "global_indices_daily",
+      "source_rows": 1642,
+      "target_rows": 1642,
+      "ok": true
+    },
+    {
+      "table": "global_market_history",
+      "source_rows": 1776,
+      "target_rows": 1776,
+      "ok": true
+    },
+    {
+      "table": "global_markets",
+      "source_rows": 122,
+      "target_rows": 122,
+      "ok": true
+    },
+    {
+      "table": "global_snapshot",
+      "source_rows": 232,
+      "target_rows": 232,
+      "ok": true
+    },
+    {
+      "table": "index_levels",
+      "source_rows": 35278,
+      "target_rows": 35278,
+      "ok": true
+    },
+    {
+      "table": "index_total_return",
+      "source_rows": 422,
+      "target_rows": 422,
+      "ok": true
+    },
+    {
+      "table": "insider_trade",
+      "source_rows": 6817,
+      "target_rows": 6817,
+      "ok": true
+    },
+    {
+      "table": "institutional_data",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "instrument_master",
+      "source_rows": 10095,
+      "target_rows": 10095,
+      "ok": true
+    },
+    {
+      "table": "instrument_master_log",
+      "source_rows": 5,
+      "target_rows": 5,
+      "ok": true
+    },
+    {
+      "table": "intraday_bars",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "intraday_scan_hit",
+      "source_rows": 1743,
+      "target_rows": 1743,
+      "ok": true
+    },
+    {
+      "table": "intraday_signal",
+      "source_rows": 3134,
+      "target_rows": 3134,
+      "ok": true
+    },
+    {
+      "table": "investor_profile",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "investor_profile_version",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "job_recovery",
+      "source_rows": 25,
+      "target_rows": 25,
+      "ok": true
+    },
+    {
+      "table": "lake_partition",
+      "source_rows": 311,
+      "target_rows": 311,
+      "ok": true
+    },
+    {
+      "table": "latency_rollup",
+      "source_rows": 10791,
+      "target_rows": 10791,
+      "ok": true
+    },
+    {
+      "table": "ledger_entries",
+      "source_rows": 569,
+      "target_rows": 569,
+      "ok": true
+    },
+    {
+      "table": "live_feed_status",
+      "source_rows": 6,
+      "target_rows": 6,
+      "ok": true
+    },
+    {
+      "table": "live_pnl_snapshot",
+      "source_rows": 882,
+      "target_rows": 882,
+      "ok": true
+    },
+    {
+      "table": "live_quotes",
+      "source_rows": 29827,
+      "target_rows": 29827,
+      "ok": true
+    },
+    {
+      "table": "live_ticks",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "macro_calendar",
+      "source_rows": 5,
+      "target_rows": 5,
+      "ok": true
+    },
+    {
+      "table": "macro_event",
+      "source_rows": 46,
+      "target_rows": 46,
+      "ok": true
+    },
+    {
+      "table": "macro_observation",
+      "source_rows": 131,
+      "target_rows": 131,
+      "ok": true
+    },
+    {
+      "table": "macro_series",
+      "source_rows": 11,
+      "target_rows": 11,
+      "ok": true
+    },
+    {
+      "table": "market_breadth",
+      "source_rows": 214,
+      "target_rows": 214,
+      "ok": true
+    },
+    {
+      "table": "market_cue",
+      "source_rows": 45,
+      "target_rows": 45,
+      "ok": true
+    },
+    {
+      "table": "market_event",
+      "source_rows": 18157,
+      "target_rows": 18157,
+      "ok": true
+    },
+    {
+      "table": "market_health",
+      "source_rows": 407,
+      "target_rows": 407,
+      "ok": true
+    },
+    {
+      "table": "market_regime_gate",
+      "source_rows": 756,
+      "target_rows": 756,
+      "ok": true
+    },
+    {
+      "table": "mf_nav",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "microstructure_feature",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_anomaly",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_cluster",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_cluster_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_dataset",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_dl_benefit",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_feature",
+      "source_rows": 63,
+      "target_rows": 63,
+      "ok": true
+    },
+    {
+      "table": "ml_feature_set",
+      "source_rows": 3,
+      "target_rows": 3,
+      "ok": true
+    },
+    {
+      "table": "ml_health_check",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_label",
+      "source_rows": 6,
+      "target_rows": 6,
+      "ok": true
+    },
+    {
+      "table": "ml_meta_label",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_meta_label_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_meta_label_score",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model_event",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model_explanation",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model_metrics",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model_monitoring",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_model_version",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_prediction",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_rl_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_training_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ml_validation_report",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "news_articles",
+      "source_rows": 15750,
+      "target_rows": 15750,
+      "ok": true
+    },
+    {
+      "table": "news_impact",
+      "source_rows": 5092,
+      "target_rows": 5092,
+      "ok": true
+    },
+    {
+      "table": "news_impact_daily",
+      "source_rows": 70,
+      "target_rows": 70,
+      "ok": true
+    },
+    {
+      "table": "news_impact_eval",
+      "source_rows": 66,
+      "target_rows": 66,
+      "ok": true
+    },
+    {
+      "table": "news_source_quality",
+      "source_rows": 8,
+      "target_rows": 8,
+      "ok": true
+    },
+    {
+      "table": "news_source_status",
+      "source_rows": 12,
+      "target_rows": 12,
+      "ok": true
+    },
+    {
+      "table": "news_summary",
+      "source_rows": 64,
+      "target_rows": 64,
+      "ok": true
+    },
+    {
+      "table": "news_symbol_score",
+      "source_rows": 7737,
+      "target_rows": 7737,
+      "ok": true
+    },
+    {
+      "table": "nse_archive_session",
+      "source_rows": 119,
+      "target_rows": 119,
+      "ok": true
+    },
+    {
+      "table": "oms_event_delivery",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "oms_event_outbox",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "oms_execution",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "oms_fill",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "oms_order",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "oms_order_event",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ops_alert",
+      "source_rows": 6,
+      "target_rows": 6,
+      "ok": true
+    },
+    {
+      "table": "ops_backup",
+      "source_rows": 61,
+      "target_rows": 61,
+      "ok": true
+    },
+    {
+      "table": "ops_config_version",
+      "source_rows": 7,
+      "target_rows": 7,
+      "ok": true
+    },
+    {
+      "table": "ops_heartbeat",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "ops_idempotency",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "ops_job_lock",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "ops_restore_drill",
+      "source_rows": 7,
+      "target_rows": 7,
+      "ok": true
+    },
+    {
+      "table": "ops_rollback_drill",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ops_secret_access",
+      "source_rows": 30,
+      "target_rows": 30,
+      "ok": true
+    },
+    {
+      "table": "ops_secret_meta",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ops_webhook_delivery",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ops_webhook_endpoint",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "ops_webhook_event",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "option_chain_snapshot",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "options_analytics",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "order_basket",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "order_basket_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "order_book_pressure",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "order_book_snapshot",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "order_log",
+      "source_rows": 103,
+      "target_rows": 103,
+      "ok": true
+    },
+    {
+      "table": "order_rules",
+      "source_rows": 162,
+      "target_rows": 162,
+      "ok": true
+    },
+    {
+      "table": "paper_account",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "paper_futures_position",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_futures_trade",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_option_strategy_leg",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_option_strategy_mark",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_option_strategy_position",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_option_strategy_trade",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_options_position",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_options_trade",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "paper_order",
+      "source_rows": 92,
+      "target_rows": 92,
+      "ok": true
+    },
+    {
+      "table": "paper_position",
+      "source_rows": 33,
+      "target_rows": 33,
+      "ok": true
+    },
+    {
+      "table": "perf_ledger",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "perf_ledger_void",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "perf_report_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "pipeline_log",
+      "source_rows": 15933,
+      "target_rows": 15933,
+      "ok": true
+    },
+    {
+      "table": "pnl_daily",
+      "source_rows": 50,
+      "target_rows": 50,
+      "ok": true
+    },
+    {
+      "table": "portfolio_cash_flows",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "portfolio_holdings",
+      "source_rows": 294,
+      "target_rows": 294,
+      "ok": true
+    },
+    {
+      "table": "portfolio_optimization",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "portfolio_rebalance_plan",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "portfolio_risk_snapshot",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "portfolio_sync",
+      "source_rows": 93,
+      "target_rows": 93,
+      "ok": true
+    },
+    {
+      "table": "post_market_rca",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "predictions",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "premarket_reports",
+      "source_rows": 43,
+      "target_rows": 43,
+      "ok": true
+    },
+    {
+      "table": "preopen_health",
+      "source_rows": 2,
+      "target_rows": 2,
+      "ok": true
+    },
+    {
+      "table": "preopen_snapshot",
+      "source_rows": 3264,
+      "target_rows": 3264,
+      "ok": true
+    },
+    {
+      "table": "prices_daily",
+      "source_rows": 100226,
+      "target_rows": 100226,
+      "ok": true
+    },
+    {
+      "table": "prices_daily_backfill",
+      "source_rows": 484,
+      "target_rows": 484,
+      "ok": true
+    },
+    {
+      "table": "quant_composite",
+      "source_rows": 3,
+      "target_rows": 3,
+      "ok": true
+    },
+    {
+      "table": "quant_experiment",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_exposure",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_factor",
+      "source_rows": 69,
+      "target_rows": 69,
+      "ok": true
+    },
+    {
+      "table": "quant_factor_approval",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_factor_research",
+      "source_rows": 6,
+      "target_rows": 6,
+      "ok": true
+    },
+    {
+      "table": "quant_factor_score",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_factor_set",
+      "source_rows": 3,
+      "target_rows": 3,
+      "ok": true
+    },
+    {
+      "table": "quant_pair",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_portfolio",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_portfolio_position",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_risk_covariance",
+      "source_rows": 234,
+      "target_rows": 234,
+      "ok": true
+    },
+    {
+      "table": "quant_risk_exposure",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "quant_risk_factor_return",
+      "source_rows": 8288,
+      "target_rows": 8288,
+      "ok": true
+    },
+    {
+      "table": "quant_risk_regression",
+      "source_rows": 296,
+      "target_rows": 296,
+      "ok": true
+    },
+    {
+      "table": "quant_risk_state",
+      "source_rows": 2,
+      "target_rows": 2,
+      "ok": true
+    },
+    {
+      "table": "quant_spread",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "recon_items",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "reconciliation_run",
+      "source_rows": 21,
+      "target_rows": 21,
+      "ok": true
+    },
+    {
+      "table": "regulatory_item",
+      "source_rows": 10,
+      "target_rows": 10,
+      "ok": true
+    },
+    {
+      "table": "report_archive",
+      "source_rows": 45,
+      "target_rows": 45,
+      "ok": true
+    },
+    {
+      "table": "report_schedules",
+      "source_rows": 5,
+      "target_rows": 5,
+      "ok": true
+    },
+    {
+      "table": "research_link",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "research_report",
+      "source_rows": 6986,
+      "target_rows": 6986,
+      "ok": true
+    },
+    {
+      "table": "research_screen",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "research_study",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "resume_runs",
+      "source_rows": 22,
+      "target_rows": 22,
+      "ok": true
+    },
+    {
+      "table": "risk_decision",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "risk_emergency_exit",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "risk_limit",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "risk_limit_history",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "sast_disclosure",
+      "source_rows": 5620,
+      "target_rows": 5620,
+      "ok": true
+    },
+    {
+      "table": "scheduler_override",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "scheduler_status",
+      "source_rows": 65,
+      "target_rows": 65,
+      "ok": true
+    },
+    {
+      "table": "schema_migrations",
+      "source_rows": 6,
+      "target_rows": 6,
+      "ok": true
+    },
+    {
+      "table": "score_components",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "sector_breadth",
+      "source_rows": 660,
+      "target_rows": 660,
+      "ok": true
+    },
+    {
+      "table": "session_cycles",
+      "source_rows": 39,
+      "target_rows": 39,
+      "ok": true
+    },
+    {
+      "table": "session_events",
+      "source_rows": 244,
+      "target_rows": 244,
+      "ok": true
+    },
+    {
+      "table": "session_rules",
+      "source_rows": 60,
+      "target_rows": 60,
+      "ok": true
+    },
+    {
+      "table": "session_settings",
+      "source_rows": 12,
+      "target_rows": 12,
+      "ok": true
+    },
+    {
+      "table": "session_transfers",
+      "source_rows": 10,
+      "target_rows": 10,
+      "ok": true
+    },
+    {
+      "table": "shareholding_pattern",
+      "source_rows": 10367,
+      "target_rows": 10367,
+      "ok": true
+    },
+    {
+      "table": "signal_log",
+      "source_rows": 85,
+      "target_rows": 85,
+      "ok": true
+    },
+    {
+      "table": "signal_outcome",
+      "source_rows": 304,
+      "target_rows": 304,
+      "ok": true
+    },
+    {
+      "table": "sip_execution",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "sip_plan",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "strategy",
+      "source_rows": 17,
+      "target_rows": 17,
+      "ok": true
+    },
+    {
+      "table": "strategy_decision",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "strategy_decision_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "strategy_engine_event",
+      "source_rows": 39,
+      "target_rows": 39,
+      "ok": true
+    },
+    {
+      "table": "strategy_event",
+      "source_rows": 3,
+      "target_rows": 3,
+      "ok": true
+    },
+    {
+      "table": "strategy_feature",
+      "source_rows": 76,
+      "target_rows": 76,
+      "ok": true
+    },
+    {
+      "table": "strategy_health",
+      "source_rows": 415,
+      "target_rows": 415,
+      "ok": true
+    },
+    {
+      "table": "strategy_parameter",
+      "source_rows": 63,
+      "target_rows": 63,
+      "ok": true
+    },
+    {
+      "table": "strategy_position",
+      "source_rows": 1,
+      "target_rows": 1,
+      "ok": true
+    },
+    {
+      "table": "strategy_position_intent",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "strategy_regime_mapping",
+      "source_rows": 8,
+      "target_rows": 8,
+      "ok": true
+    },
+    {
+      "table": "strategy_version",
+      "source_rows": 17,
+      "target_rows": 17,
+      "ok": true
+    },
+    {
+      "table": "technical_ext",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "technical_indicators",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "technical_signal",
+      "source_rows": 7979,
+      "target_rows": 7979,
+      "ok": true
+    },
+    {
+      "table": "technical_snapshot",
+      "source_rows": 7416,
+      "target_rows": 7416,
+      "ok": true
+    },
+    {
+      "table": "tenant_paper_account",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "tenant_paper_fill",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "tenant_paper_position",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "tenant_pnl_daily",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "tick_capture_status",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "trading_sessions",
+      "source_rows": 10,
+      "target_rows": 10,
+      "ok": true
+    },
+    {
+      "table": "wealth_advice_log",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_allocation_policy",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_allocation_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_classification",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_cycle_run",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_feedback",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_goal",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_goal_event",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_goal_projection",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_holding",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_liability",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_preference",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_rebalance_plan",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "wealth_snapshot",
+      "source_rows": 0,
+      "target_rows": 0,
+      "ok": true
+    },
+    {
+      "table": "weight_config",
+      "source_rows": 113,
+      "target_rows": 113,
+      "ok": true
+    }
+  ],
+  "ok": true
+}

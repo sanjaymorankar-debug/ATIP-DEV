@@ -1,0 +1,161 @@
+{
+ "backend": "db.postgres",
+ "started_ist": "2026-11-18T15:36:06",
+ "check": [
+  {
+   "session": "S6",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S7",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S8",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S9",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S10",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S1",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S2",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S3",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S4",
+   "to": "COMPLETED"
+  },
+  {
+   "session": "S5",
+   "to": "COMPLETED"
+  }
+ ],
+ "sessions": {
+  "S1": {
+   "expected": 91879.21,
+   "final_cash": 91879.21,
+   "ledger_last": 91879.21,
+   "ledger_sum": 91879.21,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S2": {
+   "expected": 11622.77,
+   "final_cash": 11622.77,
+   "ledger_last": 11622.77,
+   "ledger_sum": 11622.77,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S3": {
+   "expected": 32477.18,
+   "final_cash": 32477.18,
+   "ledger_last": 32477.18,
+   "ledger_sum": 32477.18,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S4": {
+   "expected": 79149.83,
+   "final_cash": 79149.83,
+   "ledger_last": 79149.83,
+   "ledger_sum": 79149.83,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S5": {
+   "expected": 13443.67,
+   "final_cash": 13443.67,
+   "ledger_last": 13443.67,
+   "ledger_sum": 13443.67,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S6": {
+   "expected": 55720.15,
+   "final_cash": 55720.15,
+   "ledger_last": 55720.15,
+   "ledger_sum": 55720.15,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S7": {
+   "expected": 57091.47,
+   "final_cash": 57091.47,
+   "ledger_last": 57091.47,
+   "ledger_sum": 57091.47,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S8": {
+   "expected": 10670.41,
+   "final_cash": 10670.41,
+   "ledger_last": 10670.41,
+   "ledger_sum": 10670.41,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S9": {
+   "expected": 330708.62,
+   "final_cash": 330708.62,
+   "ledger_last": 330708.62,
+   "ledger_sum": 330708.62,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  },
+  "S10": {
+   "expected": 31838.8,
+   "final_cash": 31838.8,
+   "ledger_last": 31838.8,
+   "ledger_sum": 31838.8,
+   "trades": 500,
+   "legs": 1000,
+   "completed": 500,
+   "status": "COMPLETED",
+   "to_the_paisa": true
+  }
+ },
+ "all_to_the_paisa": true,
+ "seconds": 9.0,
+ "finished_ist": "2026-11-18T15:36:14"
+}

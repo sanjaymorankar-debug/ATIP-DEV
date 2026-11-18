@@ -128,8 +128,8 @@ def status(text: str, tone: str = "") -> str:
 
 
 def mode_status(mode: str, st: str) -> str:
-    tone = {"RUNNING": "good", "PAUSED": "warn", "OFF": ""}.get(st, "")
-    sym = {"RUNNING": "●", "PAUSED": "⏸", "OFF": "○"}.get(st, "")
+    tone = {"RUNNING": "good", "PAUSED": "warn", "OFF": "", "CREATED": "info", "COMPLETED": "info"}.get(st, "")
+    sym = {"RUNNING": "●", "PAUSED": "⏸", "OFF": "○", "CREATED": "◌", "COMPLETED": "✓"}.get(st, "")
     return status(f"{sym} {st}", tone) + " " + status(mode, "warn" if mode == "AUTO" else "info" if mode == "CONFIRM" else "")
 
 

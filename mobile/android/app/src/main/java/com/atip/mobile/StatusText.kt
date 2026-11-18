@@ -33,7 +33,12 @@ object StatusText {
         val viewer = str(js, "role") == "VIEWER"
         // KGF-09 (16 Nov 2026): the breadth regime gate; text only while it holds a session's new entries back
         val gate = js.optJSONObject("regime_gate")?.let { str(it, "text") }?.takeIf { it.isNotBlank() }
-        if (status == "RUNNING" && !halted && env != "LIVE" && manual == null && gate == null)
+        // Session engine (18 Nov 2026): sessions paused below their floor (warn) or completed (info), e.g.
+        // "S12 paused: below floor · S3 completed 500 trades"; the strip shows while any is there
+        val sessObj = js.optJSONObject("session_alert")
+        val sess = sessObj?.let { str(it, "text") }?.takeIf { it.isNotBlank() }
+        val sessWarn = sess != null && str(sessObj!!, "tone") == "warn"
+        if (status == "RUNNING" && !halted && env != "LIVE" && manual == null && gate == null && sess == null)
             return Shown("● Running" + (if (viewer) " · view only" else ""), "#064E3B", "#D1FAE5", env, strip = false)
 
         // the strip always carries a symbol (● running, ⏸ stopped, ↻ resuming, ⛔ halted), never colour alone
@@ -57,6 +62,7 @@ object StatusText {
         // "Market closed · last tick 15:29 IST" outside market hours, never "live"
         js.optJSONObject("feed")?.let { f -> str(f, "text")?.takeIf { it.isNotBlank() }?.let { parts.add(minOf(1, parts.size), it) } }
         if (gate != null) parts.add(minOf(1, parts.size), "◐ $gate")
+        if (sess != null) parts.add(minOf(1, parts.size), (if (sessWarn) "⚠ " else "✓ ") + sess)
         if (manual != null) parts += "manual $manual"
         if (viewer) parts += "view only"
         if (js.has("last_updated"))
@@ -65,7 +71,8 @@ object StatusText {
             halted || liveRun -> "#7F1D1D" to "#FEE2E2"
             status == "STOPPED" -> "#7C2D12" to "#FFEDD5"
             status == "RESUMING" -> "#1E3A8A" to "#DBEAFE"
-            status == "RUNNING" && gate != null -> "#78350F" to "#FDE68A"
+            status == "RUNNING" && (gate != null || sessWarn) -> "#78350F" to "#FDE68A"
+            status == "RUNNING" && sess != null -> "#1E3A8A" to "#DBEAFE"
             status == "RUNNING" -> "#064E3B" to "#D1FAE5"
             else -> "#334155" to "#FFFFFF"
         }
