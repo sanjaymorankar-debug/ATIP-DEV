@@ -26,13 +26,14 @@ label{color:var(--muted);font-size:12px}
 .tw{overflow:auto;max-width:100%}.scroll .tw{max-height:340px}.tw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>"""
 _JS = r"""<script>
+const ROOT=(document.querySelector('meta[name="atip-root"]')||{}).content||'';
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function j(u,o){const r=await fetch(u,Object.assign({credentials:'same-origin'},o||{}));const t=await r.json().catch(()=>({}));if(!r.ok)throw new Error(t.error||r.status);return t}
+async function j(u,o){const r=await fetch((u.charAt(0)==='/'?ROOT:'')+u,Object.assign({credentials:'same-origin'},o||{}));const t=await r.json().catch(()=>({}));if(!r.ok)throw new Error(t.error||r.status);return t}
 const send=(m,u,b)=>j(u,{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 // UX audit: every table scrolls inside its own keyboard-reachable region, never the page
 const table=(h,rows,o)=>{o=o||{};const lbl=o.label||('Table: '+h.filter(Boolean).slice(0,4).join(', '));
   return `<div class="tw" tabindex="0" role="region" aria-label="${esc(lbl)}"><table><thead><tr>${h.map(x=>`<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan=${h.length} class="muted">${o.empty||'Nothing here yet.'}</td></tr>`}</tbody></table></div>`};
-async function logout(){await send('POST','/api/auth/logout');location='/login'}
+async function logout(){await send('POST','/api/auth/logout');location=ROOT+'/login'}
 // a read that fails says so at the top of the page (single-user mode answers 503 "enterprise features are disabled")
 function pageError(e){const w=document.querySelector('.wrap')||document.body;w.insertAdjacentHTML('afterbegin',`<p class="note" role="alert" style="padding:8px 0">${esc(e.message)}${/disabled/.test(e.message)?'. ATIP runs in single-user mode, so accounts, API keys and administration are switched off.':''}</p>`)}
 </script>"""
@@ -46,6 +47,11 @@ def _page(title, body):
             f"{_TOP.format(title=title)}<div class='wrap'>{body}</div></body></html>")
 
 
+def _root():
+    from dashboard.security import dashboard_root_path   # bkesari VPS: /atip prefix
+    return dashboard_root_path()
+
+
 def render_login():
     """The sign-in page on the shell's design system (tokens, light and dark) but without the shell itself: nobody
     is signed in yet, so there is no rail, kill switch or search to show (3 Nov 2026)."""
@@ -53,7 +59,7 @@ def render_login():
     field = ('<div class="ax-field"><label for="{id}">{label}</label>'
              '<input class="ax-input" id="{id}"{attrs}></div>')
     return ("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' "
-            "content='width=device-width,initial-scale=1'><title>Sign in · ATIP</title>" + head_tags() +
+            "content='width=device-width,initial-scale=1'><title>Sign in · ATIP</title>" + head_tags(_root()) +
             "<style>.ax-login,.ax-login *{box-sizing:border-box}.ax-login{max-width:380px;margin:12vh auto 24px;padding:0 16px}.ax-login .ax-input{width:100%}"
             ".ax-login-brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;margin-bottom:14px}"
             ".ax-login h1{font-size:20px;margin:0 0 4px}.ax-login form{margin-top:14px}"
@@ -72,7 +78,7 @@ def render_login():
 j('/api/enterprise/status').then(s=>{if(!s.enabled)document.getElementById('st').textContent='Enterprise sign-in is disabled; ATIP is in single-user mode.'});
 async function go(){const m=document.getElementById('msg');m.textContent='';
  try{const r=await send('POST','/api/auth/login',{username:u.value,password:p.value,tenant_id:t.value||null,otp:o.value||null});
-  const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}catch(e){m.textContent=e.message}}
+  const next=new URLSearchParams(location.search).get('next')||'/';location=r.must_change_password?ROOT+'/account':(next.charAt(0)==='/'&&next.charAt(1)!=='/'&&next.indexOf(String.fromCharCode(92))<0?next:'/')}catch(e){m.textContent=e.message}}
 document.getElementById('lf').addEventListener('submit',function(ev){ev.preventDefault();go()});
 </script></body></html>""")
 
@@ -96,7 +102,7 @@ async function load(){
  const W=await j('/api/account/watchlists');document.getElementById('wl').innerHTML=table(['Name','Symbols',''],W.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc((w.symbols||[]).join(', '))}</td><td><button onclick="del('watchlists','${w.watchlist_id}')">Delete</button></td></tr>`));
  const A=await j('/api/account/alerts');document.getElementById('al').innerHTML=table(['Rule','Condition','Last value','Last triggered',''],A.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.symbol)} ${esc(a.feature)} ${esc(a.op)} ${a.value}</td><td>${a.last_value??'—'}</td><td>${esc(a.last_triggered_at||'')}</td><td><button onclick="del('alerts','${a.rule_id}')">Delete</button></td></tr>`));
 }
-async function pw(){try{await send('POST','/api/auth/password',{old_password:op.value,new_password:np.value});location='/login'}catch(e){pm.textContent=e.message}}
+async function pw(){try{await send('POST','/api/auth/password',{old_password:op.value,new_password:np.value});location=ROOT+'/login'}catch(e){pm.textContent=e.message}}
 async function readAll(){await send('POST','/api/account/notifications/read',{});load()}
 async function newKey(){try{const r=await send('POST','/api/account/api-keys',{name:kn.value,scopes:ks.value.split(',').map(s=>s.trim()).filter(Boolean)});km.textContent='Copy now (shown once): '+r.api_key;load()}catch(e){km.textContent=e.message}}
 async function rk(id){await j('/api/account/api-keys/'+id,{method:'DELETE'});load()}

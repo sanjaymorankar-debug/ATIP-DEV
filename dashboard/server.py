@@ -2004,6 +2004,8 @@ if HAS_FASTAPI:
     _register_command_more(app, _guard, _Req, get_connection, json_safe)
     from dashboard.ux_routes import register as _register_ux_routes                    # UXD/SES/ACC/RPT (2 Nov 2026): the shell
     _register_ux_routes(app, _guard, _Req, get_connection, json_safe)                  # on every page, new pages, /api/v2
+    from dashboard.rootprefix import install as _install_rootprefix                   # bkesari VPS 18-Nov-2026: keep links under
+    _install_rootprefix(app)                                                          # ATIP_ROOT_PATH (/atip); no-op at the root
     from dashboard.rca_routes import register as _register_rca_routes                  # 6 Nov 2026: post-market RCA (/rca)
     _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.arms_routes import register as _register_arms_routes                # 16 Nov 2026: arms, gate, DUMMY GTTs (/ab)

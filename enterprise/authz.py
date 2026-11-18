@@ -49,7 +49,7 @@ from enterprise.config import COOKIE, settings
 
 PUBLIC = [("POST", r"^/api/auth/(login|register|reset|refresh|forgot|verify-email)$"), ("GET", r"^/login$"),
           ("GET", r"^/api/notifications/unsubscribe$"),                  # W9: signed one-click link
-          ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"),
+          ("GET", r"^/api/enterprise/status$"), ("GET", r"^/favicon\.ico$"), ("GET", r"^/static/atip/"),   # bkesari VPS: login page CSS/JS
           # W8: health probes (no sensitive data) and signed inbound webhooks (HMAC-verified)
           ("GET", r"^/health(/(live|ready|database|broker|data|scheduler|ml|storage|market_data|wealth|notifications|billing))?$"),
           ("POST", r"^/api/webhooks/[a-z0-9_]{1,32}$"),
@@ -297,6 +297,9 @@ def install(app):
             return await call_next(request)
         credential.set("")            # until the principal is known, no page carries a token and the guard refuses
         method, path = request.method.upper(), request.url.path
+        root = request.scope.get("root_path") or ""   # bkesari VPS: served under ATIP_ROOT_PATH (/atip)
+        if root and path.startswith(root):
+            path = path[len(root):] or "/"
         if method == "OPTIONS" or _public(method, path):
             return await call_next(request)
         from db.schema import get_connection
@@ -311,7 +314,7 @@ def install(app):
                     return JSONResponse({"error": "authentication required"}, status_code=401)
                 from urllib.parse import quote               # W33: keep the query (e.g. /app?verify=)
                 q = request.url.query
-                return RedirectResponse("/login?next=" + quote(path + (f"?{q}" if q else ""), safe="/"),
+                return RedirectResponse(root + "/login?next=" + quote(root + path + (f"?{q}" if q else ""), safe="/"),
                                         status_code=302)
 
             credential.set(_page_credential(request, p, s))
