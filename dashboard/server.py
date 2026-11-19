@@ -2373,9 +2373,9 @@ if HAS_FASTAPI:
         LRCA-18 (20 Nov 2026): each outage has its own alert key (notify drops a repeated key for the rest of the day,
         so a second outage was silent), and a new day starts afresh (an outage still open at 15:30 was never alerted
         again the next morning)."""
-        from datetime import date as _date, datetime as _dt
+        from datetime import datetime as _dt
         from ops.jobs import beat
-        today = _date.today().isoformat()
+        today = _dt.now().strftime("%Y-%m-%d")       # the server's clock is IST (TZ=Asia/Kolkata), as everywhere here
         if _monitor_state.get("day") != today:
             _monitor_state.update(failed_passes=0, alerted=False, since=None, day=today)
         if ok:
