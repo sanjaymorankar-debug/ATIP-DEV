@@ -91,6 +91,17 @@ NSE_SPECIAL_SESSIONS = {
     date(2026, 2, 1),    # Union Budget (Sunday)
 }
 
+# Muhurat sessions held on a day NSE_HOLIDAYS closes (a weekend or a holiday):
+# a one-hour evening session with a real Bhavcopy. Their bars stay in
+# prices_daily (the 2026-11-08 ones were filled on purpose on 16 Nov 2026), but
+# the day is still not a session: is_trading_day() stays False, so nothing
+# scores it or counts it as a bar day. Only data.quality reads this set, so it
+# does not report those bars as dated on a non-trading day. (2025-10-21's
+# Muhurat fell on a working day that is not a holiday, so it is a session.)
+NSE_MUHURAT_SESSIONS = {
+    date(2026, 11, 8),   # Diwali Laxmi Pujan (Sunday)
+}
+
 
 def is_trading_day(d: date) -> bool:
     """Mon–Fri and not an NSE holiday, or a special weekend session."""

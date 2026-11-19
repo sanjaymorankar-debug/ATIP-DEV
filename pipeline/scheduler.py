@@ -327,6 +327,7 @@ def run_postmarket_if_missing():
             log.warning(f"  price-hole alert: {e}")
 
     release_held_signals()
+    _recheck_data_quality()     # a session left pending by a stopped process is settled here
     # A session inside the window with no bars of its own, but older than one that has them, is
     # a hole too: run_postmarket fetches its Bhavcopy first. Before the newest stored session
     # (a fresh install) nothing is fanned out.
@@ -1326,11 +1327,24 @@ def run_fii_dii_watch():
         return
     if not _debounce("fii_dii_watch"):        # review 3 Nov 2026 (pipeline M6): a wake-up fires every overdue slot at once
         return
+    _recheck_data_quality()     # whether or not the signals are still held
     td = date.today()
     if _signal_log_state(td) != "held":
         return          # logged already, or post-market has not scored yet
     final = datetime.now().strftime("%H:%M") >= FII_DII_WATCH_END
     run_job("fii_dii_watch", settle_session_flows, td, final)
+
+
+def _recheck_data_quality():
+    """19 Nov 2026: the 16:48 data-quality run finds the session's index closes
+    missing (NSE's file comes in the evening; 18 Nov's was stored at 17:00:04)
+    and leaves them pending; this fetches them and re-runs the checks once
+    they are in, or at the 21:30 deadline. A no-op with nothing pending."""
+    try:
+        from data.quality import recheck_pending
+        recheck_pending()
+    except Exception as e:
+        log.warning(f"  Data-quality recheck: {e}")
 
 
 def release_held_signals(now=None):
