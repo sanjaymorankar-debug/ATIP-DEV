@@ -129,6 +129,15 @@ def gate_state(conn, gate: dict | None, on: str | None = None) -> dict:
     if not b or b.get(metric) is None:
         return {"open": False, "metric": metric, "min": lo, "value": None, "date": None,
                 "reason": f"regime gate: no {metric} stored yet (python -m scores.breadth)"}
+    # LRCA-06 (19 Nov 2026, strategy v2 freshness_gate, OFF unless config.json turns it on): the newest stored breadth
+    # was used at any age, so a stopped 21:20 / 07:30 job froze the gate open (or shut) on an old day.
+    from orders import strategy_v2 as SV2
+    if SV2.on("freshness_gate"):
+        why = SV2.stale(b["date"], SV2.value("breadth_max_age_sessions") or 1,
+                        date.fromisoformat(str(on)[:10]) if on else None)
+        if why:
+            return {"open": False, "metric": metric, "min": lo, "value": float(b[metric]), "date": b["date"],
+                    "reason": f"regime gate closed: stored breadth is stale ({why})"}
     v = float(b[metric])
     ok = v >= lo
     return {"open": ok, "metric": metric, "min": lo, "value": v, "date": b["date"],

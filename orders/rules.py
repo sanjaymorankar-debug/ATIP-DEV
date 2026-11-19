@@ -869,7 +869,9 @@ def check_triggers() -> list[dict]:
         return events
     _watch_blind(active, quotes)
 
-    price_by_symbol = {row["symbol"]: row["ltp"] for _, row in quotes.iterrows() if row.get("ltp")}
+    # LRCA-05 (19 Nov 2026): pandas turns a missing LTP into NaN, which is truthy and fails every `<=` test, so a stop
+    # was silently never tested. Only a finite, positive LTP is a price.
+    price_by_symbol = {row["symbol"]: float(row["ltp"]) for _, row in quotes.iterrows() if _usable_price(row.get("ltp"))}
     # Freshness of this quote batch, for the auto-execution guard below.
     quote_age = _quote_batch_age_seconds(quotes)
     # Owner rule (27 Oct 2026): an entry goes out without the confirmation tap in PAPER only.
@@ -887,88 +889,123 @@ def check_triggers() -> list[dict]:
     for mv in update_trailing_stops(price_by_symbol):
         events.append({"type": "TRAIL_MOVED", **mv})
     # Re-read the rules so the trigger test below sees the ratcheted levels.
-    active = list_rules(status=ACTIVE)
+    # LRCA-01 (19 Nov 2026): exit legs (STOP / TARGET / any non-entry role) are tested before entries, so a new entry
+    # can never stand in front of the stops that protect open positions (list_rules is newest first).
+    active = sorted(list_rules(status=ACTIVE), key=lambda r: (r.get("role") or ROLE_ENTRY) == ROLE_ENTRY)
 
     conn = get_connection()
+    lock_error = None
     try:
         now_iso = datetime.now().isoformat()
         for rule in active:
             price = price_by_symbol.get(rule["symbol"])
             if not price:
                 continue
-            if rule.get("not_before") and rule["not_before"] > now_iso:
-                continue                          # a time-bound exit leg that is not due yet
-            reason = _condition_met(rule, price)
-            if not reason:
-                continue
-            # Review 3 Nov 2026 (orders H1): `active` was read once, before this loop. A STOP that fired earlier in
-            # this same pass cancels its TARGET (settle_oco_group), so act only on what the database says now.
-            cur = get_rule(rule["id"])
-            if not cur or cur.get("status") != ACTIVE:
-                continue
-            rule = cur
-            # UXR-04: an entry linked to a paused / MANUAL / over-limit session waits (stays ACTIVE).
-            # Exit legs are never held -- orders/sessions.py gate().
+            # LRCA-01: one rule that raises (sizing, funds check, ledger, a database error) used to abort the whole
+            # pass, so every rule after it -- open positions' stops included -- went untested, every 30 s.
             try:
-                from orders.sessions import gate
-                held = gate(conn, rule, est_value=price * _resolve_quantity(rule, price)
-                            if rule["quantity_type"] != QTY_RISK else None)
-            except Exception as e:
-                held = f"session gate unavailable ({e})" if (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY else None
-            if held:
-                log.debug(f"  {rule['symbol']}: trigger held -- {held}")   # every 30 s; /command/monitor shows it
-                events.append({"type": "HELD_BY_SESSION", "rule_id": rule["id"],
-                               "symbol": rule["symbol"], "reason": held})
-                continue
-            # The owner's auto send switch: an entry of a RUNNING AUTO session skips the tap and takes
-            # the same stale-quote-guarded path as require_confirmation=False (orders/sessions.py).
-            try:
-                from orders.sessions import sends_without_asking
-                auto = sends_without_asking(conn, rule)
-            except Exception as e:
-                log.warning(f"  {rule['symbol']}: auto send check failed, asking instead: {e}")
-                auto = False
-
-            no_tap = auto or not rule["require_confirmation"]
-            if no_tap and not paper_only_ok and (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY:
-                # Real money: this entry asks, whatever its own setting or its session says. Exit
-                # legs keep theirs -- a stop protecting a real position must not wait for a tap.
-                log.info(f"  {rule['symbol']}: not PAPER -- entry asks for confirmation instead of sending")
-                no_tap = False
-
-            if not no_tap:
-                now = datetime.now()
-                expires = (now + timedelta(seconds=CONFIRMATION_WINDOW_SECONDS)).isoformat()
-                conn.execute(
-                    "UPDATE order_rules SET status=?, triggered_at=?, trigger_hit_price=?, confirmation_expires_at=?, updated_at=? WHERE id=?",
-                    (PENDING_CONFIRMATION, now.isoformat(), price, expires, now.isoformat(), rule["id"]),
-                )
-                conn.commit()
-                events.append({"type": "PENDING_CONFIRMATION", "rule_id": rule["id"],
-                                "symbol": rule["symbol"], "side": rule["side"],
-                                "reason": reason, "price": price})
-                fresh = get_rule(rule["id"])
-                notify_order_event("PENDING_CONFIRMATION", fresh or rule)
-            elif quote_age is not None and quote_age > MAX_QUOTE_AGE_SECONDS:
-                # Auto-execution on a stale quote is the documented failure mode
-                # (process asleep, then acting the instant it wakes). Refuse and
-                # say so rather than firing an order at a price from ages ago.
-                log.warning(f"  ⚠ {rule['symbol']}: auto-execute SKIPPED — quote is "
-                            f"{quote_age:.0f}s old (limit {MAX_QUOTE_AGE_SECONDS}s)")
-                events.append({"type": "SKIPPED_STALE_QUOTE", "rule_id": rule["id"],
-                               "symbol": rule["symbol"], "quote_age_s": round(quote_age)})
-            elif halted_now:
-                # The kill switch blocks every order, exits included (orders/broker.py). Leave the rule ACTIVE and do
-                # not attempt it every 30 s (each attempt wrote a BLOCKED_HALTED order_log row and, for an exit leg,
-                # used to fail it for good -- see execute_rule). It fires on the first pass after the halt lifts.
-                events.append({"type": "HELD_HALTED", "rule_id": rule["id"], "symbol": rule["symbol"]})
-            else:
-                result = execute_rule(rule["id"], price)
-                events.append({"type": result["status"], "rule_id": rule["id"], **result})
+                _check_one(conn, rule, price, now_iso, events, paper_only_ok, quote_age, halted_now)
+            except Exception as e:                   # noqa: BLE001 -- logged, counted, and the next rule still runs
+                log.error(f"  order_rules: {rule.get('symbol')} rule {rule.get('id')} failed this pass: {e}")
+                events.append({"type": "RULE_ERROR", "rule_id": rule.get("id"), "symbol": rule.get("symbol"),
+                               "error": str(e)[:300]})
+                if "database is locked" in str(e) or "database table is locked" in str(e):
+                    lock_error = lock_error or e
+                try:
+                    conn.rollback()
+                except Exception:                    # noqa: BLE001
+                    pass
     finally:
         conn.close()
-
+    if lock_error is not None:
+        # The monitor's RCA-13 fast retry (dashboard/server.py _is_db_lock) still sees the lock -- after every other
+        # rule of this pass has been tested.
+        raise lock_error
     return events
+
+
+def _usable_price(v) -> bool:
+    """A finite, positive number (NaN and None are not prices)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(x) and x > 0
+
+
+def _check_one(conn, rule: dict, price: float, now_iso: str, events: list, paper_only_ok: bool, quote_age,
+               halted_now: bool) -> None:
+    """One ACTIVE rule against this pass's price (the body of check_triggers' loop, unchanged except that its
+    `continue`s are `return`s)."""
+    if rule.get("not_before") and rule["not_before"] > now_iso:
+        return                          # a time-bound exit leg that is not due yet
+    reason = _condition_met(rule, price)
+    if not reason:
+        return
+    # Review 3 Nov 2026 (orders H1): `active` was read once, before this loop. A STOP that fired earlier in
+    # this same pass cancels its TARGET (settle_oco_group), so act only on what the database says now.
+    cur = get_rule(rule["id"])
+    if not cur or cur.get("status") != ACTIVE:
+        return
+    rule = cur
+    # UXR-04: an entry linked to a paused / MANUAL / over-limit session waits (stays ACTIVE).
+    # Exit legs are never held -- orders/sessions.py gate().
+    try:
+        from orders.sessions import gate
+        held = gate(conn, rule, est_value=price * _resolve_quantity(rule, price)
+                    if rule["quantity_type"] != QTY_RISK else None)
+    except Exception as e:
+        held = f"session gate unavailable ({e})" if (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY else None
+    if held:
+        log.debug(f"  {rule['symbol']}: trigger held -- {held}")   # every 30 s; /command/monitor shows it
+        events.append({"type": "HELD_BY_SESSION", "rule_id": rule["id"],
+                       "symbol": rule["symbol"], "reason": held})
+        return
+    # The owner's auto send switch: an entry of a RUNNING AUTO session skips the tap and takes
+    # the same stale-quote-guarded path as require_confirmation=False (orders/sessions.py).
+    try:
+        from orders.sessions import sends_without_asking
+        auto = sends_without_asking(conn, rule)
+    except Exception as e:
+        log.warning(f"  {rule['symbol']}: auto send check failed, asking instead: {e}")
+        auto = False
+
+    no_tap = auto or not rule["require_confirmation"]
+    if no_tap and not paper_only_ok and (rule.get("role") or ROLE_ENTRY) == ROLE_ENTRY:
+        # Real money: this entry asks, whatever its own setting or its session says. Exit
+        # legs keep theirs -- a stop protecting a real position must not wait for a tap.
+        log.info(f"  {rule['symbol']}: not PAPER -- entry asks for confirmation instead of sending")
+        no_tap = False
+
+    if not no_tap:
+        now = datetime.now()
+        expires = (now + timedelta(seconds=CONFIRMATION_WINDOW_SECONDS)).isoformat()
+        conn.execute(
+            "UPDATE order_rules SET status=?, triggered_at=?, trigger_hit_price=?, confirmation_expires_at=?, updated_at=? WHERE id=?",
+            (PENDING_CONFIRMATION, now.isoformat(), price, expires, now.isoformat(), rule["id"]),
+        )
+        conn.commit()
+        events.append({"type": "PENDING_CONFIRMATION", "rule_id": rule["id"],
+                        "symbol": rule["symbol"], "side": rule["side"],
+                        "reason": reason, "price": price})
+        fresh = get_rule(rule["id"])
+        notify_order_event("PENDING_CONFIRMATION", fresh or rule)
+    elif quote_age is not None and quote_age > MAX_QUOTE_AGE_SECONDS:
+        # Auto-execution on a stale quote is the documented failure mode
+        # (process asleep, then acting the instant it wakes). Refuse and
+        # say so rather than firing an order at a price from ages ago.
+        log.warning(f"  ⚠ {rule['symbol']}: auto-execute SKIPPED — quote is "
+                    f"{quote_age:.0f}s old (limit {MAX_QUOTE_AGE_SECONDS}s)")
+        events.append({"type": "SKIPPED_STALE_QUOTE", "rule_id": rule["id"],
+                       "symbol": rule["symbol"], "quote_age_s": round(quote_age)})
+    elif halted_now:
+        # The kill switch blocks every order, exits included (orders/broker.py). Leave the rule ACTIVE and do
+        # not attempt it every 30 s (each attempt wrote a BLOCKED_HALTED order_log row and, for an exit leg,
+        # used to fail it for good -- see execute_rule). It fires on the first pass after the halt lifts.
+        events.append({"type": "HELD_HALTED", "rule_id": rule["id"], "symbol": rule["symbol"]})
+    else:
+        result = execute_rule(rule["id"], price)
+        events.append({"type": result["status"], "rule_id": rule["id"], **result})
 
 
 # ═════════════════════════════════════════════════════════════════════════

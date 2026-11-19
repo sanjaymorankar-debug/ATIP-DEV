@@ -294,8 +294,10 @@ def store_index_close_snapshot(conn, trade_date, closes) -> bool:
     the feed did record is never touched.
     """
     from data.dhan_ws import FEED_CLOSE
+    # LRCA-13: only a feed row that knows Nifty's change covers the close; rows written with no change (a reconnect
+    # with no previous close) no longer keep NSE's official snapshot out.
     covered = conn.execute(
-        "SELECT COUNT(*) FROM index_levels WHERE date=? AND time BETWEEN ? AND ?",
+        "SELECT COUNT(*) FROM index_levels WHERE date=? AND time BETWEEN ? AND ? AND nifty50_chg IS NOT NULL",
         (str(trade_date), INDEX_CLOSE_SNAPSHOT_TIME, FEED_CLOSE.strftime("%H:%M:%S"))
     ).fetchone()[0]
     if covered or not closes:

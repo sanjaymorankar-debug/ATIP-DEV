@@ -399,6 +399,13 @@ def place_dummy_buy(conn, symbol: str, quantity, buy_price, stoploss=None, *, co
     if not ltp:
         out.update(buy_status="waiting_for_ltp", message=MSG["no_ltp"])
         return out
+    # LRCA-08 (19 Nov 2026, strategy v2 retest_guard, OFF unless config.json turns it on): a resting BUY-BELOW whose
+    # LTP is already at or under its planned stop fills at once into a broken setup.
+    from orders import strategy_v2 as SV2
+    if SV2.on("retest_guard") and float(ltp) <= s:
+        out.update(buy_status="blocked", message=f"LTP {float(ltp):,.2f} is already at or under the planned stop "
+                                                 f"{s:,.2f}: the setup is broken (strategy v2). {NO_ORDER}")
+        return out
     # The broker's read-only state is read before the write lock (network), then every local check runs again inside
     # BEGIN IMMEDIATE, where no other writer can slip a second record in between the check and the insert.
     pre = broker_state(broker, sym)

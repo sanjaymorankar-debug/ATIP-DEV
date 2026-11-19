@@ -972,6 +972,15 @@ def gate(conn, rule: dict, est_value: float | None = None) -> str | None:
         # KGF-03 (16 Nov 2026): no new swing (CNC) entry from an auto-pick after the session's cut-off (14:45 IST by
         # default). Picks re-queued whenever a session freed up, up to ASHOKLEY at 15:29 on 11 Nov; the study assumed
         # an entry at the next open. The resting Kite retest buy is a broker-side order by design and is not held.
+        # LRCA-08 (strategy v2 retest_guard, OFF unless config.json turns it on): a resting Kite-retest buy can fire
+        # days after it was placed; its arm's regime gate is checked again when it fires, not only when it was placed.
+        if str(rule.get("notes") or "").startswith("Algo retest"):
+            from orders import strategy_v2 as SV2
+            if SV2.on("retest_guard"):
+                from orders import arms
+                g = arms.gate(conn, arms.get(conn, sid))
+                if not g.get("open", True):
+                    return f"session {sid}: {g.get('reason') or 'regime gate closed'} (strategy v2: retest held)"
         if str(rule.get("notes") or "").startswith("Auto-pick") and (rule.get("product_type") or "CNC") == "CNC":
             from orders import arms
             cut = str(arms.setting(arms.get(conn, sid), "no_entry_after"))

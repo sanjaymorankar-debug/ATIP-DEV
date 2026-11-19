@@ -1723,7 +1723,15 @@ if HAS_FASTAPI:
     @app.get("/api/portfolio")
     async def api_portfolio(): return JSONResponse(json_safe(get_portfolio(latest_scored_date())))
     @app.post("/api/refresh", dependencies=_guard)
-    async def api_refresh():
+    async def api_refresh(force: bool = False):
+        # LRCA-15 (19 Nov 2026): before 16:00 IST post-market targets the PREVIOUS session, so a refresh during the day
+        # stamped today's intraday prices on yesterday, re-scored the ai_scores auto-pick ranks on and re-ran the paper
+        # next-open fills. Refused 09:00-16:00 IST unless ?force=true.
+        from datetime import datetime as _dt
+        if not force and "09:00" <= _dt.now().strftime("%H:%M") < "16:00":
+            return JSONResponse({"status": "refused", "error": "post-market runs after 16:00 IST; during the session "
+                                 "it would re-score the previous day on today's prices (add ?force=true to insist)"},
+                                status_code=409)
         import threading
         from pipeline.scheduler import run_postmarket
         threading.Thread(target=run_postmarket,daemon=True).start()
@@ -2277,9 +2285,13 @@ if HAS_FASTAPI:
     def _is_db_lock(e) -> bool:
         return "database is locked" in str(e) or "database table is locked" in str(e)
 
+    MONITOR_FAIL_ALERT_PASSES = 4      # LRCA-03: ~2 minutes of failing passes in market hours -> one error alert
+
     def _order_monitor_pass() -> bool:
-        """One pass: auto-pick, then check_triggers. True when either lost to a database lock."""
+        """One pass: the session engine, the exit checks (check_triggers), auto-pick, then the algo / time exits.
+        True when a step lost to a database lock. _monitor_state["errors"] counts the steps that failed."""
         locked = False
+        _monitor_state["errors"] = 0
         try:                    # session engine (18 Nov 2026): COMPLETED at its last trade, PAUSED under its floor --
             from orders import session_engine     # before auto-pick, so a session it stops is not picked for
             c = get_connection()
@@ -2292,19 +2304,28 @@ if HAS_FASTAPI:
         except Exception as e:
             log.error(f"  session engine error: {e}")
             locked = _is_db_lock(e)
-        try:                    # free cash-pool sessions queue their next occurrence first
+            _monitor_state["errors"] += 1
+        # LRCA-02 (19 Nov 2026): the stops and targets of open positions are tested FIRST. They used to wait behind
+        # auto-pick, whose broker / quote calls (Kite retest: 4 trading-API reads per setup) could hold every exit for
+        # minutes at the open. An entry auto-pick queues now fires on the next pass (<= 30 s later) -- its LIMIT and
+        # the 60 s fresh-LTP rule are unchanged.
+        try:
+            events = oe.check_triggers()
+            if events:
+                log.info(f"  order_rules: {events}")
+            if any(ev.get("type") == "RULE_ERROR" for ev in (events or [])):
+                _monitor_state["errors"] += 1
+        except Exception as e:
+            log.error(f"  order_rules monitor error: {e}")
+            locked = locked or _is_db_lock(e)
+            _monitor_state["errors"] += 1
+        try:                    # then free cash-pool sessions queue their next occurrence
             from orders.autopick import run as autopick
             autopick()
         except Exception as e:
             log.error(f"  auto-pick error: {e}")
             locked = locked or _is_db_lock(e)
-        try:
-            events = oe.check_triggers()
-            if events:
-                log.info(f"  order_rules: {events}")
-        except Exception as e:
-            log.error(f"  order_rules monitor error: {e}")
-            locked = locked or _is_db_lock(e)
+            _monitor_state["errors"] += 1
         try:                    # KGF-11/13 (16 Nov 2026): DUMMY- records follow their rules; the arms' time exits
             from orders import algo_gtt
             c = get_connection()
@@ -2319,7 +2340,37 @@ if HAS_FASTAPI:
         except Exception as e:
             log.error(f"  algo dummy-GTT / time-exit pass error: {e}")
             locked = locked or _is_db_lock(e)
+            _monitor_state["errors"] += 1
         return locked
+
+    _monitor_state = {"errors": 0, "failed_passes": 0, "alerted": False}
+
+    def _monitor_health(ok: bool, detail: str = "") -> None:
+        """LRCA-03 (19 Nov 2026): every monitor failure used to be a log line only -- no heartbeat, no job row, no
+        alert -- so stops could stop firing all day unseen. Now each clean pass beats `order_monitor` (ops_heartbeat,
+        ops/health) and MONITOR_FAIL_ALERT_PASSES failing passes in a row send one error alert (and one on recovery)."""
+        from ops.jobs import beat
+        if ok:
+            beat("order_monitor", detail="ok", every=60)
+            if _monitor_state["alerted"]:
+                _monitor_alert("✅ Order monitor recovered: stops and targets are being checked again.", "info",
+                               "order_monitor_recovered")
+            _monitor_state.update(failed_passes=0, alerted=False)
+            return
+        _monitor_state["failed_passes"] += 1
+        beat("order_monitor_failing", detail=detail[:200], every=60)
+        if _monitor_state["failed_passes"] >= MONITOR_FAIL_ALERT_PASSES and not _monitor_state["alerted"]:
+            _monitor_state["alerted"] = True
+            _monitor_alert(f"⚠ Order monitor failing for {_monitor_state['failed_passes']} passes in a row "
+                           f"(~{_monitor_state['failed_passes'] * MONITOR_EVERY_S // 60} min): open positions' stops "
+                           f"and targets may not be firing. Last error: {detail[:160]}", "error", "order_monitor_failing")
+
+    def _monitor_alert(text: str, severity: str, key: str) -> None:
+        try:
+            from alerts.telegram import notify
+            notify(text, category="system", severity=severity, key=key)
+        except Exception as e:                      # an alert that cannot be sent never stops the monitor
+            log.warning(f"  order monitor alert not sent: {e}")
 
     def _order_monitor_loop():
         """
@@ -2339,8 +2390,13 @@ if HAS_FASTAPI:
                     if _order_monitor_pass():
                         wait = MONITOR_LOCK_RETRY_S
                         log.warning(f"  order monitor: pass lost to a database lock, running again in {wait}s")
+                    _monitor_health(_monitor_state["errors"] == 0, f"{_monitor_state['errors']} step(s) failed")
             except Exception as e:
                 log.error(f"  order_rules monitor error: {e}")
+                try:
+                    _monitor_health(False, str(e))
+                except Exception:                   # noqa: BLE001
+                    pass
             time.sleep(wait)
 
     @app.on_event("startup")

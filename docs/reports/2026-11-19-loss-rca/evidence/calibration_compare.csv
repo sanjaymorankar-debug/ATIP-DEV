@@ -1,0 +1,5 @@
+setting,stop_slip_bps,gap_fill_at_open,weekend_bars,n,reason_match,corr,sum_actual,sum_sim,gap_exits,stop_err_bps_median,stop_err_bps_mae,trail_err_bps_median,trail_err_bps_mae
+realistic,15.0,True,True,41,41,0.971,5883.07,4716.87,4,-5.5,8.8,4.3,48.0
+stop 10 bps,10.0,True,True,41,41,0.971,5883.07,5224.08,4,-0.5,8.1,9.3,49.2
+stop 20 bps,20.0,True,True,41,41,0.972,5883.07,4209.61,4,-10.5,11.0,-0.7,47.7
+"realistic, no weekend bars",15.0,True,False,41,41,0.992,5883.07,5588.24,4,-5.5,8.8,4.3,30.1

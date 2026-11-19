@@ -1,0 +1,200 @@
+[
+ {
+  "level": "ERROR",
+  "module": "scheduler",
+  "type": "\u274c [<t>] FAILED: history_backfill (<n>s) \u2014 <n>/<n> symbols refused",
+  "first": "2026-11-19T06:00:36.777",
+  "last": "2026-11-19T06:00:36.777",
+  "count": 1,
+  "example": "\u274c  [06:00:36]  FAILED: history_backfill  (2s) \u2014 7/7 symbols refused"
+ },
+ {
+  "level": "ERROR",
+  "module": "history",
+  "type": "$^KSE: No data found, symbol may be delisted",
+  "first": "2026-11-19T06:01:19.970",
+  "last": "2026-11-19T17:16:09.781",
+  "count": 18,
+  "example": "$^KSE: No data found, symbol may be delisted"
+ },
+ {
+  "level": "ERROR",
+  "module": "multi",
+  "type": "<n> Failed download:",
+  "first": "2026-11-19T06:01:19.971",
+  "last": "2026-11-19T17:16:09.783",
+  "count": 18,
+  "example": "1 Failed download:"
+ },
+ {
+  "level": "ERROR",
+  "module": "multi",
+  "type": "['^KSE']: No data found, symbol may be delisted",
+  "first": "2026-11-19T06:01:19.972",
+  "last": "2026-11-19T17:16:09.783",
+  "count": 18,
+  "example": "['^KSE']: No data found, symbol may be delisted"
+ },
+ {
+  "level": "ERROR",
+  "module": "asia_markets",
+  "type": "\u2717 KSE<n>: every source failed \u2014 investing:<n>: ConnectionError: HTTP <n>; psx_dps:KSE<n>: ConnectionError: HTTP <n>; yahoo:^KSE: ConnectionError: yfinance retur",
+  "first": "2026-11-19T06:01:32.692",
+  "last": "2026-11-19T17:16:11.788",
+  "count": 3,
+  "example": "\u2717 KSE100: every source failed \u2014 investing:49677: ConnectionError: HTTP 403; psx_dps:KSE100: ConnectionError: HTTP 403; yahoo:^KSE: ConnectionError: yfinance returned no data"
+ },
+ {
+  "level": "WARNING",
+  "module": "operating_schedule",
+  "type": "\u23ef ATIP STOPPED \u2192 RESUMING (schedule: scheduled resume)",
+  "first": "2026-11-19T06:00:07.087",
+  "last": "2026-11-19T06:00:07.087",
+  "count": 1,
+  "example": "\u23ef  ATIP STOPPED \u2192 RESUMING (schedule: scheduled resume)"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "TENNIND: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data ",
+  "first": "2026-11-19T06:00:34.991",
+  "last": "2026-11-19T06:00:34.991",
+  "count": 1,
+  "example": "TENNIND: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "TMCV: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due",
+  "first": "2026-11-19T06:00:35.272",
+  "last": "2026-11-19T06:00:35.272",
+  "count": 1,
+  "example": "TMCV: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "URBANCO: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data ",
+  "first": "2026-11-19T06:00:35.572",
+  "last": "2026-11-19T06:00:35.572",
+  "count": 1,
+  "example": "URBANCO: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "VAML: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due",
+  "first": "2026-11-19T06:00:35.872",
+  "last": "2026-11-19T06:00:35.872",
+  "count": 1,
+  "example": "VAML: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "VEDPOWER: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data",
+  "first": "2026-11-19T06:00:36.169",
+  "last": "2026-11-19T06:00:36.169",
+  "count": 1,
+  "example": "VEDPOWER: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "VISL: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due",
+  "first": "2026-11-19T06:00:36.471",
+  "last": "2026-11-19T06:00:36.471",
+  "count": 1,
+  "example": "VISL: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "dhan",
+  "type": "VOGL: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH<n>', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due",
+  "first": "2026-11-19T06:00:36.767",
+  "last": "2026-11-19T06:00:36.767",
+  "count": 1,
+  "example": "VOGL: Dhan API error \u2014 {'status': 'failure', 'remarks': {'error_code': 'DH-907', 'error_type': 'Data_Error', 'error_message': 'System is unable to fetch data due to incorrect parameters or no data present'}, 'data': ''}"
+ },
+ {
+  "level": "WARNING",
+  "module": "asia_markets",
+  "type": "\u2717 KSE<n> source investing:<n> \u2014 ConnectionError: HTTP <n>",
+  "first": "2026-11-19T06:01:12.215",
+  "last": "2026-11-19T17:15:49.527",
+  "count": 3,
+  "example": "\u2717 KSE100 source investing:49677 \u2014 ConnectionError: HTTP 403"
+ },
+ {
+  "level": "WARNING",
+  "module": "asia_markets",
+  "type": "\u2717 KSE<n> source psx_dps:KSE<n> \u2014 ConnectionError: HTTP <n>",
+  "first": "2026-11-19T06:01:18.821",
+  "last": "2026-11-19T17:15:56.189",
+  "count": 3,
+  "example": "\u2717 KSE100 source psx_dps:KSE100 \u2014 ConnectionError: HTTP 403"
+ },
+ {
+  "level": "WARNING",
+  "module": "asia_markets",
+  "type": "\u2717 KSE<n> source yahoo:^KSE \u2014 ConnectionError: yfinance returned no data",
+  "first": "2026-11-19T06:01:32.691",
+  "last": "2026-11-19T17:16:11.787",
+  "count": 3,
+  "example": "\u2717 KSE100 source yahoo:^KSE \u2014 ConnectionError: yfinance returned no data"
+ },
+ {
+  "level": "WARNING",
+  "module": "operating_schedule",
+  "type": "\u23ef ATIP RESUMING \u2192 RUNNING (schedule: resume sequence done)",
+  "first": "2026-11-19T06:01:34.601",
+  "last": "2026-11-19T06:01:34.601",
+  "count": 1,
+  "example": "\u23ef  ATIP RESUMING \u2192 RUNNING (schedule: resume sequence done)"
+ },
+ {
+  "level": "WARNING",
+  "module": "bhavcopy",
+  "type": "NSE index closes not published yet for <d> \u2014 the benchmark stays at the last stored session",
+  "first": "2026-11-19T16:48:16.463",
+  "last": "2026-11-19T17:10:13.716",
+  "count": 3,
+  "example": "NSE index closes not published yet for 2026-11-19 \u2014 the benchmark stays at the last stored session"
+ },
+ {
+  "level": "WARNING",
+  "module": "technical",
+  "type": "\u26a0 Indicators that failed this run (ta): adx\u00d7<n>",
+  "first": "2026-11-19T16:49:50.886",
+  "last": "2026-11-19T16:49:50.886",
+  "count": 1,
+  "example": "\u26a0 Indicators that failed this run (ta): adx\u00d770"
+ },
+ {
+  "level": "WARNING",
+  "module": "startup",
+  "type": "config warning: ops.rate_limit_enabled: rate limiting is off",
+  "first": "2026-11-19T20:08:56.386",
+  "last": "2026-11-19T20:08:56.386",
+  "count": 1,
+  "example": "config warning: ops.rate_limit_enabled: rate limiting is off"
+ },
+ {
+  "level": "WARNING",
+  "module": "startup",
+  "type": "config warning: database.backend: EXPERIMENTAL PostgreSQL runtime: statements listed by `python -m db.dialect_scan --details` still fail on it",
+  "first": "2026-11-19T20:08:56.386",
+  "last": "2026-11-19T20:08:56.386",
+  "count": 1,
+  "example": "config warning: database.backend: EXPERIMENTAL PostgreSQL runtime: statements listed by `python -m db.dialect_scan --details` still fail on it"
+ },
+ {
+  "level": "WARNING",
+  "module": "scheduler",
+  "type": "\u21bb Start-up catch-up: missed market-indicator slots \u2192 fii_dii",
+  "first": "2026-11-19T20:08:56.642",
+  "last": "2026-11-19T20:08:56.642",
+  "count": 1,
+  "example": "\u21bb Start-up catch-up: missed market-indicator slots \u2192 fii_dii"
+ }
+]

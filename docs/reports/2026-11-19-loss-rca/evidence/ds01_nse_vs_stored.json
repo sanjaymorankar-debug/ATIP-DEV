@@ -1,0 +1,41 @@
+{
+ "2026-11-12": {
+  "compared_scored": 499,
+  "any_ohlc_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.5pct": 0,
+  "max_abs_close_diff_pct": 0.0,
+  "open_diff_gt_0.05pct": 0,
+  "high_or_low_diff_gt_0.05pct": 0,
+  "sources": {
+   "bhavcopy": 499
+  },
+  "examples": []
+ },
+ "2026-11-13": {
+  "compared_scored": 499,
+  "any_ohlc_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.5pct": 0,
+  "max_abs_close_diff_pct": 0.0,
+  "open_diff_gt_0.05pct": 0,
+  "high_or_low_diff_gt_0.05pct": 0,
+  "sources": {
+   "bhavcopy": 499
+  },
+  "examples": []
+ },
+ "2026-11-16": {
+  "compared_scored": 499,
+  "any_ohlc_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.05pct": 0,
+  "close_diff_gt_0.5pct": 0,
+  "max_abs_close_diff_pct": 0.0,
+  "open_diff_gt_0.05pct": 0,
+  "high_or_low_diff_gt_0.05pct": 0,
+  "sources": {
+   "bhavcopy": 499
+  },
+  "examples": []
+ }
+}

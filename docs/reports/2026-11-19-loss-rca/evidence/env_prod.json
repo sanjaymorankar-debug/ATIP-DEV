@@ -1,0 +1,233 @@
+{
+ "env": "prod",
+ "started": "2026-11-19T20:27:12",
+ "pipeline": {
+  "technical": {
+   "rows": 499,
+   "status": "SUCCESS",
+   "seconds": 19.4
+  },
+  "scoring": {
+   "rows": 499,
+   "status": "SUCCESS",
+   "seconds": 22.6
+  },
+  "symbols_before": 499,
+  "symbols_after": 499,
+  "score_changed_gt_0.01": 0,
+  "score_changed_sample": [],
+  "signal_changed": [],
+  "signals_after": {
+   "BUY": 2,
+   "HOLD": 464,
+   "WAIT": 33,
+   "SELL": 0
+  }
+ },
+ "breadth_19nov_computed": [
+  {
+   "date": "2026-11-19",
+   "breadth20": 69.98,
+   "breadth50": 55.83,
+   "n": 523,
+   "above20": 366,
+   "above50": 292,
+   "computed_at": "2026-11-19T20:27:55"
+  }
+ ],
+ "strategy_v2": {
+  "enabled": false,
+  "features": {
+   "freshness_gate": false,
+   "retest_guard": false
+  },
+  "breadth_max_age_sessions": 1,
+  "max_signal_age_sessions": 1,
+  "nifty_gap_min_pct": null
+ },
+ "gates_20nov": {
+  "S5": {
+   "open": true,
+   "metric": null,
+   "min": null,
+   "value": null,
+   "date": null,
+   "reason": null
+  },
+  "S1": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S2": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S3": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S4": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S6": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S7": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S8": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S9": {
+   "open": true,
+   "metric": "breadth50",
+   "min": 50.0,
+   "value": 55.83,
+   "date": "2026-11-19",
+   "reason": null
+  },
+  "S10": {
+   "open": true,
+   "metric": "breadth20",
+   "min": 50.0,
+   "value": 69.98,
+   "date": "2026-11-19",
+   "reason": null
+  }
+ },
+ "candidates_20nov": {
+  "date": "2026-11-19",
+  "n": 459,
+  "reason": null,
+  "top5": [
+   [
+    "PNB",
+    "BUY",
+    67.25
+   ],
+   [
+    "MARUTI",
+    "BUY",
+    65.87
+   ],
+   [
+    "INDIGO",
+    "HOLD",
+    65.9
+   ],
+   [
+    "ETERNAL",
+    "HOLD",
+    65.43
+   ],
+   [
+    "UNOMINDA",
+    "HOLD",
+    65.17
+   ]
+  ]
+ },
+ "autopick_dry_run_20nov_0920": [
+  {
+   "session": "S1",
+   "type": "WAITING",
+   "reason": "occurrence #7 holds PNB"
+  },
+  {
+   "session": "S2",
+   "type": "WAITING",
+   "reason": "occurrence #5 holds INDHOTEL"
+  },
+  {
+   "session": "S3",
+   "type": "PICKED",
+   "symbol": "KALYANKJIL",
+   "source": "KITE-RETEST",
+   "signal": "RETEST",
+   "trigger": 620.0,
+   "quantity_est": 37,
+   "gate": {
+    "open": true,
+    "metric": "breadth50",
+    "min": 50.0,
+    "value": 55.83,
+    "date": "2026-11-19",
+    "reason": null
+   }
+  },
+  {
+   "session": "S4",
+   "type": "WAITING",
+   "reason": "occurrence #4 holds CDSL"
+  },
+  {
+   "session": "S5",
+   "type": "WAITING",
+   "reason": "occurrence #4 holds KOTAKBANK"
+  },
+  {
+   "session": "S6",
+   "type": "WAITING",
+   "reason": "occurrence #6 holds GRASIM"
+  },
+  {
+   "session": "S7",
+   "type": "WAITING",
+   "reason": "occurrence #2 holds ICICIBANK"
+  },
+  {
+   "session": "S8",
+   "type": "WAITING",
+   "reason": "occurrence #5 holds PHOENIXLTD"
+  },
+  {
+   "session": "S9",
+   "type": "WAITING",
+   "reason": "occurrence #6 holds DLF"
+  },
+  {
+   "session": "S10",
+   "type": "WAITING",
+   "reason": "a buy of FACT is queued (active)"
+  }
+ ],
+ "nothing_written": {
+  "order_rules_before": 169,
+  "order_rules_after": 169,
+  "paper_order_before": 97,
+  "paper_order_after": 97
+ },
+ "finished": "2026-11-19T20:27:55"
+}

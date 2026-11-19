@@ -850,6 +850,13 @@ BUY_MAX_CRI = 60          # SV-04: a BUY needs a CRI below this -- CRI is lower-
 SELL_ATIP_FLOOR = 30      # below this, treat as a sell candidate
 HOLD_ATIP_FLOOR = 50      # below this (and not a sell), sit out as WAIT
 
+def _sv2_on(feature):
+    try:
+        from orders import strategy_v2 as SV2
+        return SV2.on(feature)
+    except Exception:
+        return False
+
 def determine_signal(scores,mh):
     vpi=scores.get("vpi",0) or 0; zpi=scores.get("zpi",0) or 0
     cri=scores.get("cri"); cri=100 if cri is None else cri; acs=scores.get("acs",0) or 0   # a CRI of 0 is the SAFEST, not missing
@@ -860,7 +867,10 @@ def determine_signal(scores,mh):
     if regime=="HIGH_RISK": return "WAIT"
     if regime=="BEAR" and atip<70: return "WAIT"
     b=BUY_STRICT
-    if cri<BUY_MAX_CRI:
+    # LRCA-14 (19 Nov 2026, strategy v2 freshness_gate, OFF unless config.json turns it on): an unknown market health
+    # (coverage under 50 %) read as a neutral 50 and passed both BUY gates; v2 issues no BUY while ATIP cannot see it.
+    if mh.get("mh_score") is None and _sv2_on("freshness_gate"): b=None
+    if b is not None and cri<BUY_MAX_CRI:
         if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and acs>=b["acs"] and mh_s>=b["mh"]: return "BUY"
         b=BUY_LOOSE
         if atip>=b["atip"] and vpi>=b["vpi"] and zpi>=b["zpi"] and mh_s>=b["mh"]: return "BUY"

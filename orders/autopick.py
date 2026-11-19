@@ -136,6 +136,16 @@ def _fill_rows(conn, d, skip: set) -> list:
     return out
 
 
+def _sv2_nifty_gap(conn) -> str | None:
+    """Strategy v2's Nifty opening-gap filter (orders/strategy_v2.py); None while v2 is off."""
+    try:
+        from orders import strategy_v2 as SV2
+        return SV2.nifty_gap_block(conn, date.today().isoformat())
+    except Exception as e:                          # noqa: BLE001 -- a filter that cannot be read never blocks
+        log.warning(f"  strategy v2 Nifty gap filter unavailable: {e}")
+        return None
+
+
 def candidates(conn, today: date | None = None) -> dict:
     """{"date", "hold_min_score", "rows": [{symbol, score, signal, signal_price}], "reason"}: the latest
     scored day's BUY signals by ATIP score, then -- with the HOLD fallback on -- its HOLD stocks scoring
@@ -150,6 +160,13 @@ def candidates(conn, today: date | None = None) -> dict:
         return {"date": None, "rows": [], "reason": "no ATIP scores yet"}
     if (today - date.fromisoformat(str(d)[:10])).days > MAX_SIGNAL_AGE_DAYS:
         return {"date": str(d), "rows": [], "reason": f"the latest ATIP scores are from {d}: too old to pick from"}
+    # LRCA-07 (19 Nov 2026, strategy v2 freshness_gate, OFF unless config.json turns it on): 5 calendar days let a stalled
+    # pipeline trade three sessions on one day's signals; v2 takes only the previous session's (or newer) scores.
+    from orders import strategy_v2 as SV2
+    if SV2.on("freshness_gate"):
+        why = SV2.stale(d, SV2.value("max_signal_age_sessions") or 1, today)
+        if why:
+            return {"date": str(d), "rows": [], "reason": f"strategy v2: the latest ATIP scores are stale ({why})"}
     hold = " OR (a.`signal` = 'HOLD' AND a.atip_score >= ?)" if cut else ""
     rows = [{"symbol": r["symbol"], "score": r["atip_score"], "signal": r["signal"],
              "signal_price": float(r["close"]) if r["close"] else None,
@@ -509,6 +526,9 @@ def run(conn=None, dry_run: bool = False, today: date | None = None, now=None) -
                     continue
                 if guard := entry_guards.check_entry(conn, c, busy):   # 6 Nov 2026 RCA guards: each OFF until set
                     passed.append(guard)
+                    continue
+                if gap_block := _sv2_nifty_gap(conn):          # LRCA strategy v2 (OFF unless config.json turns it on)
+                    passed.append(gap_block)
                     continue
                 limit = entry_limit(c["symbol"], c["price"], sp)
                 stop_pct = arms.exit_params(conn, arm, c["symbol"])["stop_pct"] if arm else None

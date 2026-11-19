@@ -126,6 +126,11 @@ def _runs(conn, jobs, since=None, limit=None):
 def _ok(run, need_rows, need_success=False, degraded=()):
     if run["status"] in BAD or run["status"] in degraded:
         return False
+    # LRCA-11 (19 Nov 2026): a run SKIPPED because another runner holds the job's lock did no work. Counting it as a
+    # healthy run hid a stuck lock (16 Nov CAP-02: every quote / index run 10:30-15:30 was "locked") from STALLED,
+    # from recover.py and from the alert.
+    if run["status"] == "SKIPPED" and str(run.get("error_msg") or "").startswith("locked"):
+        return False
     if need_success and run["status"] not in ("SUCCESS", "EMPTY"):
         return False
     if need_rows and run["status"] in ("EMPTY",):

@@ -491,7 +491,11 @@ class IndexFeedManager:
         record = {"date": str(date.today()), "time": datetime.now().strftime("%H:%M:%S")}
         for col, vals in snap.items():
             record[col] = vals["ltp"]
-            record[f"{col}_chg"] = vals["chg_pct"] if vals["chg_pct"] is not None else 0
+            # LRCA-13 (19 Nov 2026): an unknown change is stored as NULL, not 0 -- after a reconnect (no previous close
+            # yet) every flush to 15:45 wrote 0.00 %, scored as a flat day (Market Health, the BEAR rule, MSI Sector),
+            # and its rows also kept NSE's official close snapshot out (data/bhavcopy.py). NULL lets
+            # scores.engine.get_index_change fall back to the daily closes.
+            record[f"{col}_chg"] = vals["chg_pct"]
         # This feed only sees index LTPs (not full market breadth like markets.py),
         # so derive a lightweight sentiment from Nifty's own move rather than
         # leaving the column NULL — a NULL here overwrites the proper reading

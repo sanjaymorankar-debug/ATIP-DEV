@@ -1,0 +1,681 @@
+{
+ "overall": {
+  "n": 41.0,
+  "win_pct": 56.1,
+  "net": 5883.0,
+  "avg_win": 728.0,
+  "avg_loss": -604.0,
+  "pf": 1.54
+ },
+ "max_drawdown_realised": -2905.0,
+ "max_loss_streak": 4,
+ "by_session_id": [
+  {
+   "session_id": "S1",
+   "n": 6.0,
+   "win_pct": 66.7,
+   "net": 2030.0,
+   "avg_win": 804.0,
+   "avg_loss": -592.0,
+   "pf": 2.71
+  },
+  {
+   "session_id": "S10",
+   "n": 6.0,
+   "win_pct": 50.0,
+   "net": 490.0,
+   "avg_win": 800.0,
+   "avg_loss": -637.0,
+   "pf": 1.26
+  },
+  {
+   "session_id": "S2",
+   "n": 4.0,
+   "win_pct": 50.0,
+   "net": -177.0,
+   "avg_win": 493.0,
+   "avg_loss": -581.0,
+   "pf": 0.85
+  },
+  {
+   "session_id": "S3",
+   "n": 4.0,
+   "win_pct": 75.0,
+   "net": 2118.0,
+   "avg_win": 929.0,
+   "avg_loss": -670.0,
+   "pf": 4.16
+  },
+  {
+   "session_id": "S4",
+   "n": 3.0,
+   "win_pct": 66.7,
+   "net": 795.0,
+   "avg_win": 693.0,
+   "avg_loss": -590.0,
+   "pf": 2.35
+  },
+  {
+   "session_id": "S5",
+   "n": 3.0,
+   "win_pct": 33.3,
+   "net": -179.0,
+   "avg_win": 1016.0,
+   "avg_loss": -597.0,
+   "pf": 0.85
+  },
+  {
+   "session_id": "S6",
+   "n": 5.0,
+   "win_pct": 60.0,
+   "net": 741.0,
+   "avg_win": 644.0,
+   "avg_loss": -595.0,
+   "pf": 1.62
+  },
+  {
+   "session_id": "S7",
+   "n": 1.0,
+   "win_pct": 100.0,
+   "net": 684.0,
+   "avg_win": 684.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "session_id": "S8",
+   "n": 4.0,
+   "win_pct": 50.0,
+   "net": -15.0,
+   "avg_win": 591.0,
+   "avg_loss": -598.0,
+   "pf": 0.99
+  },
+  {
+   "session_id": "S9",
+   "n": 5.0,
+   "win_pct": 40.0,
+   "net": -604.0,
+   "avg_win": 584.0,
+   "avg_loss": -590.0,
+   "pf": 0.66
+  }
+ ],
+ "by_dow": [
+  {
+   "dow": "Fri",
+   "n": 11.0,
+   "win_pct": 54.5,
+   "net": 1497.0,
+   "avg_win": 753.0,
+   "avg_loss": -604.0,
+   "pf": 1.5
+  },
+  {
+   "dow": "Mon",
+   "n": 7.0,
+   "win_pct": 28.6,
+   "net": -1756.0,
+   "avg_win": 574.0,
+   "avg_loss": -581.0,
+   "pf": 0.4
+  },
+  {
+   "dow": "Thu",
+   "n": 9.0,
+   "win_pct": 22.2,
+   "net": -2373.0,
+   "avg_win": 991.0,
+   "avg_loss": -622.0,
+   "pf": 0.46
+  },
+  {
+   "dow": "Wed",
+   "n": 14.0,
+   "win_pct": 92.9,
+   "net": 8515.0,
+   "avg_win": 701.0,
+   "avg_loss": -594.0,
+   "pf": 15.34
+  }
+ ],
+ "by_entry_bucket": [
+  {
+   "entry_bucket": "09:15-09:20",
+   "n": 18.0,
+   "win_pct": 77.8,
+   "net": 8754.0,
+   "avg_win": 795.0,
+   "avg_loss": -594.0,
+   "pf": 4.68
+  },
+  {
+   "entry_bucket": "09:20-09:45",
+   "n": 5.0,
+   "win_pct": 60.0,
+   "net": 829.0,
+   "avg_win": 683.0,
+   "avg_loss": -610.0,
+   "pf": 1.68
+  },
+  {
+   "entry_bucket": "09:45-11:00",
+   "n": 8.0,
+   "win_pct": 37.5,
+   "net": -1428.0,
+   "avg_win": 569.0,
+   "avg_loss": -627.0,
+   "pf": 0.54
+  },
+  {
+   "entry_bucket": "11:00-13:00",
+   "n": 5.0,
+   "win_pct": 20.0,
+   "net": -1545.0,
+   "avg_win": 874.0,
+   "avg_loss": -605.0,
+   "pf": 0.36
+  },
+  {
+   "entry_bucket": "13:00+",
+   "n": 5.0,
+   "win_pct": 40.0,
+   "net": -727.0,
+   "avg_win": 497.0,
+   "avg_loss": -574.0,
+   "pf": 0.58
+  }
+ ],
+ "by_src": [
+  {
+   "src": "BUY",
+   "n": 1.0,
+   "win_pct": 0.0,
+   "net": -590.0,
+   "avg_win": 0.0,
+   "avg_loss": -590.0,
+   "pf": 0.0
+  },
+  {
+   "src": "BUY BUY",
+   "n": 1.0,
+   "win_pct": 0.0,
+   "net": -594.0,
+   "avg_win": 0.0,
+   "avg_loss": -594.0,
+   "pf": 0.0
+  },
+  {
+   "src": "HOLD RANK-FILL",
+   "n": 39.0,
+   "win_pct": 59.0,
+   "net": 7067.0,
+   "avg_win": 728.0,
+   "avg_loss": -605.0,
+   "pf": 1.73
+  }
+ ],
+ "by_exit_reason": [
+  {
+   "exit_reason": "Stop",
+   "n": 18.0,
+   "win_pct": 0.0,
+   "net": -10871.0,
+   "avg_win": 0.0,
+   "avg_loss": -604.0,
+   "pf": 0.0
+  },
+  {
+   "exit_reason": "Trail",
+   "n": 23.0,
+   "win_pct": 100.0,
+   "net": 16754.0,
+   "avg_win": 728.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  }
+ ],
+ "by_cap": [
+  {
+   "cap": "Large",
+   "n": 18.0,
+   "win_pct": 50.0,
+   "net": 1143.0,
+   "avg_win": 722.0,
+   "avg_loss": -595.0,
+   "pf": 1.21
+  },
+  {
+   "cap": "Mid",
+   "n": 7.0,
+   "win_pct": 57.1,
+   "net": 797.0,
+   "avg_win": 668.0,
+   "avg_loss": -625.0,
+   "pf": 1.42
+  },
+  {
+   "cap": "Small",
+   "n": 15.0,
+   "win_pct": 66.7,
+   "net": 4534.0,
+   "avg_win": 758.0,
+   "avg_loss": -610.0,
+   "pf": 2.49
+  }
+ ],
+ "by_industry": [
+  {
+   "industry": "Automobile and Auto Components",
+   "n": 4.0,
+   "win_pct": 75.0,
+   "net": 1533.0,
+   "avg_win": 708.0,
+   "avg_loss": -590.0,
+   "pf": 3.6
+  },
+  {
+   "industry": "Capital Goods",
+   "n": 2.0,
+   "win_pct": 0.0,
+   "net": -1311.0,
+   "avg_win": 0.0,
+   "avg_loss": -655.0,
+   "pf": 0.0
+  },
+  {
+   "industry": "Construction",
+   "n": 1.0,
+   "win_pct": 100.0,
+   "net": 560.0,
+   "avg_win": 560.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "industry": "Consumer Durables",
+   "n": 4.0,
+   "win_pct": 75.0,
+   "net": 1349.0,
+   "avg_win": 646.0,
+   "avg_loss": -589.0,
+   "pf": 3.29
+  },
+  {
+   "industry": "Consumer Services",
+   "n": 2.0,
+   "win_pct": 50.0,
+   "net": -189.0,
+   "avg_win": 395.0,
+   "avg_loss": -584.0,
+   "pf": 0.68
+  },
+  {
+   "industry": "Fast Moving Consumer Goods",
+   "n": 2.0,
+   "win_pct": 50.0,
+   "net": -26.0,
+   "avg_win": 591.0,
+   "avg_loss": -616.0,
+   "pf": 0.96
+  },
+  {
+   "industry": "Financial Services",
+   "n": 5.0,
+   "win_pct": 80.0,
+   "net": 2476.0,
+   "avg_win": 766.0,
+   "avg_loss": -590.0,
+   "pf": 5.2
+  },
+  {
+   "industry": "Healthcare",
+   "n": 4.0,
+   "win_pct": 50.0,
+   "net": 747.0,
+   "avg_win": 1015.0,
+   "avg_loss": -641.0,
+   "pf": 1.58
+  },
+  {
+   "industry": "Information Technology",
+   "n": 5.0,
+   "win_pct": 0.0,
+   "net": -2889.0,
+   "avg_win": 0.0,
+   "avg_loss": -578.0,
+   "pf": 0.0
+  },
+  {
+   "industry": "Media Entertainment & Publication",
+   "n": 5.0,
+   "win_pct": 80.0,
+   "net": 2620.0,
+   "avg_win": 804.0,
+   "avg_loss": -594.0,
+   "pf": 5.41
+  },
+  {
+   "industry": "Metals & Mining",
+   "n": 1.0,
+   "win_pct": 0.0,
+   "net": -579.0,
+   "avg_win": 0.0,
+   "avg_loss": -579.0,
+   "pf": 0.0
+  },
+  {
+   "industry": "Oil Gas & Consumable Fuels",
+   "n": 1.0,
+   "win_pct": 100.0,
+   "net": 684.0,
+   "avg_win": 684.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "industry": "Realty",
+   "n": 2.0,
+   "win_pct": 50.0,
+   "net": 543.0,
+   "avg_win": 1144.0,
+   "avg_loss": -601.0,
+   "pf": 1.9
+  },
+  {
+   "industry": "Services",
+   "n": 3.0,
+   "win_pct": 66.7,
+   "net": 364.0,
+   "avg_win": 505.0,
+   "avg_loss": -645.0,
+   "pf": 1.56
+  }
+ ],
+ "by_expiry_week": [
+  {
+   "expiry_week": false,
+   "n": 41.0,
+   "win_pct": 56.1,
+   "net": 5883.0,
+   "avg_win": 728.0,
+   "avg_loss": -604.0,
+   "pf": 1.54
+  }
+ ],
+ "by_regime": [
+  {
+   "regime": "breadth50<50",
+   "n": 34.0,
+   "win_pct": 55.9,
+   "net": 4801.0,
+   "avg_win": 726.0,
+   "avg_loss": -600.0,
+   "pf": 1.53
+  },
+  {
+   "regime": "breadth50>=50",
+   "n": 7.0,
+   "win_pct": 57.1,
+   "net": 1083.0,
+   "avg_win": 739.0,
+   "avg_loss": -624.0,
+   "pf": 1.58
+  }
+ ],
+ "by_entry_day_gap": [
+  {
+   "gapbin": "(-50, -1]",
+   "n": "4.0",
+   "win_pct": "50.0",
+   "net": "790.0",
+   "avg_win": "991.0",
+   "avg_loss": "-596.0",
+   "pf": "1.66"
+  },
+  {
+   "gapbin": "(-1, 0]",
+   "n": "18.0",
+   "win_pct": "61.1",
+   "net": "3793.0",
+   "avg_win": "725.0",
+   "avg_loss": "-598.0",
+   "pf": "1.91"
+  },
+  {
+   "gapbin": "(0, 1]",
+   "n": "10.0",
+   "win_pct": "80.0",
+   "net": "4641.0",
+   "avg_win": "743.0",
+   "avg_loss": "-653.0",
+   "pf": "4.55"
+  },
+  {
+   "gapbin": "(1, 50]",
+   "n": "9.0",
+   "win_pct": "22.2",
+   "net": "-3341.0",
+   "avg_win": "423.0",
+   "avg_loss": "-598.0",
+   "pf": "0.2"
+  }
+ ],
+ "by_nifty_entry_day": [
+  {
+   "niftybin": "(-10.0, -0.5]",
+   "n": "5.0",
+   "win_pct": "80.0",
+   "net": "2285.0",
+   "avg_win": "739.0",
+   "avg_loss": "-670.0",
+   "pf": "4.41"
+  },
+  {
+   "niftybin": "(0.0, 0.5]",
+   "n": "9.0",
+   "win_pct": "22.2",
+   "net": "-2959.0",
+   "avg_win": "574.0",
+   "avg_loss": "-587.0",
+   "pf": "0.28"
+  },
+  {
+   "niftybin": "(0.5, 10.0]",
+   "n": "27.0",
+   "win_pct": "63.0",
+   "net": "6557.0",
+   "avg_win": "744.0",
+   "avg_loss": "-609.0",
+   "pf": "2.08"
+  }
+ ],
+ "by_vix": [
+  {
+   "vixbin": "(15, 17]",
+   "n": "25.0",
+   "win_pct": "64.0",
+   "net": "6910.0",
+   "avg_win": "783.0",
+   "avg_loss": "-624.0",
+   "pf": "2.23"
+  },
+  {
+   "vixbin": "(17, 100]",
+   "n": "16.0",
+   "win_pct": "43.8",
+   "net": "-1027.0",
+   "avg_win": "604.0",
+   "avg_loss": "-584.0",
+   "pf": "0.8"
+  }
+ ],
+ "by_fii": [
+  {
+   "fiibin": "FII net buy prev day",
+   "n": 33.0,
+   "win_pct": 63.6,
+   "net": 8229.0,
+   "avg_win": 743.0,
+   "avg_loss": -615.0,
+   "pf": 2.12
+  },
+  {
+   "fiibin": "FII net sell prev day",
+   "n": 8.0,
+   "win_pct": 25.0,
+   "net": -2346.0,
+   "avg_win": 574.0,
+   "avg_loss": -582.0,
+   "pf": 0.33
+  }
+ ],
+ "by_holding": [
+  {
+   "hold": "same day",
+   "n": "8.0",
+   "win_pct": "50.0",
+   "net": "423.0",
+   "avg_win": "713.0",
+   "avg_loss": "-608.0",
+   "pf": "1.17"
+  },
+  {
+   "hold": "1-2 d",
+   "n": "13.0",
+   "win_pct": "61.5",
+   "net": "2419.0",
+   "avg_win": "687.0",
+   "avg_loss": "-615.0",
+   "pf": "1.79"
+  },
+  {
+   "hold": "3-5 d",
+   "n": "18.0",
+   "win_pct": "55.6",
+   "net": "3028.0",
+   "avg_win": "772.0",
+   "avg_loss": "-587.0",
+   "pf": "1.64"
+  },
+  {
+   "hold": "6+ d",
+   "n": "2.0",
+   "win_pct": "50.0",
+   "net": "14.0",
+   "avg_win": "684.0",
+   "avg_loss": "-670.0",
+   "pf": "1.02"
+  }
+ ],
+ "by_close_day": [
+  {
+   "closed_day": "2026-10-30",
+   "n": 1.0,
+   "win_pct": 0.0,
+   "net": -590.0,
+   "avg_win": 0.0,
+   "avg_loss": -590.0,
+   "pf": 0.0
+  },
+  {
+   "closed_day": "2026-11-04",
+   "n": 4.0,
+   "win_pct": 100.0,
+   "net": 2853.0,
+   "avg_win": 713.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "closed_day": "2026-11-05",
+   "n": 5.0,
+   "win_pct": 60.0,
+   "net": 1346.0,
+   "avg_win": 862.0,
+   "avg_loss": -620.0,
+   "pf": 2.09
+  },
+  {
+   "closed_day": "2026-11-06",
+   "n": 4.0,
+   "win_pct": 25.0,
+   "net": -1108.0,
+   "avg_win": 789.0,
+   "avg_loss": -632.0,
+   "pf": 0.42
+  },
+  {
+   "closed_day": "2026-11-09",
+   "n": 8.0,
+   "win_pct": 62.5,
+   "net": 2444.0,
+   "avg_win": 844.0,
+   "avg_loss": -592.0,
+   "pf": 2.38
+  },
+  {
+   "closed_day": "2026-11-11",
+   "n": 3.0,
+   "win_pct": 33.3,
+   "net": -587.0,
+   "avg_win": 600.0,
+   "avg_loss": -594.0,
+   "pf": 0.51
+  },
+  {
+   "closed_day": "2026-11-12",
+   "n": 2.0,
+   "win_pct": 100.0,
+   "net": 1232.0,
+   "avg_win": 616.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "closed_day": "2026-11-13",
+   "n": 7.0,
+   "win_pct": 42.9,
+   "net": -790.0,
+   "avg_win": 507.0,
+   "avg_loss": -578.0,
+   "pf": 0.66
+  },
+  {
+   "closed_day": "2026-11-16",
+   "n": 4.0,
+   "win_pct": 50.0,
+   "net": -66.0,
+   "avg_win": 568.0,
+   "avg_loss": -601.0,
+   "pf": 0.95
+  },
+  {
+   "closed_day": "2026-11-17",
+   "n": 1.0,
+   "win_pct": 100.0,
+   "net": 874.0,
+   "avg_win": 874.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "closed_day": "2026-11-18",
+   "n": 1.0,
+   "win_pct": 100.0,
+   "net": 945.0,
+   "avg_win": 945.0,
+   "avg_loss": 0.0,
+   "pf": NaN
+  },
+  {
+   "closed_day": "2026-11-19",
+   "n": 1.0,
+   "win_pct": 0.0,
+   "net": -670.0,
+   "avg_win": 0.0,
+   "avg_loss": -670.0,
+   "pf": 0.0
+  }
+ ]
+}

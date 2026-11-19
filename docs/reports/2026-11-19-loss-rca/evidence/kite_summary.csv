@@ -1,0 +1,91 @@
+fills,variant,gate,period,fill_rate,n,win,avg,pf
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",none,all,56.0,2610,42.5,0.627,1.21
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",none,2025-26,56.0,723,40.9,0.27,1.1
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",none,last12m,56.0,394,38.6,-0.073,0.99
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50>=50,all,56.0,1876,44.2,0.946,1.33
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50>=50,2025-26,56.0,388,46.1,1.084,1.42
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50>=50,last12m,56.0,185,47.0,1.054,1.4
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50<50,all,56.0,734,37.9,-0.187,0.96
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50<50,2025-26,56.0,335,34.9,-0.673,0.82
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b50<50,last12m,56.0,209,31.1,-1.071,0.72
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20>=50,all,56.0,1691,44.2,0.878,1.3
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20>=50,2025-26,56.0,361,44.9,0.806,1.29
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20>=50,last12m,56.0,156,41.7,0.286,1.1
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20<50,all,56.0,919,39.3,0.167,1.06
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20<50,2025-26,56.0,362,37.0,-0.265,0.93
+realistic,"K1 GTT@breakout-low, SL5/TP10, 20d",b20<50,last12m,56.0,238,36.6,-0.309,0.92
+realistic,"K2 GTT, SL5/TP5, 20d",none,all,56.1,2646,55.0,0.16,1.07
+realistic,"K2 GTT, SL5/TP5, 20d",none,2025-26,56.1,731,54.7,0.107,1.05
+realistic,"K2 GTT, SL5/TP5, 20d",none,last12m,56.1,400,52.5,-0.155,0.94
+realistic,"K2 GTT, SL5/TP5, 20d",b50>=50,all,56.1,1901,56.2,0.321,1.14
+realistic,"K2 GTT, SL5/TP5, 20d",b50>=50,2025-26,56.1,391,57.5,0.466,1.22
+realistic,"K2 GTT, SL5/TP5, 20d",b50>=50,last12m,56.1,186,56.5,0.268,1.11
+realistic,"K2 GTT, SL5/TP5, 20d",b50<50,all,56.1,745,51.9,-0.251,0.91
+realistic,"K2 GTT, SL5/TP5, 20d",b50<50,2025-26,56.1,340,51.5,-0.306,0.89
+realistic,"K2 GTT, SL5/TP5, 20d",b50<50,last12m,56.1,214,49.1,-0.523,0.81
+realistic,"K2 GTT, SL5/TP5, 20d",b20>=50,all,56.1,1712,56.1,0.298,1.13
+realistic,"K2 GTT, SL5/TP5, 20d",b20>=50,2025-26,56.1,364,56.6,0.253,1.11
+realistic,"K2 GTT, SL5/TP5, 20d",b20>=50,last12m,56.1,157,53.5,-0.1,0.95
+realistic,"K2 GTT, SL5/TP5, 20d",b20<50,all,56.1,934,52.9,-0.093,0.97
+realistic,"K2 GTT, SL5/TP5, 20d",b20<50,2025-26,56.1,367,52.9,-0.038,0.99
+realistic,"K2 GTT, SL5/TP5, 20d",b20<50,last12m,56.1,243,51.9,-0.191,0.93
+realistic,"K3 GTT, SL5/TP=post-breakout high",none,all,55.9,2620,42.9,0.542,1.18
+realistic,"K3 GTT, SL5/TP=post-breakout high",none,2025-26,55.9,726,42.1,0.087,1.04
+realistic,"K3 GTT, SL5/TP=post-breakout high",none,last12m,55.9,396,39.6,-0.245,0.93
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50>=50,all,55.9,1885,44.7,0.757,1.26
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50>=50,2025-26,55.9,389,47.3,0.669,1.27
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50>=50,last12m,55.9,185,47.6,0.583,1.22
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50<50,all,55.9,735,38.1,-0.009,1.0
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50<50,2025-26,55.9,337,36.2,-0.584,0.84
+realistic,"K3 GTT, SL5/TP=post-breakout high",b50<50,last12m,55.9,211,32.7,-0.97,0.73
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20>=50,all,55.9,1699,45.6,0.761,1.27
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20>=50,2025-26,55.9,362,47.0,0.412,1.15
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20>=50,last12m,55.9,156,43.6,-0.318,0.89
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20<50,all,55.9,921,37.8,0.139,1.05
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20<50,2025-26,55.9,364,37.4,-0.236,0.94
+realistic,"K3 GTT, SL5/TP=post-breakout high",b20<50,last12m,55.9,240,37.1,-0.197,0.95
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",none,all,56.1,2632,54.1,0.37,1.17
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",none,2025-26,56.1,728,52.7,0.015,1.01
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",none,last12m,56.1,398,51.0,-0.251,0.9
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50>=50,all,56.1,1894,55.2,0.565,1.26
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50>=50,2025-26,56.1,390,54.6,0.251,1.12
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50>=50,last12m,56.1,187,55.1,0.444,1.19
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50<50,all,56.1,738,51.2,-0.131,0.95
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50<50,2025-26,56.1,338,50.6,-0.257,0.91
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b50<50,last12m,56.1,211,47.4,-0.867,0.68
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20>=50,all,56.1,1704,55.4,0.538,1.25
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20>=50,2025-26,56.1,362,54.7,0.294,1.13
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20>=50,last12m,56.1,157,54.1,0.311,1.12
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20<50,all,56.1,928,51.6,0.06,1.03
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20<50,2025-26,56.1,366,50.8,-0.26,0.9
+realistic,"K4 GTT, SL5, trail 3% from +5%, 40d",b20<50,last12m,56.1,241,49.0,-0.618,0.76
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",none,all,56.0,2678,38.9,-0.458,0.7
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",none,2025-26,56.0,741,39.8,-0.434,0.71
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",none,last12m,56.0,406,40.1,-0.421,0.72
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50>=50,all,56.0,1922,39.7,-0.422,0.72
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50>=50,2025-26,56.0,396,42.2,-0.314,0.78
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50>=50,last12m,56.0,189,46.6,-0.083,0.93
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50<50,all,56.0,756,36.9,-0.548,0.65
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50<50,2025-26,56.0,345,37.1,-0.571,0.64
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b50<50,last12m,56.0,217,34.6,-0.714,0.57
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20>=50,all,56.0,1728,40.7,-0.367,0.75
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20>=50,2025-26,56.0,368,42.9,-0.29,0.8
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20>=50,last12m,56.0,160,45.0,-0.194,0.86
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20<50,all,56.0,950,35.6,-0.623,0.61
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20<50,2025-26,56.0,373,36.7,-0.577,0.64
+realistic,"K5 GTT, ATIP-style SL2/TP3, 20d",b20<50,last12m,56.0,246,37.0,-0.568,0.64
+realistic,"K6 market next open, SL5/TP10, 20d",none,all,100.0,4823,38.3,-0.024,0.99
+realistic,"K6 market next open, SL5/TP10, 20d",none,2025-26,100.0,1235,34.5,-0.846,0.75
+realistic,"K6 market next open, SL5/TP10, 20d",none,last12m,100.0,653,30.9,-1.178,0.67
+realistic,"K6 market next open, SL5/TP10, 20d",b50>=50,all,100.0,3535,39.4,0.175,1.06
+realistic,"K6 market next open, SL5/TP10, 20d",b50>=50,2025-26,100.0,686,35.9,-0.641,0.79
+realistic,"K6 market next open, SL5/TP10, 20d",b50>=50,last12m,100.0,343,33.2,-0.862,0.74
+realistic,"K6 market next open, SL5/TP10, 20d",b50<50,all,100.0,1288,35.4,-0.57,0.84
+realistic,"K6 market next open, SL5/TP10, 20d",b50<50,2025-26,100.0,549,32.8,-1.103,0.71
+realistic,"K6 market next open, SL5/TP10, 20d",b50<50,last12m,100.0,310,28.4,-1.527,0.6
+realistic,"K6 market next open, SL5/TP10, 20d",b20>=50,all,100.0,3174,40.0,0.224,1.07
+realistic,"K6 market next open, SL5/TP10, 20d",b20>=50,2025-26,100.0,601,34.6,-0.933,0.72
+realistic,"K6 market next open, SL5/TP10, 20d",b20>=50,last12m,100.0,276,32.2,-1.015,0.69
+realistic,"K6 market next open, SL5/TP10, 20d",b20<50,all,100.0,1649,35.1,-0.501,0.86
+realistic,"K6 market next open, SL5/TP10, 20d",b20<50,2025-26,100.0,634,34.4,-0.764,0.79
+realistic,"K6 market next open, SL5/TP10, 20d",b20<50,last12m,100.0,377,30.0,-1.297,0.65

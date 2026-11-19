@@ -529,7 +529,10 @@ def as_sqlite_error(exc: Exception) -> Exception:
         return exc
     sqlstate = getattr(exc, "sqlstate", None) or ""
     cls = sqlite3.IntegrityError if sqlstate.startswith("23") else sqlite3.OperationalError
-    out = cls(*exc.args).with_traceback(exc.__traceback__)
+    args = exc.args
+    if sqlstate == "55P03":                   # lock_not_available (lock_timeout): SQLite's busy-timeout error
+        args = (f"database is locked ({exc.args[0] if exc.args else 'lock timeout'})",) + tuple(exc.args[1:])
+    out = cls(*args).with_traceback(exc.__traceback__)
     out.sqlstate = sqlstate or None
     return out
 
@@ -706,6 +709,7 @@ def _register_loaders(conn):
 # statement in the transaction still sees the latest committed rows -- READ COMMITTED.)
 WRITE_LOCK_KEY = 0x4154_4950_5752_4954      # "ATIPWRIT": one key for the whole database, like SQLite's lock
 WRITE_LOCK_WAIT_S = 60.0                    # db/schema.BUSY_TIMEOUT_MS: how long SQLite waits for the lock
+LOCK_TIMEOUT_S = 60.0                       # LRCA-04: every PostgreSQL lock wait ends here too (SQLite busy timeout)
 _TX_CONTROL = re.compile(r"\s*(?:(BEGIN)(?:\s+(DEFERRED|IMMEDIATE|EXCLUSIVE))?|(COMMIT|END)|(ROLLBACK))"
                          r"(?:\s+TRANSACTION)?\s*;?\s*", re.I)
 _DML = re.compile(r"\s*(INSERT|UPDATE|DELETE)\b", re.I)
@@ -720,6 +724,11 @@ class PgConnection:
         self._conn = psycopg.connect(dsn)
         # SQLite's 'now' and CURRENT_TIMESTAMP are UTC; so is this session (see _sqlite_fn)
         self._conn.execute("SET TimeZone TO 'UTC'")
+        # LRCA-04 (19 Nov 2026): SQLite gives up on a lock after its 60 s busy timeout ("database is locked", which
+        # the order monitor's RCA-13 fast retry and every lock handler look for); PostgreSQL waits on a row lock for
+        # ever, so one connection left in a transaction could hang the single order-monitor thread -- no exits for
+        # the rest of the day. Same limit here; as_sqlite_error() words SQLSTATE 55P03 the SQLite way.
+        self._conn.execute(f"SET lock_timeout = '{int(LOCK_TIMEOUT_S * 1000)}ms'")
         self._conn.commit()
         _register_loaders(self._conn)
         self._pk = {}
@@ -889,6 +898,13 @@ class PgConnection:
         with sqlite_errors():
             self._conn.execute(f"SELECT setval(pg_get_serial_sequence('{table}', '{column}'), "
                                f"COALESCE((SELECT MAX({column}) FROM {table}), 0) + 1, false)")
+
+    @property
+    def in_transaction(self) -> bool:
+        """sqlite3.Connection.in_transaction: True after a write that is not yet committed. LRCA-10 (19 Nov 2026):
+        without it the pre-open gate (ops/preopen_health.py) read False and committed its caller's open
+        transaction part-way through on PostgreSQL."""
+        return bool(self._dirty)
 
     def commit(self):
         with sqlite_errors():
