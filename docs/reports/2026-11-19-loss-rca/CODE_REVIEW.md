@@ -52,7 +52,8 @@ guards, Nifty 50 via Dhan IDX_I. No look-ahead found in indicators or scores: ev
 Owner, about 00:58 IST: "recheck all code and fixes … not any defect exist". A separate reviewer was given only the diff
 c03fc29..e5903e1 and its intent, not these conclusions. Every item was re-checked here; LRCA-16 was reproduced on the
 live code. All are fixed on the branch after 514b439, each with a test in `tests/test_review_fixes_2026_11_20.py` that
-fails on e5903e1. **Not deployed** (needs the owner's yes).
+fails on e5903e1. **Live on the VPS** since 01:36:10 IST 20 Nov (6691471, owner's yes); the VPS = GitHub master
+c9d168f since 01:46:11 IST (pid 850092).
 
 | ID | Sev | Where | What goes wrong | Live effect (flag OFF) | Fix |
 |---|---|---|---|---|---|
