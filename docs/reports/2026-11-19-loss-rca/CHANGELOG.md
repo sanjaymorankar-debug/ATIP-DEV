@@ -1,7 +1,8 @@
 # CHANGELOG — Loss RCA delta, 19 Nov 2026 (IST)
 
 Base: GitHub master **0c0c452** (= c03fc29, which the VPS runs since 20:08:52 IST 19 Nov, + deploy tooling only).
-Branch `claude/loss-rca-2026-11-19`, uncommitted. Delta patches only; no file rewritten. Nothing here is on the VPS.
+Branch `claude/loss-rca-2026-11-19`, commit **e5903e1** (GitHub master since 00:01:25 IST 20 Nov). Delta patches only;
+no file rewritten. **Live on the VPS since 00:46:11 IST 20 Nov** (pid 836452), with `strategy_v2` OFF.
 "Flag" = active only when atip_data/config.json has `"strategy_v2": {"enabled": true}` (absent on the VPS = OFF).
 
 ## Fixed (bugs)

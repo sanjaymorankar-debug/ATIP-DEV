@@ -3,7 +3,8 @@
 Scope: order path (orders/*, the order monitor in dashboard/server.py), data and scoring (data/dhan*.py, data/bhavcopy*.py,
 data/technical.py, scores/*), scheduler/ops/PostgreSQL adapter (pipeline/*, ops/*, db/postgres.py). Read by three
 independent reviewers, then each item below re-checked against the code before it was listed. "Fixed" = a delta patch on
-branch `claude/loss-rca-2026-11-19` with a regression test in `tests/test_loss_rca_2026_11_19.py`; nothing is deployed.
+branch `claude/loss-rca-2026-11-19` with a regression test in `tests/test_loss_rca_2026_11_19.py`; commit e5903e1, live on the VPS since 00:46:11 IST
+20 Nov (strategy v2 OFF).
 "Flag" = behind `strategy_v2` in config.json (OFF unless turned on; ON on Test only).
 
 Verified NOT broken (so no one re-checks them): tick rounding direction (orders/ticks.py), the trailing stop only moves up,

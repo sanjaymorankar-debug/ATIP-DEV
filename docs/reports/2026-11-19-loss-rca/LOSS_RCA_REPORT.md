@@ -316,7 +316,8 @@ small edge on small samples; it should be judged after the planned 30 trades per
 ## 8. Changes applied vs awaiting your approval
 
 **Applied on branch `claude/loss-rca-2026-11-19` (worktree `.claude/worktrees/loss-rca-2026-11-19`, on GitHub master
-0c0c452). Not committed, not pushed, not on the VPS.**
+0c0c452). Committed as e5903e1 (23:58:12 IST 19 Nov), GitHub master since 00:01:25 IST 20 Nov, and live on the VPS
+since 00:46:11 IST 20 Nov (pid 836452) with `strategy_v2` OFF — deploy record in the testing report.**
 
 | ID | Change | Files | Live effect once deployed |
 |---|---|---|---|

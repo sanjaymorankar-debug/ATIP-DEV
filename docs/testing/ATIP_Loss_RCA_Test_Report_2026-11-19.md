@@ -1,7 +1,7 @@
 # ATIP — Loss RCA fixes and strategy v2 — Testing report — 19 Nov 2026
 
 Branch `claude/loss-rca-2026-11-19` on GitHub master 0c0c452 (worktree `.claude/worktrees/loss-rca-2026-11-19`;
-uncommitted). All times IST. Nothing was run against the VPS; both "servers" below are local copies of the VPS's
+committed as e5903e1 at 23:58:12 IST; live on the VPS since 00:46:11 IST 20 Nov, see "Deploy"). All times IST. Nothing was run against the VPS; both "servers" below are local copies of the VPS's
 19 Nov 19:15 IST `pg_dump` (sha256 74bd1da7…d5f4).
 
 ## Environments
@@ -37,6 +37,21 @@ uncommitted). All times IST. Nothing was run against the VPS; both "servers" bel
 
 - **Market-hours behaviour on the VPS**: the monitor's new order (exits first), the heartbeat and the 4-pass alert were
   tested by unit tests only; they first run live at 09:15 IST on the first trading day after a deploy.
-- **No VPS deploy**: the VPS still runs c03fc29 (deployed 20:08:52 IST tonight for the data-quality fix, unrelated).
+- **No VPS deploy at test time**: the VPS ran c03fc29 (deployed 20:08:52 IST 19 Nov for the data-quality fix, unrelated).
+  See "Deploy" below.
+
+## Deploy (added 20 Nov 2026, IST)
+
+| Step | When (IST) | Result |
+|---|---|---|
+| Commit e5903e1 on `claude/loss-rca-2026-11-19` | 23:58:12, 19 Nov | after the commit the order-path guard test passes; 29 passed, 3 skipped (need a throwaway PostgreSQL) |
+| GitHub master fast-forwarded 0c0c452 → e5903e1 | 00:01:25, 20 Nov | owner: "Yes, deploy it" |
+| Deploy by the VPS session (hand method, owner's yes there at about 00:40) | 00:41 – 00:50 | 13 server files sha256-checked against GitHub; the 11 replaced files matched c03fc29 (no drift); old files + `pg_dump` (139 MB) backed up 00:41; py_compile OK; 0 active ATIP queries |
+| Stop / start | 00:46:11 | pid 781182 → 836452, NRestarts 0; scheduler leader held by the new pid |
+| Health, read here | 00:51:05 | `/atip/health/live` 200 LIVE pid 836452 (started 00:46:13); `/atip/health/ready` 200 READY; `/atip/health` components all READY except scheduler DEGRADED from the `history_backfill` failure of 06:00:34 IST 19 Nov (the known DH-907 new-listing refusal, before this deploy) |
+| Journal 00:46:10 – 00:50:36 (VPS session) | — | 0 tracebacks / errors; scheduler and order-rules monitor started |
+| Strategy v2 on the VPS | — | `python -m orders.strategy_v2`: `"enabled": false`; config.json not edited (no `strategy_v2` block) |
+
+Still not covered: the monitor's new behaviour (exits first, heartbeat, 4-pass alert) first runs live at 09:15 IST 20 Nov.
 - **Mobile**: no native change in this work (the apps are shells over the server's screens); nothing to build.
   iOS still cannot be built on this Mac (no Xcode).
