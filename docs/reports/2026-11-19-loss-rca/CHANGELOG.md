@@ -45,3 +45,13 @@ no file rewritten. **Live on the VPS since 00:46:11 IST 20 Nov** (pid 836452), w
 ## Rollback
 Revert the branch (or `git checkout 0c0c452 -- <file>` per file). The flag needs no rollback: remove the
 `strategy_v2` block (or set `"enabled": false`) and ATIP behaves exactly as before.
+
+## Review fixes, 20 Nov 2026 (IST) — on the branch after 514b439, not deployed
+- **LRCA-16** `dashboard/server.py` — each monitor pass runs `autopick.cancel_stale` and `algo_gtt.maintain` before
+  `check_triggers` (a leftover auto-pick could fill on a gap-down open before it was cancelled).
+- **LRCA-17** `orders/entry_guards.py` — the Nifty-weak guard's message is NULL-safe.
+- **LRCA-18** `dashboard/server.py` — one monitor alert per outage (key with its start), state reset at a new day.
+- **LRCA-19** `orders/rules.py` — the exit-blind alert uses `_usable_price`.
+- **LRCA-20** `data/markets.py`, `pipeline/scheduler.py` — unknown REST index change stored as NULL; `--status` prints n/a.
+- Tests: `tests/test_review_fixes_2026_11_20.py` (7, all fail on e5903e1); stale fixtures fixed in
+  `tests/test_kite_retest_study.py` and `tests/test_dhan_realtime_feeds.py`.

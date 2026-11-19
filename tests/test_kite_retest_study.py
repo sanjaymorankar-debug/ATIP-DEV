@@ -270,9 +270,10 @@ def test_breadth_agrees_with_scores_breadth(tmp_path):
     con = sqlite3.connect(tmp_path / "breadth.db")
     con.row_factory = sqlite3.Row
     con.execute("CREATE TABLE ai_scores (symbol TEXT, date TEXT)")
-    con.execute("CREATE TABLE prices_daily (symbol TEXT, date TEXT, close REAL, series TEXT)")
+    # prices_daily has an id (db/schema.py); scores.breadth keeps the newest row of a symbol-day by it (17 Nov, a439e41)
+    con.execute("CREATE TABLE prices_daily (id INTEGER PRIMARY KEY, symbol TEXT, date TEXT, close REAL, series TEXT)")
     con.executemany("INSERT INTO ai_scores VALUES (?, ?)", [(s, "2026-08-01") for s in "ABCDEFG"])
-    con.executemany("INSERT INTO prices_daily VALUES (?, ?, ?, 'EQ')",
+    con.executemany("INSERT INTO prices_daily (symbol, date, close, series) VALUES (?, ?, ?, 'EQ')",
                     [(r["symbol"], r["date"].strftime("%Y-%m-%d"), r["close"]) for r in rows])
     con.commit()
     lo, hi = days[120].strftime("%Y-%m-%d"), days[-1].strftime("%Y-%m-%d")

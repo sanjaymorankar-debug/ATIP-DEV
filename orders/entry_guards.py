@@ -149,7 +149,11 @@ def check_entry(conn, cand: dict, busy=(), now: datetime | None = None) -> str |
     if g["guard_nifty_weak"]:
         n = _nifty(conn, day)
         if n and ((n["now"] or 0) < (n["first"] or 0) or (n["chg"] is not None and n["chg"] <= NIFTY_WEAK_PCT)):
-            return f"guard: Nifty is weak ({n['chg']:+.2f}%, under its first print {n['first']:,.2f})"
+            # LRCA-17 (20 Nov 2026): the feed stores an unknown change as NULL (LRCA-13); formatting None raised
+            # TypeError out of check_entry and failed every auto-pick pass
+            chg = f"{n['chg']:+.2f}%" if n["chg"] is not None else "change n/a"
+            first = f"{n['first']:,.2f}" if n["first"] is not None else "n/a"
+            return f"guard: Nifty is weak ({chg}, under its first print {first})"
     if g["guard_orb_minutes"]:
         n = int(g["guard_orb_minutes"])
         end = f"{9 + (15 + n) // 60:02d}:{(15 + n) % 60:02d}"

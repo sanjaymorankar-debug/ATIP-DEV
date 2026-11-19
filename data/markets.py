@@ -84,11 +84,16 @@ def fetch_intraday_indexes(trade_date=None):
         try:
             latest = safe_float(q.get("ltp")); chg = q.get("chg_pct")
             if latest is None: continue
-            chg = round(float(chg), 3) if chg is not None else 0
-            if abs(chg) > 20:  # sanity guard — no NSE broad/sector index moves >20% in a day
+            # LRCA-20 (20 Nov 2026): an unknown change is NULL, not 0 % (as the WebSocket flush, LRCA-13): 0 read as a
+            # flat day downstream and counted as a neutral index in the sentiment below
+            chg = safe_float(chg)
+            chg = round(chg, 3) if chg is not None else None
+            if chg is not None and abs(chg) > 20:  # sanity guard — no NSE broad/sector index moves >20% in a day
                 log.warning(f"  {col}: implausible {chg:+.2f}% change — likely a bad/stale quote, skipping")
                 continue
-            record[col] = latest; record[f"{col}_chg"] = chg; changes.append(chg)
+            record[col] = latest; record[f"{col}_chg"] = chg
+            if chg is not None:
+                changes.append(chg)
         except: pass
     if changes:
         pos = sum(1 for c in changes if c>0.3); neg = sum(1 for c in changes if c<-0.3)

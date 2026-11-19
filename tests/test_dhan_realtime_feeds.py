@@ -499,6 +499,7 @@ def test_a_dhan_refusal_falls_back_to_the_nse_chain(conn, monkeypatch, tmp_path)
     import data.nse_api as N
     monkeypatch.setattr(lake, "ROOT", tmp_path / "lake")
     monkeypatch.setattr(DS, "_expiries", {})
+    monkeypatch.setattr(DS, "date", _Nov3)          # the fakes' expiries end 17 Nov 2026 (failed from 18 Nov unpinned)
     monkeypatch.setattr(N, "client", lambda: _NSE())
     out = DS.snapshot_option_chain("BANKNIFTY", conn, source="dhan", dhan=_DhanChain(fail=True))
     assert out["source"] == "nse" and out["rows"] == 1 and "DH-904" in out["note"]
@@ -527,6 +528,7 @@ def test_chain_tick_states_off_idle_and_live(conn, monkeypatch, tmp_path):
     assert _status(conn)["option_chain"]["mode"] == "IDLE"
     monkeypatch.setattr(dhan_ws, "feed_window_open", lambda *a: True)
     monkeypatch.setattr(DS, "_expiries", {})
+    monkeypatch.setattr(DS, "date", _Nov3)          # the fake's expiries end 17 Nov 2026 (failed from 18 Nov unpinned)
     fake = _DhanChain()
     import data.dhan as D
     monkeypatch.setattr(D, "get_dhan_client", lambda: (fake, None))

@@ -143,11 +143,12 @@ def test_the_monitor_alerts_once_after_four_failing_passes_and_once_on_recovery(
 
     monkeypatch.setattr(srv.oe, "check_triggers", broken)
     _run_loop(srv, monkeypatch, sleeps=6)
-    assert [s[:2] for s in sent] == [("error", "order_monitor_failing")]   # one alert, at the 4th pass
+    # one alert, at the 4th pass (LRCA-18: its key carries the outage start, so a later outage alerts again)
+    assert [(s[0], s[1].split(":")[0]) for s in sent] == [("error", "order_monitor_failing")]
     assert "order_monitor_failing" in beats and "order_monitor" not in beats
     monkeypatch.setattr(srv.oe, "check_triggers", lambda: [])
     _run_loop(srv, monkeypatch, sleeps=1)
-    assert [s[:2] for s in sent][-1] == ("info", "order_monitor_recovered")
+    assert (sent[-1][0], sent[-1][1].split(":")[0]) == ("info", "order_monitor_recovered")
     assert "order_monitor" in beats and srv._monitor_state["failed_passes"] == 0
 
 

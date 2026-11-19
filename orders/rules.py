@@ -806,7 +806,8 @@ def _watch_blind(active: list, quotes, now: datetime | None = None) -> str | Non
     legs = [r for r in active if (r.get("role") or "ENTRY") in ("STOP", "TARGET")]
     priced = set()
     if quotes is not None and not getattr(quotes, "empty", True):
-        priced = {row["symbol"] for _, row in quotes.iterrows() if row.get("ltp")}
+        # LRCA-19 (20 Nov 2026): the same test as check_triggers (LRCA-05) -- a NaN LTP is truthy but is no price
+        priced = {row["symbol"] for _, row in quotes.iterrows() if _usable_price(row.get("ltp"))}
     unpriced = sorted({r["symbol"] for r in legs if r["symbol"] not in priced})
     if not unpriced:
         if _blind["since"] is not None:

@@ -46,3 +46,31 @@ guards, Nifty 50 via Dhan IDX_I. No look-ahead found in indicators or scores: ev
 | SCH-12 | Low | db/postgres.py translate() | `ORDER BY … DESC` puts NULLs first on PostgreSQL (last on SQLite); 2-arg GROUP_CONCAT invalid; MAX(a,b) → GREATEST ignores NULL. Rank-fill already excludes NULL scores (autopick.py:126). | None seen | Recommended |
 | OP-10 | Low (latent) | orders/rules.py:447 | A partially filled stop cancels the target and leaves the rest unprotected (paper never partial-fills; LIVE can). | LIVE only | Recommended before LIVE |
 | DS-09/10/11/12/14/15 | Low | see reviewers' notes | chg_pct 0.0 fallback; pivots from D-1; EOD coverage 50 %; 50-stock fallback universe; VWAP bars; signal_log measured from the signal close. | Small | Recommended |
+
+## Addendum 20 Nov 2026 (IST) — independent review of the deployed fixes (e5903e1)
+
+Owner, about 00:58 IST: "recheck all code and fixes … not any defect exist". A separate reviewer was given only the diff
+c03fc29..e5903e1 and its intent, not these conclusions. Every item was re-checked here; LRCA-16 was reproduced on the
+live code. All are fixed on the branch after 514b439, each with a test in `tests/test_review_fixes_2026_11_20.py` that
+fails on e5903e1. **Not deployed** (needs the owner's yes).
+
+| ID | Sev | Where | What goes wrong | Live effect (flag OFF) | Fix |
+|---|---|---|---|---|---|
+| LRCA-16 | High | dashboard/server.py `_order_monitor_pass` | LRCA-02 put `check_triggers` before auto-pick, whose `cancel_stale` is the only cleanup of an auto-pick LIMIT left ACTIVE from an earlier day: on a gap-down open the leftover fills before it is cancelled (probe: e5903e1 EXECUTED 97.0 × 257, c03fc29 CANCELLED). The same holds for a Kite dummy whose close broke its stop (`algo_gtt.maintain`, after the check in both orders). | Yes, but only if a leftover pick exists: none in the 19:15 IST snapshot (only S10 FACT, a Kite retest resting by design, close 775.40 above its buy 755.25 and stop 717.45) | `cancel_stale` + `algo_gtt.maintain` run first in each pass (DB-only; they run again later and find nothing) |
+| LRCA-17 | Medium | orders/entry_guards.py:152 | Nifty-weak guard formats `n['chg']` with `:+.2f`; with LRCA-13 the change can be NULL → TypeError out of `check_entry` → every auto-pick pass fails | No (guards OFF) | NULL-safe message |
+| LRCA-18 | Medium | dashboard/server.py `_monitor_health` | `notify` drops a repeated key for the rest of the day, so a second outage the same day was silent; the state was never reset at a new day | Monitoring only | Key per outage start; reset at a new day |
+| LRCA-19 | Medium/Low | orders/rules.py `_watch_blind` | A NaN LTP counted as priced, so the 120 s exit-blind alert never started (LRCA-05 fixed only the trigger path) | Alert only | `_usable_price` |
+| LRCA-20 | Low | data/markets.py:85; pipeline/scheduler.py:1570 | The 15-min REST index snapshot still stored an unknown change as 0 % (and counted it in the sentiment); `main.py --status` crashed on NULL | Small | NULL; prints n/a |
+| — | Low (not fixed) | scores/engine.py:97 `get_idx` | Reads the day's latest index row (15:44 feed row) instead of NSE's 15:30 close snapshot: MSI "Sector" can score 0 where official closes give 100. Same before the change. | Score change → needs owner yes | Recommended |
+| — | Low (not fixed) | dashboard/server.py pass order | An exit that pushes a session under the session-engine floor can let auto-pick queue one pick before the next pass pauses it; `sessions.gate` holds it at fire time | None seen | Recommended |
+
+Checked and fine by the reviewer: all six strategy_v2 hooks short-circuit with the flag OFF; per-rule rollback cannot
+undo an earlier rule's work; the lock re-raise; no OCO double-fire with exits first; `in_transaction`; 55P03; no job
+waits > 60 s on a PostgreSQL lock; LRCA-11's "locked" prefix; every other reader of NULL index changes; Kite tick
+rounding, stop/target from fill, breadth gate and time exits.
+
+Also found while re-running the suite (tests only, no code change): `test_kite_retest_study::test_breadth_agrees_with_scores_breadth`
+built `prices_daily` without the `id` column the real table has (the breadth query orders by it since a439e41, 17 Nov);
+with it the test passes, i.e. the Kite research breadth equals the live formula. Two option-chain tests in
+`test_dhan_realtime_feeds.py` used fake expiries ending 17 Nov without pinning the date (failing since 18 Nov); pinned
+to 3 Nov like their sister test (VF-11).

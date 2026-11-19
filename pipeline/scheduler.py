@@ -1567,7 +1567,8 @@ def print_status():
     print(f"  Market Health  : {mh['mh_score']:.1f} ({mh['regime']})" if mh else "  Market Health  : not computed")
     print(f"  Trade of Day   : {tod['symbol']} — ATIP:{tod['atip_score']:.1f} TOD:{tod['tod_score']:.1f}" if tod else "  Trade of Day   : not computed")
     if idx:
-        print(f"  Nifty          : {idx['nifty50_chg']:+.2f}%  VIX:{idx['india_vix']}  → {idx['overall_sentiment']}")
+        chg = f"{idx['nifty50_chg']:+.2f}%" if idx['nifty50_chg'] is not None else "n/a"   # LRCA-20: NULL = unknown
+        print(f"  Nifty          : {chg}  VIX:{idx['india_vix']}  → {idx['overall_sentiment']}")
     print(f"  Live Quotes    : {lq[0] if lq else 0} stocks refreshed today")
     print(f"\n  Data Refresh Schedule:")
     print(f"  09:15–15:30    Dhan live quotes  every 15 min")

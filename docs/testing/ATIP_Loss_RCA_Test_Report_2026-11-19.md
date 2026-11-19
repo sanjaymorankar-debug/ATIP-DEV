@@ -55,3 +55,16 @@ committed as e5903e1 at 23:58:12 IST; live on the VPS since 00:46:11 IST 20 Nov,
 Still not covered: the monitor's new behaviour (exits first, heartbeat, 4-pass alert) first runs live at 09:15 IST 20 Nov.
 - **Mobile**: no native change in this work (the apps are shells over the server's screens); nothing to build.
   iOS still cannot be built on this Mac (no Xcode).
+
+## Recheck, 20 Nov 2026 (IST) — owner: "recheck all code and fixes"
+
+| # | Check | Where | When (IST) | Result |
+|---|---|---|---|---|
+| R1 | Every earlier fix commit (30, 3 Nov – 19 Nov) and every LRCA marker in GitHub master 514b439 | git | 00:57 | **PASS**: all present |
+| R2 | The VPS's code files vs master 514b439 (sha256 of 477 code files) | VPS session, read-only | 00:59 | **PASS**: 477/477 identical, none missing; 13 extra `.py` are master's own docs/ analysis scripts |
+| R3 | Post-market check tool (read-only) on the live PostgreSQL for 19 Nov, manifest 514b439 | VPS session | 01:03:46 – 01:03:54 | **PASS**: runtime code = master (0 differ/missing/extra); composites 499/499 on 18 and 19 Nov (max diff 0.005); 320 indicator fields 0 flags; breadth 18 Nov exact; P&L re-derived = stored; 8/8 open positions protected; DUMMY GTTs only. Flags explained: S4 CDSL size (tool ignores the 16 Nov top-up; app = 2.5 % of ~₹45,800 / 5 % stop = 16), P&L chain (tool on PostgreSQL; 0 on the same data in SQLite), `news_impact.article_id` counter behind (never used: the only insert supplies the id) |
+| R4 | Same tool + independent pandas formula check on the Test copy | local | 01:00 – 01:01 | **PASS**: same composites; Dhan vs NSE 0 over 0.5 %; only OBV level differs (known CAP-12 convention, no score uses it) |
+| R5 | Full suite on master 514b439 | worktree | 00:59:32 – 01:12:03 | 3,018: 2,932 passed, 6 failed, 80 skipped. 3 `w39_perf_budget` = sandbox sockets (14/14 pass outside); 3 stale tests fixed (R6) |
+| R6 | Kite study + option-chain tests after the fixture fixes | worktree | 01:13 – 01:15 | **PASS** (63/63 in the two files; all Kite files pass) |
+| R7 | Independent code review of c03fc29..e5903e1 | reviewer agent | 00:59 – 01:19 | 1 High (LRCA-16, reproduced on the live code), 3 Medium, 4 Low — see CODE_REVIEW.md addendum |
+| R8 | Regression tests for LRCA-16..20 | worktree / export of 514b439 | 01:22 – 01:24 | 7/7 pass on the fix; 7/7 FAIL on 514b439 (= e5903e1) |

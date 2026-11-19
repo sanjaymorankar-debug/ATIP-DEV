@@ -2305,6 +2305,27 @@ if HAS_FASTAPI:
             log.error(f"  session engine error: {e}")
             locked = _is_db_lock(e)
             _monitor_state["errors"] += 1
+        # LRCA-16 (20 Nov 2026): leftovers are cleared BEFORE the trigger check. With exits first (LRCA-02), an
+        # auto-pick LIMIT still ACTIVE from an earlier day was tested before auto-pick's cancel_stale ran, so a gap-down
+        # open filled yesterday's pick (review of e5903e1); a Kite-retest dummy whose close broke its stop could fill
+        # the same way before algo_gtt.maintain cancelled it. Both are DB-only (no broker call) and run again later in
+        # the pass as before, finding nothing.
+        try:
+            from orders import algo_gtt
+            from orders.autopick import cancel_stale
+            c = get_connection()
+            try:
+                gone = cancel_stale(c)
+                ev = algo_gtt.maintain(c)
+                c.commit()
+            finally:
+                c.close()
+            if gone or ev:
+                log.info(f"  leftovers cleared before the trigger check: picks {gone}, dummies {ev}")
+        except Exception as e:
+            log.error(f"  leftover cleanup error: {e}")
+            locked = locked or _is_db_lock(e)
+            _monitor_state["errors"] += 1
         # LRCA-02 (19 Nov 2026): the stops and targets of open positions are tested FIRST. They used to wait behind
         # auto-pick, whose broker / quote calls (Kite retest: 4 trading-API reads per setup) could hold every exit for
         # minutes at the open. An entry auto-pick queues now fires on the next pass (<= 30 s later) -- its LIMIT and
@@ -2343,27 +2364,37 @@ if HAS_FASTAPI:
             _monitor_state["errors"] += 1
         return locked
 
-    _monitor_state = {"errors": 0, "failed_passes": 0, "alerted": False}
+    _monitor_state = {"errors": 0, "failed_passes": 0, "alerted": False, "since": None, "day": None}
 
     def _monitor_health(ok: bool, detail: str = "") -> None:
         """LRCA-03 (19 Nov 2026): every monitor failure used to be a log line only -- no heartbeat, no job row, no
         alert -- so stops could stop firing all day unseen. Now each clean pass beats `order_monitor` (ops_heartbeat,
-        ops/health) and MONITOR_FAIL_ALERT_PASSES failing passes in a row send one error alert (and one on recovery)."""
+        ops/health) and MONITOR_FAIL_ALERT_PASSES failing passes in a row send one error alert (and one on recovery).
+        LRCA-18 (20 Nov 2026): each outage has its own alert key (notify drops a repeated key for the rest of the day,
+        so a second outage was silent), and a new day starts afresh (an outage still open at 15:30 was never alerted
+        again the next morning)."""
+        from datetime import date as _date, datetime as _dt
         from ops.jobs import beat
+        today = _date.today().isoformat()
+        if _monitor_state.get("day") != today:
+            _monitor_state.update(failed_passes=0, alerted=False, since=None, day=today)
         if ok:
             beat("order_monitor", detail="ok", every=60)
             if _monitor_state["alerted"]:
                 _monitor_alert("✅ Order monitor recovered: stops and targets are being checked again.", "info",
-                               "order_monitor_recovered")
-            _monitor_state.update(failed_passes=0, alerted=False)
+                               f"order_monitor_recovered:{_monitor_state.get('since') or ''}")
+            _monitor_state.update(failed_passes=0, alerted=False, since=None)
             return
+        if not _monitor_state["failed_passes"]:
+            _monitor_state["since"] = _dt.now().isoformat(sep=" ", timespec="microseconds")
         _monitor_state["failed_passes"] += 1
         beat("order_monitor_failing", detail=detail[:200], every=60)
         if _monitor_state["failed_passes"] >= MONITOR_FAIL_ALERT_PASSES and not _monitor_state["alerted"]:
             _monitor_state["alerted"] = True
             _monitor_alert(f"⚠ Order monitor failing for {_monitor_state['failed_passes']} passes in a row "
                            f"(~{_monitor_state['failed_passes'] * MONITOR_EVERY_S // 60} min): open positions' stops "
-                           f"and targets may not be firing. Last error: {detail[:160]}", "error", "order_monitor_failing")
+                           f"and targets may not be firing. Last error: {detail[:160]}", "error",
+                           f"order_monitor_failing:{_monitor_state['since']}")
 
     def _monitor_alert(text: str, severity: str, key: str) -> None:
         try:
