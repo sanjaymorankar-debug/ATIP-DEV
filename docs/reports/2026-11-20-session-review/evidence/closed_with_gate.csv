@@ -1,0 +1,43 @@
+session,symbol,date,pnl,exit_reason,b50_prev,b20_prev,gate50,industry
+S1,PNBHOUSING,2026-10-30,-589.74,stop-loss,20.27,34.23,closed,Financial Services
+S1,PVRINOX,2026-11-04,1002.33,trail stop,27.92,47.04,closed,Media Entertainment & Publication
+S1,PVRINOX,2026-11-05,-594.46,stop-loss,36.14,64.63,closed,Media Entertainment & Publication
+S1,PVRINOX,2026-11-06,592.18,trail stop,45.32,72.85,closed,Media Entertainment & Publication
+S1,PVRINOX,2026-11-11,675.21,trail stop,49.14,74.76,closed,Media Entertainment & Publication
+S1,PVRINOX,2026-11-13,944.73,trail stop,60.61,82.79,open,Media Entertainment & Publication
+S2,BALRAMCHIN,2026-11-04,590.53,trail stop,27.92,47.04,closed,Fast Moving Consumer Goods
+S2,ADANIENT,2026-11-05,-578.7,stop-loss,36.14,64.63,closed,Metals & Mining
+S2,INDHOTEL,2026-11-09,-584.0,stop-loss,44.93,70.17,closed,Consumer Services
+S2,INDHOTEL,2026-11-11,394.75,trail stop,49.14,74.76,closed,Consumer Services
+S3,LODHA,2026-11-04,1144.4,trail stop,27.92,47.04,closed,Realty
+S3,NEULANDLAB,2026-11-05,1192.72,trail stop,36.14,64.63,closed,Healthcare
+S3,IGIL,2026-11-11,450.81,trail stop,49.14,74.76,closed,Services
+S3,AUROPHARMA,2026-11-13,-670.1,stop-loss,60.61,82.79,open,Healthcare
+S4,LAURUSLABS,2026-11-04,837.28,trail stop,27.92,47.04,closed,Healthcare
+S4,KOTAKBANK,2026-11-09,548.29,trail stop,44.93,70.17,closed,Financial Services
+S4,M&M,2026-11-12,-590.42,stop-loss,56.21,79.92,open,Automobile and Auto Components
+S5,ANGELONE,2026-11-04,1016.18,trail stop,27.92,47.04,closed,Financial Services
+S5,BALRAMCHIN,2026-11-05,-616.28,stop-loss,36.14,64.63,closed,Fast Moving Consumer Goods
+S5,TCS,2026-11-09,-578.51,stop-loss,44.93,70.17,closed,Information Technology
+S5,KOTAKBANK,2026-11-13,1014.15,trail stop,60.61,82.79,open,Financial Services
+S6,ENGINERSIN,2026-11-04,559.96,trail stop,27.92,47.04,closed,Construction
+S6,TITAN,2026-11-05,788.76,trail stop,36.14,64.63,closed,Consumer Durables
+S6,HCLTECH,2026-11-06,-600.63,stop-loss,45.32,72.85,closed,Information Technology
+S6,TITAN,2026-11-09,-589.1,stop-loss,44.93,70.17,closed,Consumer Durables
+S6,KALYANKJIL,2026-11-13,581.79,trail stop,60.61,82.79,open,Consumer Durables
+S7,GAIL,2026-11-04,684.0,trail stop,27.92,47.04,closed,Oil Gas & Consumable Fuels
+S8,KOTAKBANK,2026-11-04,627.27,trail stop,27.92,47.04,closed,Financial Services
+S8,ZENSARTECH,2026-11-09,-603.24,stop-loss,44.93,70.17,closed,Information Technology
+S8,ASHOKLEY,2026-11-11,-593.64,stop-loss,49.14,74.76,closed,Capital Goods
+S8,ATHERENERG,2026-11-13,555.08,trail stop,60.61,82.79,open,Automobile and Auto Components
+S9,DIXON,2026-11-04,567.23,trail stop,27.92,47.04,closed,Consumer Durables
+S9,LODHA,2026-11-06,-601.04,stop-loss,45.32,72.85,closed,Realty
+S9,TCS,2026-11-06,-557.73,stop-loss,45.32,72.85,closed,Information Technology
+S9,MOTHERSON,2026-11-09,599.83,trail stop,44.93,70.17,closed,Automobile and Auto Components
+S9,SAILIFE,2026-11-12,-612.46,stop-loss,56.21,79.92,open,Healthcare
+S10,REDINGTON,2026-11-04,558.23,trail stop,27.92,47.04,closed,Services
+S10,REDINGTON,2026-11-05,-645.16,stop-loss,36.14,64.63,closed,Services
+S10,BHEL,2026-11-05,-716.87,stop-loss,36.14,64.63,closed,Capital Goods
+S10,ATHERENERG,2026-11-06,968.93,trail stop,45.32,72.85,closed,Automobile and Auto Components
+S10,HCLTECH,2026-11-09,-549.24,stop-loss,44.93,70.17,closed,Information Technology
+S10,PNB,2026-11-13,873.9,trail stop,60.61,82.79,open,Financial Services

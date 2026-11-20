@@ -100,7 +100,8 @@ def _report_html(conn) -> str:
             ("avg_net", "Avg net ₹", "pnl"), ("avg_pct", "Avg %", "pct"), ("pf", "PF", "text"),
             ("max_dd", "Max DD ₹", "pnl"), ("gate_days", "Gate-blocked days", "int"), ("skipped", "Skipped picks", "int"),
             ("skipped_sector", "Sector-cap skips", "int"), ("skipped_cooldown", "Cooldown skips", "int"),
-            ("reentries", "Re-entries ≤60 min after a stop", "int"), ("verdict", "Verdict", "text")]
+            ("reentries", "Re-entries ≤60 min after a stop", "int"),
+            ("held_from_before", "Held from before the arm", "text"), ("verdict", "Verdict", "text")]
     return (f'<p class="ax-small ax-muted">Week to {e(rep["week_end"])} (built {e(rep["built_at"])} IST). Since the arms '
             f'started {e(rep["since"])}. Promote or retire an arm only after {rep["min_trades"]} closed trades and '
             f'{rep["min_weeks"]} weeks, whichever is later (next review {e(rep["next_review"])}).</p>' +

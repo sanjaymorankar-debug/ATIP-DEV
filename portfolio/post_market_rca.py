@@ -791,9 +791,15 @@ def _headline(tot, losses, by_cause, ranked) -> str:
     # a fix is one that helped today AND held up in the study (verdict BEST / PROMISING), best study result first
     fixes = sorted((r for r in ranked if r["delta"] > 0 and str(r.get("verdict")).startswith(("BEST", "PROMISING"))),
                    key=lambda r: -(r["study_avg_pct"] or -99))[:3]
+    # SR-01 (session review 20 Nov 2026): a losing trade is counted under every cause found in it, so the cause totals
+    # overlap -- 16 Nov read "Signal quality (Rs -1,203), Stop-loss design (Rs -1,203), Position sizing (Rs -1,203)"
+    # for Rs 1,203 lost in all. Say what was lost and that the causes overlap.
+    lost = -sum(float(r.get("pnl_net") or 0) for r in losses)
+    overlap = (f" (Rs {lost:,.0f} lost in {len(losses)} trade(s) in all; a trade is counted under each of its causes, "
+               f"so these overlap)") if any(len(r.get("causes") or []) > 1 for r in losses) else ""
     return (f"Realised net Rs {tot['net']:,.2f} ({tot['closed']} closed, {len(losses)} loss(es)); day MTM "
             f"Rs {tot['day_mtm']:,.2f}. Top causes: " + (", ".join(f"{c['cause']} (Rs {c['rupees']:,.0f})" for c in top)
-                                                     or "none") +
+                                                     or "none") + overlap +
             ". Fixes that helped today and held up over " + STUDY["when"].split(", ")[1].split(" (")[0] + ": " +
             (", ".join(f"{r['label']} ({r['delta']:+,.0f} today)" for r in fixes) or "none") + ".")
 

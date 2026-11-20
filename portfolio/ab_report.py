@@ -63,7 +63,13 @@ def arm_stats(conn, sid: str, since: str, until: str) -> dict:
     gate_days = {e["at"][:10] for e in _events(conn, sid, "AUTO_PICK_GATE", since, until)}
     skipped = _events(conn, sid, "AUTO_PICK_SKIP", since, until) + _events(conn, sid, "AUTO_PICK_WAIT_LTP", since, until)
     n = len(tr)
+    # SR-02 (session review 20 Nov 2026): a session holds one position at a time, so a trade bought before its arm was
+    # set -- still on the exits it was bought with -- keeps the arm from trading at all (S2 held INDHOTEL from 13 Nov and
+    # S7 ICICIBANK from 12 Nov through the arms' whole first week, with no pick). Name it, so an arm with no trades is
+    # not read as an arm that never fires.
+    before = [t for t in sessions._trades(rules) if not t["closed"] and str(t.get("at") or "") < since]
     return {"session": sid, "trades": n, "wins": len(wins), "win_pct": round(len(wins) / n * 100, 1) if n else None,
+            "held_from_before": ", ".join(f"{t['symbol']} (bought {t['date']})" for t in before) or None,
             "net": round(sum(t["pnl"] for t in tr), 2), "avg_net": round(sum(t["pnl"] for t in tr) / n, 2) if n else None,
             "avg_pct": round(sum(t["pnl"] / t["value"] * 100 for t in tr if t["value"]) / n, 3) if n else None,
             "pf": (round(gross_w / gross_l, 2) if gross_l else ("∞" if gross_w else None)),
@@ -110,6 +116,8 @@ def build(conn, week_end: str | None = None) -> dict:
         ready = st["trades"] >= MIN_TRADES and weeks >= MIN_WEEKS
         st.update(arm=a.get("label") or s["name"], rule=arms.describe(a), since=since[:10], weeks=round(weeks, 1),
                   verdict=("ready to judge" if ready else
+                           (f"blocked: holds {st['held_from_before']}, bought before the arm (old exits); "
+                            if st["held_from_before"] else "") +
                            f"collecting: {st['trades']}/{MIN_TRADES} trades, {weeks:.1f}/{MIN_WEEKS} weeks"))
         rows.append(st)
     ctrl = next((r for r in rows if r["session"] == CONTROL), None)

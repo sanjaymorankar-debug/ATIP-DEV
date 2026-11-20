@@ -1,0 +1,494 @@
+{
+ "legacy_closed": {
+  "n": 42,
+  "wins": 24,
+  "losses": 18,
+  "net": 6897.22,
+  "gross_win": 17768.54,
+  "gross_loss": -10871.32,
+  "avg_win": 740.36,
+  "avg_loss": -603.96,
+  "pf": 1.63,
+  "charges": 2970.21,
+  "exit_reasons": {
+   "trail stop": 24,
+   "stop-loss": 18
+  },
+  "loss_reasons": {
+   "stop-loss": 18
+  }
+ },
+ "stop_outs": [
+  {
+   "session": "S1",
+   "symbol": "PNBHOUSING",
+   "entry_at": "2026-10-30T10:00",
+   "exit": "2026-10-30",
+   "entry": 1091.95,
+   "exit_px": 1068.27,
+   "pnl": -589.74,
+   "loss_pct": -2.17,
+   "atr14_pct_at_entry": 3.53,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 1.87,
+   "close_5d_pct": 0.76,
+   "close_10d_pct": 2.32,
+   "days_after": 5
+  },
+  {
+   "session": "S1",
+   "symbol": "PVRINOX",
+   "entry_at": "2026-11-05T10:27",
+   "exit": "2026-11-05",
+   "entry": 1584.69,
+   "exit_px": 1552.02,
+   "pnl": -594.46,
+   "loss_pct": -2.06,
+   "atr14_pct_at_entry": 3.38,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 4.75,
+   "close_5d_pct": 4.29,
+   "close_10d_pct": 7.2,
+   "days_after": 5
+  },
+  {
+   "session": "S2",
+   "symbol": "ADANIENT",
+   "entry_at": "2026-11-05T09:15",
+   "exit": "2026-11-06",
+   "entry": 2735.17,
+   "exit_px": 2678.66,
+   "pnl": -578.7,
+   "loss_pct": -2.07,
+   "atr14_pct_at_entry": 2.82,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 1.51,
+   "close_5d_pct": -1.72,
+   "close_10d_pct": -0.96,
+   "days_after": 5
+  },
+  {
+   "session": "S2",
+   "symbol": "INDHOTEL",
+   "entry_at": "2026-11-09T09:15",
+   "exit": "2026-11-11",
+   "entry": 889.54,
+   "exit_px": 871.21,
+   "pnl": -584.0,
+   "loss_pct": -2.06,
+   "atr14_pct_at_entry": 2.57,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 2.26,
+   "close_5d_pct": -1.63,
+   "close_10d_pct": 2.52,
+   "days_after": 5
+  },
+  {
+   "session": "S3",
+   "symbol": "AUROPHARMA",
+   "entry_at": "2026-11-13T11:59",
+   "exit": "2026-11-19",
+   "entry": 1818.91,
+   "exit_px": 1779.3,
+   "pnl": -670.1,
+   "loss_pct": -2.18,
+   "atr14_pct_at_entry": 2.33,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.08,
+   "close_5d_pct": -1.09,
+   "close_10d_pct": -1.09,
+   "days_after": 1
+  },
+  {
+   "session": "S4",
+   "symbol": "M&M",
+   "entry_at": "2026-11-12T12:06",
+   "exit": "2026-11-16",
+   "entry": 3396.1,
+   "exit_px": 3321.5,
+   "pnl": -590.42,
+   "loss_pct": -2.2,
+   "atr14_pct_at_entry": 2.34,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 5.12,
+   "close_5d_pct": 4.38,
+   "close_10d_pct": 4.38,
+   "days_after": 4
+  },
+  {
+   "session": "S5",
+   "symbol": "BALRAMCHIN",
+   "entry_at": "2026-11-05T09:22",
+   "exit": "2026-11-09",
+   "entry": 672.04,
+   "exit_px": 657.72,
+   "pnl": -616.28,
+   "loss_pct": -2.13,
+   "atr14_pct_at_entry": 4.47,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.01,
+   "close_5d_pct": -2.29,
+   "close_10d_pct": -7.95,
+   "days_after": 5
+  },
+  {
+   "session": "S5",
+   "symbol": "TCS",
+   "entry_at": "2026-11-09T14:00",
+   "exit": "2026-11-13",
+   "entry": 2461.63,
+   "exit_px": 2410.79,
+   "pnl": -578.51,
+   "loss_pct": -2.07,
+   "atr14_pct_at_entry": 2.66,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.48,
+   "close_5d_pct": -3.47,
+   "close_10d_pct": -3.47,
+   "days_after": 5
+  },
+  {
+   "session": "S6",
+   "symbol": "HCLTECH",
+   "entry_at": "2026-11-06T12:46",
+   "exit": "2026-11-09",
+   "entry": 1437.02,
+   "exit_px": 1407.7,
+   "pnl": -600.63,
+   "loss_pct": -2.04,
+   "atr14_pct_at_entry": 2.77,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.41,
+   "close_5d_pct": -5.66,
+   "close_10d_pct": -6.45,
+   "days_after": 5
+  },
+  {
+   "session": "S6",
+   "symbol": "TITAN",
+   "entry_at": "2026-11-09T10:42",
+   "exit": "2026-11-13",
+   "entry": 4964.28,
+   "exit_px": 4860.57,
+   "pnl": -589.1,
+   "loss_pct": -2.09,
+   "atr14_pct_at_entry": 2.51,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.51,
+   "close_5d_pct": -6.94,
+   "close_10d_pct": -6.94,
+   "days_after": 5
+  },
+  {
+   "session": "S8",
+   "symbol": "ZENSARTECH",
+   "entry_at": "2026-11-09T09:41",
+   "exit": "2026-11-11",
+   "entry": 563.98,
+   "exit_px": 552.17,
+   "pnl": -603.24,
+   "loss_pct": -2.09,
+   "atr14_pct_at_entry": 4.06,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 0.24,
+   "close_5d_pct": -6.49,
+   "close_10d_pct": -6.19,
+   "days_after": 5
+  },
+  {
+   "session": "S8",
+   "symbol": "ASHOKLEY",
+   "entry_at": "2026-11-11T15:29",
+   "exit": "2026-11-13",
+   "entry": 173.5,
+   "exit_px": 169.87,
+   "pnl": -593.64,
+   "loss_pct": -2.09,
+   "atr14_pct_at_entry": 3.32,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.4,
+   "close_5d_pct": -5.85,
+   "close_10d_pct": -5.85,
+   "days_after": 5
+  },
+  {
+   "session": "S9",
+   "symbol": "LODHA",
+   "entry_at": "2026-11-06T09:16",
+   "exit": "2026-11-06",
+   "entry": 1156.68,
+   "exit_px": 1132.63,
+   "pnl": -601.04,
+   "loss_pct": -2.08,
+   "atr14_pct_at_entry": 3.72,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 7.43,
+   "close_5d_pct": 5.47,
+   "close_10d_pct": 5.36,
+   "days_after": 5
+  },
+  {
+   "session": "S9",
+   "symbol": "TCS",
+   "entry_at": "2026-11-06T11:30",
+   "exit": "2026-11-09",
+   "entry": 2509.55,
+   "exit_px": 2454.87,
+   "pnl": -557.73,
+   "loss_pct": -2.18,
+   "atr14_pct_at_entry": 2.96,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.14,
+   "close_5d_pct": -4.1,
+   "close_10d_pct": -5.31,
+   "days_after": 5
+  },
+  {
+   "session": "S9",
+   "symbol": "SAILIFE",
+   "entry_at": "2026-11-12T09:15",
+   "exit": "2026-11-16",
+   "entry": 1921.16,
+   "exit_px": 1879.5,
+   "pnl": -612.46,
+   "loss_pct": -2.17,
+   "atr14_pct_at_entry": 4.17,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -4.75,
+   "close_5d_pct": -6.27,
+   "close_10d_pct": -6.27,
+   "days_after": 4
+  },
+  {
+   "session": "S10",
+   "symbol": "REDINGTON",
+   "entry_at": "2026-11-05T09:51",
+   "exit": "2026-11-05",
+   "entry": 367.98,
+   "exit_px": 359.67,
+   "pnl": -645.16,
+   "loss_pct": -2.26,
+   "atr14_pct_at_entry": 5.38,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -1.76,
+   "close_5d_pct": -2.41,
+   "close_10d_pct": -7.25,
+   "days_after": 5
+  },
+  {
+   "session": "S10",
+   "symbol": "BHEL",
+   "entry_at": "2026-11-05T10:35",
+   "exit": "2026-11-06",
+   "entry": 419.16,
+   "exit_px": 408.2,
+   "pnl": -716.87,
+   "loss_pct": -2.61,
+   "atr14_pct_at_entry": 3.7,
+   "back_above_entry_in_5d": true,
+   "max_high_5d_pct": 4.57,
+   "close_5d_pct": 4.09,
+   "close_10d_pct": 3.46,
+   "days_after": 5
+  },
+  {
+   "session": "S10",
+   "symbol": "HCLTECH",
+   "entry_at": "2026-11-09T13:17",
+   "exit": "2026-11-13",
+   "entry": 1399.6,
+   "exit_px": 1371.31,
+   "pnl": -549.24,
+   "loss_pct": -2.02,
+   "atr14_pct_at_entry": 2.63,
+   "back_above_entry_in_5d": false,
+   "max_high_5d_pct": -0.07,
+   "close_5d_pct": -3.94,
+   "close_10d_pct": -3.94,
+   "days_after": 5
+  }
+ ],
+ "stop_noise": {
+  "n": 18,
+  "back_above_entry_within_5d": 8,
+  "median_atr14_pct": 3.14,
+  "stop_inside_atr": 18,
+  "median_close_5d_pct": -2.35,
+  "median_close_10d_pct": -3.7,
+  "would_be_positive_10d": 6,
+  "n10": 18
+ },
+ "winners_median_atr14_pct": 3.65,
+ "by_entry_time": [
+  {
+   "bucket": "09:15-09:20",
+   "count": "18",
+   "sum": "8753.8",
+   "mean": "486.3",
+   "<lambda_0>": "77.8"
+  },
+  {
+   "bucket": "09:20-10:00",
+   "count": "10",
+   "sum": "1864.8",
+   "mean": "186.5",
+   "<lambda_0>": "60.0"
+  },
+  {
+   "bucket": "10:00-12:00",
+   "count": "6",
+   "sum": "-2677.5",
+   "mean": "-446.2",
+   "<lambda_0>": "16.7"
+  },
+  {
+   "bucket": "12:00+",
+   "count": "8",
+   "sum": "-1044.0",
+   "mean": "-130.5",
+   "<lambda_0>": "37.5"
+  }
+ ],
+ "reentry_after_stop_same_session": [
+  {
+   "session": "S1",
+   "symbol": "PVRINOX",
+   "at": "2026-11-06T09:16",
+   "prev_stop_exit": "2026-11-05",
+   "pnl": 592.18,
+   "closed": true
+  },
+  {
+   "session": "S1",
+   "symbol": "PVRINOX",
+   "at": "2026-11-11T09:48",
+   "prev_stop_exit": "2026-11-05",
+   "pnl": 675.21,
+   "closed": true
+  },
+  {
+   "session": "S2",
+   "symbol": "INDHOTEL",
+   "at": "2026-11-11T13:34",
+   "prev_stop_exit": "2026-11-11",
+   "pnl": 394.75,
+   "closed": true
+  },
+  {
+   "session": "S1",
+   "symbol": "PVRINOX",
+   "at": "2026-11-13T09:26",
+   "prev_stop_exit": "2026-11-05",
+   "pnl": 944.73,
+   "closed": true
+  },
+  {
+   "session": "S2",
+   "symbol": "INDHOTEL",
+   "at": "2026-11-13T12:16",
+   "prev_stop_exit": "2026-11-11",
+   "pnl": 0.0,
+   "closed": false
+  }
+ ],
+ "same_symbol_same_day_multi_session": [],
+ "overlap_detail": [],
+ "symbol_concentration": [
+  {
+   "symbol": "PVRINOX",
+   "n": 5,
+   "sessions": [
+    "S1"
+   ],
+   "pnl": 2619.99
+  },
+  {
+   "symbol": "INDHOTEL",
+   "n": 3,
+   "sessions": [
+    "S2"
+   ],
+   "pnl": -189.25
+  },
+  {
+   "symbol": "KOTAKBANK",
+   "n": 3,
+   "sessions": [
+    "S4",
+    "S5",
+    "S8"
+   ],
+   "pnl": 2189.71
+  },
+  {
+   "symbol": "TITAN",
+   "n": 2,
+   "sessions": [
+    "S6"
+   ],
+   "pnl": 199.65999999999997
+  },
+  {
+   "symbol": "ATHERENERG",
+   "n": 2,
+   "sessions": [
+    "S10",
+    "S8"
+   ],
+   "pnl": 1524.01
+  },
+  {
+   "symbol": "TCS",
+   "n": 2,
+   "sessions": [
+    "S5",
+    "S9"
+   ],
+   "pnl": -1136.24
+  },
+  {
+   "symbol": "BALRAMCHIN",
+   "n": 2,
+   "sessions": [
+    "S2",
+    "S5"
+   ],
+   "pnl": -25.75
+  },
+  {
+   "symbol": "LODHA",
+   "n": 2,
+   "sessions": [
+    "S3",
+    "S9"
+   ],
+   "pnl": 543.3600000000001
+  },
+  {
+   "symbol": "REDINGTON",
+   "n": 2,
+   "sessions": [
+    "S10"
+   ],
+   "pnl": -86.92999999999995
+  },
+  {
+   "symbol": "PNB",
+   "n": 2,
+   "sessions": [
+    "S1",
+    "S10"
+   ],
+   "pnl": 873.9
+  },
+  {
+   "symbol": "HCLTECH",
+   "n": 2,
+   "sessions": [
+    "S10",
+    "S6"
+   ],
+   "pnl": -1149.87
+  }
+ ]
+}

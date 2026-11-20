@@ -1,0 +1,1376 @@
+{
+ "run": {
+  "db_max_prices_daily": "2026-11-20"
+ },
+ "sessions": [
+  {
+   "id": "S1",
+   "name": "Momentum",
+   "strategy": "Rank-fill on ATIP score + breadth50 gate; stop max(3%, 1.5xATR14) capped 6%; trails 2% from +4%",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 3.0,
+   "target_pct": 4.0,
+   "trail_pct": 2.0,
+   "arm": {
+    "entry": "rank_fill",
+    "hold_days": 15,
+    "label": "Momentum",
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "max": 6.0,
+     "min": 3.0,
+     "mult": 1.5,
+     "type": "atr"
+    },
+    "strategy": "Rank-fill on ATIP score + breadth50 gate; stop max(3%, 1.5xATR14) capped 6%; trails 2% from +4%",
+    "trail": {
+     "after": {
+      "type": "pct",
+      "value": 4.0
+     },
+     "by": {
+      "type": "pct",
+      "value": 2.0
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 19581.25,
+   "equity": 47851.31,
+   "pnl": 2851.31,
+   "return_pct": 6.34,
+   "booked": 2030.25,
+   "unrealised": 821.06,
+   "charges": 456.07,
+   "trades": 7,
+   "closed": 6,
+   "wins": 4,
+   "win_rate_pct": 66.7,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "PNB",
+     "qty": 182.0,
+     "entry": 150.64,
+     "mark": 155.33,
+     "unrealised": 821.06,
+     "since": "2026-11-18",
+     "stop": 144.2
+    }
+   ]
+  },
+  {
+   "id": "S2",
+   "name": "Buy zones (retest K2)",
+   "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 5%, 20 days; breadth50 gate",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 5.0,
+   "target_pct": 5.0,
+   "trail_pct": null,
+   "arm": {
+    "entry": "kite_retest",
+    "label": "Buy zones (retest K2)",
+    "max_days": 20,
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 5.0
+    },
+    "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 5%, 20 days; breadth50 gate",
+    "target_pct": 5.0
+   },
+   "capital": 45000.0,
+   "cash": 20887.34,
+   "equity": 45511.34,
+   "pnl": 511.34,
+   "return_pct": 1.14,
+   "booked": -177.42,
+   "unrealised": 688.76,
+   "charges": 311.65,
+   "trades": 5,
+   "closed": 4,
+   "wins": 2,
+   "win_rate_pct": 50.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "INDHOTEL",
+     "qty": 27.0,
+     "entry": 885.44,
+     "mark": 912.0,
+     "unrealised": 688.76,
+     "since": "2026-11-13",
+     "stop": 903.8
+    }
+   ]
+  },
+  {
+   "id": "S3",
+   "name": "Breakouts (retest K1)",
+   "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 10%, 20 days; breadth50 gate",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 5.0,
+   "target_pct": 10.0,
+   "trail_pct": null,
+   "arm": {
+    "entry": "kite_retest",
+    "label": "Breakouts (retest K1)",
+    "max_days": 20,
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 5.0
+    },
+    "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, target 10%, 20 days; breadth50 gate",
+    "target_pct": 10.0
+   },
+   "capital": 45000.0,
+   "cash": 47117.83,
+   "equity": 47117.83,
+   "pnl": 2117.83,
+   "return_pct": 4.71,
+   "booked": 2117.83,
+   "unrealised": 0,
+   "charges": 285.85,
+   "trades": 4,
+   "closed": 4,
+   "wins": 3,
+   "win_rate_pct": 75.0,
+   "transfers": 20000.0,
+   "open": []
+  },
+  {
+   "id": "S4",
+   "name": "Swing (retest K4)",
+   "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, trails 3% from +5%, 40 days; breadth50 gate",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 5.0,
+   "target_pct": 5.0,
+   "trail_pct": 3.0,
+   "arm": {
+    "entry": "kite_retest",
+    "label": "Swing (retest K4)",
+    "max_days": 40,
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 5.0
+    },
+    "strategy": "Kite breakout-retest: resting buy at the breakout low, stop 5%, trails 3% from +5%, 40 days; breadth50 gate",
+    "trail": {
+     "after": {
+      "type": "pct",
+      "value": 5.0
+     },
+     "by": {
+      "type": "pct",
+      "value": 3.0
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 23334.94,
+   "equity": 46214.94,
+   "pnl": 1214.94,
+   "return_pct": 2.7,
+   "booked": 795.15,
+   "unrealised": 419.79,
+   "charges": 236.84,
+   "trades": 4,
+   "closed": 3,
+   "wins": 2,
+   "win_rate_pct": 66.7,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "CDSL",
+     "qty": 16.0,
+     "entry": 1402.1,
+     "mark": 1430.0,
+     "unrealised": 419.79,
+     "since": "2026-11-19",
+     "stop": 1331.9
+    }
+   ]
+  },
+  {
+   "id": "S5",
+   "name": "Control",
+   "strategy": "Control arm: today's rules (15 Nov) -- rank-fill on ATIP score, stop 2%, trails 1% from +3%, no gate",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 2.0,
+   "target_pct": 3.0,
+   "trail_pct": 1.0,
+   "arm": {
+    "entry": "rank_fill",
+    "hold_days": 15,
+    "label": "Control",
+    "regime_gate": null,
+    "stop": {
+     "type": "pct",
+     "value": 2.0
+    },
+    "strategy": "Control arm: today's rules (15 Nov) -- rank-fill on ATIP score, stop 2%, trails 1% from +3%, no gate",
+    "trail": {
+     "after": {
+      "type": "pct",
+      "value": 3.0
+     },
+     "by": {
+      "type": "pct",
+      "value": 1.0
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 45835.54,
+   "equity": 45835.54,
+   "pnl": 835.54,
+   "return_pct": 1.86,
+   "booked": 835.54,
+   "unrealised": 0,
+   "charges": 286.04,
+   "trades": 4,
+   "closed": 4,
+   "wins": 2,
+   "win_rate_pct": 50.0,
+   "transfers": 20000.0,
+   "open": []
+  },
+  {
+   "id": "S6",
+   "name": "Recovery (ATR)",
+   "strategy": "Rank-fill on ATIP score + breadth50 gate; stop 2xATR14 (2-8%); trails 1xATR from +2xATR",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 2.0,
+   "target_pct": 2.0,
+   "trail_pct": 1.0,
+   "arm": {
+    "entry": "rank_fill",
+    "hold_days": 15,
+    "label": "Recovery (ATR)",
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "max": 8.0,
+     "min": 2.0,
+     "mult": 2.0,
+     "type": "atr"
+    },
+    "strategy": "Rank-fill on ATIP score + breadth50 gate; stop 2xATR14 (2-8%); trails 1xATR from +2xATR",
+    "trail": {
+     "after": {
+      "max": 8.0,
+      "min": 2.0,
+      "mult": 2.0,
+      "type": "atr"
+     },
+     "by": {
+      "max": 4.0,
+      "min": 1.0,
+      "mult": 1.0,
+      "type": "atr"
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 33597.59,
+   "equity": 46012.39,
+   "pnl": 1012.39,
+   "return_pct": 2.25,
+   "booked": 740.78,
+   "unrealised": 271.61,
+   "charges": 370.8,
+   "trades": 6,
+   "closed": 5,
+   "wins": 3,
+   "win_rate_pct": 60.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "GRASIM",
+     "qty": 4.0,
+     "entry": 3032.2,
+     "mark": 3103.7,
+     "unrealised": 271.61,
+     "since": "2026-11-16",
+     "stop": 2885.3
+    }
+   ]
+  },
+  {
+   "id": "S7",
+   "name": "Wide-stop",
+   "strategy": "Rank-fill on ATIP score + breadth50 gate; stop 4%; trails 2% from +4%",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 4.0,
+   "target_pct": 4.0,
+   "trail_pct": 2.0,
+   "arm": {
+    "entry": "rank_fill",
+    "hold_days": 15,
+    "label": "Wide-stop",
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 4.0
+    },
+    "strategy": "Rank-fill on ATIP score + breadth50 gate; stop 4%; trails 2% from +4%",
+    "trail": {
+     "after": {
+      "type": "pct",
+      "value": 4.0
+     },
+     "by": {
+      "type": "pct",
+      "value": 2.0
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 20367.76,
+   "equity": 46607.76,
+   "pnl": 1607.76,
+   "return_pct": 3.57,
+   "booked": 684.0,
+   "unrealised": 923.76,
+   "charges": 102.24,
+   "trades": 2,
+   "closed": 1,
+   "wins": 1,
+   "win_rate_pct": 100.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "ICICIBANK",
+     "qty": 16.0,
+     "entry": 1580.39,
+     "mark": 1640.0,
+     "unrealised": 923.76,
+     "since": "2026-11-12",
+     "stop": 1628.4
+    }
+   ]
+  },
+  {
+   "id": "S8",
+   "name": "Sector",
+   "strategy": "Rank-fill on ATIP score + breadth50 gate; at most 2 open per industry; stop 3%; trails 2% from +4%",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 3.0,
+   "target_pct": 4.0,
+   "trail_pct": 2.0,
+   "arm": {
+    "entry": "rank_fill",
+    "hold_days": 15,
+    "label": "Sector",
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "sector_cap": 2,
+    "stop": {
+     "type": "pct",
+     "value": 3.0
+    },
+    "strategy": "Rank-fill on ATIP score + breadth50 gate; at most 2 open per industry; stop 3%; trails 2% from +4%",
+    "trail": {
+     "after": {
+      "type": "pct",
+      "value": 4.0
+     },
+     "by": {
+      "type": "pct",
+      "value": 2.0
+     }
+    }
+   },
+   "capital": 45000.0,
+   "cash": 9195.87,
+   "equity": 45760.67,
+   "pnl": 760.67,
+   "return_pct": 1.69,
+   "booked": -14.53,
+   "unrealised": 775.2,
+   "charges": 324.46,
+   "trades": 5,
+   "closed": 4,
+   "wins": 2,
+   "win_rate_pct": 50.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "PHOENIXLTD",
+     "qty": 16.0,
+     "entry": 2234.2,
+     "mark": 2285.3,
+     "unrealised": 775.2,
+     "since": "2026-11-18",
+     "stop": 2167.1
+    }
+   ]
+  },
+  {
+   "id": "S9",
+   "name": "Bracket 3/6",
+   "strategy": "Rank-fill on ATIP score + breadth50 gate; fixed stop 3%, target 6% live from the fill",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 3.0,
+   "target_pct": 6.0,
+   "trail_pct": null,
+   "arm": {
+    "entry": "rank_fill",
+    "label": "Bracket 3/6",
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth50",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 3.0
+    },
+    "strategy": "Rank-fill on ATIP score + breadth50 gate; fixed stop 3%, target 6% live from the fill",
+    "target_pct": 6.0
+   },
+   "capital": 45000.0,
+   "cash": 24811.53,
+   "equity": 45221.53,
+   "pnl": 221.53,
+   "return_pct": 0.49,
+   "booked": -604.17,
+   "unrealised": 825.7,
+   "charges": 372.41,
+   "trades": 6,
+   "closed": 5,
+   "wins": 2,
+   "win_rate_pct": 40.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "DLF",
+     "qty": 26.0,
+     "entry": 752.35,
+     "mark": 785.0,
+     "unrealised": 825.7,
+     "since": "2026-11-16",
+     "stop": 729.75
+    }
+   ]
+  },
+  {
+   "id": "S10",
+   "name": "Retest fast-gate",
+   "strategy": "Kite breakout-retest (K1 exits: stop 5%, target 10%, 20 days) behind the faster breadth20 gate",
+   "status": "RUNNING",
+   "auto_pick": 1,
+   "start_capital": 25000.0,
+   "pool_started_at": "2026-10-29T23:09:38",
+   "stop_pct": 5.0,
+   "target_pct": 10.0,
+   "trail_pct": null,
+   "arm": {
+    "entry": "kite_retest",
+    "label": "Retest fast-gate",
+    "max_days": 20,
+    "min_buy_value": 10000.0,
+    "regime_gate": {
+     "metric": "breadth20",
+     "min": 50
+    },
+    "risk_budget_pct": 2.5,
+    "stop": {
+     "type": "pct",
+     "value": 5.0
+    },
+    "strategy": "Kite breakout-retest (K1 exits: stop 5%, target 10%, 20 days) behind the faster breadth20 gate",
+    "target_pct": 10.0
+   },
+   "capital": 45000.0,
+   "cash": 22805.41,
+   "equity": 45524.41,
+   "pnl": 524.41,
+   "return_pct": 1.17,
+   "booked": 489.79,
+   "unrealised": 34.62,
+   "charges": 448.21,
+   "trades": 7,
+   "closed": 6,
+   "wins": 3,
+   "win_rate_pct": 50.0,
+   "transfers": 20000.0,
+   "open": [
+    {
+     "symbol": "FACT",
+     "qty": 30.0,
+     "entry": 755.25,
+     "mark": 757.3,
+     "unrealised": 34.62,
+     "since": "2026-11-20",
+     "stop": 717.45
+    }
+   ]
+  }
+ ],
+ "today_mtm": {
+  "S1": 87.36,
+  "S2": 603.45,
+  "S3": 0.0,
+  "S4": 105.6,
+  "S5": 296.15,
+  "S6": -29.6,
+  "S7": 497.6,
+  "S8": 764.8,
+  "S9": 442.0,
+  "S10": 34.62,
+  "TOTAL": 2801.9799999999996
+ },
+ "post_market_rca": [
+  {
+   "day": "2026-11-16",
+   "built_at": "2026-11-16 16:00:16 IST",
+   "headline": "Realised net Rs -66.01 (4 closed, 2 loss(es)); day MTM Rs 262.90. Top causes: Signal quality (Rs -1,203), Stop-loss design (Rs -1,203), Position sizing / correlation (Rs -1,203). Fixes that helped today and held up over 42 sessions / 420 trades: none.",
+   "totals": {
+    "gross": 212.13,
+    "charges": 278.14,
+    "net": -66.01,
+    "day_mtm": 262.9,
+    "bought": 2,
+    "closed": 4,
+    "wins": 2,
+    "losses": 2
+   },
+   "sessions": [
+    {
+     "session": "S1",
+     "name": "Momentum",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -18.0,
+     "held": [
+      "PVRINOX"
+     ]
+    },
+    {
+     "session": "S2",
+     "name": "Buy zones (retest K2)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -153.9,
+     "held": [
+      "INDHOTEL"
+     ]
+    },
+    {
+     "session": "S3",
+     "name": "Breakouts (retest K1)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -424.5,
+     "held": [
+      "AUROPHARMA"
+     ]
+    },
+    {
+     "session": "S4",
+     "name": "Swing (retest K4)",
+     "bought": 0,
+     "closed": 1,
+     "wins": 0,
+     "losses": 1,
+     "net": -590.42,
+     "day_mtm": -120.52,
+     "held": []
+    },
+    {
+     "session": "S5",
+     "name": "Control",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 232.5,
+     "held": [
+      "KOTAKBANK"
+     ]
+    },
+    {
+     "session": "S6",
+     "name": "Recovery (ATR)",
+     "bought": 1,
+     "closed": 1,
+     "wins": 1,
+     "losses": 0,
+     "net": 581.79,
+     "day_mtm": 848.36,
+     "held": [
+      "GRASIM"
+     ]
+    },
+    {
+     "session": "S7",
+     "name": "Wide-stop",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -75.2,
+     "held": [
+      "ICICIBANK"
+     ]
+    },
+    {
+     "session": "S8",
+     "name": "Sector",
+     "bought": 0,
+     "closed": 1,
+     "wins": 1,
+     "losses": 0,
+     "net": 555.08,
+     "day_mtm": 417.81,
+     "held": []
+    },
+    {
+     "session": "S9",
+     "name": "Bracket 3/6",
+     "bought": 1,
+     "closed": 1,
+     "wins": 0,
+     "losses": 1,
+     "net": -612.46,
+     "day_mtm": -688.45,
+     "held": [
+      "DLF"
+     ]
+    },
+    {
+     "session": "S10",
+     "name": "Retest fast-gate",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 244.8,
+     "held": [
+      "PNB"
+     ]
+    }
+   ]
+  },
+  {
+   "day": "2026-11-17",
+   "built_at": "2026-11-17 16:00:15 IST",
+   "headline": "Realised net Rs 873.90 (1 closed, 0 loss(es)); day MTM Rs 2,434.58. Top causes: none. Fixes that helped today and held up over 42 sessions / 420 trades: none.",
+   "totals": {
+    "gross": 945.2,
+    "charges": 71.3,
+    "net": 873.9,
+    "day_mtm": 2434.58,
+    "bought": 0,
+    "closed": 1,
+    "wins": 1,
+    "losses": 0
+   },
+   "sessions": [
+    {
+     "session": "S1",
+     "name": "Momentum",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 565.5,
+     "held": [
+      "PVRINOX"
+     ]
+    },
+    {
+     "session": "S2",
+     "name": "Buy zones (retest K2)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 357.75,
+     "held": [
+      "INDHOTEL"
+     ]
+    },
+    {
+     "session": "S3",
+     "name": "Breakouts (retest K1)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 15.0,
+     "held": [
+      "AUROPHARMA"
+     ]
+    },
+    {
+     "session": "S4",
+     "name": "Swing (retest K4)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    },
+    {
+     "session": "S5",
+     "name": "Control",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 185.0,
+     "held": [
+      "KOTAKBANK"
+     ]
+    },
+    {
+     "session": "S6",
+     "name": "Recovery (ATR)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -54.0,
+     "held": [
+      "GRASIM"
+     ]
+    },
+    {
+     "session": "S7",
+     "name": "Wide-stop",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 315.2,
+     "held": [
+      "ICICIBANK"
+     ]
+    },
+    {
+     "session": "S8",
+     "name": "Sector",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    },
+    {
+     "session": "S9",
+     "name": "Bracket 3/6",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 250.9,
+     "held": [
+      "DLF"
+     ]
+    },
+    {
+     "session": "S10",
+     "name": "Retest fast-gate",
+     "bought": 0,
+     "closed": 1,
+     "wins": 1,
+     "losses": 0,
+     "net": 873.9,
+     "day_mtm": 799.23,
+     "held": []
+    }
+   ]
+  },
+  {
+   "day": "2026-11-18",
+   "built_at": "2026-11-18 16:00:08 IST",
+   "headline": "Realised net Rs 944.73 (1 closed, 0 loss(es)); day MTM Rs -615.08. Top causes: none. Fixes that helped today and held up over 42 sessions / 420 trades: Skip a buy while Nifty is below its open or 0.5 %+ down on the day (+185 today), Buy only if the first 15-min candle is green and the price is above the previous close (+185 today).",
+   "totals": {
+    "gross": 1016.7,
+    "charges": 71.97,
+    "net": 944.73,
+    "day_mtm": -615.08,
+    "bought": 2,
+    "closed": 1,
+    "wins": 1,
+    "losses": 0
+   },
+   "sessions": [
+    {
+     "session": "S1",
+     "name": "Momentum",
+     "bought": 1,
+     "closed": 1,
+     "wins": 1,
+     "losses": 0,
+     "net": 944.73,
+     "day_mtm": 371.97,
+     "held": [
+      "PNB"
+     ]
+    },
+    {
+     "session": "S2",
+     "name": "Buy zones (retest K2)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -719.55,
+     "held": [
+      "INDHOTEL"
+     ]
+    },
+    {
+     "session": "S3",
+     "name": "Breakouts (retest K1)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 85.5,
+     "held": [
+      "AUROPHARMA"
+     ]
+    },
+    {
+     "session": "S4",
+     "name": "Swing (retest K4)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    },
+    {
+     "session": "S5",
+     "name": "Control",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -137.5,
+     "held": [
+      "KOTAKBANK"
+     ]
+    },
+    {
+     "session": "S6",
+     "name": "Recovery (ATR)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 20.8,
+     "held": [
+      "GRASIM"
+     ]
+    },
+    {
+     "session": "S7",
+     "name": "Wide-stop",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 1.6,
+     "held": [
+      "ICICIBANK"
+     ]
+    },
+    {
+     "session": "S8",
+     "name": "Sector",
+     "bought": 1,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -301.6,
+     "held": [
+      "PHOENIXLTD"
+     ]
+    },
+    {
+     "session": "S9",
+     "name": "Bracket 3/6",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 63.7,
+     "held": [
+      "DLF"
+     ]
+    },
+    {
+     "session": "S10",
+     "name": "Retest fast-gate",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    }
+   ]
+  },
+  {
+   "day": "2026-11-19",
+   "built_at": "2026-11-19 16:00:11 IST",
+   "headline": "Realised net Rs -670.10 (1 closed, 1 loss(es)); day MTM Rs 2,863.95. Top causes: Signal quality (Rs -670), Stop-loss design (Rs -670). Fixes that helped today and held up over 42 sessions / 420 trades: none.",
+   "totals": {
+    "gross": -594.15,
+    "charges": 75.95,
+    "net": -670.1,
+    "day_mtm": 2863.95,
+    "bought": 1,
+    "closed": 1,
+    "wins": 0,
+    "losses": 1
+   },
+   "sessions": [
+    {
+     "session": "S1",
+     "name": "Momentum",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 1119.3,
+     "held": [
+      "PNB"
+     ]
+    },
+    {
+     "session": "S2",
+     "name": "Buy zones (retest K2)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 535.95,
+     "held": [
+      "INDHOTEL"
+     ]
+    },
+    {
+     "session": "S3",
+     "name": "Breakouts (retest K1)",
+     "bought": 0,
+     "closed": 1,
+     "wins": 0,
+     "losses": 1,
+     "net": -670.1,
+     "day_mtm": -298.59,
+     "held": []
+    },
+    {
+     "session": "S4",
+     "name": "Swing (retest K4)",
+     "bought": 1,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 334.99,
+     "held": [
+      "CDSL"
+     ]
+    },
+    {
+     "session": "S5",
+     "name": "Control",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 350.0,
+     "held": [
+      "KOTAKBANK"
+     ]
+    },
+    {
+     "session": "S6",
+     "name": "Recovery (ATR)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 151.2,
+     "held": [
+      "GRASIM"
+     ]
+    },
+    {
+     "session": "S7",
+     "name": "Wide-stop",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 84.8,
+     "held": [
+      "ICICIBANK"
+     ]
+    },
+    {
+     "session": "S8",
+     "name": "Sector",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 520.0,
+     "held": [
+      "PHOENIXLTD"
+     ]
+    },
+    {
+     "session": "S9",
+     "name": "Bracket 3/6",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 66.3,
+     "held": [
+      "DLF"
+     ]
+    },
+    {
+     "session": "S10",
+     "name": "Retest fast-gate",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    }
+   ]
+  },
+  {
+   "day": "2026-11-20",
+   "built_at": "2026-11-20 16:00:07 IST",
+   "headline": "Realised net Rs 1,014.15 (1 closed, 0 loss(es)); day MTM Rs 2,797.25. Top causes: none. Fixes that helped today and held up over 42 sessions / 420 trades: Buy only if the first 15-min candle is green and the price is above the previous close (+10 today).",
+   "totals": {
+    "gross": 1085.5,
+    "charges": 71.35,
+    "net": 1014.15,
+    "day_mtm": 2797.25,
+    "bought": 1,
+    "closed": 1,
+    "wins": 1,
+    "losses": 0
+   },
+   "sessions": [
+    {
+     "session": "S1",
+     "name": "Momentum",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 72.8,
+     "held": [
+      "PNB"
+     ]
+    },
+    {
+     "session": "S2",
+     "name": "Buy zones (retest K2)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 591.3,
+     "held": [
+      "INDHOTEL"
+     ]
+    },
+    {
+     "session": "S3",
+     "name": "Breakouts (retest K1)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 0.0,
+     "held": []
+    },
+    {
+     "session": "S4",
+     "name": "Swing (retest K4)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 105.6,
+     "held": [
+      "CDSL"
+     ]
+    },
+    {
+     "session": "S5",
+     "name": "Control",
+     "bought": 0,
+     "closed": 1,
+     "wins": 1,
+     "losses": 0,
+     "net": 1014.15,
+     "day_mtm": 325.13,
+     "held": []
+    },
+    {
+     "session": "S6",
+     "name": "Recovery (ATR)",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -48.4,
+     "held": [
+      "GRASIM"
+     ]
+    },
+    {
+     "session": "S7",
+     "name": "Wide-stop",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 505.6,
+     "held": [
+      "ICICIBANK"
+     ]
+    },
+    {
+     "session": "S8",
+     "name": "Sector",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 761.6,
+     "held": [
+      "PHOENIXLTD"
+     ]
+    },
+    {
+     "session": "S9",
+     "name": "Bracket 3/6",
+     "bought": 0,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": 494.0,
+     "held": [
+      "DLF"
+     ]
+    },
+    {
+     "session": "S10",
+     "name": "Retest fast-gate",
+     "bought": 1,
+     "closed": 0,
+     "wins": 0,
+     "losses": 0,
+     "net": 0,
+     "day_mtm": -10.38,
+     "held": [
+      "FACT"
+     ]
+    }
+   ]
+  }
+ ],
+ "by_week": [
+  {
+   "week": "2026-10-19..2026-10-23",
+   "S1": 0.0,
+   "S2": 0.0,
+   "S3": 0.0,
+   "S4": 0.0,
+   "S5": 0.0,
+   "S6": 0.0,
+   "S7": 0.0,
+   "S8": 0.0,
+   "S9": 0.0,
+   "S10": 0.0,
+   "TOTAL": 0.0
+  },
+  {
+   "week": "2026-10-26..2026-10-30",
+   "S1": -589.74,
+   "S2": 0.0,
+   "S3": 0.0,
+   "S4": 0.0,
+   "S5": 0.0,
+   "S6": 0.0,
+   "S7": 0.0,
+   "S8": 0.0,
+   "S9": 0.0,
+   "S10": 0.0,
+   "TOTAL": -589.74
+  },
+  {
+   "week": "2026-11-02..2026-11-06",
+   "S1": 642.02,
+   "S2": 11.83,
+   "S3": 1610.72,
+   "S4": 593.5,
+   "S5": 910.16,
+   "S6": 1438.36,
+   "S7": 320.58,
+   "S8": 894.11,
+   "S9": -130.56,
+   "S10": -141.97,
+   "TOTAL": 6148.75
+  },
+  {
+   "week": "2026-11-09..2026-11-13",
+   "S1": 906.94,
+   "S2": -86.39,
+   "S3": 1241.56,
+   "S4": 350.37,
+   "S5": -1093.27,
+   "S6": -1344.12,
+   "S7": 384.78,
+   "S8": -1298.96,
+   "S9": 238.17,
+   "S10": -441.04,
+   "TOTAL": -1141.96
+  },
+  {
+   "week": "2026-11-16..2026-11-20",
+   "S1": 1892.09,
+   "S2": 585.9,
+   "S3": -734.45,
+   "S4": 271.07,
+   "S5": 1018.65,
+   "S6": 918.15,
+   "S7": 902.4,
+   "S8": 1165.52,
+   "S9": 113.92,
+   "S10": 1107.42,
+   "TOTAL": 7240.67
+  }
+ ],
+ "check_closed_trades_off_by": {},
+ "missing_closes": []
+}

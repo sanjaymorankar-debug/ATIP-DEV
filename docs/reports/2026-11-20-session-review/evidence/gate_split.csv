@@ -1,0 +1,9 @@
+exit,gate50,n,win_pct,avg_netpct,pf,stopped_pct
+"S1 (ATR 1.5x, 3-6%)",breadth50 closed,1091.0,49.6,-1.076,0.6,46.2
+"S1 (ATR 1.5x, 3-6%)",breadth50 open,248.0,64.5,0.437,1.41,7.7
+S5 control (2% / trail 1% from +3%),breadth50 closed,1091.0,36.5,-0.594,0.61,60.5
+S5 control (2% / trail 1% from +3%),breadth50 open,248.0,57.3,0.157,1.05,29.0
+S7 (4% / trail 2% from +4%),breadth50 closed,1091.0,46.7,-0.672,0.69,49.6
+S7 (4% / trail 2% from +4%),breadth50 open,248.0,64.5,0.454,1.42,10.9
+S9 bracket 3/6,breadth50 closed,1091.0,35.2,-0.369,0.81,61.0
+S9 bracket 3/6,breadth50 open,248.0,57.3,0.303,1.19,23.0
