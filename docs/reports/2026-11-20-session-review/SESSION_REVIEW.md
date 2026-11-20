@@ -133,7 +133,15 @@ alerts). The first new-rule trades are all in profit.
 | A4 | Keep S5 (control) and S10 (breadth20) as they are until the A/B review | — | the A/B needs a control and a fast-gate arm | S5 runs the rule that made every loss |
 | A5 | Judge arms only after 30 closed trades and 6 weeks | `/ab`, `python -m portfolio.ab_report` | 6 trades so far | — |
 
-## 6. Corrections made in the code (branch `claude/session-review-2026-11-20`; owner 23:15 IST: "commit, push and deploy now")
+## 6. Corrections made in the code — LIVE on the VPS since 23:36:14 IST 20 Nov (GitHub master 43ca948)
+
+Owner 23:15 IST: "commit, push and deploy now". Commit 43ca948 at 23:23:01 IST, pushed to GitHub master 23:23:13 IST
+(fast-forward from 52ad07c). The VPS session deployed it by its hand method after the owner's yes there: the fresh clone
+matched the 3 sha256 values, backups at 23:25 IST (`/var/backups/bkesari/atip-code-c9d168f-20261120-2325.tar`, dump
+`atip-2026-11-20_2325.dump`), one restart at 23:36:14 IST, pid 850092 → 1123526, NRestarts 0. Live and ready 200 at
+23:36:23 and 23:39:22 IST (and read from here at 23:39:54 IST); journal 23:36–23:39 IST 0 ERROR, 0 Traceback;
+`sha256sum -c` 477/477 = master 43ca948; config.json unchanged, strategy_v2 still OFF. Rollback: extract that tar and
+restart.
 
 | ID | File | Change | Why |
 |---|---|---|---|
