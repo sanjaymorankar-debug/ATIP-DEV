@@ -57,11 +57,16 @@ Details are in [BACKTEST.md](BACKTEST.md).
   - a Prod snapshot (the VPS dump of 20 Nov 19:15 IST on PostgreSQL, three real mornings replayed and scored).
 
   See [TEST_REPORT.md](TEST_REPORT.md).
-- **Not deployed.**
-  - The VPS deploy needs the owner's yes, goes through the VPS session, and must avoid 05:45–15:35 IST.
-  - The first live 09:00 run would be **Wed 25 Nov 2026** (24 Nov is an NSE holiday).
-  - The real "Prod server" test runs then.
-- **Not verified here:**
-  - NSE's `marketStatus` `giftnifty` block: NSE now redirects `www.nseindia.com` to `www.nseindia.in`, which this Mac's
-    sandbox does not reach (F3).
+- **Deployed:**
+  - **86db41e has been LIVE on the VPS since 09:36:13 IST, Mon 23 Nov 2026.** Owner's yes; one restart; migration 0007
+    applied; health 200; +4 scheduler jobs (TEST_REPORT §6b).
+  - The DEF-06 fix (ade78e9, on GitHub master since 09:34:52 IST) waits for the owner's yes in the VPS session.
+  - The first live 09:00 run is **Wed 25 Nov 2026** (24 Nov is an NSE holiday).
+- **Checked on the VPS before the deploy:**
+  - NSE `marketStatus` carries `giftnifty`.
+  - The pre-open `key=ALL` gives whole-market counts.
+  - The `.in` redirect is Mac-only (§6a).
+- **Not verified:**
   - The iOS build: no Xcode on the Mac; it needs the owner's Apple ID.
+  - A real phone.
+  - The signed-in pages on the VPS.

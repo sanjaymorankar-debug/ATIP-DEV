@@ -9,7 +9,7 @@ off GitHub master `0f8f539`. All times IST.
 |---|---|---|---|
 | **Test** | Local ATIP on the Mac: `uvicorn dashboard.server:app`, port 8911, `ATIP_ENV=test` | A fresh SQLite DB (`main.py --init`, then migrations 0001–0007) | No Dhan credentials, no Telegram token. Yahoo reachable. NSE's redirect host was not allowed by the sandbox. |
 | **Prod snapshot** | Local ATIP on the Mac: port 8912, `ATIP_ENV=staging`, **PostgreSQL** backend, as on the VPS | The VPS's own pg_dump of **20 Nov 2026 19:15 IST**, restored on a throwaway local PostgreSQL (restore 00:14:16–00:14:36 IST) | Never connected to the VPS. Feeds, scheduler and order monitor off. |
-| **Prod (VPS)** | The live `bkesari-atip.service` | Live | Read-only source checks done 23 Nov 08:46–09:09 IST (§6a). The deploy goes through the VPS session with the owner's yes; paper mode allows market hours. The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See §6. |
+| **Prod (VPS)** | The live `bkesari-atip.service` | Live | Read-only source checks 23 Nov 08:46–09:09 IST (§6a). **86db41e LIVE since 09:36:13 IST 23 Nov** (§6b). The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See §6. |
 
 ## 1. Automated tests
 
@@ -145,19 +145,31 @@ for "all the changes to production right now".
 | PR-02 | NSE pre-open `key=ALL` | 09:09:08 | 2,421 items (`metadata` + `detail`); top-level advances 1,437 / declines 626 / unchanged 358. **The live A/D source works.** |
 | PR-03 | `www.nseindia.com` from the VPS | 08:47 | No 301 (plain curl: HTTP/2 INTERNAL_ERROR; browser agent: 403). F3 is Mac-only. The journal has no NSE errors since 08:00; the 08:45:05 pre-open gate is OK. |
 
-### 6b. Still to run
+### 6b. Deploy of 86db41e, Mon 23 Nov (by the VPS session, owner's yes there)
 
-1. **Deploy and start-up.**
-   - After the restart, `schema_migrations` shows 0007 APPLIED, and 0008 too once the DEF-06 fix is deployed.
-   - `GET /atip/api/preopen` returns 200.
+| ID | Check | When (IST) | Result |
+|---|---|---|---|
+| PD-01 | One restart at a quiet minute (0 active queries, 0 job locks) | 09:36:13 | pid 1123526 → **1797674**, NRestarts 0. All 14 files pass sha256. Backups: `/var/backups/bkesari/atip-code-43ca948-20261123-0917.tar` (10 changed files; 4 new files are removed for a rollback) and `atip-pg/atip-2026-11-23_0917.dump`. The paper stop / trail monitor paused about 7 s. |
+| PD-02 | Health | 09:36:20, 09:37:37 | `/health/live` and `/health/ready` 200. Public `https://bkesari.com/atip/health/live` 200. The journal has 0 ERROR / 0 Traceback since 09:36. `/health/scheduler` stays DEGRADED only for the 2 old bhavcopy failures of 22 Nov (dates 2022-08-08, 2020-07-13), unrelated. |
+| PD-03 | Migration | 09:36:16.86 | **0007 preopen_checklist_signals APPLIED** (33.7 ms); `preopen_signals` exists, 0 rows |
+| PD-04 | Scheduler | 09:24 → 09:37:17 | Heartbeat **242 → 246 jobs**: +4 = 09:00, 09:09, 15:31 and 15:45 checklist jobs. The leader is the new pid; order monitor ok at 09:37:20. |
+| PD-05 | Pages without a login | ~09:37 | `/atip/api/preopen` → 401 JSON. `/atip/preopen` and `/atip/home` → 302 to `/atip/login?next=…`, correctly behind sign-in. |
+| PD-06 | `python -m strategy.preopen_checklist show` | ~09:37 | "Pre-open checklist: no run yet"; no manual run |
+
+**ade78e9 (DEF-06).** The VPS session verified the 4 extra files (sha256, compile, no `orders` import). It waits for the owner's yes in its session, with the deploy before 15:31 IST.
+
+### 6c. Still to run
+
+1. **Signed in.** The owner opens `/atip/preopen` and `/atip/home` once. The VPS session did not sign in.
 2. **Mon 23 Nov 15:31 IST.** The first GIFT reference is stored. If only 86db41e is live by then, it carries no contract (caveat on Wednesday, UT-31).
-3. **Wed 25 Nov 09:00 and 09:09 IST.**
+3. **If ade78e9 is deployed.** Check that 0008 is APPLIED and `preopen_gift_ref` exists.
+4. **Wed 25 Nov 09:00 and 09:09 IST.**
    - Rows are stored.
    - The Telegram line arrives.
    - The Android notification shows the read.
    - The Home card shows on the web and in both apps.
-4. **Wed 25 Nov 15:31 and 15:45 IST.**
+5. **Wed 25 Nov 15:31 and 15:45 IST.**
    - The GIFT reference is stored.
    - The runs are scored.
    - `/preopen` shows the first scored day.
-5. Record the times in IST in this report and in the tracker (PO-PROD).
+6. Record the times in IST in this report and in the tracker (PO-PROD).
