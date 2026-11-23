@@ -59,8 +59,8 @@ def _preopen(adv, dec, when="25-Nov-2026 09:07:58", top_level=True):
     return lambda: payload
 
 
-def _gift(price=26100.0, chg=None, age_min=2):
-    return lambda: {"price": price, "chg_pct": chg, "expiry": "30-Dec-2026",
+def _gift(price=26100.0, chg=None, age_min=2, expiry="30-Dec-2026"):
+    return lambda: {"price": price, "chg_pct": chg, "expiry": expiry,
                     "as_of": DAY - timedelta(minutes=age_min), "source": "fake NSE marketStatus"}
 
 
@@ -337,14 +337,87 @@ def test_evaluate_waits_for_the_open_then_gives_up(db, cfg):
     assert db.execute("SELECT eval_note FROM preopen_signals").fetchone()[0].startswith("no open")
 
 
+# ── DEF-06: the GIFT contract switch (found from the VPS's live marketStatus payload, 23 Nov 2026) ──────────
+
+def _gift_ref_contract(db, price, expiry):
+    db.execute("INSERT INTO preopen_gift_ref (date, price, expiry, quote_ts, source, captured_at) VALUES "
+               "(?, ?, ?, ?, 'fake NSE marketStatus', ?)", (PREV, price, expiry, f"{PREV} 15:30:40", f"{PREV} 15:31:02"))
+    db.commit()
+
+
+def test_gift_reference_from_another_contract_is_not_used(db, cfg):
+    _gift_ref_contract(db, 25950.0, "25-Nov-2026")    # the old contract; the morning quote is the December one
+    r = _compute(db, gift=_gift(26100.0, chg=-0.3, expiry="30-Dec-2026"))
+    caveats = json.loads(r["caveats_json"])
+    # vs the old contract's 25,950 the move would read +0.58 % (Gap-Up): the calendar spread, not a gap
+    assert r["gift_vote"] == -1 and r["expected_open"] == "Gap-Down"
+    assert r["gift_move_basis"] == "NSE day change of the contract" and r["gift_move_pct"] == pytest.approx(-0.3)
+    assert any("contract changed" in c and "25-Nov-2026" in c and "30-Dec-2026" in c for c in caveats)
+    assert not any("no 15:31 GIFT reference stored yet" in c for c in caveats)
+    assert r["gift_ref"] == 25950.0 and r["gift_ref_source"].endswith("not used: contract changed")
+    r = _compute(db, gift=_gift(26100.0, chg=None, expiry="30-Dec-2026"))
+    assert "basis not removed" in r["gift_move_basis"] and r["gift_vote"] == 1    # raw +0.38 % vs the Nifty 26,000
+
+
+def test_gift_reference_from_the_same_contract_is_used_however_nse_writes_it(db, cfg):
+    _gift_ref_contract(db, 26050.0, "30-DEC-2026")
+    r = _compute(db, gift=_gift(26100.0, chg=-0.3, expiry="30-Dec-2026"))
+    caveats = json.loads(r["caveats_json"])
+    assert r["gift_move_pct"] == pytest.approx(0.192, abs=1e-3) and r["gift_vote"] == 1 and "15:30" in r["gift_move_basis"]
+    assert not any("contract" in c for c in caveats)
+    assert "30-DEC-2026 contract" in r["gift_ref_source"]
+
+
+def test_a_reference_without_a_contract_is_still_used_with_a_caveat(db, cfg):
+    _gift_ref(db, 26050.0)                            # a global_snapshot-only row, as 86db41e captured it
+    r = _compute(db, gift=_gift(26100.0))
+    assert r["gift_move_pct"] == pytest.approx(0.192, abs=1e-3) and "15:30" in r["gift_move_basis"]
+    assert any("roll check was skipped" in c for c in json.loads(r["caveats_json"]))
+
+
+def test_expiry_key_reads_nse_spellings():
+    from strategy.preopen_checklist import expiry_key
+    assert expiry_key("29-Dec-2026") == expiry_key("29-DEC-2026") == expiry_key("2026-12-29") == "2026-12-29"
+    assert expiry_key(None) is None and expiry_key("-") is None and expiry_key("soon") is None
+
+
+def test_the_vps_live_marketstatus_payload_of_23_nov_parses():
+    """The giftnifty block the VPS read through ATIP's NSE client at 08:46:14 IST on 23 Nov 2026."""
+    from strategy.preopen_checklist import expiry_key, parse_gift_marketstatus
+    ms = {"marketState": [], "marketcap": {}, "indicativenifty50": {}, "niftyusd": {},
+          "giftnifty": {"CONTRACTSTRADED": 4365, "DAYCHANGE": 130, "EXPIRYDATE": "29-Dec-2026",
+                        "INSTRUMENTTYPE": "FUTIDX", "LASTPRICE": 26085, "OPTIONTYPE": "-", "PERCHANGE": 0.5,
+                        "STRIKEPRICE": 0, "SYMBOL": "NIFTY", "TIMESTMP": "23-Nov-2026 08:43",
+                        "id": "0/NIFTYFUTIDX29-Dec-2026--"}}
+    q = parse_gift_marketstatus(ms)
+    assert q["price"] == 26085.0 and q["chg_pct"] == 0.5 and expiry_key(q["expiry"]) == "2026-12-29"
+    assert q["as_of"] == datetime(2026, 11, 23, 8, 43, tzinfo=IST)
+
+
+def test_market_pulse_skips_a_reference_from_another_contract(db, cfg):
+    from datetime import date
+    from research import market_pulse as MP
+    _gift_ref_contract(db, 25950.0, "25-Nov-2026")
+    ref, src = MP._gift_ref(db, date(2026, 11, 25), same_source_only=True, expiry="30-Dec-2026")
+    assert ref is None and "contract changed" in src
+    ref, src = MP._gift_ref(db, date(2026, 11, 25), same_source_only=True, expiry="25-NOV-2026")
+    assert ref == 25950.0 and "15:31 reference" in src
+    ref, _ = MP._gift_ref(db, date(2026, 11, 25), same_source_only=True)            # no contract on the quote
+    assert ref == 25950.0
+
+
 # ── GIFT reference, latest GIFT, compact payload ────────────────────────────────────────────────────────────
 
 def test_capture_gift_close_feeds_the_next_mornings_reference(db, cfg):
     from strategy import preopen_checklist as PC
     at = datetime(2026, 11, 23, 15, 31, 2, tzinfo=IST)
-    out = PC.capture_gift_close(db, now=at, getter=lambda: {"price": 26050.0, "as_of": at - timedelta(seconds=20)})
-    assert out["status"] == "SUCCESS"
-    assert PC.gift_reference(db, DAY.date())["price"] == 26050.0                  # across the 24 Nov holiday
+    out = PC.capture_gift_close(db, now=at, getter=lambda: {"price": 26050.0, "expiry": "29-Dec-2026",
+                                                             "as_of": at - timedelta(seconds=20)})
+    assert out["status"] == "SUCCESS" and out["expiry"] == "29-Dec-2026"
+    ref = PC.gift_reference(db, DAY.date())                                       # across the 24 Nov holiday
+    assert ref["price"] == 26050.0 and ref["expiry"] == "29-Dec-2026" and "29-Dec-2026 contract" in ref["source"]
+    assert db.execute("SELECT price FROM global_snapshot WHERE date=? AND series='gift_nifty'",
+                      (PREV,)).fetchone()[0] == 26050.0                           # still written for older readers
     assert PC.capture_gift_close(db, now=at.replace(day=24), getter=lambda: None)["status"] == "SKIPPED"
     assert PC.latest_gift(db)["price"] == 26050.0
 
@@ -379,6 +452,22 @@ def test_migration_0007_creates_the_table(temp_db):
         assert {"date", "run_label", "us_vote", "vix_regime", "ad_vote", "expected_open", "bias", "fetched_at_ist",
                 "actual_gap_pct", "day_direction"} <= cols
         assert conn.execute("SELECT status FROM schema_migrations WHERE version='0007'").fetchone()[0] == "APPLIED"
+    finally:
+        conn.close()
+
+
+def test_migration_0008_creates_the_gift_reference_table(temp_db):
+    from db.schema import get_connection, init_db
+    from ops import migrations as M
+    init_db()
+    conn = get_connection()
+    try:
+        assert [m[0] for m in M.MIGRATIONS][-2:] == ["0007", "0008"]
+        M.apply(conn)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(preopen_gift_ref)")}
+        assert {"date", "price", "expiry", "quote_ts", "source", "captured_at"} <= cols
+        assert conn.execute("SELECT status FROM schema_migrations WHERE version='0008'").fetchone()[0] == "APPLIED"
+        assert not [w for w in M.validate(conn) if w.get("version") in ("0007", "0008")]    # no drift, no failure
     finally:
         conn.close()
 

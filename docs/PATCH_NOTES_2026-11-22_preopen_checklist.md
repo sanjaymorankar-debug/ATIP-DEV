@@ -62,12 +62,36 @@ them vote:
   (25) and Market Pulse's RISK_ON/OFF context are untouched. The checklist feeds none of them.
 - Autopick, the arms, stops, sizing and every order path are untouched (owner decision D2).
 
+## Follow-up fix DEF-06 (23 Nov 2026): GIFT contract switch
+
+The VPS's live NSE payload (08:46 IST 23 Nov) showed the 29-Dec-2026 GIFT contract already in use.
+
+**The problem.** The 15:31 reference kept no contract. So the morning after NSE switches contracts, the
+"basis-free" GIFT move would compare two different months' prices and read their gap (about 0.3–0.7 %) as a gap
+in the market.
+
+**The fix:**
+- `strategy/preopen_checklist.py`
+  - New table `preopen_gift_ref` (`GIFT_REF_DDL`, migration **0008**). It holds the date, price, contract (expiry),
+    quote time, source and capture time.
+  - `capture_gift_close()` writes it and still writes `global_snapshot`.
+  - `gift_reference()` returns the contract.
+  - `check_gift()` does not use a reference from another contract: it falls back to NSE's day change of the
+    contract, with a caveat naming both contracts.
+  - A reference with no contract on record is still used, with a caveat.
+  - New `expiry_key()` reads NSE's spellings.
+- `research/market_pulse.py`: the 08:45 GIFT estimate passes the quote's contract, and skips a reference from
+  another contract.
+- `ops/migrations.py`: 0008 `preopen_gift_reference`. It is additive; 0007's text and checksum are unchanged.
+- Tests UT-29..35 are in `tests/test_preopen_checklist.py`.
+
 ## Deploy
 
-- Not deployed. The VPS deploy needs the owner's yes and goes through the VPS session.
-- Restarts are only allowed outside 05:45–15:35 IST.
-- After deploy, migration 0007 runs at start-up.
-- 24 Nov 2026 is an NSE holiday, so the first live 09:00 run would be **Wed 25 Nov 2026**.
-- First checks on the VPS:
-  1. Does NSE `marketStatus` carry `giftnifty`?
-  2. Is `www.nseindia.com` → `www.nseindia.in` (seen 22 Nov) breaking ATIP's NSE fetches?
+- 86db41e went to GitHub master at 08:44:20 IST, 23 Nov. The VPS session deploys it with the owner's yes.
+- The owner said on 23 Nov that paper mode makes market-hours deploys safe. Still avoid the job minutes and 09:14–09:35 IST.
+- Migrations 0007 (and 0008 with the DEF-06 fix) run at start-up.
+- 24 Nov 2026 is an NSE holiday, so the first live 09:00 run is **Wed 25 Nov 2026**.
+- VPS read-only checks, 23 Nov:
+  - `marketStatus` carries `giftnifty`.
+  - Pre-open `key=ALL` answers with whole-market counts.
+  - The `.in` redirect is Mac-only (TEST_REPORT §6a).

@@ -280,15 +280,26 @@ def global_cue_model(conn, today_moves: dict | None = None) -> dict:
 
 # ── GIFT Nifty and the open ──────────────────────────────────────────────────
 
-def _gift_ref(conn, today: date, same_source_only: bool = False):
+def _gift_ref(conn, today: date, same_source_only: bool = False, expiry=None):
     """GIFT at ~15:30 IST on the previous session, with where it came from: the 15:31 reference the pre-open
-    checklist stores from its own GIFT source (global_snapshot "gift_nifty", PO-CL-08), else index_levels / the
-    GIFTNIFTY daily close -- both Dhan's IDX_I 5024 quote, which is frozen, so same_source_only skips them."""
+    checklist stores from its own GIFT source (preopen_gift_ref with its contract, else global_snapshot "gift_nifty",
+    PO-CL-08), else index_levels / the GIFTNIFTY daily close -- both Dhan's IDX_I 5024 quote, which is frozen, so
+    same_source_only skips them. DEF-06: with the quote's contract (expiry) given, a reference from another contract
+    is not comparable -> (None, why)."""
+    r = []
     try:
-        r = _rows(conn, "SELECT date, price, quote_ts FROM global_snapshot WHERE date<? AND label='close' AND "
-                        "series='gift_nifty' AND price>0 ORDER BY date DESC LIMIT 1", (str(today),))
+        from strategy.preopen_checklist import ensure_tables as pc_tables, expiry_key
+        pc_tables(conn)
+        r = _rows(conn, "SELECT date, price, expiry FROM preopen_gift_ref WHERE date<? AND price>0 "
+                        "ORDER BY date DESC LIMIT 1", (str(today),))
+        if r and expiry and r[0].get("expiry") and expiry_key(expiry) != expiry_key(r[0]["expiry"]):
+            return None, (f"GIFT 15:31 reference {str(r[0]['date'])[:10]} skipped: contract changed "
+                          f"({r[0]['expiry']} -> {expiry})")
     except Exception:
         r = []
+    if not r:
+        r = _rows(conn, "SELECT date, price, quote_ts FROM global_snapshot WHERE date<? AND label='close' AND "
+                        "series='gift_nifty' AND price>0 ORDER BY date DESC LIMIT 1", (str(today),))
     if r:
         return float(r[0]["price"]), f"GIFT 15:31 reference {str(r[0]['date'])[:10]} (pre-open checklist source)"
     if same_source_only:
@@ -341,12 +352,13 @@ def capture_gift(conn=None, quotes=None) -> dict:
                 from strategy.preopen_checklist import _gift_quote, settings as pc_settings
                 q = _gift_quote(pc_settings())
                 if q:
-                    quotes["gift_nifty"] = {"ltp": q["price"]}
+                    quotes["gift_nifty"] = {"ltp": q["price"], "expiry": q.get("expiry")}
             except Exception as e:
                 log.warning(f"  GIFT quote: {e}")
         gift = (quotes.get("gift_nifty") or {}).get("ltp")
         prev_close = (quotes.get("nifty50") or {}).get("prev_close") or (quotes.get("nifty50") or {}).get("ltp")
-        ref, src = _gift_ref(conn, today, same_source_only=live)
+        ref, src = _gift_ref(conn, today, same_source_only=live,
+                             expiry=(quotes.get("gift_nifty") or {}).get("expiry"))
         move = (gift / ref - 1) * 100 if gift and ref else None
         beta = gift_beta(conn)
         exp = move * beta if move is not None else None

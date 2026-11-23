@@ -143,6 +143,14 @@ def _sql_0007(conn):
         conn.execute(ddl)
 
 
+def _sql_0008(conn):
+    """23 Nov 2026 (DEF-06): preopen_gift_ref -- the 15:31 IST GIFT Nifty reference with the contract (expiry) it was
+    read from, so the next morning's basis-free GIFT move is never taken across a contract switch. Additive only."""
+    from strategy.preopen_checklist import GIFT_REF_DDL
+    for ddl in GIFT_REF_DDL:
+        conn.execute(ddl)
+
+
 MIGRATIONS = (
     ("0001", "baseline_w1_w7", _sql_0001, "none (validation only)"),
     ("0002", "w8_ops_tables", _sql_0002, "DROP the W8 ops_* tables, enterprise_refresh_token and schema_migrations "
@@ -160,6 +168,8 @@ MIGRATIONS = (
                                                      "ordering key; restore the pre-W39 backup to remove it"),
     ("0007", "preopen_checklist_signals", _sql_0007, "DROP INDEX idx_preopen_signals_eval; DROP TABLE preopen_signals "
                                                      "(only the checklist reads it)"),
+    ("0008", "preopen_gift_reference", _sql_0008, "DROP TABLE preopen_gift_ref (only the pre-open checklist and "
+                                                  "research/market_pulse read it)"),
 )
 
 
@@ -171,6 +181,9 @@ def _checksum(version, name, fn) -> str:
     if version == "0007":
         from strategy.preopen_checklist import DDL as PREOPEN_DDL
         extra = "\n".join(PREOPEN_DDL)
+    elif version == "0008":
+        from strategy.preopen_checklist import GIFT_REF_DDL
+        extra = "\n".join(GIFT_REF_DDL)
     return hashlib.sha256(f"{version}|{name}|{src}|{extra}".encode()).hexdigest()
 
 

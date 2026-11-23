@@ -9,7 +9,7 @@ off GitHub master `0f8f539`. All times IST.
 |---|---|---|---|
 | **Test** | Local ATIP on the Mac: `uvicorn dashboard.server:app`, port 8911, `ATIP_ENV=test` | A fresh SQLite DB (`main.py --init`, then migrations 0001–0007) | No Dhan credentials, no Telegram token. Yahoo reachable. NSE's redirect host was not allowed by the sandbox. |
 | **Prod snapshot** | Local ATIP on the Mac: port 8912, `ATIP_ENV=staging`, **PostgreSQL** backend, as on the VPS | The VPS's own pg_dump of **20 Nov 2026 19:15 IST**, restored on a throwaway local PostgreSQL (restore 00:14:16–00:14:36 IST) | Never connected to the VPS. Feeds, scheduler and order monitor off. |
-| **Prod (VPS)** | The live `bkesari-atip.service` | Live | **Not tested yet: not deployed.** It needs the owner's yes and the VPS session, and must avoid 05:45–15:35 IST. The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See "Prod checks still to run". |
+| **Prod (VPS)** | The live `bkesari-atip.service` | Live | Read-only source checks done 23 Nov 08:46–09:09 IST (§6a). The deploy goes through the VPS session with the owner's yes; paper mode allows market hours. The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See §6. |
 
 ## 1. Automated tests
 
@@ -21,6 +21,10 @@ off GitHub master `0f8f539`. All times IST.
 | Full suite on untouched master `0f8f539`, same hour | 00:11:15–00:25:00 | **The same 3**, nothing else |
 | **Full suite again, with counts: branch** | 00:25:33–00:38:26 | **2,973 passed, 3 failed, 80 skipped** |
 | **Full suite again, with counts: untouched master `0f8f539`, same minutes** | 00:25:33–00:38:24 | **2,945 passed, 3 failed, 80 skipped**: the same 3; the branch adds exactly the 28 new tests |
+
+| **DEF-06 fix (23 Nov): checklist + market pulse + scheduler tests** | 09:19:32 | **51 passed** (44 before + 7 new, UT-29..35) |
+| **DEF-06 fix: full suite, during market hours** | 09:20:20–09:34:05 | **2,980 passed, 3 failed, 80 skipped**: the same 3 sandbox failures; +7 = the new tests; no market-hours flakes |
+| DEF-06 SQL through the PostgreSQL translator (`db.postgres.ddl` / `translate`) and `db.dialect_scan` | ~09:21 | New table and upsert translate (`ON CONFLICT (date) DO UPDATE`); the scan's 8 hand-change statements are all in older files |
 
 The 3 failures are environmental (the Mac's sandbox forbids opening a local port) and fail identically on untouched
 master. **The change adds no failure.**
@@ -57,6 +61,13 @@ master. **The change adds no failure.**
 | UT-26 | Scheduler registers 09:00 / 09:09 / 15:31 / 15:45; jobs do nothing on a non-market day | PASS |
 | UT-27 | API, `/preopen` page, `/home` card; POST without token → 401; view-only server → 403 | PASS |
 | UT-28 | Backtest scoring compares with the base rate, not 50 % | PASS |
+| UT-29 | DEF-06: a 15:31 reference from another contract (25-Nov → 30-Dec) is not used: NSE day change votes, caveat names both contracts; no day change → raw | PASS |
+| UT-30 | DEF-06: the same contract written differently ("30-DEC-2026" / "30-Dec-2026") is still used | PASS |
+| UT-31 | DEF-06: a reference with no contract on record (as 86db41e stores it) is used, with a caveat | PASS |
+| UT-32 | `expiry_key` reads NSE spellings and ISO; "-" / junk → None | PASS |
+| UT-33 | The VPS's real `marketStatus` payload of 08:46 IST 23 Nov parses (26,085, +0.5 %, 29-Dec-2026, 08:43 IST) | PASS |
+| UT-34 | `market_pulse` (08:45 GIFT estimate) skips a reference from another contract | PASS |
+| UT-35 | Migration 0008 creates `preopen_gift_ref`, records APPLIED; 0007 / 0008 show no drift | PASS |
 
 ## 2. Test server (local, fresh SQLite, port 8911)
 
@@ -90,6 +101,7 @@ live, at 09:00, that capture does not exist yet and the check falls back to prio
 | DEF-03 | TS-02 | A multi-line Dhan error message went into a caveat | First line only | Fixed |
 | DEF-04 | TS-03 | Wording: "Volatile volatility" in the app notification; "(09:09 update IST)" in Telegram | "VIX 17.9 (Volatile)"; "(09:09 IST update)" | Fixed, tests updated |
 | DEF-05 | PS-05 | The track-record note repeated its own sentence | One note plus the backtest line | Fixed |
+| DEF-06 | PR-01 (VPS live payload, 23 Nov) | The 15:31 GIFT reference kept no contract. NSE already showed the 29-Dec-2026 contract on 23 Nov, so the morning after a switch the "basis-free" move would include the gap between two months' prices (about 0.3–0.7 %) and cast a false Gap-Up / Gap-Down vote. Same in `market_pulse`. | New table `preopen_gift_ref` (migration 0008) stores the contract; a reference from another contract is not used (NSE's day change instead, with a caveat); `market_pulse` skips it too | Fixed after 86db41e, UT-29..35 |
 
 ### Existing problems found in the audit, outside this change's tests
 
@@ -97,7 +109,7 @@ live, at 09:00, that capture does not exist yet and the check falls back to prio
 |---|---|---|
 | F1 | Dhan's GIFT Nifty quote is frozen; four screens and jobs read it | **Fixed** in this change (PO-CL-08) |
 | F2 | `prices_daily` NIFTY50 / INDIAVIX are close-only (open = high = low = close) | Reported, not changed |
-| F3 | `www.nseindia.com` answers 301 → `www.nseindia.in` (23:28 IST 22 Nov) | **Open**: check on the VPS |
+| F3 | `www.nseindia.com` answered 301 → `www.nseindia.in` on the Mac (23:28 IST 22 Nov) | **Mac only.** The VPS sees no redirect (08:47 IST 23 Nov: curl 403 / HTTP/2 error, no 301), and ATIP's NSE client there gets both feeds (PR-01, PR-02). Nothing to fix on the VPS. |
 | F4 | NSE holiday list ends 25 Dec 2026 | Known, open |
 
 ## 5. Mobile apps
@@ -118,15 +130,34 @@ Limits:
   minutes. That window avoids the special exact-alarm permission.
 - iOS shows a fixed reminder at 09:00 IST on weekdays and cannot skip NSE holidays (it never calls the server).
 
-## 6. Prod checks still to run (after the owner's yes to deploy)
+## 6. Prod (VPS)
 
-1. **Deploy and start-up.** After the restart, `schema_migrations` shows 0007 APPLIED and
-   `GET /atip/api/preopen` returns 200.
-2. **NSE source, before 09:00 IST.** On the VPS, run `python -m strategy.preopen_checklist run --label preliminary`
-   by hand, or wait for 08:15.
-   - Does NSE `marketStatus` carry `giftnifty` (F3 redirect)?
-   - Does the NSE pre-open `key=ALL` answer?
-3. **Wed 25 Nov 09:00 and 09:09 IST.** Rows stored; Telegram line received; Android notification shows the read; Home
-   card on the web and in both apps.
-4. **15:31 and 15:45 IST.** GIFT reference stored; the runs scored; `/preopen` shows the first scored day.
+The owner said "Yes, commit & deploy" at about 08:42 IST on 23 Nov. 86db41e went to GitHub master at 08:44:20 IST,
+and the deploy was handed to the VPS session. The owner then said paper mode makes a market-hours deploy safe, and asked
+for "all the changes to production right now".
+
+### 6a. Read-only checks on the VPS, Mon 23 Nov (before the deploy, by the VPS session)
+
+| ID | Check | When (IST) | Result |
+|---|---|---|---|
+| PR-00 | A fresh clone of 86db41e against the 14 deploy files' sha256 | ~08:46 | All 14 match. Outside docs and mobile, nothing changed since 43ca948. All files compile. |
+| PR-01 | NSE `marketStatus` through ATIP's own `data.nse_api` client | 08:46:14 | Keys `marketState, marketcap, indicativenifty50, giftnifty, niftyusd`. `giftnifty`: LASTPRICE 26,085, PERCHANGE +0.5, EXPIRYDATE 29-Dec-2026, TIMESTMP "23-Nov-2026 08:43". **The GIFT source works** (UT-33 parses this exact payload). It also exposed **DEF-06**. |
+| PR-02 | NSE pre-open `key=ALL` | 09:09:08 | 2,421 items (`metadata` + `detail`); top-level advances 1,437 / declines 626 / unchanged 358. **The live A/D source works.** |
+| PR-03 | `www.nseindia.com` from the VPS | 08:47 | No 301 (plain curl: HTTP/2 INTERNAL_ERROR; browser agent: 403). F3 is Mac-only. The journal has no NSE errors since 08:00; the 08:45:05 pre-open gate is OK. |
+
+### 6b. Still to run
+
+1. **Deploy and start-up.**
+   - After the restart, `schema_migrations` shows 0007 APPLIED, and 0008 too once the DEF-06 fix is deployed.
+   - `GET /atip/api/preopen` returns 200.
+2. **Mon 23 Nov 15:31 IST.** The first GIFT reference is stored. If only 86db41e is live by then, it carries no contract (caveat on Wednesday, UT-31).
+3. **Wed 25 Nov 09:00 and 09:09 IST.**
+   - Rows are stored.
+   - The Telegram line arrives.
+   - The Android notification shows the read.
+   - The Home card shows on the web and in both apps.
+4. **Wed 25 Nov 15:31 and 15:45 IST.**
+   - The GIFT reference is stored.
+   - The runs are scored.
+   - `/preopen` shows the first scored day.
 5. Record the times in IST in this report and in the tracker (PO-PROD).

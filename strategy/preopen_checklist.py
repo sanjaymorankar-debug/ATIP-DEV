@@ -111,6 +111,15 @@ DDL = (
     "CREATE INDEX IF NOT EXISTS idx_preopen_signals_eval ON preopen_signals(evaluated_at_ist)",
 )
 
+# DEF-06 (23 Nov 2026): the 15:31 GIFT reference with the contract it was read from. NSE's marketStatus switches the
+# contract it shows (23 Nov already showed 29-Dec-2026), and a reference from the old contract is not comparable --
+# the gap between the two months' prices would read as a gap. Kept apart from DDL, whose text is migration 0007's
+# checksum; this table is migration 0008.
+GIFT_REF_DDL = (
+    """CREATE TABLE IF NOT EXISTS preopen_gift_ref (
+        date DATE PRIMARY KEY, price REAL NOT NULL, expiry TEXT, quote_ts TEXT, source TEXT, captured_at TEXT)""",
+)
+
 RUN_COLUMNS = (
     "nasdaq_close", "nasdaq_chg_pct", "dow_close", "dow_chg_pct", "us_close_date", "nq_price", "nq_chg_pct",
     "ym_price", "ym_chg_pct", "us_futures_as_of", "us_green", "us_red", "us_vote", "us_status", "us_source",
@@ -159,7 +168,7 @@ def settings() -> dict:
 
 
 def ensure_tables(conn):
-    for d in DDL:
+    for d in DDL + GIFT_REF_DDL:
         conn.execute(d)
 
 
@@ -231,6 +240,20 @@ def parse_time(s, default_tz=IST) -> datetime | None:
         return dt if dt.tzinfo else dt.replace(tzinfo=default_tz)
     except ValueError:
         return None
+
+
+def expiry_key(s) -> str | None:
+    """A futures expiry as NSE writes it ("29-Dec-2026", "29-DEC-2026", ISO) -> "2026-12-29"; None if unreadable."""
+    if s is None or str(s).strip() in ("", "-"):
+        return None
+    txt = str(s).strip()
+    for fmt in ("%d-%b-%Y", "%d-%B-%Y", "%Y-%m-%d", "%d/%m/%Y", "%d%b%Y"):
+        try:
+            return datetime.strptime(txt.title() if "%b" in fmt or "%B" in fmt else txt, fmt).date().isoformat()
+        except ValueError:
+            continue
+    t = parse_time(txt)
+    return t.date().isoformat() if t else None
 
 
 def sign_band(pct, band) -> int | None:
@@ -596,12 +619,20 @@ def nifty_prev_close(conn, d: date, quotes: dict) -> tuple:
 
 
 def gift_reference(conn, d: date) -> dict | None:
-    """GIFT at 15:31 IST on the session before d, from capture_gift_close() (global_snapshot)."""
+    """GIFT at 15:31 IST on the session before d, from capture_gift_close(): {"price", "expiry", "source"}. The
+    preopen_gift_ref row carries the contract (DEF-06); a global_snapshot-only row (captured before it) has none."""
     p = prev_session(d)
-    r = (_rows(conn, "SELECT price, quote_ts, captured_at FROM global_snapshot WHERE date=? AND label='close' AND "
-                     "series=? AND price>0", (str(p), GIFT_SERIES)) or [None])[0]
-    return {"price": float(r["price"]), "source": f"GIFT at {str(r.get('quote_ts') or r.get('captured_at'))[:16]} "
-                                                  f"IST ({p})"} if r else None
+    r = (_rows(conn, "SELECT price, expiry, quote_ts, captured_at FROM preopen_gift_ref WHERE date=? AND price>0",
+               (str(p),)) or [None])[0]
+    if not r:
+        r = (_rows(conn, "SELECT price, NULL AS expiry, quote_ts, captured_at FROM global_snapshot WHERE date=? AND "
+                         "label='close' AND series=? AND price>0", (str(p), GIFT_SERIES)) or [None])[0]
+    if not r:
+        return None
+    exp = r.get("expiry") or None
+    return {"price": float(r["price"]), "expiry": exp,
+            "source": f"GIFT at {str(r.get('quote_ts') or r.get('captured_at'))[:16]} IST ({p}"
+                      + (f", {exp} contract)" if exp else ")")}
 
 
 def check_gift(conn, now: datetime, cfg: dict, src: Sources, quotes: dict) -> dict:
@@ -627,11 +658,20 @@ def check_gift(conn, now: datetime, cfg: dict, src: Sources, quotes: dict) -> di
         caveats.append(f"GIFT quote is from {_ist(as_of)} IST, older than {cfg['gift_max_age_min']} min: not counted")
     raw = _pct(price, prev_close)
     ref = gift_reference(conn, now.date())
-    if ref:
+    q_exp = expiry_key(q.get("expiry"))
+    r_exp = expiry_key(ref.get("expiry")) if ref else None
+    rolled = bool(ref and q_exp and r_exp and q_exp != r_exp)          # DEF-06: another contract since 15:31
+    if rolled:
+        caveats.append(f"GIFT contract changed since the 15:31 reference ({ref['expiry']} -> {q.get('expiry')}): the "
+                       "reference is not comparable and is not used")
+    elif ref and not (q_exp and r_exp):
+        caveats.append("GIFT contract not on record for the 15:31 reference or the quote: the roll check was skipped")
+    if ref and not rolled:
         move, basis = _pct(price, ref["price"]), "vs GIFT 15:30 prev session"
     elif q.get("chg_pct") is not None:
         move, basis = q["chg_pct"], "NSE day change of the contract"
-        caveats.append("no 15:31 GIFT reference stored yet: NSE's own day change used")
+        if not rolled:
+            caveats.append("no 15:31 GIFT reference stored yet: NSE's own day change used")
     else:
         move, basis = raw, "raw vs Nifty close (basis not removed)"
         if raw is not None:
@@ -644,7 +684,8 @@ def check_gift(conn, now: datetime, cfg: dict, src: Sources, quotes: dict) -> di
     if prev_close is None:
         caveats.append("no previous Nifty 50 close for the raw GIFT comparison")
     return {"values": {**base, "gift_price": _r(price, 2), "gift_expiry": q.get("expiry"),
-                       "gift_ref": _r(ref["price"], 2) if ref else None, "gift_ref_source": ref["source"] if ref else None,
+                       "gift_ref": _r(ref["price"], 2) if ref else None,
+                       "gift_ref_source": (ref["source"] + (" -- not used: contract changed" if rolled else "")) if ref else None,
                        "gift_vs_close_pct": _r(raw), "gift_move_pct": _r(voted), "gift_move_basis": basis,
                        "gift_vote": vote, "expected_open": exp, "gift_status": status, "gift_source": q.get("source"),
                        "gift_as_of": _ist(as_of)},
@@ -792,16 +833,20 @@ def capture_gift_close(conn=None, now: datetime | None = None, getter=None) -> d
         return {"status": "FAILED", "rows": 0, "error": err or "no GIFT quote from any configured source"}
     own = conn is None
     conn = conn or get_connection()
+    quote_ts = _ist(q["as_of"]) if q.get("as_of") else None
     try:
         gs_tables(conn)
+        ensure_tables(conn)
         conn.execute("INSERT OR REPLACE INTO global_snapshot (date, label, series, price, quote_ts, captured_at) "
-                     "VALUES (?,?,?,?,?,?)", (str(now.date()), "close", GIFT_SERIES, q["price"],
-                                              _ist(q["as_of"]) if q.get("as_of") else None, _ist(now)))
+                     "VALUES (?,?,?,?,?,?)", (str(now.date()), "close", GIFT_SERIES, q["price"], quote_ts, _ist(now)))
+        conn.execute("INSERT OR REPLACE INTO preopen_gift_ref (date, price, expiry, quote_ts, source, captured_at) "
+                     "VALUES (?,?,?,?,?,?)", (str(now.date()), q["price"], q.get("expiry"), quote_ts, q.get("source"),
+                                              _ist(now)))
         conn.commit()
     finally:
         if own:
             conn.close()
-    return {"status": "SUCCESS", "rows": 1, "price": q["price"]}
+    return {"status": "SUCCESS", "rows": 1, "price": q["price"], "expiry": q.get("expiry")}
 
 
 def latest_gift(conn) -> dict | None:
