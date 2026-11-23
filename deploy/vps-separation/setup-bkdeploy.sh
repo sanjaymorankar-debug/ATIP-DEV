@@ -14,8 +14,8 @@
 #     the WireGuard subnet, with `restrict` (no port / agent / X11 forwarding, no pty);
 #   /usr/local/sbin/bk-ctl (root 0755), /etc/bk-ctl/units (root 0644), /etc/sudoers.d/bkesari-deploy (root 0440,
 #     checked with visudo first), /var/log/bk-ctl.log (root 0640).
-# sshd: if sshd_config has AllowUsers / AllowGroups, bkdeploy is NOT added by this script; it says so and stops
-# before the sudo rule, so the owner decides that change separately.
+# sshd: this script never edits sshd. If sshd_config has AllowGroups, or AllowUsers without bkdeploy on it, it says so
+# and stops before creating anything, so the owner decides that change separately.
 set -euo pipefail
 export TZ=Asia/Kolkata
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -29,7 +29,7 @@ check() {
   say "user:      $(id $U 2>/dev/null || echo 'none')"
   say "keys:      $( [ -f /home/$U/.ssh/authorized_keys ] && grep -cvE '^[[:space:]]*(#|$)' /home/$U/.ssh/authorized_keys || echo 0)"
   say "bk-ctl:    $(ls -l /usr/local/sbin/bk-ctl 2>/dev/null || echo 'not installed')"
-  say "units:     $(tr '\n' ' ' < /etc/bk-ctl/units 2>/dev/null | sed 's/#[^ ]*//g' || echo 'none')"
+  say "units:     $( [ -f /etc/bk-ctl/units ] && grep -vE '^[[:space:]]*(#|$)' /etc/bk-ctl/units | tr '\n' ' ' || echo 'none')"
   say "sudoers:   $(ls -l $SUDOERS 2>/dev/null || echo 'not installed')"
   if id $U >/dev/null 2>&1; then sudo -l -U $U 2>/dev/null | sed -n '/may run/,$p'; fi
 }
@@ -57,9 +57,18 @@ case "$KEY" in *PRIVATE*) die "that is a private key: give the .pub file" ;; esa
 case "$NET" in *[!0-9./]*) die "subnet looks wrong: $NET" ;; esac
 id bkesari >/dev/null 2>&1 || die "no app user bkesari on this server"
 
-if sshd -T 2>/dev/null | grep -qiE '^(allowusers|allowgroups) '; then
-  sshd -T 2>/dev/null | grep -iE '^(allowusers|allowgroups) ' | sed 's/^/  sshd: /'
-  die "sshd limits who may log in; add $U there first (owner's decision), then re-run"
+# sshd login lists: go on only when there are none, or when AllowUsers names bkdeploy itself (bkdeploy or bkdeploy@host).
+# AllowGroups, or AllowUsers without bkdeploy, stays the owner's change. (23 Nov: the first version stopped on any list,
+# even one that already held bkdeploy@10.66.0.10.)
+LIMITS=$(sshd -T 2>/dev/null | grep -iE '^(allowusers|allowgroups) ' || true)
+if [ -n "$LIMITS" ]; then
+  printf '%s\n' "$LIMITS" | sed 's/^/  sshd: /'
+  if printf '%s\n' "$LIMITS" | grep -qi '^allowgroups '; then
+    die "sshd has AllowGroups; letting $U in there is the owner's decision, then re-run"
+  fi
+  printf '%s\n' "$LIMITS" | grep -qiE "^allowusers ${U}(@[^[:space:]]+)?[[:space:]]*$" \
+    || die "sshd limits who may log in; add $U there first (owner's decision), then re-run"
+  say "sshd: $U is on the AllowUsers list"
 fi
 
 say "1/5 user $U"

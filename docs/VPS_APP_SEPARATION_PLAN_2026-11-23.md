@@ -94,7 +94,7 @@
 | `bk-ctl` | The only root command for bkesari: `unit start/stop/restart <unit>` (only units on the list), `journal <unit> <epoch>`, `init-state <dir>`. Every call is logged in IST to `/var/log/bk-ctl.log`, and one restart runs at a time (lock). |
 | `units.bkesari` | `/etc/bk-ctl/units`: `bkesari-atip.service`, `bkesari-atip-pgdump.service`, `bkesari-platform.service`. Only `bkesari-*` units are accepted. |
 | `sudoers-bkdeploy` | `bkdeploy ALL=(bkesari) NOPASSWD: ALL` and `bkdeploy ALL=(root) NOPASSWD: /usr/local/sbin/bk-ctl`. Nothing else as root. |
-| `setup-bkdeploy.sh` | Creates or removes all of the above (`--check`, `--remove` = rollback). It uses `visudo` before installing the sudo rule, and stops if sshd limits logins (AllowUsers) so that change stays the owner's call. |
+| `setup-bkdeploy.sh` | Creates or removes all of the above (`--check`, `--remove` = rollback). It uses `visudo` before installing the sudo rule, and stops if sshd limits logins (AllowGroups, or AllowUsers without `bkdeploy` on it) so that change stays the owner's call. 23 Nov fix: the first version stopped on any AllowUsers list, even one that already held `bkdeploy@10.66.0.10`. |
 | `vps_deploy.py --ctl` | The deploy tool's starts, stops, restarts and log reads go through `bk-ctl`. Without `--ctl` it behaves exactly as before. |
 
 Tests: `tests/test_bk_ctl.py` and `tests/test_vps_deploy.py` all pass on the Mac (23 Nov). They check that `bk-ctl` refuses every GoKesari, agtci and shared unit (`site@gokesari-*`, `gk-deploy`, `agtci-api@prod`, `caddy`, `postgresql@*`, `ssh`, `wg-quick`, `php8.3-fpm`), odd unit names, and verbs other than start/stop/restart. They also check that a deploy through `bk-ctl` touches only `bkesari-atip` and its backup unit.

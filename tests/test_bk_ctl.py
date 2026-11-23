@@ -150,6 +150,67 @@ def test_the_scripts_parse():
         assert r.returncode == 0, (f, r.stderr)
 
 
+SETUP_STUBS = {
+    # root for the script's own check, the app user bkesari exists, bkdeploy does not yet
+    "id": '#!/bin/bash\ncase "$1" in -u) echo 0 ;; bkesari) exit 0 ;; *) exit 1 ;; esac\n',
+    "sshd": '#!/bin/bash\n[ "$1" = -T ] && printf "%b" "$SSHD_T"\n',
+    # the first command that would change anything: stop here, so the test never touches the machine
+    "useradd": '#!/bin/bash\necho "REACHED useradd $*"\nexit 1\n',
+}
+
+
+@pytest.fixture
+def setup_env(tmp_path):
+    b = tmp_path / "bin"
+    b.mkdir()
+    for name, body in SETUP_STUBS.items():
+        (b / name).write_text(body)
+        (b / name).chmod(0o755)
+    pub = tmp_path / "bkesari_deploy.pub"
+    pub.write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGEYT9aNCTRyutBset0fQ5BYJ9WEvC0WI3DNkXE0+gPi test\n")
+    e = dict(os.environ, PATH=f"{b}:/usr/bin:/bin")
+    return pub, e
+
+
+def run_setup(setup_env, sshd_t, *args):
+    pub, e = setup_env
+    e = dict(e, SSHD_T=sshd_t)
+    return subprocess.run(["bash", str(SEP / "setup-bkdeploy.sh"), *(args or (str(pub),))],
+                          env=e, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("sshd_t", [
+    "",                                                                             # no login list at all
+    "allowusers bkdeploy\\n",
+    # 23 Nov server: GoKesari's lockdown list plus the owner-approved bkdeploy entry
+    "allowusers gkadmin@10.66.0.10\\nallowusers gksnap@10.66.0.21\\nallowusers gksnap@10.66.0.23\\n"
+    "allowusers gksnap@10.66.0.24\\nallowusers bkdeploy@10.66.0.10\\n",
+])
+def test_setup_goes_on_when_sshd_lets_bkdeploy_in(setup_env, sshd_t):
+    r = run_setup(setup_env, sshd_t)
+    assert "STOP" not in r.stdout, r.stdout
+    assert "1/5 user bkdeploy" in r.stdout and "REACHED useradd" in r.stdout
+
+
+@pytest.mark.parametrize("sshd_t", [
+    "allowusers gkadmin@10.66.0.10\\nallowusers gksnap@10.66.0.21\\n",                # bkdeploy not on the list
+    "allowusers gkadmin@10.66.0.10\\nallowusers bkdeployx@10.66.0.10\\n",             # a different user
+    "allowusers *@10.66.0.10\\n",                                                    # wildcards stay the owner's call
+    "allowusers bkdeploy@10.66.0.10\\nallowgroups ssh-users\\n",                      # AllowGroups too
+])
+def test_setup_stops_before_any_change_when_sshd_would_refuse_bkdeploy(setup_env, sshd_t):
+    r = run_setup(setup_env, sshd_t)
+    assert "STOP: sshd" in r.stdout and "REACHED useradd" not in r.stdout and "1/5" not in r.stdout
+
+
+def test_setup_check_is_quiet_when_nothing_is_installed(setup_env):
+    if Path("/etc/bk-ctl/units").exists():
+        pytest.skip("this machine has /etc/bk-ctl/units")
+    r = run_setup(setup_env, "", "--check")
+    assert r.returncode == 0 and "No such file" not in r.stderr, r.stderr
+    assert "units:     none" in r.stdout
+
+
 def test_the_sudo_rule_passes_visudo():
     v = shutil.which("visudo") or "/usr/sbin/visudo"
     if not Path(v).exists():
