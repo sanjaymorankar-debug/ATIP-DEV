@@ -33,8 +33,21 @@ Before the fix: `Open: Nifty +1.12% · VIX 17.3 · GIFT +0.00%` and `Global: sco
 - Every test file that calls the brief (6 files, 120 tests, including test_asia_markets, test_news_impact,
   test_auto_recover and test_job_monitoring) passes.
 
-**Status.** Committed and pushed to GitHub on 23 Nov with the owner's "commit and push". Not on the VPS: deploying it
-needs the owner's yes in the VPS session. The next brief is Wed 25 Nov at 08:30 (24 Nov is a holiday).
+**Status.** Commit cca2c40, pushed to GitHub master on 23 Nov at 21:43:46 IST with the owner's "commit and push".
+**LIVE on the VPS since 22:01:10 IST 23 Nov.**
+- The VPS session deployed it by the hand method through bkdeploy. It cites the owner's standing approval (23 Nov) for
+  code-only ATIP master commits.
+- One file: alerts/telegram.py, b91a010 (42ee8ad5…) → cca2c40 (6747cfdd…47160).
+- Backup: /var/www/bkesari/atip-deploys/backups/20261123-2200_b91a010_cca2c40/. No new DB dump; the database is
+  untouched and the last dump is atip-2026-11-23_2144.dump.
+- pid 1960676 → 1964553, NRestarts 0.
+- Rechecked read-only from the Mac at 22:01:59 IST: /health/live, /ready and /scheduler 200, scheduler READY,
+  failed_jobs_24h empty, installed sha256 matches, 0 Traceback/ERROR in the journal since 22:01.
+- DEPLOYED.json records cca2c40: `adopt` at 22:11:24 IST, run with the fixed deploy tool f5700b3. It found 0 runtime
+  differences, and nothing restarted (pid 1964553). Later deploys can use `vps_deploy.py deploy <commit> --authorize
+  --wait`.
+- The first real check is the Wed 25 Nov 08:30 brief (24 Nov is a holiday). Expect "Last session (23 Nov close)" and
+  "(US close 24 Nov)".
 
 Seen, not changed: `compute_global_score` (data/markets.py) counts gold up as bullish, and its US and Asia parts
 bottom out at 0 for any average fall of 1.5 % or more. So Monday's score was 35, mostly from gold +2.6 %, even though
