@@ -390,3 +390,45 @@ def test_the_tool_runs_on_the_macs_python_39():
     r = subprocess.run([str(py), "-c", "import ast,sys; ast.parse(open(sys.argv[1]).read())",
                         str(ROOT / "deploy" / "vps_deploy.py")], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+# ── the bkesari-only login (deploy/vps-separation, 23 Nov 2026) ───────────────────────────────────────────────
+def _with_bk_ctl(w, monkeypatch):
+    """The real bk-ctl in its test mode as --ctl: units, journal and state folder go through it."""
+    if os.geteuid() == 0:
+        pytest.skip("bk-ctl ignores its test mode as root")
+    flock = w.bin / "flock_stub"
+    flock.write_text("#!/bin/bash\nexit 0\n")
+    flock.chmod(0o755)
+    units = w.tmp / "units"
+    units.write_text("bkesari-atip.service\nbkesari-atip-pgdump.service\n")
+    w.state = w.tmp / "srv" / "atip-deploys"
+    for k, v in {"BK_CTL_TEST": "1", "BK_CTL_SYSTEMCTL": str(w.bin / "systemctl"),
+                 "BK_CTL_JOURNALCTL": str(w.bin / "journalctl"), "BK_CTL_FLOCK": str(flock),
+                 "BK_CTL_UNITS": str(units), "BK_CTL_LOG": str(w.tmp / "bk-ctl.log"),
+                 "BK_CTL_LOCK": str(w.tmp / "bk-ctl.lock"), "BK_CTL_STATE_ROOT": str(w.tmp / "srv"),
+                 "BK_CTL_APP_USER": getpass.getuser()}.items():
+        monkeypatch.setenv(k, v)
+    return ["--ctl", str(ROOT / "deploy" / "vps-separation" / "bk-ctl")]
+
+
+def test_deploy_through_bk_ctl_touches_only_the_bkesari_units(w, capsys, monkeypatch):
+    ctl = _with_bk_ctl(w, monkeypatch)
+    code, out = w.run(*ctl, "deploy", "--from", w.c["c1"], "--authorize", capsys=capsys)
+    assert code == 0, out
+    assert (w.app / "a.py").read_text() == "X = 2\n" and w.marker()["commit"] == w.c["c2"]
+    calls = w.calls()
+    assert "systemctl stop -- bkesari-atip.service" in calls and "systemctl start -- bkesari-atip.service" in calls
+    assert "systemctl start -- bkesari-atip-pgdump.service" in calls
+    audit = (w.tmp / "bk-ctl.log").read_text()
+    assert "init-state" in audit and "unit stop bkesari-atip.service" in audit and "journal bkesari-atip.service" in audit
+
+
+def test_a_service_outside_the_list_is_refused_through_bk_ctl(w, capsys, monkeypatch):
+    ctl = _with_bk_ctl(w, monkeypatch)
+    code, out = w.run(*ctl, "--service", "site@gokesari-blue.service", "restart", "--authorize", capsys=capsys)
+    assert code != 0
+    calls = w.calls()                                  # `systemctl show` (read-only) may name it; nothing else
+    assert not any(f"{v} -- site@gokesari-blue" in calls or f"{v} site@gokesari-blue" in calls
+                   for v in ("start", "stop", "restart"))
+    assert "REFUSED" in (w.tmp / "bk-ctl.log").read_text()

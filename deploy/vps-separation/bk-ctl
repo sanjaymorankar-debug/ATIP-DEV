@@ -1,0 +1,115 @@
+#!/bin/bash
+# bk-ctl -- the only root commands a bkesari deploy login may run. Installed at /usr/local/sbin/bk-ctl (root:root 0755).
+#
+# VPS separation plan, 23 Nov 2026 (docs/VPS_APP_SEPARATION_PLAN_2026-11-23.md). gk-db-1 runs GoKesari, bkesari (with
+# ATIP) and agtci. Until now every session logged in as the server admin `gkadmin` (passwordless sudo for everything),
+# so a bkesari "deploy and restart" could, by mistake, stop GoKesari. bkesari sessions log in as `bkdeploy` instead,
+# whose sudo allows two things only (sudoers-bkdeploy):
+#   * anything as the app user `bkesari` (it owns /var/www/bkesari and nothing of GoKesari or agtci);
+#   * this file as root, which starts / stops / restarts the bkesari units in /etc/bk-ctl/units and reads their
+#     journals -- never a GoKesari, agtci, Caddy, PostgreSQL or system unit.
+#
+#   bk-ctl unit <start|stop|restart> <unit>        a unit listed in /etc/bk-ctl/units
+#   bk-ctl journal <unit> <since-epoch-seconds>    that unit's journal since then (no pager)
+#   bk-ctl init-state <dir>                        /var/www/bkesari/<name>-deploys (+ backups/, staging/) for bkesari
+#   bk-ctl units                                   print the allow-list
+#
+# Every call is logged (IST) to /var/log/bk-ctl.log with the login that ran it. start / stop / restart take a lock,
+# so two bkesari sessions never restart at the same moment. Written for bash 3.2+ (the Mac runs the tests).
+set -euo pipefail
+export TZ=Asia/Kolkata LC_ALL=C
+
+SYSTEMCTL=/usr/bin/systemctl
+JOURNALCTL=/usr/bin/journalctl
+INSTALL=/usr/bin/install
+FLOCK=/usr/bin/flock
+UNITS_FILE=/etc/bk-ctl/units
+LOG=/var/log/bk-ctl.log
+LOCK=/run/lock/bk-ctl.lock
+STATE_ROOT=/var/www/bkesari
+APP_USER=bkesari
+DEFAULT_UNITS="bkesari-atip.service bkesari-atip-pgdump.service bkesari-platform.service"
+
+# Tests only (tests/test_bk_ctl.py): the paths above can be swapped, and never when running as root.
+if [ "${BK_CTL_TEST:-}" = 1 ] && [ "$(id -u)" != 0 ]; then
+  SYSTEMCTL=${BK_CTL_SYSTEMCTL:-$SYSTEMCTL}; JOURNALCTL=${BK_CTL_JOURNALCTL:-$JOURNALCTL}
+  INSTALL=${BK_CTL_INSTALL:-$INSTALL}; FLOCK=${BK_CTL_FLOCK:-$FLOCK}; UNITS_FILE=${BK_CTL_UNITS:-$UNITS_FILE}
+  LOG=${BK_CTL_LOG:-$LOG}; LOCK=${BK_CTL_LOCK:-$LOCK}; STATE_ROOT=${BK_CTL_STATE_ROOT:-$STATE_ROOT}
+  APP_USER=${BK_CTL_APP_USER:-$APP_USER}
+fi
+
+who_ran() { printf '%s' "${SUDO_USER:-$(id -un)}"; }
+
+note() {   # one audit line; a log that cannot be written never blocks the command
+  printf '%s %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S IST')" "$(who_ran)" "$*" >> "$LOG" 2>/dev/null || true
+}
+
+die() {
+  note "REFUSED $*"
+  echo "bk-ctl: $*" >&2
+  exit 2
+}
+
+allowed_units() {
+  if [ -r "$UNITS_FILE" ]; then
+    grep -vE '^[[:space:]]*(#|$)' "$UNITS_FILE" | tr -d '[:blank:]'
+  else
+    printf '%s\n' $DEFAULT_UNITS
+  fi
+}
+
+check_unit() {
+  local u=$1
+  case "$u" in
+    *[!A-Za-z0-9@._-]*|"") die "not a unit name: '$u'" ;;
+  esac
+  case "$u" in
+    *.service|*.timer) ;;
+    *) die "not a .service or .timer: '$u'" ;;
+  esac
+  allowed_units | grep -qxF -- "$u" || die "'$u' is not a bkesari unit (allowed: $(allowed_units | tr '\n' ' '))"
+}
+
+cmd=${1:-}
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  unit)
+    [ $# -eq 2 ] || die "usage: bk-ctl unit <start|stop|restart> <unit>"
+    verb=$1 unit=$2
+    case "$verb" in start|stop|restart) ;; *) die "verb must be start, stop or restart: '$verb'" ;; esac
+    check_unit "$unit"
+    exec 9>"$LOCK" || die "cannot open the lock $LOCK"
+    "$FLOCK" -w 120 9 || die "another bkesari start/stop/restart is still running (lock $LOCK)"
+    note "unit $verb $unit"
+    "$SYSTEMCTL" "$verb" -- "$unit"
+    ;;
+  journal)
+    [ $# -eq 2 ] || die "usage: bk-ctl journal <unit> <since-epoch-seconds>"
+    unit=$1 since=$2
+    check_unit "$unit"
+    case "$since" in *[!0-9]*|"") die "since must be epoch seconds: '$since'" ;; esac
+    [ ${#since} -ge 9 ] && [ ${#since} -le 11 ] || die "since must be epoch seconds: '$since'"
+    note "journal $unit since @$since"
+    exec "$JOURNALCTL" -u "$unit" --since "@$since" --no-pager -q
+    ;;
+  init-state)
+    [ $# -eq 1 ] || die "usage: bk-ctl init-state <dir>"
+    d=$1
+    base=${d#"$STATE_ROOT"/}
+    [ "$base" != "$d" ] || die "state dir must be under $STATE_ROOT: '$d'"
+    case "$base" in
+      *[!a-z0-9-]*|""|-*) die "state dir must be $STATE_ROOT/<name>-deploys: '$d'" ;;
+      *-deploys) ;;
+      *) die "state dir must be $STATE_ROOT/<name>-deploys: '$d'" ;;
+    esac
+    grp=$(id -gn "$APP_USER") || die "no user $APP_USER"
+    note "init-state $d"
+    "$INSTALL" -d -o "$APP_USER" -g "$grp" -m 750 "$d" "$d/backups" "$d/staging"
+    ;;
+  units)
+    allowed_units
+    ;;
+  *)
+    die "usage: bk-ctl unit <start|stop|restart> <unit> | journal <unit> <since-epoch> | init-state <dir> | units"
+    ;;
+esac

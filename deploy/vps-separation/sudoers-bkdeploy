@@ -1,0 +1,11 @@
+# /etc/sudoers.d/bkesari-deploy -- the bkesari deploy login (VPS separation plan, 23 Nov 2026).
+# Install only with `visudo -cf` first (setup-bkdeploy.sh does both). Mode 0440, root:root.
+#
+# bkdeploy may:
+#   * run anything as the app user bkesari (owns /var/www/bkesari; no sudo of its own; no login shell);
+#   * run /usr/local/sbin/bk-ctl as root, which only starts / stops / restarts the units in /etc/bk-ctl/units,
+#     reads their journals and creates /var/www/bkesari/<name>-deploys.
+# Nothing else as root: no GoKesari or agtci unit, no Caddy, no PostgreSQL, no apt, no firewall.
+Defaults:bkdeploy env_reset, !lecture
+bkdeploy ALL=(bkesari) NOPASSWD: ALL
+bkdeploy ALL=(root) NOPASSWD: /usr/local/sbin/bk-ctl

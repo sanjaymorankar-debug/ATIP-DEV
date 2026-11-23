@@ -1,0 +1,5 @@
+# /etc/bk-ctl/units -- the units a bkesari deploy login may start / stop / restart (bk-ctl), one per line.
+# Root-owned (0644). Only bkesari units belong here: never gk-*, site@*, agtci-*, caddy, postgresql, php*-fpm.
+bkesari-atip.service
+bkesari-atip-pgdump.service
+bkesari-platform.service

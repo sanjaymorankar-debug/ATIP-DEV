@@ -30,7 +30,9 @@ Nothing here touches broker settings, config.json, the database contents or orde
     python3 deploy/vps_deploy.py windows                                # the safe-restart rules, no ssh
 
 --ssh (or ATIP_VPS_SSH) is the ssh command for the server; the remote user needs passwordless sudo, as the
-runbook's commands did. The tool works from any checkout of the repository (--repo, default: the checkout
+runbook's commands did. --ctl (or ATIP_VPS_CTL) /usr/local/sbin/bk-ctl: log in as the bkesari-only deploy user
+(deploy/vps-separation/, 23 Nov 2026), whose sudo allows only bk-ctl as root and anything as the app user; then the
+tool starts / stops / restarts units and reads the journal through bk-ctl and cannot touch GoKesari or agtci. The tool works from any checkout of the repository (--repo, default: the checkout
 the current directory is in); from a checkout without it:
     git -C /Users/agtci/ATIP show origin/master:deploy/vps_deploy.py > "$TMPDIR/vps_deploy.py"
     python3 "$TMPDIR/vps_deploy.py" --repo /Users/agtci/ATIP --ssh "ssh vps" status
@@ -223,6 +225,7 @@ class Server:
         self.app, self.state, self.svc, self.user = a.app_dir, a.state_dir, a.service, a.app_user
         self.py = a.remote_python or f"{a.app_dir}/.venv/bin/python"
         self.port, self.roots, self.dbsvc = a.port, a.root_paths, a.db_backup_service
+        self.ctl = getattr(a, "ctl", None)       # bk-ctl on the server: the bkesari-only root commands
         self._root = None
 
     # -- plumbing ---------------------------------------------------------------------------------------
@@ -247,6 +250,9 @@ class Server:
 
     # -- state ------------------------------------------------------------------------------------------
     def ensure_state(self):
+        if self.ctl:
+            self.sh(f"sudo -n {self.q(self.ctl)} init-state {self.q(self.state)}")
+            return
         u = self.q(self.user)
         self.sh(f"sudo -n install -d -o {u} -g \"$(id -gn {u})\" -m 750 {self.q(self.state)} "
                 f"{self.q(self.state + '/backups')} {self.q(self.state + '/staging')}")
@@ -330,6 +336,9 @@ class Server:
 
     # -- service ----------------------------------------------------------------------------------------
     def systemctl(self, verb, unit=None):
+        if self.ctl:
+            self.sh(f"sudo -n {self.q(self.ctl)} unit {verb} {self.q(unit or self.svc)}", timeout=1800)
+            return
         self.sh(f"sudo -n systemctl {verb} {self.q(unit or self.svc)}", timeout=1800)
 
     def service(self) -> dict:
@@ -348,8 +357,9 @@ class Server:
             raise Refused(2, f"database backup {self.dbsvc} ended with result {r!r}: nothing was changed")
 
     def tracebacks_since(self, epoch: int) -> int:
-        p = self.sh(f"sudo -n journalctl -u {self.q(self.svc)} --since @{epoch} --no-pager -q 2>/dev/null "
-                    f"| grep -c Traceback || true", check=False)
+        read = (f"sudo -n {self.q(self.ctl)} journal {self.q(self.svc)} {int(epoch)}" if self.ctl else
+                f"sudo -n journalctl -u {self.q(self.svc)} --since @{epoch} --no-pager -q")
+        p = self.sh(f"{read} 2>/dev/null | grep -c Traceback || true", check=False)
         try:
             return int(p.stdout.decode().strip() or 0)
         except ValueError:
@@ -802,6 +812,8 @@ def parse(argv):
     ap.add_argument("--root-path", dest="root_paths", action="append", help="URL prefix of ATIP (default '' and /atip)")
     ap.add_argument("--remote-python", help="python on the server (default <app-dir>/.venv/bin/python)")
     ap.add_argument("--db-backup-service", default=DEFAULTS["db_backup_service"])
+    ap.add_argument("--ctl", default=os.environ.get("ATIP_VPS_CTL") or None,
+                    help="bk-ctl path on the server: start/stop/restart and journal through it (bkesari-only login)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def changes(p):
