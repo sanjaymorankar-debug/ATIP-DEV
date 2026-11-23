@@ -8,4 +8,11 @@
     <string name="tab_sessions">Sessions</string>
     <string name="tab_more">More</string>
     <string name="server_title">ATIP server address</string>
+    <!-- 22 Nov 2026: the 09:00 IST pre-open checklist notification -->
+    <string name="preopen_channel">Pre-open checklist</string>
+    <string name="preopen_channel_text">Weekdays at 09:00 IST: the day\'s bias, volatility regime and expected open</string>
+    <string name="preopen_ask_title">Pre-open checklist at 09:00 IST</string>
+    <string name="preopen_ask_text">On weekdays at 09:00 IST ATIP can notify you with the day\'s bias, volatility regime and expected open (nothing on NSE holidays). Allow ATIP to send notifications?</string>
+    <string name="preopen_ask_yes">Allow</string>
+    <string name="preopen_ask_no">Not now</string>
 </resources>

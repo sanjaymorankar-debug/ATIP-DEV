@@ -1,0 +1,452 @@
+[
+  {
+    "date": "2026-11-18",
+    "label": "0900",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Bearish",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0900",
+      "fetched_at_ist": "2026-11-18 09:00:20",
+      "bias": "Bearish",
+      "vote_sum": -2,
+      "votes_counted": 2,
+      "us_vote": -1,
+      "nasdaq_chg_pct": -0.74,
+      "dow_chg_pct": -1.645,
+      "nq_chg_pct": 0.404,
+      "ym_chg_pct": 0.047,
+      "vix": 15.52,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 59,
+      "declines": 137,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-17, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "date": "2026-11-18",
+    "label": "0909",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Bearish",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0909",
+      "fetched_at_ist": "2026-11-18 09:09:10",
+      "bias": "Bearish",
+      "vote_sum": -2,
+      "votes_counted": 2,
+      "us_vote": -1,
+      "nasdaq_chg_pct": -0.74,
+      "dow_chg_pct": -1.645,
+      "nq_chg_pct": 0.404,
+      "ym_chg_pct": 0.047,
+      "vix": 15.52,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 59,
+      "declines": 137,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-17, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "date": "2026-11-19",
+    "label": "0900",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Neutral",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0900",
+      "fetched_at_ist": "2026-11-19 09:00:20",
+      "bias": "Neutral",
+      "vote_sum": 0,
+      "votes_counted": 2,
+      "us_vote": 1,
+      "nasdaq_chg_pct": 0.417,
+      "dow_chg_pct": -1.106,
+      "nq_chg_pct": 0.864,
+      "ym_chg_pct": 0.35,
+      "vix": 15.57,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 68,
+      "declines": 122,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-18, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "date": "2026-11-19",
+    "label": "0909",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Neutral",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0909",
+      "fetched_at_ist": "2026-11-19 09:09:10",
+      "bias": "Neutral",
+      "vote_sum": 0,
+      "votes_counted": 2,
+      "us_vote": 1,
+      "nasdaq_chg_pct": 0.417,
+      "dow_chg_pct": -1.106,
+      "nq_chg_pct": 0.864,
+      "ym_chg_pct": 0.35,
+      "vix": 15.57,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 68,
+      "declines": 122,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-18, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "date": "2026-11-20",
+    "label": "0900",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Bearish",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0900",
+      "fetched_at_ist": "2026-11-20 09:00:20",
+      "bias": "Bearish",
+      "vote_sum": -2,
+      "votes_counted": 2,
+      "us_vote": -1,
+      "nasdaq_chg_pct": -2.254,
+      "dow_chg_pct": -2.194,
+      "nq_chg_pct": -0.588,
+      "ym_chg_pct": -0.039,
+      "vix": 16.11,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 12,
+      "declines": 192,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-19, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "date": "2026-11-20",
+    "label": "0909",
+    "result": {
+      "status": "SUCCESS",
+      "rows": 1,
+      "bias": "Bearish",
+      "regime": "Volatile",
+      "expected_open": "Unknown"
+    },
+    "row": {
+      "run_label": "0909",
+      "fetched_at_ist": "2026-11-20 09:09:10",
+      "bias": "Bearish",
+      "vote_sum": -2,
+      "votes_counted": 2,
+      "us_vote": -1,
+      "nasdaq_chg_pct": -2.254,
+      "dow_chg_pct": -2.194,
+      "nq_chg_pct": -0.588,
+      "ym_chg_pct": -0.039,
+      "vix": 16.11,
+      "vix_regime": "Volatile",
+      "vix_status": "FALLBACK",
+      "advances": 12,
+      "declines": 192,
+      "ad_basis": "pre-open (F&O + Nifty 50 set)",
+      "ad_vote": -1,
+      "ad_status": "FALLBACK",
+      "ad_source": "preopen_snapshot (218 stocks, data/preopen.py)",
+      "gift_status": "UNAVAILABLE",
+      "expected_open": "Unknown",
+      "caveats": [
+        "India VIX from the stored close of 2026-11-19, not a live quote",
+        "NSE pre-open page not reached",
+        "no GIFT Nifty quote -- Dhan's GIFT feed is frozen and is not used"
+      ]
+    }
+  },
+  {
+    "evaluate": {
+      "status": "SKIPPED",
+      "rows": 0,
+      "waiting": 0
+    }
+  },
+  {
+    "record": {
+      "last_20": {
+        "days": 3,
+        "us": {
+          "n": 3,
+          "hits": 2,
+          "hit_rate_pct": 66.7
+        },
+        "ad": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "ad_preopen_only": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "gift_open_3way": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "gift_direction": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "bias": {
+          "n": 2,
+          "hits": 1,
+          "hit_rate_pct": 50.0
+        },
+        "neutral_days": 1,
+        "vix": {
+          "volatile_days": 3,
+          "stable_days": 0,
+          "volatile_mean_abs_day_pct": 0.962,
+          "stable_mean_abs_day_pct": null,
+          "volatile_mean_abs_gap_pct": 0.306,
+          "stable_mean_abs_gap_pct": null
+        }
+      },
+      "last_60": {
+        "days": 3,
+        "us": {
+          "n": 3,
+          "hits": 2,
+          "hit_rate_pct": 66.7
+        },
+        "ad": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "ad_preopen_only": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "gift_open_3way": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "gift_direction": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "bias": {
+          "n": 2,
+          "hits": 1,
+          "hit_rate_pct": 50.0
+        },
+        "neutral_days": 1,
+        "vix": {
+          "volatile_days": 3,
+          "stable_days": 0,
+          "volatile_mean_abs_day_pct": 0.962,
+          "stable_mean_abs_day_pct": null,
+          "volatile_mean_abs_gap_pct": 0.306,
+          "stable_mean_abs_gap_pct": null
+        }
+      },
+      "all": {
+        "days": 3,
+        "us": {
+          "n": 3,
+          "hits": 2,
+          "hit_rate_pct": 66.7
+        },
+        "ad": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "ad_preopen_only": {
+          "n": 3,
+          "hits": 1,
+          "hit_rate_pct": 33.3
+        },
+        "gift_open_3way": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "gift_direction": {
+          "n": 0,
+          "hits": 0,
+          "hit_rate_pct": null
+        },
+        "bias": {
+          "n": 2,
+          "hits": 1,
+          "hit_rate_pct": 50.0
+        },
+        "neutral_days": 1,
+        "vix": {
+          "volatile_days": 3,
+          "stable_days": 0,
+          "volatile_mean_abs_day_pct": 0.962,
+          "stable_mean_abs_day_pct": null,
+          "volatile_mean_abs_gap_pct": 0.306,
+          "stable_mean_abs_gap_pct": null
+        }
+      },
+      "first_day": "2026-11-18",
+      "last_day": "2026-11-20",
+      "note": "each check is scored on what it predicts: US, A/D and the bias on the day's close vs the previous close; GIFT on the open (09:15-09:30 first reading) vs the previous close; Neutral days are not scored. A hit rate on fewer than 20 days is noise."
+    }
+  },
+  {
+    "evaluated_rows": [
+      [
+        "2026-11-18",
+        "0900",
+        25316.95,
+        -0.277,
+        "Gap-Down",
+        25227.95,
+        -0.628,
+        "Down",
+        "2026-11-23 00:16:52",
+        null
+      ],
+      [
+        "2026-11-18",
+        "0909",
+        25316.95,
+        -0.277,
+        "Gap-Down",
+        25227.95,
+        -0.628,
+        "Down",
+        "2026-11-23 00:16:52",
+        null
+      ],
+      [
+        "2026-11-19",
+        "0900",
+        25177.35,
+        -0.201,
+        "Gap-Down",
+        25514.3,
+        1.135,
+        "Up",
+        "2026-11-23 00:16:52",
+        null
+      ],
+      [
+        "2026-11-19",
+        "0909",
+        25177.35,
+        -0.201,
+        "Gap-Down",
+        25514.3,
+        1.135,
+        "Up",
+        "2026-11-23 00:16:52",
+        null
+      ],
+      [
+        "2026-11-20",
+        "0900",
+        25401.7,
+        -0.441,
+        "Gap-Down",
+        25800.6,
+        1.122,
+        "Up",
+        "2026-11-23 00:16:52",
+        null
+      ],
+      [
+        "2026-11-20",
+        "0909",
+        25401.7,
+        -0.441,
+        "Gap-Down",
+        25800.6,
+        1.122,
+        "Up",
+        "2026-11-23 00:16:52",
+        null
+      ]
+    ]
+  }
+]

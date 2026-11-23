@@ -280,8 +280,19 @@ def global_cue_model(conn, today_moves: dict | None = None) -> dict:
 
 # ── GIFT Nifty and the open ──────────────────────────────────────────────────
 
-def _gift_ref(conn, today: date):
-    """GIFT at ~15:30 IST on the previous session (index_levels), with where it came from."""
+def _gift_ref(conn, today: date, same_source_only: bool = False):
+    """GIFT at ~15:30 IST on the previous session, with where it came from: the 15:31 reference the pre-open
+    checklist stores from its own GIFT source (global_snapshot "gift_nifty", PO-CL-08), else index_levels / the
+    GIFTNIFTY daily close -- both Dhan's IDX_I 5024 quote, which is frozen, so same_source_only skips them."""
+    try:
+        r = _rows(conn, "SELECT date, price, quote_ts FROM global_snapshot WHERE date<? AND label='close' AND "
+                        "series='gift_nifty' AND price>0 ORDER BY date DESC LIMIT 1", (str(today),))
+    except Exception:
+        r = []
+    if r:
+        return float(r[0]["price"]), f"GIFT 15:31 reference {str(r[0]['date'])[:10]} (pre-open checklist source)"
+    if same_source_only:
+        return None, None
     r = _rows(conn, "SELECT date, time, gift_nifty FROM index_levels WHERE date<? AND gift_nifty>0 "
                     "AND time<='15:35' ORDER BY date DESC, time DESC LIMIT 1", (str(today),))
     if r:
@@ -314,13 +325,28 @@ def capture_gift(conn=None, quotes=None) -> dict:
     try:
         ensure_tables(conn)
         today = date.today()
-        if quotes is None:
-            from data.dhan import fetch_index_quotes
-            df = fetch_index_quotes(["gift_nifty", "nifty50"])
-            quotes = {r["index"]: r for r in df.to_dict("records")} if df is not None and not df.empty else {}
+        live = quotes is None
+        if live:
+            # PO-CL-08 (22 Nov 2026): GIFT from the pre-open checklist's source (NSE marketStatus / the configured
+            # fallback). Dhan's IDX_I 5024 GIFT quote is frozen -- one value all day, 23,240 from 2 to 6 Nov 2026 --
+            # and gave this table moves of +5.3 % (6 Nov) and +2.1 % (9 Nov). Dhan still gives the Nifty close.
+            quotes = {}
+            try:
+                from data.dhan import fetch_index_quotes
+                df = fetch_index_quotes(["nifty50"])
+                quotes = {r["index"]: r for r in df.to_dict("records")} if df is not None and not df.empty else {}
+            except Exception as e:
+                log.warning(f"  Nifty quote for the GIFT estimate: {e}")
+            try:
+                from strategy.preopen_checklist import _gift_quote, settings as pc_settings
+                q = _gift_quote(pc_settings())
+                if q:
+                    quotes["gift_nifty"] = {"ltp": q["price"]}
+            except Exception as e:
+                log.warning(f"  GIFT quote: {e}")
         gift = (quotes.get("gift_nifty") or {}).get("ltp")
         prev_close = (quotes.get("nifty50") or {}).get("prev_close") or (quotes.get("nifty50") or {}).get("ltp")
-        ref, src = _gift_ref(conn, today)
+        ref, src = _gift_ref(conn, today, same_source_only=live)
         move = (gift / ref - 1) * 100 if gift and ref else None
         beta = gift_beta(conn)
         exp = move * beta if move is not None else None

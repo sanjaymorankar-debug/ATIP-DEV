@@ -9,11 +9,15 @@ struct WebScreen: UIViewRepresentable {
     let url: URL?
     /// Bumped when this tab is tapped while it is open: go back to the tab's own page (as on Android).
     var home = 0
+    /// A page a tapped notification opens in this tab (22 Nov 2026: the pre-open checklist, /preopen), loaded each
+    /// time [openSeq] goes up; tapping the tab again still goes back to [url].
+    var open: URL? = nil
+    var openSeq = 0
 
     /// Appended to the default user agent (2026-11-02): the page shell hides its own left rail / bottom tab bar
     /// for "ATIPApp/", because the app has native tabs.
     static let userAgentTag = "ATIPApp/" +
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2026.11.18.1")
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2026.11.22.1")
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -34,7 +38,9 @@ struct WebScreen: UIViewRepresentable {
         context.coordinator.web = web
         context.coordinator.url = url
         context.coordinator.home = home
-        if let url { web.load(URLRequest(url: url)) }
+        context.coordinator.openSeq = openSeq
+        // the app launched by a tapped reminder: its page first
+        if let first = (openSeq > 0 ? open : nil) ?? url { web.load(URLRequest(url: first)) }
         return web
     }
 
@@ -42,6 +48,13 @@ struct WebScreen: UIViewRepresentable {
     /// inside the tab (More -> Markets) stays put when the banner refreshes.
     func updateUIView(_ web: WKWebView, context: Context) {
         let c = context.coordinator
+        if c.openSeq != openSeq {                           // a reminder tapped: its page in this tab
+            c.openSeq = openSeq
+            c.url = url
+            c.home = home
+            if let open { web.load(URLRequest(url: open)) }
+            return
+        }
         guard c.url != url || c.home != home else { return }
         c.url = url
         c.home = home
@@ -54,6 +67,7 @@ struct WebScreen: UIViewRepresentable {
         weak var web: WKWebView?
         var url: URL?
         var home = 0
+        var openSeq = 0
 
         /// Pull-to-refresh reloads the page on screen; after a failed first load there is nothing to reload, so
         /// it loads the tab's page again.

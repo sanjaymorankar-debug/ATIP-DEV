@@ -1,8 +1,11 @@
 package com.atip.mobile
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
@@ -19,6 +22,7 @@ import android.view.Menu
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.webkit.CookieManager
 import android.webkit.JsResult
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -65,6 +69,9 @@ import kotlin.concurrent.thread
  * load. Long-press the banner to change the server address. Colours follow the web tokens, light or dark.
  * The app holds no credentials and places no orders itself; every write goes through the web pages,
  * which carry the dashboard token and are refused (HTTP 423) while ATIP is stopped.
+ *
+ * 22 Nov 2026: the 09:00 IST pre-open checklist notification on weekdays (PreOpenReceiver). Its tap opens
+ * /preopen in the Home tab (EXTRA_PATH); Android 13+ asks once for permission to notify, in ATIP's words first.
  */
 class MainActivity : AppCompatActivity() {
     private class Tab(val path: String, val label: Int, val icon: Int)
@@ -93,8 +100,7 @@ class MainActivity : AppCompatActivity() {
                                      else Typeface.create("sans-serif-medium", Typeface.NORMAL)
 
     private val server: String
-        get() = getSharedPreferences("atip", MODE_PRIVATE).getString("server", BuildConfig.DEFAULT_SERVER)!!
-            .trimEnd('/')
+        get() = serverOf(this)
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -215,8 +221,49 @@ class MainActivity : AppCompatActivity() {
                 isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true   // leave, as before
             }
         })
-        load()
+        val link = deepLink(intent)                       // opened from the pre-open notification: /preopen
+        if (link != null) openPath(link) else load()
         schedulePoll()
+        PreOpenReceiver.schedule(this)                  // the 09:00 IST pre-open notification (weekdays)
+        askNotifications()
+    }
+
+    /** The app already open and a notification tapped (the pre-open checklist): its page in the Home tab. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        deepLink(intent)?.let { openPath(it) }
+    }
+
+    /** The sign-in cookie on disk, so the 09:00 IST pre-open check can send it while the app is closed. */
+    override fun onStop() {
+        super.onStop()
+        try { CookieManager.getInstance().flush() } catch (e: Exception) { }
+    }
+
+    /** A page to open from a notification: an ATIP path only (this activity is exported to the launcher). */
+    private fun deepLink(i: Intent?): String? = i?.getStringExtra(EXTRA_PATH)?.takeIf { SAFE_PATH.matches(it) }
+
+    /** Opens [path] (e.g. /preopen) in the Home tab, which shows as the open tab; tap Home again for /home. */
+    private fun openPath(path: String) {
+        current = 0
+        nav.menu.findItem(1)?.isChecked = true          // shows Home as open without its listener loading /home
+        newTab = true
+        web.loadUrl(server + path)
+    }
+
+    /** Android 13+ needs permission to notify: asked once, ATIP's reason first, then the system's question. */
+    private fun askNotifications() {
+        if (Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("atip", MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ASKED, false)) return
+        prefs.edit().putBoolean(KEY_ASKED, true).apply()
+        AlertDialog.Builder(this).setTitle(R.string.preopen_ask_title).setMessage(R.string.preopen_ask_text)
+            .setPositiveButton(R.string.preopen_ask_yes) { _, _ ->
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9)
+            }
+            .setNegativeButton(R.string.preopen_ask_no, null).show()
     }
 
     /** Light / dark switched: the manifest keeps uiMode here, so the page on screen is not reloaded. */
@@ -333,4 +380,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() { main.removeCallbacksAndMessages(null); super.onDestroy() }
+
+    companion object {
+        /** A page to open in the Home tab (a tapped notification): an ATIP path such as /preopen. */
+        const val EXTRA_PATH = "com.atip.mobile.PATH"
+        private const val KEY_ASKED = "notify_asked"
+        private val SAFE_PATH = Regex("(/[A-Za-z0-9_-]+)+")
+
+        /** The ATIP server address set in the app (long-press the banner), with its sub-path, no trailing "/". */
+        fun serverOf(ctx: Context): String =
+            ctx.getSharedPreferences("atip", Context.MODE_PRIVATE).getString("server", BuildConfig.DEFAULT_SERVER)!!
+                .trimEnd('/')
+
+        /** Opens the app on [path] in the Home tab: the running app gets it in onNewIntent, else onCreate. */
+        fun openIntent(ctx: Context, path: String): Intent = Intent(ctx, MainActivity::class.java)
+            .putExtra(EXTRA_PATH, path)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
 }

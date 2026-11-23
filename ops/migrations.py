@@ -134,6 +134,15 @@ def _sql_0006(conn):
         conn.execute(ddl)
 
 
+def _sql_0007(conn):
+    """22 Nov 2026 (PO-CL-02): the 9:00 AM Pre-Open Checklist table preopen_signals (strategy/preopen_checklist.py) --
+    one row per trading day and run (preliminary / 0900 / 0909): each check's raw value, vote, status, source and IST
+    time, the bias, volatility regime and expected open, and the learning loop's actual open / close. Additive only."""
+    from strategy.preopen_checklist import DDL as PREOPEN_DDL
+    for ddl in PREOPEN_DDL:
+        conn.execute(ddl)
+
+
 MIGRATIONS = (
     ("0001", "baseline_w1_w7", _sql_0001, "none (validation only)"),
     ("0002", "w8_ops_tables", _sql_0002, "DROP the W8 ops_* tables, enterprise_refresh_token and schema_migrations "
@@ -149,6 +158,8 @@ MIGRATIONS = (
                                                   "to remove them)"),
     ("0006", "w39_perf_ledger_entry_seq", _sql_0006, "none needed: entry_seq is an additive column read only as an "
                                                      "ordering key; restore the pre-W39 backup to remove it"),
+    ("0007", "preopen_checklist_signals", _sql_0007, "DROP INDEX idx_preopen_signals_eval; DROP TABLE preopen_signals "
+                                                     "(only the checklist reads it)"),
 )
 
 
@@ -157,6 +168,9 @@ def _checksum(version, name, fn) -> str:
     src = inspect.getsource(fn)
     extra = {"0003": "\n".join(INDEXES_0003), "0004": "\n".join(TRIGGERS_0004),
              "0005": "\n".join(TRIGGERS_0005)}.get(version, "")
+    if version == "0007":
+        from strategy.preopen_checklist import DDL as PREOPEN_DDL
+        extra = "\n".join(PREOPEN_DDL)
     return hashlib.sha256(f"{version}|{name}|{src}|{extra}".encode()).hexdigest()
 
 

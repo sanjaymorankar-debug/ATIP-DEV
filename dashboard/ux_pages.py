@@ -444,10 +444,22 @@ def home(conn, root="", app=False) -> str:
         except ValueError:
             pass
     idx, mk = d["index"], d["market"]
-    gl = d.get("gift_last")
-    gift_why = (("No GIFT Nifty quote since " + _ist(f"{gl['date']} {gl['time']}", today_iso)) if gl
-                else "No GIFT Nifty quote yet")
-    gift = (F.fmt_num(idx.get("gift_nifty")) if F.num(idx.get("gift_nifty")) else F.missing_html(gift_why))
+    # PO-CL-08 (22 Nov 2026): GIFT from the pre-open checklist's source. index_levels.gift_nifty is Dhan's IDX_I 5024
+    # quote, which is frozen (one value all day), so it is no longer shown as the live GIFT Nifty.
+    try:
+        from strategy.preopen_checklist import latest_gift
+        gl = latest_gift(conn)
+    except Exception:
+        gl = None
+    if gl and F.num(gl.get("price")):
+        mv = gl.get("move_pct")
+        gift = (f'<span class="ax-num">{e(F.fmt_num(gl["price"]))}</span>'
+                + (f' {F.pct_html(mv)}' if mv is not None else "")
+                + f'<span class="ax-small ax-muted"> ({e(_ist(gl.get("as_of"), today_iso) or "—")}'
+                + (", stale" if gl.get("status") == "STALE" else "") + ")</span>")
+    else:
+        gift = F.missing_html("No live GIFT Nifty quote yet (Dhan's GIFT feed is frozen; the pre-open checklist "
+                              "reads NSE from 08:15 IST)")
     w_market = (f'<div class="ax-card" data-widget="market"><h2>Market <span class="ax-chip" title="When these figures were read">'
                 f'as of {e(_ist(str(idx.get("date") or mk.get("date") or "") + " " + str(idx.get("time") or "00:00"), today_iso) or "—")}</span></h2>' + K.kv([
                     ("Nifty 50", f'<span class="ax-num">{e(F.fmt_num(idx.get("nifty50")))}</span> {F.pct_html(idx.get("nifty50_chg"))}'),
@@ -525,7 +537,14 @@ def home(conn, root="", app=False) -> str:
         ("Orders waiting for your tap", f'<a href="/command">{d["pending"]}</a>'),
         ("Sessions waiting (below minimum)", f'<a href="/sessions">{ov["total"]["waiting"]}</a>'),
         ("Reconciliation", '<a href="/accounting?tab=recon">check charges and cash</a>')]) + "</div>")
-    widgets = [("market", "Market", w_market), ("tod", "Trade of the Day", w_tod), ("sessions", "Sessions", w_sessions),
+    try:                                         # 22 Nov 2026 (PO-CL-09): the 9:00 AM Pre-Open Checklist card
+        from dashboard.preopen_routes import card_html as _preopen_card
+        w_preopen = _preopen_card(conn)
+    except Exception as ex:
+        w_preopen = (f'<div class="ax-card" data-widget="preopen"><h2>Pre-Open Checklist</h2><div class="ax-empty">'
+                     f'Unavailable: {e(ex)}</div></div>')
+    widgets = [("preopen", "Pre-Open Checklist", w_preopen),
+               ("market", "Market", w_market), ("tod", "Trade of the Day", w_tod), ("sessions", "Sessions", w_sessions),
                ("todo", "Needs you", w_todo), ("alerts", "Alerts", w_alerts), ("pipeline", "Pipeline", w_pipe)]
     custom = ('<details class="ax-help" id="ax-custom"><summary>Customise this page</summary><p class="ax-small ax-muted">'
               'Choose the widgets you want here. This is remembered in this browser only.</p><div class="ax-choice">' +

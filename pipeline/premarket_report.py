@@ -9,7 +9,10 @@ One JSON document per IST date and label, in premarket_reports and atip_data/rep
     indexes     the universe mean of VPI, ZPI, MRI, RRI, CRI, ACS and the BUY / SELL / HOLD counts
     signals     top BUY and SELL names with every index, the Trade of the Day
     asia        the Asia Sentiment Score, each market's signal / % change / session, the Pakistan risk flag
-    global      US / Europe closes, crude, gold, USD-INR, US 10Y, the global score; GIFT Nifty
+    global      US / Europe closes, crude, gold, USD-INR, US 10Y, the global score; GIFT Nifty (the checklist's
+                source -- Dhan's GIFT quote is frozen and no longer read)
+    preopen_checklist  the 9:00 AM Pre-Open Checklist (strategy/preopen_checklist.py): the 08:15 PRELIMINARY read
+                (US closes + futures, VIX prior close, prior-day A/D, GIFT) -- bias, volatility regime, expected open
     news        the latest summary's tone and whether Claude or the keyword fallback classified it
     news_impact the News Impact Estimate for the session (data/news_impact): score, bias, sectors, drivers, brief
     outlook     MH, the global score and the Asia score combined (0.50 / 0.25 / 0.25, renormalised over
@@ -96,8 +99,20 @@ def build(conn, now: datetime | None = None) -> dict:
                    "FROM global_markets ORDER BY date DESC, id DESC LIMIT 1") or {}
     if not g:
         caveats.append("no global markets fetch stored")
-    gift = _one(conn, "SELECT date, time, gift_nifty_chg FROM index_levels WHERE gift_nifty_chg IS NOT NULL "
-                      "ORDER BY date DESC, time DESC LIMIT 1")
+    # PO-CL-08 (22 Nov 2026): GIFT from the checklist's source. index_levels.gift_nifty_chg is Dhan's IDX_I 5024 quote,
+    # frozen (one value all day; 0.00 % on every row 11-17 Nov 2026), so it is no longer read here.
+    checklist, gift = None, None
+    try:
+        from strategy import preopen_checklist as PC
+        checklist = PC.latest_run(conn, now.date())
+        gift = PC.latest_gift(conn)
+    except Exception as e:
+        log.warning(f"  pre-market report: pre-open checklist unavailable: {e}")
+    if not checklist:
+        caveats.append("no pre-open checklist run yet today (preliminary at 08:15, then 09:00 / 09:09 IST)")
+    elif checklist.get("run_label") == "preliminary":
+        caveats.append("pre-open checklist is the 08:15 PRELIMINARY read: A/D is prior-day until NSE's pre-open book "
+                       "opens at 09:00")
     ns = _one(conn, "SELECT created_at, classifier, fallback_reason, summary_json FROM news_summary ORDER BY id DESC LIMIT 1") or {}
     tone = None
     if ns.get("summary_json"):
@@ -133,6 +148,14 @@ def build(conn, now: datetime | None = None) -> dict:
                                                         "session_status", "date", "source")}
                                  for m in asia.get("markets", [])]},
             "global": g, "gift_nifty": gift,
+            "preopen_checklist": None if not checklist else {
+                **{k: checklist.get(k) for k in (
+                    "run_label", "fetched_at_ist", "bias", "vote_sum", "votes_counted", "vix", "vix_regime",
+                    "expected_open", "us_vote", "nasdaq_chg_pct", "dow_chg_pct", "nq_chg_pct", "ym_chg_pct",
+                    "advances", "declines", "ad_basis", "ad_vote", "gift_price", "gift_move_pct", "gift_move_basis",
+                    "gift_vote", "size_multiplier", "stop_multiplier", "options_note")},
+                "lines": PC.summary_lines(checklist), "caveats": checklist.get("caveats"),
+                "preliminary": checklist.get("run_label") == "preliminary", "informational_only": True},
             "news_impact": None if not ni else {k: ni.get(k) for k in (
                 "for_session", "run_label", "generated_at", "score", "bias", "strength", "n_items", "n_claude",
                 "n_rule", "sectors", "drivers", "brief", "brief_method")},

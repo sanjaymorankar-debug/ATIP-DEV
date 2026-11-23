@@ -1,0 +1,1543 @@
+{
+  "generated_at_ist": "2026-11-23 00:13:21",
+  "rules": {
+    "us_band_pct": 0.1,
+    "vix_threshold": 15.0,
+    "gift_band_pct": 0.15,
+    "ad_ratio": 1.0,
+    "bias_min_votes": 1
+  },
+  "full": {
+    "days": 611,
+    "from": "2024-06-04",
+    "to": "2026-11-20",
+    "us_combined": {
+      "vs_gap": {
+        "n": 462,
+        "hits": 335,
+        "hit_rate_pct": 72.5,
+        "se_pct": 2.1,
+        "base_rate_pct": 56.7,
+        "edge_pp": 15.8,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 462,
+        "hits": 298,
+        "hit_rate_pct": 64.5,
+        "se_pct": 2.2,
+        "base_rate_pct": 50.4,
+        "edge_pp": 14.1,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 462,
+        "hits": 228,
+        "hit_rate_pct": 49.4,
+        "se_pct": 2.3,
+        "base_rate_pct": 53.9,
+        "edge_pp": -4.5,
+        "significant": false
+      },
+      "coverage_pct": 99.8
+    },
+    "us_closes_only": {
+      "vs_gap": {
+        "n": 498,
+        "hits": 346,
+        "hit_rate_pct": 69.5,
+        "se_pct": 2.1,
+        "base_rate_pct": 56.2,
+        "edge_pp": 13.3,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 498,
+        "hits": 288,
+        "hit_rate_pct": 57.8,
+        "se_pct": 2.2,
+        "base_rate_pct": 50.2,
+        "edge_pp": 7.6,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 498,
+        "hits": 233,
+        "hit_rate_pct": 46.8,
+        "se_pct": 2.2,
+        "base_rate_pct": 53.6,
+        "edge_pp": -6.8,
+        "significant": true
+      },
+      "coverage_pct": 99.8
+    },
+    "us_futures_only": {
+      "vs_gap": {
+        "n": 438,
+        "hits": 249,
+        "hit_rate_pct": 56.8,
+        "se_pct": 2.4,
+        "base_rate_pct": 53.7,
+        "edge_pp": 3.2,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 438,
+        "hits": 264,
+        "hit_rate_pct": 60.3,
+        "se_pct": 2.3,
+        "base_rate_pct": 51.6,
+        "edge_pp": 8.7,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 438,
+        "hits": 224,
+        "hit_rate_pct": 51.1,
+        "se_pct": 2.4,
+        "base_rate_pct": 52.1,
+        "edge_pp": -0.9,
+        "significant": false
+      },
+      "coverage_pct": 92.3
+    },
+    "ad_prior_day_atip_universe": {
+      "vs_gap": {
+        "n": 388,
+        "hits": 209,
+        "hit_rate_pct": 53.9,
+        "se_pct": 2.5,
+        "base_rate_pct": 54.4,
+        "edge_pp": -0.5,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 388,
+        "hits": 206,
+        "hit_rate_pct": 53.1,
+        "se_pct": 2.5,
+        "base_rate_pct": 51.0,
+        "edge_pp": 2.1,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 388,
+        "hits": 179,
+        "hit_rate_pct": 46.1,
+        "se_pct": 2.5,
+        "base_rate_pct": 52.3,
+        "edge_pp": -6.2,
+        "significant": true
+      },
+      "coverage_pct": 63.7
+    },
+    "ad_prior_day_nse_bhavcopy": {
+      "vs_gap": {
+        "n": 113,
+        "hits": 54,
+        "hit_rate_pct": 47.8,
+        "se_pct": 4.7,
+        "base_rate_pct": 53.1,
+        "edge_pp": -5.3,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 113,
+        "hits": 59,
+        "hit_rate_pct": 52.2,
+        "se_pct": 4.7,
+        "base_rate_pct": 50.4,
+        "edge_pp": 1.8,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 113,
+        "hits": 55,
+        "hit_rate_pct": 48.7,
+        "se_pct": 4.7,
+        "base_rate_pct": 50.4,
+        "edge_pp": -1.8,
+        "significant": false
+      },
+      "coverage_pct": 18.5
+    },
+    "bias_us_plus_ad": {
+      "vs_gap": {
+        "n": 417,
+        "hits": 289,
+        "hit_rate_pct": 69.3,
+        "se_pct": 2.3,
+        "base_rate_pct": 53.7,
+        "edge_pp": 15.6,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 417,
+        "hits": 262,
+        "hit_rate_pct": 62.8,
+        "se_pct": 2.4,
+        "base_rate_pct": 50.4,
+        "edge_pp": 12.5,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 417,
+        "hits": 196,
+        "hit_rate_pct": 47.0,
+        "se_pct": 2.4,
+        "base_rate_pct": 53.7,
+        "edge_pp": -6.7,
+        "significant": true
+      },
+      "neutral_days": 193
+    },
+    "vix_regime": {
+      "Volatile": {
+        "days": 181,
+        "mean_abs_gap_pct": 0.487,
+        "mean_abs_day_pct": 0.862,
+        "mean_abs_open_to_close_pct": 0.613
+      },
+      "Stable": {
+        "days": 427,
+        "mean_abs_gap_pct": 0.293,
+        "mean_abs_day_pct": 0.518,
+        "mean_abs_open_to_close_pct": 0.454
+      }
+    },
+    "gap_classes": {
+      "Gap-Up": 227,
+      "Flat": 222,
+      "Gap-Down": 162
+    }
+  },
+  "last_250": {
+    "days": 250,
+    "from": "2025-11-17",
+    "to": "2026-11-20",
+    "us_combined": {
+      "vs_gap": {
+        "n": 192,
+        "hits": 143,
+        "hit_rate_pct": 74.5,
+        "se_pct": 3.1,
+        "base_rate_pct": 50.5,
+        "edge_pp": 24.0,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 192,
+        "hits": 125,
+        "hit_rate_pct": 65.1,
+        "se_pct": 3.4,
+        "base_rate_pct": 51.6,
+        "edge_pp": 13.5,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 192,
+        "hits": 97,
+        "hit_rate_pct": 50.5,
+        "se_pct": 3.6,
+        "base_rate_pct": 51.6,
+        "edge_pp": -1.0,
+        "significant": false
+      },
+      "coverage_pct": 100.0
+    },
+    "us_closes_only": {
+      "vs_gap": {
+        "n": 206,
+        "hits": 145,
+        "hit_rate_pct": 70.4,
+        "se_pct": 3.2,
+        "base_rate_pct": 52.9,
+        "edge_pp": 17.5,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 206,
+        "hits": 124,
+        "hit_rate_pct": 60.2,
+        "se_pct": 3.4,
+        "base_rate_pct": 53.4,
+        "edge_pp": 6.8,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 206,
+        "hits": 99,
+        "hit_rate_pct": 48.1,
+        "se_pct": 3.5,
+        "base_rate_pct": 52.9,
+        "edge_pp": -4.9,
+        "significant": false
+      },
+      "coverage_pct": 100.0
+    },
+    "us_futures_only": {
+      "vs_gap": {
+        "n": 193,
+        "hits": 118,
+        "hit_rate_pct": 61.1,
+        "se_pct": 3.5,
+        "base_rate_pct": 50.8,
+        "edge_pp": 10.4,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 193,
+        "hits": 114,
+        "hit_rate_pct": 59.1,
+        "se_pct": 3.5,
+        "base_rate_pct": 50.3,
+        "edge_pp": 8.8,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 193,
+        "hits": 94,
+        "hit_rate_pct": 48.7,
+        "se_pct": 3.6,
+        "base_rate_pct": 51.8,
+        "edge_pp": -3.1,
+        "significant": false
+      },
+      "coverage_pct": 95.2
+    },
+    "ad_prior_day_atip_universe": {
+      "vs_gap": {
+        "n": 229,
+        "hits": 120,
+        "hit_rate_pct": 52.4,
+        "se_pct": 3.3,
+        "base_rate_pct": 50.7,
+        "edge_pp": 1.7,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 229,
+        "hits": 119,
+        "hit_rate_pct": 52.0,
+        "se_pct": 3.3,
+        "base_rate_pct": 51.5,
+        "edge_pp": 0.4,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 229,
+        "hits": 110,
+        "hit_rate_pct": 48.0,
+        "se_pct": 3.3,
+        "base_rate_pct": 52.8,
+        "edge_pp": -4.8,
+        "significant": false
+      },
+      "coverage_pct": 92.0
+    },
+    "ad_prior_day_nse_bhavcopy": {
+      "vs_gap": {
+        "n": 113,
+        "hits": 54,
+        "hit_rate_pct": 47.8,
+        "se_pct": 4.7,
+        "base_rate_pct": 53.1,
+        "edge_pp": -5.3,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 113,
+        "hits": 59,
+        "hit_rate_pct": 52.2,
+        "se_pct": 4.7,
+        "base_rate_pct": 50.4,
+        "edge_pp": 1.8,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 113,
+        "hits": 55,
+        "hit_rate_pct": 48.7,
+        "se_pct": 4.7,
+        "base_rate_pct": 50.4,
+        "edge_pp": -1.8,
+        "significant": false
+      },
+      "coverage_pct": 45.2
+    },
+    "bias_us_plus_ad": {
+      "vs_gap": {
+        "n": 169,
+        "hits": 111,
+        "hit_rate_pct": 65.7,
+        "se_pct": 3.7,
+        "base_rate_pct": 56.8,
+        "edge_pp": 8.9,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 169,
+        "hits": 103,
+        "hit_rate_pct": 60.9,
+        "se_pct": 3.8,
+        "base_rate_pct": 54.4,
+        "edge_pp": 6.5,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 169,
+        "hits": 83,
+        "hit_rate_pct": 49.1,
+        "se_pct": 3.8,
+        "base_rate_pct": 50.9,
+        "edge_pp": -1.8,
+        "significant": false
+      },
+      "neutral_days": 81
+    },
+    "vix_regime": {
+      "Volatile": {
+        "days": 89,
+        "mean_abs_gap_pct": 0.611,
+        "mean_abs_day_pct": 0.932,
+        "mean_abs_open_to_close_pct": 0.633
+      },
+      "Stable": {
+        "days": 160,
+        "mean_abs_gap_pct": 0.318,
+        "mean_abs_day_pct": 0.536,
+        "mean_abs_open_to_close_pct": 0.443
+      }
+    },
+    "gap_classes": {
+      "Gap-Up": 89,
+      "Gap-Down": 84,
+      "Flat": 77
+    }
+  },
+  "last_60": {
+    "days": 60,
+    "from": "2026-08-25",
+    "to": "2026-11-20",
+    "us_combined": {
+      "vs_gap": {
+        "n": 47,
+        "hits": 32,
+        "hit_rate_pct": 68.1,
+        "se_pct": 6.8,
+        "base_rate_pct": 55.3,
+        "edge_pp": 12.8,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 47,
+        "hits": 27,
+        "hit_rate_pct": 57.4,
+        "se_pct": 7.2,
+        "base_rate_pct": 51.1,
+        "edge_pp": 6.4,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 47,
+        "hits": 25,
+        "hit_rate_pct": 53.2,
+        "se_pct": 7.3,
+        "base_rate_pct": 55.3,
+        "edge_pp": -2.1,
+        "significant": false
+      },
+      "coverage_pct": 100.0
+    },
+    "us_closes_only": {
+      "vs_gap": {
+        "n": 50,
+        "hits": 31,
+        "hit_rate_pct": 62.0,
+        "se_pct": 6.9,
+        "base_rate_pct": 52.0,
+        "edge_pp": 10.0,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 50,
+        "hits": 27,
+        "hit_rate_pct": 54.0,
+        "se_pct": 7.0,
+        "base_rate_pct": 56.0,
+        "edge_pp": -2.0,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 50,
+        "hits": 27,
+        "hit_rate_pct": 54.0,
+        "se_pct": 7.0,
+        "base_rate_pct": 52.0,
+        "edge_pp": 2.0,
+        "significant": false
+      },
+      "coverage_pct": 100.0
+    },
+    "us_futures_only": {
+      "vs_gap": {
+        "n": 39,
+        "hits": 25,
+        "hit_rate_pct": 64.1,
+        "se_pct": 7.7,
+        "base_rate_pct": 51.3,
+        "edge_pp": 12.8,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 39,
+        "hits": 21,
+        "hit_rate_pct": 53.8,
+        "se_pct": 8.0,
+        "base_rate_pct": 56.4,
+        "edge_pp": -2.6,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 39,
+        "hits": 18,
+        "hit_rate_pct": 46.2,
+        "se_pct": 8.0,
+        "base_rate_pct": 59.0,
+        "edge_pp": -12.8,
+        "significant": false
+      },
+      "coverage_pct": 96.7
+    },
+    "ad_prior_day_atip_universe": {
+      "vs_gap": {
+        "n": 45,
+        "hits": 23,
+        "hit_rate_pct": 51.1,
+        "se_pct": 7.5,
+        "base_rate_pct": 51.1,
+        "edge_pp": 0.0,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 45,
+        "hits": 23,
+        "hit_rate_pct": 51.1,
+        "se_pct": 7.5,
+        "base_rate_pct": 51.1,
+        "edge_pp": 0.0,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 45,
+        "hits": 25,
+        "hit_rate_pct": 55.6,
+        "se_pct": 7.4,
+        "base_rate_pct": 51.1,
+        "edge_pp": 4.4,
+        "significant": false
+      },
+      "coverage_pct": 75.0
+    },
+    "ad_prior_day_nse_bhavcopy": {
+      "vs_gap": {
+        "n": 57,
+        "hits": 25,
+        "hit_rate_pct": 43.9,
+        "se_pct": 6.6,
+        "base_rate_pct": 50.9,
+        "edge_pp": -7.0,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 57,
+        "hits": 27,
+        "hit_rate_pct": 47.4,
+        "se_pct": 6.6,
+        "base_rate_pct": 50.9,
+        "edge_pp": -3.5,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 57,
+        "hits": 28,
+        "hit_rate_pct": 49.1,
+        "se_pct": 6.6,
+        "base_rate_pct": 52.6,
+        "edge_pp": -3.5,
+        "significant": false
+      },
+      "coverage_pct": 95.0
+    },
+    "bias_us_plus_ad": {
+      "vs_gap": {
+        "n": 45,
+        "hits": 29,
+        "hit_rate_pct": 64.4,
+        "se_pct": 7.1,
+        "base_rate_pct": 64.4,
+        "edge_pp": 0.0,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 45,
+        "hits": 26,
+        "hit_rate_pct": 57.8,
+        "se_pct": 7.4,
+        "base_rate_pct": 53.3,
+        "edge_pp": 4.4,
+        "significant": false
+      },
+      "vs_open_to_close": {
+        "n": 45,
+        "hits": 26,
+        "hit_rate_pct": 57.8,
+        "se_pct": 7.4,
+        "base_rate_pct": 51.1,
+        "edge_pp": 6.7,
+        "significant": false
+      },
+      "neutral_days": 15
+    },
+    "vix_regime": {
+      "Volatile": {
+        "days": 23,
+        "mean_abs_gap_pct": 0.378,
+        "mean_abs_day_pct": 0.876,
+        "mean_abs_open_to_close_pct": 0.722
+      },
+      "Stable": {
+        "days": 37,
+        "mean_abs_gap_pct": 0.281,
+        "mean_abs_day_pct": 0.622,
+        "mean_abs_open_to_close_pct": 0.546
+      }
+    },
+    "gap_classes": {
+      "Gap-Down": 22,
+      "Gap-Up": 21,
+      "Flat": 17
+    }
+  },
+  "last_20": {
+    "days": 20,
+    "from": "2026-10-23",
+    "to": "2026-11-20",
+    "us_combined": {
+      "vs_gap": {
+        "n": 16,
+        "hits": 7,
+        "hit_rate_pct": 43.8,
+        "se_pct": 12.4,
+        "base_rate_pct": 62.5,
+        "edge_pp": -18.8,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 16,
+        "hits": 7,
+        "hit_rate_pct": 43.8,
+        "se_pct": 12.4,
+        "base_rate_pct": 75.0,
+        "edge_pp": -31.2,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 16,
+        "hits": 8,
+        "hit_rate_pct": 50.0,
+        "se_pct": 12.5,
+        "base_rate_pct": 81.2,
+        "edge_pp": -31.2,
+        "significant": true
+      },
+      "coverage_pct": 100.0
+    },
+    "us_closes_only": {
+      "vs_gap": {
+        "n": 16,
+        "hits": 6,
+        "hit_rate_pct": 37.5,
+        "se_pct": 12.1,
+        "base_rate_pct": 56.2,
+        "edge_pp": -18.8,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 16,
+        "hits": 6,
+        "hit_rate_pct": 37.5,
+        "se_pct": 12.1,
+        "base_rate_pct": 68.8,
+        "edge_pp": -31.2,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 16,
+        "hits": 9,
+        "hit_rate_pct": 56.2,
+        "se_pct": 12.4,
+        "base_rate_pct": 75.0,
+        "edge_pp": -18.8,
+        "significant": false
+      },
+      "coverage_pct": 100.0
+    },
+    "us_futures_only": {
+      "vs_gap": {
+        "n": 11,
+        "hits": 5,
+        "hit_rate_pct": 45.5,
+        "se_pct": 15.0,
+        "base_rate_pct": 54.5,
+        "edge_pp": -9.1,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 11,
+        "hits": 4,
+        "hit_rate_pct": 36.4,
+        "se_pct": 14.5,
+        "base_rate_pct": 72.7,
+        "edge_pp": -36.4,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 11,
+        "hits": 3,
+        "hit_rate_pct": 27.3,
+        "se_pct": 13.4,
+        "base_rate_pct": 63.6,
+        "edge_pp": -36.4,
+        "significant": true
+      },
+      "coverage_pct": 100.0
+    },
+    "ad_prior_day_atip_universe": {
+      "vs_gap": {
+        "n": 17,
+        "hits": 6,
+        "hit_rate_pct": 35.3,
+        "se_pct": 11.6,
+        "base_rate_pct": 52.9,
+        "edge_pp": -17.6,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 17,
+        "hits": 8,
+        "hit_rate_pct": 47.1,
+        "se_pct": 12.1,
+        "base_rate_pct": 76.5,
+        "edge_pp": -29.4,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 17,
+        "hits": 12,
+        "hit_rate_pct": 70.6,
+        "se_pct": 11.1,
+        "base_rate_pct": 76.5,
+        "edge_pp": -5.9,
+        "significant": false
+      },
+      "coverage_pct": 85.0
+    },
+    "ad_prior_day_nse_bhavcopy": {
+      "vs_gap": {
+        "n": 17,
+        "hits": 6,
+        "hit_rate_pct": 35.3,
+        "se_pct": 11.6,
+        "base_rate_pct": 52.9,
+        "edge_pp": -17.6,
+        "significant": false
+      },
+      "vs_day": {
+        "n": 17,
+        "hits": 8,
+        "hit_rate_pct": 47.1,
+        "se_pct": 12.1,
+        "base_rate_pct": 76.5,
+        "edge_pp": -29.4,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 17,
+        "hits": 12,
+        "hit_rate_pct": 70.6,
+        "se_pct": 11.1,
+        "base_rate_pct": 76.5,
+        "edge_pp": -5.9,
+        "significant": false
+      },
+      "coverage_pct": 85.0
+    },
+    "bias_us_plus_ad": {
+      "vs_gap": {
+        "n": 16,
+        "hits": 6,
+        "hit_rate_pct": 37.5,
+        "se_pct": 12.1,
+        "base_rate_pct": 62.5,
+        "edge_pp": -25.0,
+        "significant": true
+      },
+      "vs_day": {
+        "n": 16,
+        "hits": 7,
+        "hit_rate_pct": 43.8,
+        "se_pct": 12.4,
+        "base_rate_pct": 68.8,
+        "edge_pp": -25.0,
+        "significant": true
+      },
+      "vs_open_to_close": {
+        "n": 16,
+        "hits": 10,
+        "hit_rate_pct": 62.5,
+        "se_pct": 12.1,
+        "base_rate_pct": 75.0,
+        "edge_pp": -12.5,
+        "significant": false
+      },
+      "neutral_days": 4
+    },
+    "vix_regime": {
+      "Volatile": {
+        "days": 20,
+        "mean_abs_gap_pct": 0.389,
+        "mean_abs_day_pct": 0.835,
+        "mean_abs_open_to_close_pct": 0.704
+      },
+      "Stable": {
+        "days": 0,
+        "mean_abs_gap_pct": null,
+        "mean_abs_day_pct": null,
+        "mean_abs_open_to_close_pct": null
+      }
+    },
+    "gap_classes": {
+      "Gap-Down": 9,
+      "Gap-Up": 7,
+      "Flat": 4
+    }
+  },
+  "by_year": {
+    "2024": {
+      "days": 144,
+      "from": "2024-06-04",
+      "to": "2024-12-31",
+      "us_combined": {
+        "vs_gap": {
+          "n": 116,
+          "hits": 89,
+          "hit_rate_pct": 76.7,
+          "se_pct": 3.9,
+          "base_rate_pct": 67.2,
+          "edge_pp": 9.5,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 116,
+          "hits": 79,
+          "hit_rate_pct": 68.1,
+          "se_pct": 4.3,
+          "base_rate_pct": 53.4,
+          "edge_pp": 14.7,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 116,
+          "hits": 54,
+          "hit_rate_pct": 46.6,
+          "se_pct": 4.6,
+          "base_rate_pct": 59.5,
+          "edge_pp": -12.9,
+          "significant": true
+        },
+        "coverage_pct": 99.3
+      },
+      "us_closes_only": {
+        "vs_gap": {
+          "n": 112,
+          "hits": 83,
+          "hit_rate_pct": 74.1,
+          "se_pct": 4.1,
+          "base_rate_pct": 69.6,
+          "edge_pp": 4.5,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 112,
+          "hits": 71,
+          "hit_rate_pct": 63.4,
+          "se_pct": 4.6,
+          "base_rate_pct": 55.4,
+          "edge_pp": 8.0,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 112,
+          "hits": 52,
+          "hit_rate_pct": 46.4,
+          "se_pct": 4.7,
+          "base_rate_pct": 56.2,
+          "edge_pp": -9.8,
+          "significant": true
+        },
+        "coverage_pct": 99.3
+      },
+      "us_futures_only": {
+        "vs_gap": {
+          "n": 87,
+          "hits": 46,
+          "hit_rate_pct": 52.9,
+          "se_pct": 5.4,
+          "base_rate_pct": 59.8,
+          "edge_pp": -6.9,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 87,
+          "hits": 53,
+          "hit_rate_pct": 60.9,
+          "se_pct": 5.2,
+          "base_rate_pct": 50.6,
+          "edge_pp": 10.3,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 87,
+          "hits": 46,
+          "hit_rate_pct": 52.9,
+          "se_pct": 5.4,
+          "base_rate_pct": 58.6,
+          "edge_pp": -5.7,
+          "significant": false
+        },
+        "coverage_pct": 82.6
+      },
+      "ad_prior_day_atip_universe": {
+        "vs_gap": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_day": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_open_to_close": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "coverage_pct": 0.0
+      },
+      "ad_prior_day_nse_bhavcopy": {
+        "vs_gap": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_day": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_open_to_close": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "coverage_pct": 0.0
+      },
+      "bias_us_plus_ad": {
+        "vs_gap": {
+          "n": 116,
+          "hits": 89,
+          "hit_rate_pct": 76.7,
+          "se_pct": 3.9,
+          "base_rate_pct": 67.2,
+          "edge_pp": 9.5,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 116,
+          "hits": 79,
+          "hit_rate_pct": 68.1,
+          "se_pct": 4.3,
+          "base_rate_pct": 53.4,
+          "edge_pp": 14.7,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 116,
+          "hits": 54,
+          "hit_rate_pct": 46.6,
+          "se_pct": 4.6,
+          "base_rate_pct": 59.5,
+          "edge_pp": -12.9,
+          "significant": true
+        },
+        "neutral_days": 27
+      },
+      "vix_regime": {
+        "Volatile": {
+          "days": 31,
+          "mean_abs_gap_pct": 0.387,
+          "mean_abs_day_pct": 0.993,
+          "mean_abs_open_to_close_pct": 0.772
+        },
+        "Stable": {
+          "days": 113,
+          "mean_abs_gap_pct": 0.271,
+          "mean_abs_day_pct": 0.5,
+          "mean_abs_open_to_close_pct": 0.458
+        }
+      },
+      "gap_classes": {
+        "Gap-Up": 61,
+        "Flat": 53,
+        "Gap-Down": 30
+      }
+    },
+    "2025": {
+      "days": 249,
+      "from": "2025-01-01",
+      "to": "2025-12-31",
+      "us_combined": {
+        "vs_gap": {
+          "n": 178,
+          "hits": 118,
+          "hit_rate_pct": 66.3,
+          "se_pct": 3.5,
+          "base_rate_pct": 57.3,
+          "edge_pp": 9.0,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 178,
+          "hits": 109,
+          "hit_rate_pct": 61.2,
+          "se_pct": 3.7,
+          "base_rate_pct": 50.0,
+          "edge_pp": 11.2,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 178,
+          "hits": 90,
+          "hit_rate_pct": 50.6,
+          "se_pct": 3.7,
+          "base_rate_pct": 53.9,
+          "edge_pp": -3.4,
+          "significant": false
+        },
+        "coverage_pct": 100.0
+      },
+      "us_closes_only": {
+        "vs_gap": {
+          "n": 207,
+          "hits": 135,
+          "hit_rate_pct": 65.2,
+          "se_pct": 3.3,
+          "base_rate_pct": 57.0,
+          "edge_pp": 8.2,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 207,
+          "hits": 110,
+          "hit_rate_pct": 53.1,
+          "se_pct": 3.5,
+          "base_rate_pct": 50.2,
+          "edge_pp": 2.9,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 207,
+          "hits": 95,
+          "hit_rate_pct": 45.9,
+          "se_pct": 3.5,
+          "base_rate_pct": 53.6,
+          "edge_pp": -7.7,
+          "significant": true
+        },
+        "coverage_pct": 100.0
+      },
+      "us_futures_only": {
+        "vs_gap": {
+          "n": 182,
+          "hits": 95,
+          "hit_rate_pct": 52.2,
+          "se_pct": 3.7,
+          "base_rate_pct": 55.5,
+          "edge_pp": -3.3,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 182,
+          "hits": 110,
+          "hit_rate_pct": 60.4,
+          "se_pct": 3.6,
+          "base_rate_pct": 53.8,
+          "edge_pp": 6.6,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 182,
+          "hits": 98,
+          "hit_rate_pct": 53.8,
+          "se_pct": 3.7,
+          "base_rate_pct": 51.6,
+          "edge_pp": 2.2,
+          "significant": false
+        },
+        "coverage_pct": 95.2
+      },
+      "ad_prior_day_atip_universe": {
+        "vs_gap": {
+          "n": 190,
+          "hits": 105,
+          "hit_rate_pct": 55.3,
+          "se_pct": 3.6,
+          "base_rate_pct": 59.5,
+          "edge_pp": -4.2,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 190,
+          "hits": 105,
+          "hit_rate_pct": 55.3,
+          "se_pct": 3.6,
+          "base_rate_pct": 52.1,
+          "edge_pp": 3.2,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 190,
+          "hits": 85,
+          "hit_rate_pct": 44.7,
+          "se_pct": 3.6,
+          "base_rate_pct": 53.2,
+          "edge_pp": -8.4,
+          "significant": true
+        },
+        "coverage_pct": 76.7
+      },
+      "ad_prior_day_nse_bhavcopy": {
+        "vs_gap": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_day": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "vs_open_to_close": {
+          "n": 0,
+          "hit_rate_pct": null,
+          "se_pct": null,
+          "base_rate_pct": null,
+          "edge_pp": null
+        },
+        "coverage_pct": 0.0
+      },
+      "bias_us_plus_ad": {
+        "vs_gap": {
+          "n": 150,
+          "hits": 99,
+          "hit_rate_pct": 66.0,
+          "se_pct": 3.9,
+          "base_rate_pct": 55.3,
+          "edge_pp": 10.7,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 150,
+          "hits": 92,
+          "hit_rate_pct": 61.3,
+          "se_pct": 4.0,
+          "base_rate_pct": 50.7,
+          "edge_pp": 10.7,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 150,
+          "hits": 69,
+          "hit_rate_pct": 46.0,
+          "se_pct": 4.1,
+          "base_rate_pct": 52.7,
+          "edge_pp": -6.7,
+          "significant": false
+        },
+        "neutral_days": 99
+      },
+      "vix_regime": {
+        "Volatile": {
+          "days": 61,
+          "mean_abs_gap_pct": 0.356,
+          "mean_abs_day_pct": 0.693,
+          "mean_abs_open_to_close_pct": 0.504
+        },
+        "Stable": {
+          "days": 186,
+          "mean_abs_gap_pct": 0.266,
+          "mean_abs_day_pct": 0.493,
+          "mean_abs_open_to_close_pct": 0.446
+        }
+      },
+      "gap_classes": {
+        "Flat": 108,
+        "Gap-Up": 86,
+        "Gap-Down": 55
+      }
+    },
+    "2026": {
+      "days": 218,
+      "from": "2026-01-01",
+      "to": "2026-11-20",
+      "us_combined": {
+        "vs_gap": {
+          "n": 168,
+          "hits": 128,
+          "hit_rate_pct": 76.2,
+          "se_pct": 3.3,
+          "base_rate_pct": 51.2,
+          "edge_pp": 25.0,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 168,
+          "hits": 110,
+          "hit_rate_pct": 65.5,
+          "se_pct": 3.7,
+          "base_rate_pct": 51.2,
+          "edge_pp": 14.3,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 168,
+          "hits": 84,
+          "hit_rate_pct": 50.0,
+          "se_pct": 3.9,
+          "base_rate_pct": 50.0,
+          "edge_pp": 0.0,
+          "significant": false
+        },
+        "coverage_pct": 100.0
+      },
+      "us_closes_only": {
+        "vs_gap": {
+          "n": 179,
+          "hits": 128,
+          "hit_rate_pct": 71.5,
+          "se_pct": 3.4,
+          "base_rate_pct": 53.1,
+          "edge_pp": 18.4,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 179,
+          "hits": 107,
+          "hit_rate_pct": 59.8,
+          "se_pct": 3.7,
+          "base_rate_pct": 52.5,
+          "edge_pp": 7.3,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 179,
+          "hits": 86,
+          "hit_rate_pct": 48.0,
+          "se_pct": 3.7,
+          "base_rate_pct": 52.0,
+          "edge_pp": -3.9,
+          "significant": false
+        },
+        "coverage_pct": 100.0
+      },
+      "us_futures_only": {
+        "vs_gap": {
+          "n": 169,
+          "hits": 108,
+          "hit_rate_pct": 63.9,
+          "se_pct": 3.7,
+          "base_rate_pct": 51.5,
+          "edge_pp": 12.4,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 169,
+          "hits": 101,
+          "hit_rate_pct": 59.8,
+          "se_pct": 3.8,
+          "base_rate_pct": 50.3,
+          "edge_pp": 9.5,
+          "significant": true
+        },
+        "vs_open_to_close": {
+          "n": 169,
+          "hits": 80,
+          "hit_rate_pct": 47.3,
+          "se_pct": 3.8,
+          "base_rate_pct": 52.7,
+          "edge_pp": -5.3,
+          "significant": false
+        },
+        "coverage_pct": 95.4
+      },
+      "ad_prior_day_atip_universe": {
+        "vs_gap": {
+          "n": 198,
+          "hits": 104,
+          "hit_rate_pct": 52.5,
+          "se_pct": 3.5,
+          "base_rate_pct": 50.5,
+          "edge_pp": 2.0,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 198,
+          "hits": 101,
+          "hit_rate_pct": 51.0,
+          "se_pct": 3.6,
+          "base_rate_pct": 50.0,
+          "edge_pp": 1.0,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 198,
+          "hits": 94,
+          "hit_rate_pct": 47.5,
+          "se_pct": 3.5,
+          "base_rate_pct": 51.5,
+          "edge_pp": -4.0,
+          "significant": false
+        },
+        "coverage_pct": 90.8
+      },
+      "ad_prior_day_nse_bhavcopy": {
+        "vs_gap": {
+          "n": 113,
+          "hits": 54,
+          "hit_rate_pct": 47.8,
+          "se_pct": 4.7,
+          "base_rate_pct": 53.1,
+          "edge_pp": -5.3,
+          "significant": false
+        },
+        "vs_day": {
+          "n": 113,
+          "hits": 59,
+          "hit_rate_pct": 52.2,
+          "se_pct": 4.7,
+          "base_rate_pct": 50.4,
+          "edge_pp": 1.8,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 113,
+          "hits": 55,
+          "hit_rate_pct": 48.7,
+          "se_pct": 4.7,
+          "base_rate_pct": 50.4,
+          "edge_pp": -1.8,
+          "significant": false
+        },
+        "coverage_pct": 51.8
+      },
+      "bias_us_plus_ad": {
+        "vs_gap": {
+          "n": 151,
+          "hits": 101,
+          "hit_rate_pct": 66.9,
+          "se_pct": 3.8,
+          "base_rate_pct": 58.3,
+          "edge_pp": 8.6,
+          "significant": true
+        },
+        "vs_day": {
+          "n": 151,
+          "hits": 91,
+          "hit_rate_pct": 60.3,
+          "se_pct": 4.0,
+          "base_rate_pct": 54.3,
+          "edge_pp": 6.0,
+          "significant": false
+        },
+        "vs_open_to_close": {
+          "n": 151,
+          "hits": 73,
+          "hit_rate_pct": 48.3,
+          "se_pct": 4.1,
+          "base_rate_pct": 50.3,
+          "edge_pp": -2.0,
+          "significant": false
+        },
+        "neutral_days": 67
+      },
+      "vix_regime": {
+        "Volatile": {
+          "days": 89,
+          "mean_abs_gap_pct": 0.611,
+          "mean_abs_day_pct": 0.932,
+          "mean_abs_open_to_close_pct": 0.633
+        },
+        "Stable": {
+          "days": 128,
+          "mean_abs_gap_pct": 0.352,
+          "mean_abs_day_pct": 0.571,
+          "mean_abs_open_to_close_pct": 0.463
+        }
+      },
+      "gap_classes": {
+        "Gap-Up": 80,
+        "Gap-Down": 77,
+        "Flat": 61
+      }
+    }
+  },
+  "stored": {
+    "preopen_ad_days": [
+      {
+        "date": "2026-10-27",
+        "advances": 87,
+        "declines": 97
+      },
+      {
+        "date": "2026-10-28",
+        "advances": 56,
+        "declines": 142
+      },
+      {
+        "date": "2026-10-29",
+        "advances": 93,
+        "declines": 77
+      },
+      {
+        "date": "2026-10-30",
+        "advances": 93,
+        "declines": 92
+      },
+      {
+        "date": "2026-11-02",
+        "advances": 151,
+        "declines": 48
+      },
+      {
+        "date": "2026-11-03",
+        "advances": 182,
+        "declines": 20
+      },
+      {
+        "date": "2026-11-04",
+        "advances": 66,
+        "declines": 107
+      },
+      {
+        "date": "2026-11-05",
+        "advances": 206,
+        "declines": 11
+      },
+      {
+        "date": "2026-11-06",
+        "advances": 39,
+        "declines": 173
+      },
+      {
+        "date": "2026-11-09",
+        "advances": 123,
+        "declines": 56
+      },
+      {
+        "date": "2026-11-11",
+        "advances": 192,
+        "declines": 14
+      },
+      {
+        "date": "2026-11-12",
+        "advances": 113,
+        "declines": 73
+      },
+      {
+        "date": "2026-11-13",
+        "advances": 32,
+        "declines": 148
+      },
+      {
+        "date": "2026-11-16",
+        "advances": 138,
+        "declines": 37
+      },
+      {
+        "date": "2026-11-17",
+        "advances": 82,
+        "declines": 94
+      }
+    ],
+    "gift_mornings": 11,
+    "gift_note": "Dhan's GIFT value is frozen (one value all day), so these mornings are not a valid test"
+  },
+  "close_check_vs_atip": {
+    "days_compared": 420,
+    "mean_abs_diff_pct": 0.0,
+    "max_abs_diff_pct": 0.0
+  },
+  "nse_vs_atip_ad_sign_agreement": {
+    "days": 96,
+    "agree_pct": 84.4
+  },
+  "preopen_ad": {
+    "n_days": 15,
+    "vs_gap": {
+      "n": 15,
+      "hits": 12,
+      "hit_rate_pct": 80.0,
+      "se_pct": 10.3,
+      "base_rate_pct": 53.3,
+      "edge_pp": 26.7,
+      "significant": true
+    },
+    "vs_day": {
+      "n": 15,
+      "hits": 12,
+      "hit_rate_pct": 80.0,
+      "se_pct": 10.3,
+      "base_rate_pct": 80.0,
+      "edge_pp": 0.0,
+      "significant": false
+    },
+    "vs_open_to_close": {
+      "n": 15,
+      "hits": 8,
+      "hit_rate_pct": 53.3,
+      "se_pct": 12.9,
+      "base_rate_pct": 80.0,
+      "edge_pp": -26.7,
+      "significant": true
+    },
+    "note": "today's pre-open book (Nifty + F&O set) -- known only at 09:07-09:08; tiny sample"
+  }
+}

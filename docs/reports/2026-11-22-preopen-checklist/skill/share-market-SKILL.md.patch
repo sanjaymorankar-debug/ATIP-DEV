@@ -1,0 +1,69 @@
+--- a/skills/share-market/SKILL.md
++++ b/skills/share-market/SKILL.md
+@@ -55,6 +55,33 @@
+ Run this when the user asks for the pre-market report, ATIP daily report,
+ "what does the market look like today", or anything about pre-market conditions.
+ 
++### A0. ATIP 9:00 AM Pre-Open Checklist (read this first)
++
++"Run pre-market report" always includes ATIP's Pre-Open Checklist. Read it from ATIP; do not recompute it:
++
++- `GET <ATIP URL>/api/preopen` (JSON) or the dashboard page `/preopen` (Reports → Pre-open checklist; also the first
++  card on Home). `today` is today's latest run: `preliminary` (08:15 IST, inside ATIP's pre-market report), `0900`
++  (09:00 IST) or `0909` (09:09 IST, after NSE's pre-open auction has matched). `record` holds each check's hit rate
++  over the last 20 / 60 scored days. `GET /api/preopen?compact=1` is the one-line version.
++- The four checks and how ATIP scores them (thresholds are in `config`, never assume them):
++  1. **US cues** — Nasdaq Composite + Dow previous close, NQ + YM futures at run time: green +1 / red −1 / mixed 0.
++  2. **India VIX** — above 15 "Volatile", else "Stable". A volatility modifier only: it does NOT vote. On Volatile
++     days ATIP's advice is size ×0.5, stops ×1.5, avoid buying options outright, prefer defined-risk spreads.
++  3. **NSE Advances vs Declines** — NSE's pre-open book (all securities); before 09:00 it is the PRIOR DAY's A/D and
++     ATIP labels it "prior-day" — say so in the report.
++  4. **GIFT Nifty** (NSE IX; formerly SGX Nifty) — the basis-adjusted move (GIFT now vs GIFT at 15:30 IST yesterday)
++     within ±0.15 % is a "Flat" open, above Gap-Up, below Gap-Down. The raw "GIFT vs previous Nifty close" is shown too.
++- Report: **Market Bias** (Bullish / Bearish / Neutral from the vote sum), **Volatility Regime**, **Expected Open**,
++  each check's raw value, source and fetch time in IST, and every caveat (stale / unavailable / prior-day). A check
++  with status STALE or UNAVAILABLE did not vote — never fill it in from a web search and present it as ATIP's.
++- What the backtest (611 sessions, Jun 2024 – Nov 2026) says, to state honestly: US cues call the opening gap about
++  72 % of the time (base rate 57 %) and the day's close vs the previous close about 64 % (base 50 %), but they say
++  nothing about the move AFTER 09:15 (open → close ≈ 49 %). Prior-day A/D adds nothing. VIX above 15 roughly doubles
++  the typical gap and day range. GIFT and the live pre-open A/D have too little clean history yet — use `record`.
++- Paper only, informational. ATIP's checklist never places or sizes an order.
++
++If ATIP is unreachable, say so and fall back to A1 with web search, labelled "skill estimate, not ATIP".
++
+ ### A1. Global Market Check
+ 
+ Search and display the following (use web search for live data):
+@@ -93,7 +120,13 @@
+ 
+ ### A3. Market Health Score
+ 
+-Compute a 0–100 Market Health Score from:
++Use ATIP's own Market Health score (`GET <ATIP URL>/api/mh`, also in `/api/preopen` → the pre-market report) and its
++regime. ATIP weights: Nifty trend 0.20, Bank Nifty 0.15, breadth (% above 200-DMA) 0.10, India VIX (inverted) 0.10,
++FII 0.10, DII 0.10, global 0.10, sector 0.10, A/D 0.05, Asia 0.05 — GIFT Nifty is NOT an input (it is the checklist's
++expected-open check). Only when ATIP is unreachable compute the fallback below, labelled "skill estimate, not ATIP's
++Market Health" — its weights differ from ATIP's and the two must not be mixed in one report.
++
++Fallback only — compute a 0–100 Market Health Score from:
+ - Nifty trend vs 50/200 SMA (20 pts)
+ - VIX level and trend (15 pts)
+ - FII/DII net activity (15 pts)
+@@ -184,9 +217,15 @@
+ 🌏 GLOBAL OVERNIGHT SUMMARY
+ [3–4 lines: US close, Asian open, key events]
+ 
+-📍 GIFT NIFTY DIRECTION:  [↑↓→] [value] [premium/discount]
+-📍 EXPECTED NIFTY OPEN:   [level + gap estimate]
++🧭 PRE-OPEN CHECKLIST (ATIP, [08:15 preliminary | 09:00 | 09:09] IST)
++   Bias: [Bullish/Bearish/Neutral] (votes [±n] of [k])  ·  Volatility: [Volatile/Stable] (VIX [x] vs 15)
++   Expected open: [Gap-Up/Flat/Gap-Down] (GIFT [±x %] basis-adjusted; raw vs Nifty close [±y %])
++   US: [green/red/mixed] (Nasdaq ±, Dow ±, NQ ±, YM ±)  ·  A/D: [adv]/[dec] ([pre-open | PRIOR-DAY])
++   Track record (last 20 scored days): bias [h/n], open call [h/n] — [caveats]
+ 
++📍 GIFT NIFTY DIRECTION:  [↑↓→] [value] [premium/discount] (from the checklist's GIFT source)
++📍 EXPECTED NIFTY OPEN:   [level + gap estimate] (the checklist's expected open)
++
+ 🏛 MARKET REGIME:         [Regime label]
+ 💊 MARKET HEALTH SCORE:   [X/100] — [Label]
+ 

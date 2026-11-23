@@ -112,6 +112,8 @@ NAV = [
         ("Generate", "/reports", "Make any report now in HTML, CSV, Excel or PDF"),
         ("Schedules", "/reports?tab=schedules", "When each report runs, in IST"),
         ("Archive", "/reports?tab=archive", "Every report generated, to download again"),
+        ("Pre-open checklist", "/preopen", "09:00 IST: US cues, India VIX, NSE A/D, GIFT Nifty -> bias, volatility, "
+                                           "expected open, and how often each has been right"),
         ("Post-market RCA", "/rca", "Why each losing trade lost and which rule would have helped (built 16:00 IST)"),
         ("Algo Signals", "/algo-signals", "High-volume breakout and retest setups (Kite scanner), ranked at each run"),
         ("Custom report", "/reports?tab=custom", "Pick sections, sessions and dates")]),

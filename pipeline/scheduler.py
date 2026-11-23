@@ -1627,6 +1627,48 @@ def _schedule_w29_jobs():
     schedule.every().day.at("08:10").do(_w37_vault_expiry)             # W37 (ENT-06)
     schedule.every().day.at("07:50").do(_w38_compliance)              # W38 (SEC-05)
     _schedule_w39_jobs()
+    _schedule_preopen_checklist_jobs()                                # after W39: 09:09 runs after preopen_capture
+
+
+def _schedule_preopen_checklist_jobs():
+    """22 Nov 2026 (PO-CL-05): the 9:00 AM Pre-Open Checklist (strategy/preopen_checklist.py) on trading days -- the
+    preliminary read inside the 08:15 pre-market report refresh, the run at 09:00, the refresh at 09:09 after the
+    pre-open auction has matched (order entry closes at a random second 09:07-09:08), GIFT's 15:31 reference for the
+    next morning's basis-adjusted move, and the learning loop's scoring at 15:45. Weekends and NSE holidays skip."""
+    schedule.every().day.at("09:00").do(_preopen_checklist, "0900")
+    schedule.every().day.at("09:09").do(_preopen_checklist, "0909")
+    schedule.every().day.at("15:31").do(_preopen_gift_close)
+    schedule.every().day.at("15:45").do(_preopen_evaluate)
+
+
+def _preopen_checklist(label):
+    if not is_market_day():
+        return
+    try:
+        from strategy.preopen_checklist import run as checklist_run
+        run_job(f"preopen_checklist_{label}", checklist_run, label, notify=label in ("0900", "0909"))
+    except Exception as e:
+        log.warning(f"  Pre-open checklist ({label}): {e}")
+
+
+def _preopen_gift_close():
+    if not is_market_day():
+        return
+    try:
+        from strategy.preopen_checklist import capture_gift_close
+        run_job("preopen_gift_close", capture_gift_close)
+    except Exception as e:
+        log.warning(f"  Pre-open GIFT reference: {e}")
+
+
+def _preopen_evaluate():
+    if not is_market_day():
+        return
+    try:
+        from strategy.preopen_checklist import evaluate
+        run_job("preopen_checklist_evaluate", evaluate)
+    except Exception as e:
+        log.warning(f"  Pre-open checklist scoring: {e}")
 
 
 def _schedule_w39_jobs():
@@ -2362,6 +2404,12 @@ def _news_impact_evaluate():
 
 
 def _premarket_report_refresh():
+    if is_market_day():                              # PO-CL-07: the checklist's preliminary read goes into the report
+        try:
+            from strategy.preopen_checklist import run as checklist_run
+            run_job("preopen_checklist_preliminary", checklist_run, "preliminary")
+        except Exception as e:
+            log.warning(f"  Pre-open checklist (preliminary): {e}")
     try:
         from pipeline.premarket_report import run_job as report_job
         run_job("premarket_report", report_job, "08:15")

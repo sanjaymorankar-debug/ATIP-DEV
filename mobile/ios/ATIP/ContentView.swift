@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var editing = false
     @State private var tab = 0
     @State private var home = [0, 0, 0, 0, 0]       // per tab: bumped when the open tab is tapped again
+    @State private var opened: URL? = nil           // a page a tapped reminder opens in the Home tab (/preopen)
+    @State private var openedSeq = 0                // the last tap handled (PreOpenReminder.Tap.id)
 
     init() {
         // 2026-11-03: the tab bar in the web tokens, as the web tab bar draws it -- surface background, muted items,
@@ -44,6 +46,13 @@ struct ContentView: View {
         }
         .background(Color.axSurface.ignoresSafeArea())      // behind the status bar, as the compact banner row
         .task(id: server) { await status.run(server: server) }
+        // 22 Nov 2026: the 09:00 IST pre-open reminder tapped (also when it launched the app): /preopen in Home
+        .onReceive(PreOpenReminder.shared.$tapped) { tap in
+            guard let tap, tap.id != openedSeq else { return }
+            opened = URL(string: base + tap.path)
+            openedSeq = tap.id
+            tab = 0
+        }
         .alert("ATIP server address", isPresented: $editing) {
             TextField("http://192.168.1.10:8000", text: $server)
                 .textInputAutocapitalization(.never).keyboardType(.URL)
@@ -51,7 +60,11 @@ struct ContentView: View {
         }
     }
 
+    /// The server address set in the app, with its sub-path (e.g. https://host/atip), no trailing "/".
+    private var base: String { server.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) }
+
     private func screen(_ i: Int, _ path: String) -> WebScreen {
-        WebScreen(url: URL(string: server.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) + path), home: home[i])
+        WebScreen(url: URL(string: base + path), home: home[i],
+                  open: i == 0 ? opened : nil, openSeq: i == 0 ? openedSeq : 0)
     }
 }

@@ -436,6 +436,11 @@ def send_morning_digest(trade_date=None):
         try: market=_market_lines(conn,td)
         except Exception as e:                      # a bad row in these lines must not cost the whole brief
             log.warning(f"  Morning digest: market lines unavailable: {e}"); market=[]
+        try:                                        # PO-CL-08: the checklist's preliminary read and its GIFT
+            from strategy import preopen_checklist as PC
+            pc=PC.latest_run(conn,date.today()); gl=PC.latest_gift(conn)
+        except Exception as e:
+            log.warning(f"  Morning digest: pre-open checklist unavailable: {e}"); pc=gl=None
     finally:
         conn.close()
 
@@ -454,8 +459,16 @@ def send_morning_digest(trade_date=None):
         bits=[]
         if idx["nifty50_chg"] is not None: bits.append(f"Nifty {idx['nifty50_chg']:+.2f}%")
         if idx["india_vix"]: bits.append(f"VIX {idx['india_vix']:.1f}")
-        if idx["gift_nifty_chg"] is not None: bits.append(f"GIFT {idx['gift_nifty_chg']:+.2f}%")
+        # Dhan's gift_nifty_chg is frozen at 0.00 (PO-CL-08): GIFT comes from the checklist's source, today's only
+        if gl and gl.get("move_pct") is not None and str(gl.get("as_of") or "")[:10]==str(date.today()):
+            bits.append(f"GIFT {gl['move_pct']:+.2f}% ({gl.get('as_of','')[11:16]} IST)")
         if bits: body.append("<b>Open:</b> "+" · ".join(bits))
+    if pc:
+        from html import escape as _esc
+        tag="preliminary 08:15" if pc.get("run_label")=="preliminary" else str(pc.get("fetched_at_ist") or "")[11:16]
+        body.append(f"<b>Pre-open checklist ({_esc(tag)} IST):</b> {_esc(str(pc.get('bias')))} · "
+                    f"{_esc(str(pc.get('vix_regime')))} · expected {_esc(str(pc.get('expected_open')))}"
+                    +(" · A/D prior-day" if pc.get("ad_basis")=="prior-day" else ""))
     if glb and glb["global_score"] is not None:
         body.append(f"<b>Global:</b> score {glb['global_score']:.0f}"
                     +(f", S&amp;P {glb['sp500_chg']:+.2f}%" if glb["sp500_chg"] is not None else ""))

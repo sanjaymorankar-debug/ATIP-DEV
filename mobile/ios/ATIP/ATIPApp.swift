@@ -9,8 +9,13 @@ import SwiftUI
 /// The web views send "ATIPApp/<version>" in the user agent so the page shell hides its own navigation.
 /// The app holds no credentials and places no orders; writes go through the web pages and are refused while
 /// ATIP is stopped.
+/// 22 Nov 2026: a weekday 09:00 IST reminder of the pre-open checklist (PreOpenReminder); a tap opens /preopen in
+/// the Home tab.
 @main
 struct ATIPApp: App {
+    /// Sets up the pre-open reminder before launch finishes (PreOpenReminder.swift).
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         // 2026-11-03 (10:54 PM brief): dark by default, as the web pages now are (a trading screen); the native
         // banner and tab bar take the dark web tokens so they match the page the web view shows.

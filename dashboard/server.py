@@ -2016,6 +2016,8 @@ if HAS_FASTAPI:
     _install_rootprefix(app)                                                          # ATIP_ROOT_PATH (/atip); no-op at the root
     from dashboard.rca_routes import register as _register_rca_routes                  # 6 Nov 2026: post-market RCA (/rca)
     _register_rca_routes(app, _guard, _Req, get_connection, json_safe)
+    from dashboard.preopen_routes import register as _register_preopen_routes          # 22 Nov 2026: pre-open checklist
+    _register_preopen_routes(app, _guard, _Req, get_connection, json_safe)             # (/preopen, /api/preopen)
     from dashboard.arms_routes import register as _register_arms_routes                # 16 Nov 2026: arms, gate, DUMMY GTTs (/ab)
     _register_arms_routes(app, _guard, _Req, get_connection, json_safe)
     from dashboard.engine_routes import register as _register_engine_routes            # 18 Nov 2026: Rs 25K session engine

@@ -1,10 +1,52 @@
-# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02, UI fixes v2 + ten-session board 2026-11-03
+# ATIP mobile apps (Android + iOS) — 2026-10-26, tabs and banner 2026-11-02, UI fixes v2 + ten-session board 2026-11-03, pre-open checklist notification 2026-11-22
 
 ATIP had no native app before this change (tracker UXR-10: `/m` was a read-only PWA). These are thin native
 shells around ATIP's own mobile screens, so every UI change on the server reaches the phone without a store
 release.
 
-**Version 2026.11.18.1** (Android `versionCode` 12 / `versionName` 2026.11.18.1; iOS `CFBundleShortVersionString`
+**Version 2026.11.22.1** (Android `versionCode` 13 / `versionName` 2026.11.22.1; iOS `CFBundleShortVersionString`
+2026.11.22.1 / `CFBundleVersion` 13), 22 Nov 2026 (the Pre-Open Checklist, PAPER). **Android built on the owner's Mac
+at 00:07:26 IST 23 Nov** (`./gradlew assembleDebug`, BUILD SUCCESSFUL, no Kotlin warnings, `app-debug.apk` reads
+`versionCode` 13 / `versionName` 2026.11.22.1). **iOS not built:** the Mac still has no Xcode (needs the owner's
+Apple ID; see Build below).
+
+* **Pre-Open Checklist card on Home (server screen, no native change):** the server's 09:00 IST pre-open run -- the
+  day's bias, volatility regime (India VIX) and expected open -- as a card on `/home`; the full checklist is the new
+  page `/preopen`. The apps show both as soon as the server runs this code.
+* **09:00 IST notification, Android (native, new):** Monday to Friday, at 09:00 IST wherever the phone is. An
+  inexact alarm, so no exact-alarm permission: it comes between 09:00:30 and 09:10:30 IST (Android 12+ makes an
+  inexact window at least 10 minutes; a phone left untouched in Doze can get it later). It asks
+  `GET /api/preopen?compact=1` on the address set in the app (sub-path included), with the web view's cookies and
+  the `ATIPApp/` user agent, and shows the server's own words, e.g. "ATIP pre-open: Bullish -- Stable volatility
+  (VIX 13.2) · expected Gap-Up · 09:00 IST".
+  - NSE holiday (`trading_day` false): no notification.
+  - Not ready yet (`ready` false): asked once more about 2 minutes later, then "ATIP pre-open checklist -- Tap to open
+    (data not ready yet)"; the same when ATIP cannot be reached or asks for a sign-in.
+  - Tap: `/preopen` opens in the Home tab (tap Home again for `/home`).
+  - Android 13+ asks once to allow notifications, with ATIP's reason first; after "Not now" switch them on in the
+    phone's Settings › Apps › ATIP › Notifications. The channel "Pre-open checklist" can be muted on its own.
+  - The alarm is set again after a reboot, an app update, and a time-zone or clock change.
+* **09:00 IST reminder, iOS (native, new):** five repeating local notifications, Monday to Friday 09:00 IST (time
+  zone Asia/Kolkata, wherever the phone is); permission is asked at first launch. Limits: the words are fixed -- "ATIP
+  pre-open checklist: 09:00 IST: bias, volatility regime and expected open are ready — tap to open" -- because iOS
+  cannot fetch the checklist when a local notification fires (that needs a push service), and it **cannot skip NSE
+  holidays** (it comes on a holiday too). Tap: `/preopen` opens in the Home tab.
+* **Files.** Android: `PreOpenReceiver.kt` (new: the alarm, the fetch, the notification; set again on boot, update,
+  time-zone or clock change), `PreOpenRules.kt` (new: the IST window and what a reply means; no Android classes),
+  `MainActivity.kt` (opens `/preopen` from the notification, asks for the permission once, sets the alarm at launch,
+  writes the sign-in cookie to disk on leaving), `AndroidManifest.xml` (`RECEIVE_BOOT_COMPLETED`,
+  `POST_NOTIFICATIONS`, the receiver), `res/values/strings.xml`, `res/drawable/ic_notify_preopen.xml` (new, Material
+  Icons "checklist"), `app/build.gradle.kts`. iOS: `PreOpenReminder.swift` (new: the five reminders, the tap, the app
+  delegate), `ATIPApp.swift`, `ContentView.swift` and `WebScreen.swift` (a tapped reminder opens `/preopen` in
+  Home), `project.yml`.
+* **Checks run.** Android: the APK build above; `PreOpenRules.kt` compiled on the JVM and run against 20 cases (the
+  IST window on weekdays, Friday to Monday, a phone in New York or London, the alarm at 03:30:30 UTC; holiday, not
+  ready, ready, another day's reply, no notify text). Not checked on a phone yet. iOS: all Swift files pass `swiftc -parse` (Swift 6.0.3, Command Line Tools); a
+  type-check against Mac Catalyst UIKit could not run on 23 Nov -- the Command Line Tools' MacOSX 15.2 SDK does not
+  match their compiler build, and the 14.5 SDK clashes with their `SwiftBridging` module map -- so the iOS code is
+  reviewed by hand only. Build it in Xcode before release.
+
+Earlier, **Version 2026.11.18.1** (Android `versionCode` 12 / `versionName` 2026.11.18.1; iOS `CFBundleShortVersionString`
 2026.11.18.1 / `CFBundleVersion` 12), 18 Nov 2026 (the ₹25K session engine, PAPER). **Android built on the owner's Mac
 at 15:24:24 IST 18 Nov** (`./gradlew assembleDebug`, BUILD SUCCESSFUL, `app-debug.apk`). **iOS not built:** the Mac
 still has no Xcode (needs the owner's Apple ID; see Build below).

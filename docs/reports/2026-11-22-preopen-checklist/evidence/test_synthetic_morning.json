@@ -1,0 +1,46 @@
+[
+  {
+    "run_label": "0900",
+    "fetched_at_ist": "2026-11-23 09:00:21",
+    "bias": "Bearish",
+    "vote_sum": -3,
+    "vix_regime": "Volatile",
+    "expected_open": "Gap-Down",
+    "gift_move_pct": -0.34,
+    "gift_move_basis": "vs GIFT 15:30 prev session",
+    "ad_basis": "pre-open (indicative)"
+  },
+  {
+    "telegram_text": "\ud83d\udd34 <b>ATIP \u2014 Pre-Open Checklist (09:00 IST)</b>\nBias: Bearish (votes -3 from 3 of 3)\nVolatility: Volatile (VIX 17.85 vs 15)\nExpected open: Gap-Down (GIFT -0.34%, vs GIFT 15:30 prev session)\nUS: red (Nasdaq -5.28%, Dow -1.93%, NQ +0.30%, YM -0.19%)\nA/D: 980 / 1,130 (pre-open (indicative))\nAdvice: size x0.5, stops x1.5 wider; prefer defined-risk, avoid option buying\n<i>Paper only \u00b7 informational, not advice \u00b7 2026-11-23 09:00:21 IST</i>"
+  },
+  {
+    "run_label": "0909",
+    "fetched_at_ist": "2026-11-23 09:09:12",
+    "bias": "Bearish",
+    "vote_sum": -3,
+    "vix_regime": "Volatile",
+    "expected_open": "Gap-Down",
+    "gift_move_pct": -0.408,
+    "gift_move_basis": "vs GIFT 15:30 prev session",
+    "ad_basis": "pre-open (after matching)"
+  },
+  {
+    "telegram_text": "\ud83d\udd34 <b>ATIP \u2014 Pre-Open Checklist (09:09 update IST)</b>\nBias: Bearish (votes -3 from 3 of 3)\nVolatility: Volatile (VIX 17.85 vs 15)\nExpected open: Gap-Down (GIFT -0.41%, vs GIFT 15:30 prev session)\nUS: red (Nasdaq -5.28%, Dow -1.93%, NQ +0.30%, YM -0.19%)\nA/D: 1,043 / 1,520 (pre-open (after matching))\nAdvice: size x0.5, stops x1.5 wider; prefer defined-risk, avoid option buying\n<i>Paper only \u00b7 informational, not advice \u00b7 2026-11-23 09:09:12 IST</i>"
+  },
+  {
+    "notify_payload": {
+      "date": "2026-11-23",
+      "trading_day": true,
+      "ready": true,
+      "run_label": "0909",
+      "bias": "Bearish",
+      "vix_regime": "Volatile",
+      "expected_open": "Gap-Down",
+      "fetched_at_ist": "2026-11-23 09:09:12",
+      "notify": {
+        "title": "ATIP pre-open: Bearish",
+        "body": "Volatile volatility (VIX 17.9) \u00b7 expected Gap-Down \u00b7 09:09 IST"
+      }
+    }
+  }
+]

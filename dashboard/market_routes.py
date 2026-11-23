@@ -43,10 +43,21 @@ def preopen(conn) -> dict:
                          "ORDER BY date DESC LIMIT 1").fetchone()
     out = {"gift": dict(gift) if gift else None, "nifty_last_close": dict(nifty) if nifty else None,
            "implied_gap_pct": None}
-    if gift and nifty and gift["gift_nifty"] and nifty["close"]:
-        out["implied_gap_pct"] = round((gift["gift_nifty"] / nifty["close"] - 1) * 100, 2)
-        out["gap_note"] = ("GIFT Nifty trades at a futures basis to spot; the implied gap is indicative, "
-                           "not a forecast of the open.")
+    # PO-CL-08 (22 Nov 2026): Dhan's GIFT quote (index_levels.gift_nifty) is frozen -- one value all day -- so the
+    # implied gap comes from the pre-open checklist's live GIFT (NSE) when there is one; "gift" stays for reference.
+    live = None
+    try:
+        from strategy.preopen_checklist import latest_gift
+        live = latest_gift(conn)
+    except Exception:
+        live = None
+    out["gift_live"] = live
+    out["gift_dhan_frozen"] = True
+    if live and live.get("price") and nifty and nifty["close"]:
+        out["implied_gap_pct"] = round((live["price"] / nifty["close"] - 1) * 100, 2)
+        out["gap_note"] = ("GIFT Nifty (NSE, " + str(live.get("as_of") or "")[:16] + " IST) trades at a futures basis "
+                           "to spot; the implied gap is indicative, not a forecast of the open. The pre-open "
+                           "checklist's basis-adjusted move is at /api/preopen.")
     out["gift_series"] = _rows(conn, "SELECT date, close FROM prices_daily WHERE symbol='GIFTNIFTY' "
                                      "ORDER BY date DESC LIMIT 30")[::-1]
     g = conn.execute("SELECT * FROM global_markets ORDER BY date DESC, CASE time WHEN 'premarket' THEN 0 "
