@@ -58,11 +58,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import shlex
 import subprocess
 import sys
+import tarfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -94,6 +96,9 @@ POLL_S = 20
 NEVER = ("atip_data/", ".venv/", "deploy/atip.env", "deploy/pg_password.txt")
 PACKAGES = ("requirements.txt", "requirements.lock.txt", "setup.py", "pyproject.toml")
 NOT_RUNTIME = ("docs/", "tests/", "mobile/", ".github/", "deploy/")
+# 23 Nov 2026: the owner's spreadsheets (only Mac tools write them; nothing on the VPS reads one) and Windows-only
+# scripts never run on the VPS, so a difference in them does not make the server "not that commit".
+NOT_RUNTIME_EXT = (".md", ".xlsx", ".xls", ".bat", ".ps1", ".cmd")
 
 DEFAULTS = {"app_dir": "/var/www/bkesari/atip", "state_dir": "/var/www/bkesari/atip-deploys",
             "service": "bkesari-atip.service", "app_user": "bkesari", "port": 8100,
@@ -177,26 +182,29 @@ class Repo:
         return [x.decode() for x in self.git("ls-tree", "-r", "-z", "--name-only", sha).split(b"\0") if x]
 
     def sha256s(self, sha, paths) -> dict:
-        """{path: sha256 of the file at commit sha} (git cat-file --batch, one process)."""
+        """{path: sha256 of the file at commit sha as `git archive` writes it}, None for a path not in the commit.
+
+        The bytes a deploy puts on the server, so .gitattributes eol rules apply. 23 Nov 2026: hashing the raw blob
+        (git cat-file --batch) made *.bat / *.ps1 (eol=crlf: CRLF on the server, LF in the blob) "differ" and
+        adopt refused a server that matched its commit; `cat-file --batch --filters` does not filter on the Mac's
+        git 2.39."""
         if not paths:
             return {}
-        req = "".join(f"{sha}:{p}\n" for p in paths).encode()
-        raw = self.git("cat-file", "--batch", input=req)
-        out, i = {}, 0
-        for p in paths:
-            j = raw.index(b"\n", i)
-            head = raw[i:j].split()
-            if head[-1] == b"missing":
-                out[p] = None
-                i = j + 1
-                continue
-            size = int(head[2])
-            out[p] = hashlib.sha256(raw[j + 1:j + 1 + size]).hexdigest()
-            i = j + 1 + size + 1
+        present = set(self.files(sha))
+        out = {p: None for p in paths}
+        want = [p for p in paths if p in present]
+        for i in range(0, len(want), 500):                     # keeps each command line short
+            with tarfile.open(fileobj=io.BytesIO(self.archive(sha, want[i:i + 500]))) as tf:
+                for m in tf:
+                    if m.isfile():
+                        out[m.name] = hashlib.sha256(tf.extractfile(m).read()).hexdigest()
+                    elif m.issym():                            # as the blob: the link's target path
+                        out[m.name] = hashlib.sha256(m.linkname.encode()).hexdigest()
         return out
 
     def archive(self, sha, paths) -> bytes:
-        return self.git("archive", "--format=tar", sha, "--", *paths)
+        # literal pathspecs: a file name with [ ] * ? is a name, not a pattern
+        return self.git("--literal-pathspecs", "archive", "--format=tar", sha, "--", *paths)
 
 
 # ═════════════════════════════════════ the server ═══════════════════════════════════════════════════════
@@ -709,9 +717,11 @@ def tree_report(repo, srv, sha) -> tuple[bool, list[str]]:
     for p in files:
         if have.get(p) != want[p]:
             what = "missing" if have.get(p) == "-" else "differs"
-            (other if p.startswith(NOT_RUNTIME) or p.endswith(".md") else runtime).append(f"{p} ({what})")
+            (other if p.startswith(NOT_RUNTIME) or p.lower().endswith(NOT_RUNTIME_EXT) else runtime).append(
+                f"{p} ({what})")
     say(f"server tree vs {sha[:7]}: {len(files) - len(runtime) - len(other)}/{len(files)} files match; "
-        f"{len(runtime)} runtime and {len(other)} non-runtime (docs/tests/deploy) differences")
+        f"{len(runtime)} runtime and {len(other)} non-runtime (docs/tests/deploy/spreadsheets/Windows scripts) "
+        f"differences")
     for x in runtime[:40]:
         say(f"  RUNTIME  {x}")
     for x in other[:10]:

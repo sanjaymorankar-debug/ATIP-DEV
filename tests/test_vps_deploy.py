@@ -360,6 +360,48 @@ def test_adopt_records_what_runs_after_checking_every_file(w, capsys):
     assert code == 0 and "DRY RUN" in out and w.c["c2"][:7] in out
 
 
+def _server_is(w, name):
+    """The server's app folder holds exactly commit `name`, as a deploy (git archive) writes it."""
+    shutil.rmtree(w.app)
+    w.app.mkdir()
+    w.extract(name)
+
+
+def test_adopt_hashes_files_as_a_checkout_writes_them(w, capsys):
+    """23 Nov 2026: *.bat / *.ps1 are CRLF on the server (.gitattributes eol=crlf) and LF in the git blob; adopt
+    hashed the blob and refused a server that held its commit exactly."""
+    c3 = w.commit("c3", {".gitattributes": "*.bat text eol=crlf\n*.ps1 text eol=crlf\n",
+                         "start.bat": "echo one\necho two\n", "setup.ps1": "Write-Host hi\n",
+                         "odd [1] (x).py": "Z = 1\n"})
+    w.push()
+    _server_is(w, "c3")
+    assert (w.app / "start.bat").read_bytes() == b"echo one\r\necho two\r\n"
+    repo = vd.Repo(w.repo)
+    h = repo.sha256s(c3, ["start.bat", "odd [1] (x).py", "a.py", "not-there.py"])
+    assert h["start.bat"] == vd.hashlib.sha256(b"echo one\r\necho two\r\n").hexdigest()
+    assert h["odd [1] (x).py"] == vd.hashlib.sha256(b"Z = 1\n").hexdigest() and h["not-there.py"] is None
+    code, out = w.run("adopt", c3, "--authorize", capsys=capsys)
+    assert code == 0, out
+    assert "0 runtime and 0 non-runtime" in out and w.marker()["commit"] == c3
+
+
+def test_spreadsheets_and_windows_scripts_are_not_runtime(w, capsys):
+    """23 Nov 2026: the server lacked the owner's .xlsx copies and had an older tracker; nothing on the VPS reads
+    them, so adopt reports them and goes on. A runtime file that differs still refuses."""
+    c3 = w.commit("c3", {"TRACKER.xlsx": "v2\n", "Features (1).xlsx": "f\n", "install.CMD": "x\n"})
+    w.push()
+    _server_is(w, "c3")
+    (w.app / "TRACKER.xlsx").write_text("older\n")
+    (w.app / "Features (1).xlsx").unlink()
+    (w.app / "install.CMD").unlink()
+    code, out = w.run("adopt", c3, "--authorize", capsys=capsys)
+    assert code == 0, out
+    assert "0 runtime and 3 non-runtime" in out and "other    TRACKER.xlsx (differs)" in out
+    (w.app / "a.py").write_text("X = 99\n")
+    code, out = w.run("adopt", c3, "--authorize", capsys=capsys)
+    assert code == 2 and "RUNTIME  a.py (differs)" in out
+
+
 def test_restart_only(w, capsys):
     code, out = w.run("restart", "--authorize", capsys=capsys)
     assert code == 0, out
