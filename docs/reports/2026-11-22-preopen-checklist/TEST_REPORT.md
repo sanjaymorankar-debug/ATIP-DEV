@@ -9,7 +9,7 @@ off GitHub master `0f8f539`. All times IST.
 |---|---|---|---|
 | **Test** | Local ATIP on the Mac: `uvicorn dashboard.server:app`, port 8911, `ATIP_ENV=test` | A fresh SQLite DB (`main.py --init`, then migrations 0001–0007) | No Dhan credentials, no Telegram token. Yahoo reachable. NSE's redirect host was not allowed by the sandbox. |
 | **Prod snapshot** | Local ATIP on the Mac: port 8912, `ATIP_ENV=staging`, **PostgreSQL** backend, as on the VPS | The VPS's own pg_dump of **20 Nov 2026 19:15 IST**, restored on a throwaway local PostgreSQL (restore 00:14:16–00:14:36 IST) | Never connected to the VPS. Feeds, scheduler and order monitor off. |
-| **Prod (VPS)** | The live `bkesari-atip.service` | Live | Read-only source checks 23 Nov 08:46–09:09 IST (§6a). **86db41e LIVE since 09:36:13 IST 23 Nov** (§6b). The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See §6. |
+| **Prod (VPS)** | The live `bkesari-atip.service` | Live | Read-only source checks 23 Nov 08:46–09:09 IST (§6a). **86db41e LIVE since 09:36:13 IST, ade78e9 (DEF-06) since 10:41:14 IST, 23 Nov** (§6b). The first live run is Wed 25 Nov 09:00 IST (24 Nov is an NSE holiday). See §6. |
 
 ## 1. Automated tests
 
@@ -155,14 +155,16 @@ for "all the changes to production right now".
 | PD-04 | Scheduler | 09:24 → 09:37:17 | Heartbeat **242 → 246 jobs**: +4 = 09:00, 09:09, 15:31 and 15:45 checklist jobs. The leader is the new pid; order monitor ok at 09:37:20. |
 | PD-05 | Pages without a login | ~09:37 | `/atip/api/preopen` → 401 JSON. `/atip/preopen` and `/atip/home` → 302 to `/atip/login?next=…`, correctly behind sign-in. |
 | PD-06 | `python -m strategy.preopen_checklist show` | ~09:37 | "Pre-open checklist: no run yet"; no manual run |
+| PD-07 | **ade78e9 (DEF-06) deployed** in one restart at a quiet minute (owner's yes in the VPS session) | 10:41:14 | pid 1797674 → **1813232**, NRestarts 0. The 4 files matched 86db41e before and ade78e9 after. Backups `atip-code-86db41e-20261123-1036.tar` + `atip-pg/atip-2026-11-23_1036.dump`. |
+| PD-08 | Health, migration, scheduler after it | 10:41:21–10:42:30 | live / ready 200 (local and public); 0 ERROR / Traceback; **0008 preopen_gift_reference APPLIED 10:41:16.04** (22.8 ms); `preopen_gift_ref` + `preopen_signals` exist; 246 jobs; leader 1813232; order monitor ok; `show`: no run yet |
 
-**ade78e9 (DEF-06).** The VPS session verified the 4 extra files (sha256, compile, no `orders` import). It waits for the owner's yes in its session, with the deploy before 15:31 IST.
+Today's 15:31 IST GIFT reference is the first one written with its contract.
 
 ### 6c. Still to run
 
 1. **Signed in.** The owner opens `/atip/preopen` and `/atip/home` once. The VPS session did not sign in.
 2. **Mon 23 Nov 15:31 IST.** The first GIFT reference is stored. If only 86db41e is live by then, it carries no contract (caveat on Wednesday, UT-31).
-3. **If ade78e9 is deployed.** Check that 0008 is APPLIED and `preopen_gift_ref` exists.
+3. **ade78e9 deployed** 10:41:14 IST (PD-07/08): 0008 APPLIED. Done.
 4. **Wed 25 Nov 09:00 and 09:09 IST.**
    - Rows are stored.
    - The Telegram line arrives.

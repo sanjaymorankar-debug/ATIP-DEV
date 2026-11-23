@@ -60,7 +60,7 @@ Details are in [BACKTEST.md](BACKTEST.md).
 - **Deployed:**
   - **86db41e has been LIVE on the VPS since 09:36:13 IST, Mon 23 Nov 2026.** Owner's yes; one restart; migration 0007
     applied; health 200; +4 scheduler jobs (TEST_REPORT §6b).
-  - The DEF-06 fix (ade78e9, on GitHub master since 09:34:52 IST) waits for the owner's yes in the VPS session.
+  - **The DEF-06 fix (ade78e9) has been LIVE since 10:41:14 IST** (second restart, owner's yes; migration 0008 applied).
   - The first live 09:00 run is **Wed 25 Nov 2026** (24 Nov is an NSE holiday).
 - **Checked on the VPS before the deploy:**
   - NSE `marketStatus` carries `giftnifty`.
