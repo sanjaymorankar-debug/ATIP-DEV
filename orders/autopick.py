@@ -283,7 +283,8 @@ def _note_skip(conn, sid, kind: str, symbol: str, why: str, dry_run: bool) -> No
 
 def _cooled(conn, symbol: str, minutes) -> str | None:
     """KGF-19: the symbol's stop that fired less than `minutes` ago (INDHOTEL was bought again 31 s after its stop on
-    11 Nov). Off unless the session's arm sets reentry_cooldown_min."""
+    11 Nov; S7 ICICIBANK 31 s after its stop on 23 Nov). `minutes` comes from arms.setting: 375 (the rest of the
+    day) for rank-fill sessions unless the arm sets reentry_cooldown_min; 0 / None = off."""
     if not minutes:
         return None
     from datetime import datetime, timedelta

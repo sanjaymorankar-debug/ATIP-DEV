@@ -131,7 +131,9 @@ def test_every_source_failing_is_reported_not_hidden(A, monkeypatch):
     for k in A.FETCHERS:
         monkeypatch.setitem(A.FETCHERS, k, lambda t, n: [])
     r = A.run("test", now=datetime(2026, 10, 26, 10, 0, tzinfo=IST))
-    assert r["status"] == "FAILED" and set(r["failed"]) == set(A.settings()["indexes"])
+    # 23 Nov 2026: KSE100 is optional, so it is reported under optional_failed; every index is still accounted for
+    assert r["status"] == "FAILED" and set(r["failed"] + r["optional_failed"]) == set(A.settings()["indexes"])
+    assert r["optional_failed"] == ["KSE100"]
     assert r["sentiment"]["score"] is None or r["sentiment"]["coverage"] <= 0.11
 
 

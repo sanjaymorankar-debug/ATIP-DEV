@@ -51,7 +51,7 @@
     "TAIEX":  {"name": "TAIEX", "market": "Taiwan", "exchange": "TWSE",
                "sources": [{"kind": "twse", "ticker": "TAIEX"}, {"kind": "yahoo", "ticker": "^TWII"},
                            {"kind": "naver_world", "ticker": ".TWII"}]},
-    "KSE100": {"name": "KSE-100", "market": "Pakistan", "exchange": "PSX",
+    "KSE100": {"name": "KSE-100", "market": "Pakistan", "exchange": "PSX", "optional": true,
                "sources": [{"kind": "investing", "ticker": "49677"}, {"kind": "psx_dps", "ticker": "KSE100"},
                            {"kind": "yahoo", "ticker": "^KSE"}]}
   },

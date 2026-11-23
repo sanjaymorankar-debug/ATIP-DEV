@@ -73,11 +73,17 @@ def _stopped(sym, minutes_ago):
     c.commit(); c.close()
 
 
-def test_the_cooldown_is_off_by_default_and_skips_a_stopped_symbol_when_set(paper):
+def test_the_cooldown_is_on_for_rank_fill_by_default_and_skips_a_stopped_symbol(paper):
     from orders import arms, autopick
     _stopped("ACME", 10)
     c = _conn()
-    assert autopick._cooled(c, "ACME", arms.setting(arms.ARMS["S1"], "reentry_cooldown_min")) is None   # default off
+    # owner 23 Nov 2026: 375 min (the rest of the day) for rank-fill arms unless the arm says otherwise
+    assert arms.setting(arms.ARMS["S1"], "reentry_cooldown_min") == 375
+    assert arms.setting(None, "reentry_cooldown_min") == 375                     # a session without an arm: rank-fill
+    assert arms.setting(arms.ARMS["S2"], "reentry_cooldown_min") is None          # kite_retest: off
+    assert arms.setting({**arms.ARMS["S1"], "reentry_cooldown_min": 0}, "reentry_cooldown_min") == 0
+    assert "ACME was stopped out at" in autopick._cooled(c, "ACME", arms.setting(arms.ARMS["S1"], "reentry_cooldown_min"))
+    assert autopick._cooled(c, "ACME", 0) is None                              # an arm's 0 turns it off
     assert "ACME was stopped out at" in autopick._cooled(c, "ACME", 30)
     assert autopick._cooled(c, "ACME", 5) is None                              # stopped 10 min ago: outside 5 min
     c.close()
@@ -88,6 +94,20 @@ def test_the_cooldown_is_off_by_default_and_skips_a_stopped_symbol_when_set(pape
     assert _pick()["S1"]["symbol"] == "DELTA"
     rows = _skips("S1")
     assert len(rows) == 1 and (rows[0]["status"], rows[0]["symbol"]) == ("skipped_cooldown", "ACME")
+
+
+def test_a_rank_fill_arm_without_the_key_skips_a_symbol_stopped_this_morning(paper):
+    """23 Nov 2026 09:24: S7's ICICIBANK stop sold, and RANK-FILL bought it again 31 s later. The arms on the server
+    carry no reentry_cooldown_min, so the default alone must hold it out for the rest of the day."""
+    from orders import arms
+    _stopped("ACME", 300)                                                       # 5 hours ago: still today
+    _signals(ACME=(80, "BUY", 100.0), DELTA=(70, "BUY", 50.0))
+    _sessions("S1")
+    arm = {k: v for k, v in arms.ARMS["S1"].items() if k != "reentry_cooldown_min"}
+    _do(arms.set_arm, "S1", arm)
+    _breadth(80.7, 56.8)
+    assert _pick()["S1"]["symbol"] == "DELTA"
+    assert [(r["status"], r["symbol"]) for r in _skips("S1")] == [("skipped_cooldown", "ACME")]
 
 
 # -- the weekly A/B report -----------------------------------------------------------------------------------------------

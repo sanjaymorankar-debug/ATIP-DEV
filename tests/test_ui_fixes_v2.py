@@ -381,6 +381,8 @@ def test_order_paths_are_untouched():
     # The 19 Nov loss RCA changes rules.py on purpose (one failing rule no longer stops every stop behind it; exit legs
     # are tested first; a NaN LTP is not a price) and adds orders/strategy_v2.py (entry filters and freshness gates,
     # OFF unless config.json turns them on) with its hooks in autopick.py, sessions.py and algo_gtt.py.
+    # The owner's 23 Nov "Cooldown" decision changes arms.py on purpose: a rank-fill arm skips a symbol stopped out in
+    # the last 375 min (the rest of the day) unless the arm sets reentry_cooldown_min; autopick.py's docstring says so.
     allowed = {"orders/autopick.py", "orders/session_board.py", "orders/rules.py", "orders/broker.py", "orders/sessions.py",
                "orders/risk.py", "orders/entry_guards.py", "orders/ticks.py", "orders/arms.py", "orders/algo_gtt.py",
                "orders/paper.py", "orders/capital_plan.py", "orders/session_engine.py", "orders/strategy_v2.py"}

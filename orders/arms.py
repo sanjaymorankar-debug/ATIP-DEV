@@ -30,7 +30,9 @@ it was bought with. Keys (absent = off / the session's own column):
     sector_cap               at most N open or queued positions per NSE industry across all sessions
     no_entry_after           no new CNC entry after HH:MM IST (default 14:45, KGF-03)
     max_intraday_drop_pct    a rank-fill pick is skipped when the LTP is this far under its signal close (default 1.5)
-    reentry_cooldown_min     after a stop, the same symbol is not bought again for N minutes (default off, KGF-19)
+    reentry_cooldown_min     after a stop, the same symbol is not bought again for N minutes (KGF-19). Default for
+                             rank_fill entries 375 = the rest of the trading day (owner 23 Nov 2026: S7 bought ICICIBANK
+                             again 31 s after its stop); off for kite_retest; an arm sets 0 to turn it off
 
     python -m orders.arms                    # every session's arm
     python -m orders.arms --apply-defaults   # write ARMS below to S1-S10 (PAPER only; logged as session events)
@@ -48,6 +50,7 @@ PREFIX = "arm:"
 NO_ENTRY_AFTER = "14:45"
 MAX_INTRADAY_DROP_PCT = 1.5
 RISK_BUDGET_PCT = 2.5          # of the session's cash: Rs 625 on Rs 25,000, compounding with the session
+REENTRY_COOLDOWN_MIN = 375     # 09:15-15:30: a rank-fill session does not buy a stopped symbol again that day (23 Nov)
 GATE50 = {"metric": "breadth50", "min": 50}
 GATE20 = {"metric": "breadth20", "min": 50}
 RANK_FILL, KITE_RETEST = "rank_fill", "kite_retest"
@@ -137,10 +140,14 @@ def all_arms(conn) -> dict:
 
 
 def setting(arm: dict | None, key: str, default=None):
-    """An entry setting with its default (no_entry_after 14:45, max_intraday_drop_pct 1.5, cooldown off)."""
+    """An entry setting with its default (no_entry_after 14:45, max_intraday_drop_pct 1.5, cooldown 375 min for
+    rank_fill entries and off for kite_retest)."""
     defaults = {"no_entry_after": NO_ENTRY_AFTER, "max_intraday_drop_pct": MAX_INTRADAY_DROP_PCT,
                 "reentry_cooldown_min": None, "entry": RANK_FILL}
     v = (arm or {}).get(key)
+    if v is None and key == "reentry_cooldown_min":
+        # owner 23 Nov 2026: on unless the arm says otherwise (0 = off), for rank-fill entries only (S1, S5-S9)
+        return REENTRY_COOLDOWN_MIN if setting(arm, "entry") == RANK_FILL else None
     return v if v is not None else defaults.get(key, default)
 
 

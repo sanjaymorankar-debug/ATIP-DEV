@@ -20,6 +20,10 @@ data is flagged on /api/asia/sources and in the log, and the fetch moves to the 
     TAIEX   TWSE official MI_5MINS_HIST     Yahoo ^TWII, Naver .TWII         all OK
     KSE100  Investing.com historical 49677  PSX DPS eod, Yahoo ^KSE          PSX HTTP 462, Yahoo EMPTY -> flagged
     Stooq (every index) answers with a JavaScript bot wall, so it is not configured at all.
+    23 Nov 2026: from the VPS every KSE100 source has failed daily since 17 Nov (HTTP errors / no data; likely
+    datacenter-IP blocking), so KSE100 is "optional" in asia_exchanges.json: its failure is logged and reported
+    but does not make the run PARTIAL. Any index whose sources all fail and whose stored bars are older than
+    stale_after_days no longer feeds the sentiment from those old bars (the score renormalises without it).
 
 Tables (all date-keyed, 600-day LONG retention in db/purge.py):
     global_indices_daily  (index_code, date) daily OHLC, previous close, % change, session status, source
@@ -672,6 +676,19 @@ def sentiment_for(conn, d) -> float | None:
 
 
 # ── the job ────────────────────────────────────────────────────────────────
+def _stored_bars_stale(hist: list, cfg: dict, code: str, now: datetime) -> bool:
+    """True when the newest stored bar is older than stale_after_days (23 Nov 2026: KSE100's last bar predates the
+    VPS move, yet its signal kept feeding the sentiment). The DB may return the date as text or as a date."""
+    if not hist:
+        return False
+    try:
+        last = date.fromisoformat(str(hist[-1]["date"])[:10])
+    except ValueError:
+        return False
+    today = local_date(cfg["indexes"][code]["exchange"], now, cfg)
+    return (today - last).days > int(cfg.get("stale_after_days") or 7)
+
+
 def run(label: str = "manual", now: datetime | None = None, cfg: dict | None = None) -> dict:
     """Fetch every index (primary, else fallback), store OHLC + session status, compute each market's signal,
     the Pakistan risk flag and the Asia Sentiment Score. Informational only -- places no order."""
@@ -681,16 +698,19 @@ def run(label: str = "manual", now: datetime | None = None, cfg: dict | None = N
     conn = get_connection()
     try:
         ensure_tables(conn)
-        signals, report, rows, failed, fallbacks = {}, {}, 0, [], []
+        signals, report, rows, failed, fallbacks, optional_failed = {}, {}, 0, [], [], []
         for code in cfg["indexes"]:
             f = fetch_index(conn, code, cfg=cfg)
             n = store_bars(conn, code, f, cfg, now)
             rows += n
             if not f["bars"]:
-                failed.append(code)
+                (optional_failed if cfg["indexes"][code].get("optional") else failed).append(code)
             elif f["fallback"]:
                 fallbacks.append(f"{code}<-{f['source']}")
-            sig = compute_signal(history(conn, code), cfg)
+            hist = history(conn, code)
+            if not f["bars"] and _stored_bars_stale(hist, cfg, code, now):
+                hist = []                           # every source failed and the stored bars are old: no signal
+            sig = compute_signal(hist, cfg)
             if sig:
                 store_signal(conn, code, sig)
             signals[code] = sig
@@ -713,10 +733,12 @@ def run(label: str = "manual", now: datetime | None = None, cfg: dict | None = N
         conn.close()
     log.info(f"🌏 Asia markets ({label}): sentiment {sent['score']} {sent['signal']} · PK risk {pk['level']}"
              + (f" · fallback {', '.join(fallbacks)}" if fallbacks else "")
-             + (f" · FAILED {', '.join(failed)}" if failed else ""))
-    status = "FAILED" if len(failed) == len(cfg["indexes"]) else "PARTIAL" if failed else "SUCCESS"
+             + (f" · FAILED {', '.join(failed)}" if failed else "")
+             + (f" · no data (optional) {', '.join(optional_failed)}" if optional_failed else ""))
+    status = ("FAILED" if len(failed) + len(optional_failed) == len(cfg["indexes"]) else
+              "PARTIAL" if failed else "SUCCESS")
     return {"status": status, "rows": rows, "label": label, "sentiment": sent, "pakistan_risk": pk["level"],
-            "failed": failed, "fallbacks": fallbacks, "markets": report,
+            "failed": failed, "optional_failed": optional_failed, "fallbacks": fallbacks, "markets": report,
             "error": f"no source answered for {', '.join(failed)}" if failed else None}
 
 

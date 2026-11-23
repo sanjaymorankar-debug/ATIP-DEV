@@ -109,6 +109,7 @@ def compute_beta(symbol, conn, benchmark_symbol="NIFTY50", lookback=252, min_poi
         return None
 
 _FAILED_INDICATORS = {}   # label -> count, for the end-of-run summary
+ADX_MIN_BARS = 28         # ADX(14) needs 2 x 14 bars; fewer -> adx_14 left empty, not a failure (23 Nov 2026)
 
 def _step(symbol, label, fn):
     """
@@ -204,9 +205,13 @@ def compute_indicators(symbol, df):
         if r.get("macd_hist") is not None and last_close:
             r["macd_hist_pct"]=round(r["macd_hist"]/last_close*100,4)
 
-    adx_df=_step(symbol,"adx",lambda: ta.adx(high,low,close,length=14))
-    if adx_df is not None and not getattr(adx_df,"empty",True):
-        r["adx_14"]=safe_val(adx_df.iloc[-1,0])
+    # 23 Nov 2026: the `ta` ADXIndicator needs 2 x 14 = 28 bars and throws IndexError below that, so new listings
+    # with 20-27 days of history were reported as "adx×70" failures. adx_14 stays empty for them, as before, but is
+    # no longer counted as a failed indicator.
+    if len(close)>=ADX_MIN_BARS:
+        adx_df=_step(symbol,"adx",lambda: ta.adx(high,low,close,length=14))
+        if adx_df is not None and not getattr(adx_df,"empty",True):
+            r["adx_14"]=safe_val(adx_df.iloc[-1,0])
 
     e9=_step(symbol,"ema_9",lambda: ta.ema(close,length=9))
     if e9 is not None: r["ema_9"]=safe_val(e9.iloc[-1])
