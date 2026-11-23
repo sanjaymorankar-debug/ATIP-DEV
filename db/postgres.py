@@ -857,6 +857,12 @@ class PgConnection:
         if self._is_ddl(sql):                       # untouched by placeholder parsing (trigger bodies use %)
             if re.match(r"\s*CREATE\s+TRIGGER", sql, re.I):
                 stmt = sql if re.search(r"\bEXECUTE\s+FUNCTION\b", sql, re.I) else trigger_ddl(sql)
+                if stmt is not sql:
+                    # 23 Nov 2026: the guard calls atip_append_only(), which only the copy tool
+                    # (tools/sqlite_to_postgres.py) used to create -- a database built natively from
+                    # scratch failed migration 0004 on it. CREATE OR REPLACE is idempotent.
+                    with sqlite_errors():
+                        self._statement(lambda: self._conn.execute(APPEND_ONLY_FN))
             elif re.match(r"\s*CREATE\s+(OR\s+REPLACE\s+)?FUNCTION", sql, re.I):
                 stmt = sql                          # PostgreSQL already (atip_append_only)
             else:

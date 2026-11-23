@@ -217,17 +217,47 @@ def validate(conn) -> list:
     return out
 
 
+def _pg_0006(conn):
+    """PostgreSQL stand-in for _sql_0006 (23 Nov 2026), used only by a database built natively there.
+
+    _sql_0006 numbers old perf_ledger rows from SQLite's rowid, which PostgreSQL does not have, so a
+    database built from scratch on PostgreSQL failed on it. On such a database the table is new and
+    every row gets entry_seq at insert (wealth/perf/ledger._insert), so there is nothing to number:
+    make sure the column exists, and refuse -- never guess an order -- if unnumbered rows exist. A
+    PostgreSQL database copied from SQLite (the VPS) ran the original on SQLite before the copy."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(perf_ledger)")}
+    if not cols:
+        return
+    if "entry_seq" not in cols:
+        conn.execute("ALTER TABLE perf_ledger ADD COLUMN entry_seq INTEGER")
+    n = conn.execute("SELECT COUNT(*) FROM perf_ledger WHERE entry_seq IS NULL").fetchone()[0]
+    if n:
+        raise RuntimeError(f"perf_ledger has {n} row(s) without entry_seq on PostgreSQL, which has no rowid to "
+                           "order them by: number them on SQLite and copy again (tools/sqlite_to_postgres.py)")
+
+
+# The same migration for PostgreSQL where the SQLite text cannot run there. apply() records the CANONICAL
+# function's checksum either way, so a natively built database and one copied from SQLite (whose 0006 ran
+# on SQLite) agree, and validate() sees no drift on either.
+PG_VARIANTS = {"0006": _pg_0006}
+
+
+def _is_postgres(conn) -> bool:
+    return type(conn).__module__ == "db.postgres"
+
+
 def apply(conn) -> list:
     """Apply pending migrations in order; returns [{version, name, status, duration_ms, error}]."""
     done = set(status(conn)["applied"])
     results = []
+    pg = _is_postgres(conn)
     for v, name, fn, note in MIGRATIONS:
         if v in done:
             continue
         t = time.perf_counter()
         try:
             conn.execute("BEGIN IMMEDIATE")
-            fn(conn)
+            (PG_VARIANTS.get(v, fn) if pg else fn)(conn)
             ms = round((time.perf_counter() - t) * 1000, 1)
             conn.execute("INSERT INTO schema_migrations (version,name,checksum,applied_at,duration_ms,status,"
                          "rollback_note,error) VALUES (?,?,?,?,?,?,?,NULL) ON CONFLICT(version) DO UPDATE SET "

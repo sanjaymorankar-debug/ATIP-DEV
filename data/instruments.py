@@ -190,13 +190,24 @@ def parse_dhan_master(source, as_of=None, published_at=None) -> list:
     return rows
 
 
+def _is_file(text: str) -> bool:
+    """True when `text` names an existing file. CSV text is never one: on Linux (the VPS, CI) asking the
+    filesystem about a 100-kB "name" raises OSError ENAMETOOLONG instead of answering False (23 Nov 2026)."""
+    if "\n" in text or len(text) > 4096:
+        return False
+    try:
+        return Path(text).is_file()
+    except (OSError, ValueError):
+        return False
+
+
 def parse_kite_instruments(source, as_of=None, exchanges=("NSE",)) -> list:
     """Kite Connect's instruments list -- a CSV (text, path or file) or the SDK's list of dicts -- as rows keyed on
     exchange + tradingsymbol. Kite's tick_size is in rupees already; security_id holds the instrument_token."""
     if isinstance(source, (list, tuple)):
         recs = [dict(r) for r in source]
     else:
-        if isinstance(source, (str, Path)) and Path(str(source)).exists():
+        if isinstance(source, Path) or (isinstance(source, str) and _is_file(source)):
             text = Path(str(source)).read_text(encoding="utf-8")
         elif isinstance(source, str):
             text = source

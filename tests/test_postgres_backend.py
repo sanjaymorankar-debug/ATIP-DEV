@@ -319,6 +319,66 @@ def test_the_connection_commits_and_rolls_back_as_a_context_manager(live_db):
 
 
 @live_only
+def test_a_database_built_from_scratch_on_postgres_applies_every_migration(live_db):
+    """23 Nov 2026: a database built natively on PostgreSQL (a new server, not a copy of the SQLite one)
+    stopped at migration 0004 -- its append-only guards call atip_append_only(), which only the copy tool
+    created -- and would then have stopped at 0006 on SQLite's rowid. Now every migration applies with
+    its canonical checksum (validate() sees no drift), a second start-up applies nothing, and the
+    guards really refuse an UPDATE / DELETE of the audit trail."""
+    import db.schema as schema
+    from ops import migrations as M
+
+    original = schema.get_connection
+    held = []
+
+    def _conn():
+        c = pg.PgConnection(LIVE_URL)
+        held.append(c)
+        return c
+
+    schema.get_connection = _conn
+    try:
+        schema.init_db()
+        c = _conn()
+        res = M.apply(c)
+        assert [(r["version"], r["status"]) for r in res] == [(m[0], "APPLIED") for m in M.MIGRATIONS]
+        assert M.validate(c) == []
+        assert M.apply(c) == []                                   # the next start-up
+        c.execute("INSERT INTO enterprise_audit (at, tenant_id, user_id, actor, action, resource, method, path) "
+                  "VALUES (CURRENT_TIMESTAMP, 't', 'u', 'a', 'x', 'r', 'GET', '/')")
+        c.commit()
+        for sql in ("UPDATE enterprise_audit SET action='y'", "DELETE FROM enterprise_audit"):
+            with pytest.raises(Exception, match="append-only"):
+                c.execute(sql)
+            c.rollback()
+        assert c.execute("SELECT count(*) FROM enterprise_audit").fetchone()[0] == 1
+    finally:
+        schema.get_connection = original
+        for c in held:
+            try:
+                c.commit()
+                c.close()
+            except Exception:
+                pass
+
+
+def test_the_postgres_0006_refuses_to_guess_an_entry_order():
+    """_pg_0006 (the PostgreSQL stand-in for 0006) numbers nothing: on a natively built database every
+    perf_ledger row got entry_seq at insert. Rows without one would need SQLite's rowid, so it refuses."""
+    from ops.migrations import _pg_0006
+    c = sqlite3.connect(":memory:")
+    _pg_0006(c)                                                   # no table yet: nothing to do
+    c.execute("CREATE TABLE perf_ledger (id TEXT, tenant_id TEXT)")
+    _pg_0006(c)                                                   # adds the column, numbers nothing
+    assert "entry_seq" in {r[1] for r in c.execute("PRAGMA table_info(perf_ledger)")}
+    c.execute("INSERT INTO perf_ledger (id, tenant_id, entry_seq) VALUES ('a', 't', 1)")
+    _pg_0006(c)
+    c.execute("INSERT INTO perf_ledger (id, tenant_id) VALUES ('b', 't')")
+    with pytest.raises(RuntimeError, match="1 row"):
+        _pg_0006(c)
+
+
+@live_only
 def test_init_db_creates_the_whole_schema_on_postgres_and_is_idempotent(live_db):
     """What the cursor() and error-class fixes are for: ATIP's real init_db(),
     against a real server, twice. It runs on every start, so idempotence is the

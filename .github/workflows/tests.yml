@@ -16,7 +16,10 @@ jobs:
     services:
       postgres:
         # Docker Hub's official image via its AWS ECR mirror: Docker Hub rate-limits anonymous pulls.
-        image: public.ecr.aws/docker/library/postgres:16
+        # 18, not 16 (23 Nov 2026): ops/backup.py uses the NEWEST pg_dump on the runner, and a dump from a
+        # newer pg_dump does not restore into an older server ("unrecognized configuration parameter
+        # transaction_timeout"). The server must be at least as new as the runner's client.
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

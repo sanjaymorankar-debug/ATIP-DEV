@@ -707,3 +707,21 @@ def test_the_kite_reads_call_only_read_endpoints_and_are_paced(monkeypatch):
     assert all(0 < w <= 2 / 3 + 1e-6 for w in waits[1:])
     from data.instruments import parse_kite_instruments
     assert parse_kite_instruments(ins)[0]["tick_size"] == 0.05
+
+
+def test_csv_text_is_never_taken_for_a_file_name(monkeypatch):
+    """23 Nov 2026: on Linux (the VPS, CI) asking the filesystem whether 100 kB of CSV text is a file raises
+    OSError ENAMETOOLONG instead of answering False, so the Kite refresh failed there. CSV text is never
+    looked up as a path, and a lookup that raises counts as "not a file"."""
+    from pathlib import Path
+    from data import instruments as I
+
+    def linux_says_too_long(self):
+        raise OSError(36, "File name too long")
+
+    monkeypatch.setattr(Path, "is_file", linux_says_too_long)
+    rows = I.parse_kite_instruments("instrument_token,exchange_token,tradingsymbol,name,last_price,expiry,strike,"
+                                    "tick_size,lot_size,instrument_type,segment,exchange\n"
+                                    "1,2,ABC,ABC LTD,0,,0,0.05,1,EQ,NSE,NSE\n")
+    assert [r["symbol"] for r in rows] == ["ABC"]
+    assert I._is_file("x" * 300) is False
