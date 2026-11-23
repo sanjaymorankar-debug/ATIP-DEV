@@ -397,7 +397,27 @@ def _market_lines(conn, td, now=None):
         log.debug(f"  News impact line: {e}")
     return lines
 
-def send_morning_digest(trade_date=None):
+# BR-01 (23 Nov 2026): a US move at least this big (S&P 500 or Nasdaq, %) after the scores were made is said at the
+# top of the brief. The scores, Market Health and its Stance are all from the last close, before the US session.
+OVERNIGHT_MOVE_PCT = 1.5
+
+
+def _overnight_line(glb, us_close, td):
+    """The warning line for a big US move since the scores, or None."""
+    if not glb:
+        return None
+    moves = [(n, glb[k]) for n, k in (("S&amp;P", "sp500_chg"), ("Nasdaq", "nasdaq_chg")) if glb[k] is not None]
+    big = [v for _, v in moves if abs(v) >= OVERNIGHT_MOVE_PCT]
+    if not big:
+        return None
+    way = "fell" if min(big) < 0 and abs(min(big)) >= abs(max(big)) else "rose"
+    when = f" (US close {datetime.strptime(us_close, '%Y-%m-%d'):%d %b})" if us_close else ""
+    return (f"⚠️ <b>Overnight: the US {way} after these {td} scores</b> — "
+            + ", ".join(f"{n} {v:+.2f}%" for n, v in moves) + f"{when}. "
+            "Market Health and the Stance below are from the last close and do not include it.\n")
+
+
+def send_morning_digest(trade_date=None, now=None):
     """
     The 8:30 AM answer to "What should I do today?" — the question the
     architecture doc opens with.
@@ -410,7 +430,14 @@ def send_morning_digest(trade_date=None):
     Uses the most recent SCORED date, not today's calendar date — on a Monday
     the actionable scores are Friday's, and reporting "no data" because today
     has no rows yet would be wrong.
+
+    BR-01 (23 Nov 2026): only the SCORES are "as of the last scored date". The market lines read the newest row up
+    to today and say its date. On Mon 23 Nov the brief read global_markets "as of Friday" and showed Thursday's US
+    move (S&P -2.02 %) while Friday night's S&P -3.70 % / Nasdaq -5.28 % had been stored at 06:00 IST; Nifty then
+    fell 1.75 %.
     """
+    now = now or datetime.now()
+    today = str(now.date())
     conn=get_connection()
     try:
         row=conn.execute("SELECT MAX(date) d FROM ai_scores").fetchone()
@@ -418,12 +445,19 @@ def send_morning_digest(trade_date=None):
         if not td:
             log.info("  Morning digest: no scores yet — nothing to send"); return False
         td=str(td)
-        mh=conn.execute("SELECT mh_score,regime,portfolio_health FROM market_health "
-                        "WHERE date<=? ORDER BY date DESC LIMIT 1",(td,)).fetchone()
-        idx=conn.execute("SELECT nifty50_chg,india_vix,gift_nifty_chg FROM index_levels "
-                         "WHERE date<=? ORDER BY date DESC,time DESC LIMIT 1",(td,)).fetchone()
-        glb=conn.execute("SELECT sp500_chg,global_score FROM global_markets "
-                         "WHERE date<=? ORDER BY date DESC LIMIT 1",(td,)).fetchone()
+        mh=conn.execute("SELECT date,mh_score,regime,portfolio_health FROM market_health "
+                        "WHERE date<=? ORDER BY date DESC LIMIT 1",(today,)).fetchone()
+        idx=conn.execute("SELECT date,nifty50_chg,india_vix,gift_nifty_chg FROM index_levels "
+                         "WHERE date<=? ORDER BY date DESC,time DESC LIMIT 1",(today,)).fetchone()
+        glb=conn.execute("SELECT date,sp500_chg,nasdaq_chg,dow_chg,global_score,global_sentiment FROM global_markets "
+                         "WHERE date<=? ORDER BY date DESC,id DESC LIMIT 1",(today,)).fetchone()
+        us_close=None
+        try:
+            r=conn.execute("SELECT MAX(date) d FROM global_market_history WHERE series='sp500' AND date<=?",
+                           (today,)).fetchone()
+            us_close=str(r["d"])[:10] if r and r["d"] else None
+        except Exception as e:
+            log.debug(f"  US close date unavailable: {e}")
         buys=conn.execute("SELECT symbol,atip_score,zpi,cri,acs FROM ai_scores "
                           "WHERE date=? AND `signal`='BUY' ORDER BY atip_score DESC LIMIT 5",(td,)).fetchall()
         sells=conn.execute("SELECT symbol,atip_score,cri FROM ai_scores "
@@ -433,12 +467,12 @@ def send_morning_digest(trade_date=None):
                             LEFT JOIN technical_indicators t ON t.symbol=s.symbol AND t.date=s.date
                             WHERE s.date=? AND s.is_tod=1 AND s.`signal`='BUY' LIMIT 1""",(td,)).fetchone()
         risky=conn.execute("SELECT COUNT(*) n FROM ai_scores WHERE date=? AND cri>75",(td,)).fetchone()
-        try: market=_market_lines(conn,td)
+        try: market=_market_lines(conn,td,now=now)
         except Exception as e:                      # a bad row in these lines must not cost the whole brief
             log.warning(f"  Morning digest: market lines unavailable: {e}"); market=[]
         try:                                        # PO-CL-08: the checklist's preliminary read and its GIFT
             from strategy import preopen_checklist as PC
-            pc=PC.latest_run(conn,date.today()); gl=PC.latest_gift(conn)
+            pc=PC.latest_run(conn,now.date()); gl=PC.latest_gift(conn)
         except Exception as e:
             log.warning(f"  Morning digest: pre-open checklist unavailable: {e}"); pc=gl=None
     finally:
@@ -453,16 +487,25 @@ def send_morning_digest(trade_date=None):
             "BEAR":"Minimal exposure — defensives only",
             "HIGH_RISK":"Cash / hedges only"}.get(regime,"No regime read")
 
-    body=[f"<b>Market Health:</b> {mh_s:.0f} ({regime})" if mh_s is not None else "<b>Market Health:</b> —",
+    def _close_of(d):                               # BR-01: a row from an earlier day says which close it is
+        d=str(d or "")[:10]
+        if not d or d==today: return ""
+        try: return f" ({datetime.strptime(d, '%Y-%m-%d'):%d %b} close)"
+        except ValueError: return f" ({d})"
+
+    body=[f"<b>Market Health:</b> {mh_s:.0f} ({regime}){_close_of(mh['date'])}" if mh_s is not None
+          else "<b>Market Health:</b> —",
           f"<b>Stance:</b> {action}"]
     if idx:
         bits=[]
         if idx["nifty50_chg"] is not None: bits.append(f"Nifty {idx['nifty50_chg']:+.2f}%")
         if idx["india_vix"]: bits.append(f"VIX {idx['india_vix']:.1f}")
         # Dhan's gift_nifty_chg is frozen at 0.00 (PO-CL-08): GIFT comes from the checklist's source, today's only
-        if gl and gl.get("move_pct") is not None and str(gl.get("as_of") or "")[:10]==str(date.today()):
+        if gl and gl.get("move_pct") is not None and str(gl.get("as_of") or "")[:10]==today:
             bits.append(f"GIFT {gl['move_pct']:+.2f}% ({gl.get('as_of','')[11:16]} IST)")
-        if bits: body.append("<b>Open:</b> "+" · ".join(bits))
+        if bits:                                    # BR-01: before the open the Nifty/VIX row is the last close's
+            label="<b>Open:</b> " if str(idx["date"])[:10]==today else f"<b>Last session{_close_of(idx['date'])}:</b> "
+            body.append(label+" · ".join(bits))
     if pc:
         from html import escape as _esc
         tag="preliminary 08:15" if pc.get("run_label")=="preliminary" else str(pc.get("fetched_at_ist") or "")[11:16]
@@ -470,8 +513,20 @@ def send_morning_digest(trade_date=None):
                     f"{_esc(str(pc.get('vix_regime')))} · expected {_esc(str(pc.get('expected_open')))}"
                     +(" · A/D prior-day" if pc.get("ad_basis")=="prior-day" else ""))
     if glb and glb["global_score"] is not None:
+        us=[f"{n} {glb[k]:+.2f}%" for n,k in (("S&amp;P","sp500_chg"),("Nasdaq","nasdaq_chg"),("Dow","dow_chg"))
+            if glb[k] is not None]
+        when=""
+        if us_close:
+            try: when=f" (US close {datetime.strptime(us_close, '%Y-%m-%d'):%d %b})"
+            except ValueError: when=""
         body.append(f"<b>Global:</b> score {glb['global_score']:.0f}"
-                    +(f", S&amp;P {glb['sp500_chg']:+.2f}%" if glb["sp500_chg"] is not None else ""))
+                    +(f" ({_html(glb['global_sentiment'])})" if glb["global_sentiment"] else "")
+                    +(", "+", ".join(us)+when if us else "")
+                    +("" if str(glb["date"])[:10]==today else f" — fetched {str(glb['date'])[:10]}, none today"))
+    # BR-01: a US session that closes on or after the scores' date ran after India's close, so the scores miss it
+    if glb and (us_close or str(glb["date"])[:10]) >= td[:10]:
+        ov=_overnight_line(glb,us_close,td)
+        if ov: body.insert(0,ov)
     body.extend(market)
     if mh and mh["portfolio_health"] is not None:
         body.append(f"<b>Portfolio Health:</b> {mh['portfolio_health']:.0f}")
@@ -542,7 +597,7 @@ def send_morning_digest(trade_date=None):
                    f"Scores from {td}"
                    + (f" — {stale_n} session(s) STALE" if stale_n else " (current)")
                    + ". Verify against live prices before acting — model output, not advice."),
-               category="digest",key=f"digest:{date.today()}")
+               category="digest",key=f"digest:{today}")
     return out["recorded"] or out["sent"]
 
 if __name__=="__main__":
