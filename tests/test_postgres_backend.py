@@ -1,8 +1,8 @@
 """
 PostgreSQL backend (db/postgres.py).
 
-Companion to tests/test_mysql_backend.py, and added for the same reason: until
-now db/postgres.py was only ever tested through its translated STRINGS (see
+PostgreSQL is ATIP's one server database (the MySQL backend was removed on 23 Nov 2026).
+Until these tests, db/postgres.py was only ever tested through its translated STRINGS (see
 tests/test_w38_platform_compliance.py). Nothing executed them, so two defects
 sat in PgConnection -- it had no cursor() at all, and it raised psycopg's
 exception classes at callers written to catch sqlite3's.
@@ -61,7 +61,6 @@ def test_the_mapping_keeps_the_message_and_the_sqlstate():
     exc.sqlstate = "42701"
     out = pg.as_sqlite_error(exc)
     # psycopg puts the message in args[0], which is sqlite3's own convention
-    # (PyMySQL puts the errno there instead -- each driver's convention is kept)
     assert out.args == ('column "a" of relation "t" already exists',)
     assert out.sqlstate == "42701"
 
@@ -71,6 +70,114 @@ def test_the_mapping_leaves_everything_else_alone():
     disguised as database trouble."""
     for exc in (UnsupportedSQL("no translation"), ValueError("nope"), KeyError("k")):
         assert pg.as_sqlite_error(exc) is exc
+
+
+# ── PostgreSQL is the one server database (MySQL removed 23 Nov 2026) ────
+
+def test_a_mysql_url_is_refused_with_the_reason():
+    """A leftover mysql:// URL must say MySQL is gone, not fall through to a generic
+    'unsupported scheme' -- and never to SQLite."""
+    from db.backend import backend
+    for url in ("mysql://u:p@h/atip", "mysql+pymysql://u:p@h/atip", "mariadb://u:p@h/atip", "MySQL://u@h/a"):
+        with pytest.raises(ValueError, match="no longer supported.*PostgreSQL"):
+            backend(url)
+    assert backend("postgresql://u@h/atip") == "postgresql" and backend("sqlite:///x.db") == "sqlite"
+    with pytest.raises(ValueError, match="unsupported database URL scheme"):
+        backend("oracle://u@h/x")
+
+
+def test_a_config_that_still_names_mysql_refuses_to_start(monkeypatch, tmp_path):
+    """config.json "database": {"backend": "mysql"} must not come up on the local SQLite file and
+    look healthy while the owner believes the data is in MySQL -- with or without the other
+    switches. Nothing is created on disk."""
+    import db.schema as S
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "atip_data").mkdir()
+    cfg = tmp_path / "atip_data" / "config.json"
+    monkeypatch.setattr(S, "DB_PATH", tmp_path / "atip_data" / "atip.db")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    cases = [('{"database": {"backend": "mysql"}}', ""),
+             ('{"database": {"backend": "MySQL", "allow_experimental": true}}', "mysql://atip:pw@127.0.0.1:3306/atip"),
+             ('{"database": {"backend": "mariadb"}}', ""),
+             ('{"database": "mysql"}', ""),
+             ('{}', "mysql://atip:pw@127.0.0.1:3306/atip"),                 # the ATIP URL alone names it too
+             ('{"database": {"backend": "postgresql", "allow_experimental": true}}', "mariadb://a@h/x")]
+    for body, url in cases:
+        cfg.write_text(body, encoding="utf-8")
+        monkeypatch.setenv("ATIP_DATABASE_URL", url)
+        monkeypatch.setattr(S, "_PG_URL", [])
+        for call in (S.get_connection, S.describe_target, S.pg_runtime_url):
+            with pytest.raises(RuntimeError, match="MySQL / MariaDB, which is no longer supported"):
+                call()
+    assert not (tmp_path / "atip_data" / "atip.db").exists()
+    # SQLite and PostgreSQL configurations are untouched by the check
+    for body, url, expect in (('{}', "", None),
+                              ('{"database": {"backend": "sqlite"}}', "", None),
+                              ('{"database": {"backend": "postgresql", "allow_experimental": true}}',
+                               "postgresql://u@127.0.0.1:1/x", "postgresql://u@127.0.0.1:1/x")):
+        cfg.write_text(body, encoding="utf-8")
+        monkeypatch.setenv("ATIP_DATABASE_URL", url)
+        monkeypatch.setattr(S, "_PG_URL", [])
+        assert S.pg_runtime_url() == expect
+    monkeypatch.setenv("ATIP_DATABASE_URL", "")
+    monkeypatch.setenv("DATABASE_URL", "mysql://another-project/db")    # never ATIP's switch: not refused
+    cfg.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(S, "_PG_URL", [])
+    assert S.pg_runtime_url() is None
+
+
+def test_config_validation_reports_a_mysql_backend(monkeypatch):
+    from ops import config as C
+    monkeypatch.delenv("ATIP_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    found = C.validate({"database": {"backend": "mysql", "allow_experimental": True}})
+    assert any(f["level"] == "error" and f["key"] == "database.backend" and "no longer supported" in f["message"]
+               for f in found), found
+    assert not any(f["key"] == "database.backend" and "no longer supported" in f["message"]
+                   for f in C.validate({"database": {"backend": "postgresql"}}))
+    monkeypatch.setenv("ATIP_DATABASE_URL", "mysql://u:p@h/atip")
+    assert any(f["key"] == "DATABASE_URL" and "no longer supported" in f["message"] for f in C.validate({"environment": "development"}))
+
+
+class _NotSqlite:
+    """A non-sqlite3 connection over SQLite, so ml.deep takes its PostgreSQL ordering."""
+
+    def __init__(self, conn):
+        self._c = conn
+
+    def execute(self, sql, params=()):
+        return self._c.execute(sql, params)
+
+
+def _benefit_db():
+    c = sqlite3.connect(":memory:")
+    c.execute("CREATE TABLE ml_dl_benefit (check_id TEXT PRIMARY KEY, dataset_id TEXT, verdict TEXT NOT NULL, "
+              "reason TEXT, result_json TEXT, created_at TIMESTAMP)")
+    return c
+
+
+def test_network_activation_reads_the_latest_benefit_check_on_both_engines():
+    """ml.deep.allowed_to_activate used db.backend.entry_order_column(), which raised on PostgreSQL
+    (no entry-order column there), so a neural network could never be activated on the VPS. Latest =
+    created_at (microseconds, so a tie is practically impossible); a tie is still decided: SQLite by
+    rowid (unchanged), PostgreSQL -- no entry order there -- against activation."""
+    from ml.deep import allowed_to_activate
+    c = _benefit_db()
+    ins = "INSERT INTO ml_dl_benefit (check_id,dataset_id,verdict,reason,result_json,created_at) VALUES (?,?,?,?,'{}',?)"
+    c.execute(ins, ("DLB", "DS", "NOT_ADOPTABLE", "worse", "2026-11-23 10:00:00.100000"))
+    c.execute(ins, ("DLA", "DS", "ADOPTABLE", "better", "2026-11-23 10:00:00.200000"))
+    for conn in (c, _NotSqlite(c)):
+        assert allowed_to_activate(conn, "DS") == (True, "latest benefit check: ADOPTABLE -- better")
+    c.execute(ins, ("DLC", "DS", "NOT_ADOPTABLE", "worse again", "2026-11-23 10:00:00.300000"))
+    for conn in (c, _NotSqlite(c)):
+        assert allowed_to_activate(conn, "DS")[0] is False
+    # a tie on created_at: the last written ADOPTABLE wins on SQLite (rowid, as before) ...
+    c.execute(ins, ("DLZ", "DS", "NOT_ADOPTABLE", "tied", "2026-11-23 10:00:01"))
+    c.execute(ins, ("DLY", "DS", "ADOPTABLE", "tied", "2026-11-23 10:00:01"))
+    assert allowed_to_activate(c, "DS")[0] is True
+    # ... and without an entry order the tie is decided against activation
+    assert allowed_to_activate(_NotSqlite(c), "DS") == (False, "latest benefit check: NOT_ADOPTABLE -- tied")
+    assert allowed_to_activate(_NotSqlite(c), "OTHER")[0] is False
 
 
 # ── live server ───────────────────────────────────────────────────────────
@@ -89,6 +196,33 @@ def live_db():
     conn = psycopg.connect(LIVE_URL, autocommit=True)
     yield conn
     conn.close()
+
+
+@live_only
+def test_network_activation_works_on_postgres(live_db):
+    """The gate that used to raise on PostgreSQL (entry_order_column) now answers there: the latest check
+    by created_at (stored to the microsecond, as benefit_check() writes it), a tie decided against
+    activation."""
+    from datetime import datetime
+    from db.schema_w36 import W36_TABLES
+    from ml.deep import allowed_to_activate
+    c = pg.PgConnection(LIVE_URL)
+    try:
+        for ddl in W36_TABLES["ml_dl_benefit"]:
+            c.execute(ddl)
+        ins = ("INSERT INTO ml_dl_benefit (check_id,dataset_id,verdict,reason,result_json,created_at) "
+               "VALUES (?,?,?,?,'{}',?)")
+        assert allowed_to_activate(c, "DS")[0] is False                                   # no check yet
+        c.execute(ins, ("DLB", "DS", "NOT_ADOPTABLE", "worse", datetime(2026, 11, 23, 10, 0, 0, 100)))
+        c.execute(ins, ("DLA", "DS", "ADOPTABLE", "better", datetime(2026, 11, 23, 10, 0, 0, 200)))
+        c.commit()
+        assert allowed_to_activate(c, "DS") == (True, "latest benefit check: ADOPTABLE -- better")
+        c.execute(ins, ("DLZ", "DS", "NOT_ADOPTABLE", "tied", datetime(2026, 11, 23, 10, 0, 1)))
+        c.execute(ins, ("DLY", "DS", "ADOPTABLE", "tied", datetime(2026, 11, 23, 10, 0, 1)))   # written last
+        c.commit()
+        assert allowed_to_activate(c, "DS") == (False, "latest benefit check: NOT_ADOPTABLE -- tied")
+    finally:
+        c.close()
 
 
 @live_only
@@ -166,7 +300,7 @@ def test_the_connection_is_sqlite_shaped(live_db):
 @live_only
 def test_the_connection_commits_and_rolls_back_as_a_context_manager(live_db):
     """`with conn:` commits on success and rolls back on an exception, as sqlite3
-    and MySQLConnection both do."""
+    does."""
     c = pg.PgConnection(LIVE_URL)
     try:
         c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
@@ -217,9 +351,9 @@ def test_init_db_creates_the_whole_schema_on_postgres_and_is_idempotent(live_db)
 
 
 def test_backticked_identifiers_become_double_quotes():
-    """ATIP's shared SQL backticks the columns MySQL 8 reserves (signal, key,
-    rank, rows, change, trigger). SQLite accepts backticks for MySQL
-    compatibility; PostgreSQL does not, so they become the standard quote."""
+    """ATIP's shared SQL backticks some columns (signal, key, rank, rows, change,
+    trigger) -- written for the removed MySQL backend, where they are reserved.
+    SQLite accepts backticks; PostgreSQL does not, so they become the standard quote."""
     from db.postgres import translate
     assert translate("SELECT `signal`, a FROM t WHERE `key`=?") == \
         'SELECT "signal", a FROM t WHERE "key"=%s'
@@ -228,7 +362,7 @@ def test_backticked_identifiers_become_double_quotes():
 
 
 def test_a_backticked_column_is_still_qualified_on_the_right_of_an_upsert():
-    """The mirror of the MySQL excluded bug, from the same quoting change.
+    """A bug from the same backtick-quoting change.
 
     PostgreSQL needs the target-row reference qualified -- a bare one is
     "column reference is ambiguous" -- and the name is matched with a non-word

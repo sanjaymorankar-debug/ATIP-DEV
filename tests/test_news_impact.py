@@ -411,6 +411,9 @@ def test_tables_are_kept_by_the_retention_policy_and_classified(NI):
         assert classify(t)["class"] == "research", t
 
 
-def test_no_mysql_reserved_column_names(NI):
-    from db import mysql as my
-    assert not any(my.reserved_columns([d for d in NI.DDL if d.lstrip().startswith("CREATE TABLE")]).values())
+def test_tables_translate_to_postgresql(NI):
+    """PostgreSQL is ATIP's server database: every news-impact statement goes through db.postgres.ddl()."""
+    from db import postgres as pg
+    for d in NI.DDL:
+        out = pg.ddl(d)
+        assert "AUTOINCREMENT" not in out.upper() and "`" not in out and " REAL" not in out.upper()

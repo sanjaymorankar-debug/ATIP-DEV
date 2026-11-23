@@ -4,7 +4,7 @@ Wave 1-20 deployment tracker, the PERF-001 detail sheet and the owner notes), ap
 db/schema.py beside db/schema_w39.py (the W39 research / history / options tables, PR #4).
 The 7-year history backfill is #4's data/history_backfill.py (table prices_daily_backfill).
 
-    perf_ledger (+ columns)   PERF-001-01  entry_seq (portable entry order: MySQL has no rowid),
+    perf_ledger (+ columns)   PERF-001-01  entry_seq (portable entry order: rowid is SQLite's),
                                            order_ref / signal_ref (exact order and signal links),
                                            fee_breakdown (JSON: brokerage / stt / exchange / sebi /
                                            stamp / gst / dp / other, when the source gives it)

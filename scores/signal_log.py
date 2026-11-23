@@ -211,12 +211,9 @@ def flag_duplicates(conn) -> int:
     """
     try:
         # The keeper is computed in an UNCORRELATED derived table and joined back on
-        # id. The obvious correlated form -- a subquery selecting from signal_log
-        # while signal_log is the UPDATE target -- is errno 1093 on MySQL ("you
-        # can't specify target table ... in FROM clause"), and MySQL has no
-        # UPDATE ... FROM while SQLite has no UPDATE ... JOIN, so neither dialect's
-        # own idiom is portable. This form runs unchanged on both; `signal` is
-        # backticked because it is a reserved word in MySQL 8.
+        # id, a form that runs unchanged on SQLite and on PostgreSQL (db.postgres
+        # translates the rest). The backticks around `signal` are accepted by SQLite
+        # and become standard double quotes in db.postgres.translate.
         keeper = """
             SELECT k.keeper FROM (
                 SELECT id, FIRST_VALUE(id) OVER (

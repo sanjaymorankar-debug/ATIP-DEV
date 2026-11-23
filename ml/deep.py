@@ -268,14 +268,24 @@ def benefit_check(conn, dataset_spec: dict, params: dict | None = None, baseline
 
 
 def allowed_to_activate(conn, dataset_id: str) -> tuple:
-    """(ok, why) for a neural_network version trained on dataset_id."""
-    # rowid on SQLite, an AUTO_INCREMENT column on MySQL: the tie-breaker that picks the
-    # LATEST check when two share a created_at, which TIMESTAMP's one-second resolution
-    # makes likely for checks queued together.
-    from db.backend import entry_order_column
-    order = entry_order_column("ml_dl_benefit")
-    r = conn.execute(f"SELECT verdict, reason FROM ml_dl_benefit WHERE dataset_id=? "
-                     f"ORDER BY created_at DESC, {order} DESC LIMIT 1", (dataset_id,)).fetchone()
+    """(ok, why) for a neural_network version trained on dataset_id: its LATEST benefit check must be ADOPTABLE.
+
+    Latest = created_at, which benefit_check() stores as datetime.now() -- to the microsecond on SQLite
+    (sqlite3's datetime adapter) and on PostgreSQL (TIMESTAMP), so two checks practically never share one.
+    For a tie that is still possible in principle:
+      SQLite      rowid -- the check written last, as since W36;
+      PostgreSQL  the table has no entry order there: check_id is random, ctid is a storage address that
+                  space reuse can put out of insertion order, and adding a column needs a migration. So a
+                  tie is decided AGAINST activation -- if any check sharing the latest created_at is not
+                  ADOPTABLE, that one is the answer (then check_id, so the result is deterministic).
+    """
+    import sqlite3
+    if isinstance(conn, sqlite3.Connection):
+        tie = "rowid DESC"
+    else:
+        tie = "CASE WHEN verdict='ADOPTABLE' THEN 1 ELSE 0 END, check_id DESC"
+    r = conn.execute("SELECT verdict, reason FROM ml_dl_benefit WHERE dataset_id=? "
+                     f"ORDER BY created_at DESC, {tie} LIMIT 1", (dataset_id,)).fetchone()
     if not r:
         return False, f"no deep-learning benefit check for dataset {dataset_id} (POST /api/ml/deep/benefit-check)"
     return r[0] == "ADOPTABLE", f"latest benefit check: {r[0]} -- {r[1]}"

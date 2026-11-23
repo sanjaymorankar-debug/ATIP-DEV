@@ -79,7 +79,7 @@ def _save_state(**changes) -> dict:
 
 
 def _sqlite_only(what: str) -> None:
-    if schema.pg_runtime_url() or schema.mysql_runtime_url():
+    if schema.pg_runtime_url():
         raise RuntimeError(f"{what} copies the SQLite database; this install runs on {schema.describe_target()}")
 
 

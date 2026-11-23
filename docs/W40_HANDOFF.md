@@ -1,5 +1,7 @@
 # W40 — What remained buildable after W39b: handoff
 
+> **23 Nov 2026 plan change:** PostgreSQL is ATIP's one server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Branch:** `claude/wizardly-curie-fbjeoa` (PR sanjaymorankar-debug/ATIP-DEV#9), based on master `d01705e`: W39b (#5) plus the MySQL runtime (#8).
 
 **Date:** 2026-10-09

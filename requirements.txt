@@ -60,12 +60,11 @@ openpyxl>=3.1.0                # also the session reports' XLSX (enterprise/sess
 # installed by default:
 # weasyprint==66.0
 
-# ── Database backends beyond SQLite (Optional) ───────────────────────────
-# SQLite is the default and needs nothing installed. The hosted deployment runs
-# on MySQL (db/mysql.py); PostgreSQL (db/postgres.py) is the earlier W38 path.
-# Both stay opt-in behind config database.backend + allow_experimental, so
-# neither driver is required for a normal local run.
+# ── Server database: PostgreSQL (Optional) ───────────────────────────────
+# SQLite is the default and needs nothing installed. PostgreSQL (db/postgres.py)
+# is ATIP's one server database (the VPS); the MySQL backend and PyMySQL were
+# removed on 23 Nov 2026. The runtime moves to PostgreSQL only behind config
+# database.backend = "postgresql" + allow_experimental + ATIP_DATABASE_URL, so
+# the driver is not required for a normal local run:
 #
-#   MySQL / MariaDB:  pip install PyMySQL
 #   PostgreSQL:       pip install "psycopg[binary]"
-PyMySQL>=1.1.0

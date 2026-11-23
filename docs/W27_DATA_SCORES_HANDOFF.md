@@ -1,6 +1,9 @@
 # W27: Data and scores handoff
 
 **Status:** IMPLEMENTED BUT NOT VERIFIED. The tree compiles. Smoke runs were done on a scratch copy of the production database: NSE fundamentals / ownership / F&O ingestion for 6 symbols, a full re-score of 2026-10-01 with both W27 switches forced on, the deal study, and a 1-year global-history backfill. Every new endpoint was exercised through FastAPI TestClient. ChatGPT testing is pending.
+
+> **23 Nov 2026 plan change:** PostgreSQL is ATIP's one server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Branch:** `w27-data-scores`, from `tools-mysql-export` (`769383c`, which carries W25 + W26). Not merged, not deployed.
 **Defaults:** ingestion runs on schedule, but no score changes until you flip a switch. The one exception is MSI's Options component, which now reads the real PCR (see SC-06).
 

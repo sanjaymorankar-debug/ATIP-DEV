@@ -27,7 +27,7 @@ a row recorded after the restart carries the real cash and is left alone.
     python -m tools.repair_live_pnl_daily --apply      # after `python -m ops backup --kind pre-release`
     python -m tools.repair_live_pnl_daily --paper-match [--apply]
 
-Arithmetic in Python over a SELECT, so it runs on SQLite, MySQL or PostgreSQL alike.
+Arithmetic in Python over a SELECT, so it runs on SQLite or PostgreSQL alike.
 """
 
 import argparse

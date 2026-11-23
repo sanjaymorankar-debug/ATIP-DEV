@@ -214,6 +214,13 @@ def validate(cfg: dict | None = None) -> list:
                                              "(docs/POSTGRESQL_MIGRATION.md)")
     except ValueError as e:
         add("error", "DATABASE_URL", str(e))
+    from db.schema import RETIRED_BACKENDS as _retired
+    _db = cfg.get("database")
+    _db_name = _db if isinstance(_db, str) else (_db.get("backend") if isinstance(_db, dict) else None)
+    if str(_db_name or "").strip().lower() in _retired:
+        add("error", "database.backend", "MySQL / MariaDB is no longer supported (removed 23 Nov 2026): PostgreSQL "
+                                         "is ATIP's server database; ATIP refuses to start while this is set "
+                                         "(docs/POSTGRESQL_MIGRATION.md)")
     from ops.secrets import status as _secret_status
     if not cfg.get("dhan_client_id") and not _secret_status("DHAN_CLIENT_ID")["present"]:
         add("warning", "dhan_client_id", "Dhan client id missing: market data jobs will fail")

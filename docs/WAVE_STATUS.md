@@ -65,4 +65,5 @@ Waves 21–25 (remaining tracker features, built in tracker Seq order):
 
 Notes:
 - Delivered-baseline work before W1 (data platform, scores, dashboard) is tracked in `ATIP_MASTER_TRACKER.csv`, not as a wave.
+- Database plan (23 Nov 2026): **PostgreSQL is ATIP's one server database** (DBS-05; the live VPS has run on it since 17 Nov 2026). The MySQL runtime of PR #8, its migration / export tools and `atip_schema.mysql.sql` were removed, so W39b's "MySQL entry order" (`perf_ledger.entry_seq`) now serves PostgreSQL. A local run stays on SQLite by default (`docs/POSTGRESQL_MIGRATION.md`).
 - Git evidence: every listed commit is an ancestor of master (`git merge-base --is-ancestor`, checked on 2026-09-26; W11–W24 merged to master and deployed 2026-09-28). The whole tree compiles (`python -m compileall`).

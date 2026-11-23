@@ -1,5 +1,7 @@
 # W39: history, research, options, screener, signals and market pulse handoff
 
+> **23 Nov 2026 plan change:** PostgreSQL is ATIP's one server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Branch:** `ccr-643d84fc-yig8ts` (PR #4, which also carries the Dhan token-refresh fix).
 
 **Why this wave:**

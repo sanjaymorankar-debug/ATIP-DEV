@@ -1,5 +1,7 @@
 # W40 deployment runbook (owner, macOS)
 
+> **23 Nov 2026 plan change:** PostgreSQL is ATIP's one server database and MySQL / MariaDB is no longer supported -- the MySQL backend and its tools were removed (see `docs/POSTGRESQL_MIGRATION.md`). MySQL references below are history.
+
 **Release:** `ATIP-W40` = the `master` commit that merges PR #9. After `git pull`, `git log -1 --format='%h %s'` shows it: a merge of `claude/wizardly-curie-fbjeoa`, or a commit titled "W40: ...".
 **Rollback target:** `d01705e` (`master` before W40: W39b, PR #5, plus the MySQL runtime, PR #8).
 **Haven't deployed W39b (`ATIP-W39B`) yet?** Then skip it and follow only this runbook: this release includes it. `docs/W39B_DEPLOY_RUNBOOK.md` is kept for reference.

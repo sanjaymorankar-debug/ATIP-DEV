@@ -71,7 +71,7 @@ def test_entry_order_is_portable_and_numbered(temp_db):
     seqs = [r["entry_seq"] for r in L.transactions(conn, OWNER, "MANUAL")]
     assert seqs == sorted(seqs) and seqs[0] >= 1 and len(set(seqs)) == 2
 
-    class NotSqlite:                     # what MySQL / PostgreSQL connections look like to order_by()
+    class NotSqlite:                     # what a PostgreSQL connection looks like to order_by()
         pass
     assert "rowid" in L.order_by(conn) and "rowid" not in L.order_by(NotSqlite())
     assert "entry_seq" in L.order_by(NotSqlite())
